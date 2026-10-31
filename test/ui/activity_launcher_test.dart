@@ -42,7 +42,7 @@ void main() {
     // (Productivitwo 5 / 10 min, Rénovation rien) ; Réseau l'est (30 min sur 7 j).
     expect(find.text('Focus · 2'), findsOneWidget);
     expect(find.text('Réseau'), findsNothing);
-    expect(find.textContaining('pour la Montre suisse'), findsWidgets);
+    expect(find.textContaining("aujourd'hui · reste"), findsWidgets);
     expect(find.text('Peu utilisées · 1'), findsNothing);
     await tester.enterText(find.byType(TextField), 'rés');
     await tester.pump();

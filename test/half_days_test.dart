@@ -94,4 +94,13 @@ void main() {
     final b2 = buildStakeBoard(deck: deck, facts: few, activities: acts);
     expect(b2.top.length + b2.rest.length, 1);
   });
+
+  test('cible du jour = 7 × minimum − 6 jours passés', () {
+    final a = Activity(id: 'm', domainId: 'd', name: 'Bain de mer', goalMin: 10);
+    final p = ActivityPace(a, 49, 70, todayMin: 23);
+    expect(p.pastMin, 26);
+    expect(p.dayTargetMin, 44);
+    expect(p.missingMin, 21);
+    expect(ActivityPace(a, 75, 70, todayMin: 0).dayTargetMin, 0);
+  });
 }

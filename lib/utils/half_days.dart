@@ -33,6 +33,12 @@ class ActivityPace {
   int get missingMin => onPace ? 0 : expectedMin - doneMin;
   int get pastMin => doneMin - todayMin;
   int get aheadMin => onPace ? doneMin - expectedMin : 0;
+  /// Cible du jour = ce qu'il reste à faire aujourd'hui après les 6 jours
+  /// passés (le retard pris s'y ajoute, l'avance la réduit).
+  int get dayTargetMin {
+    final t = expectedMin - pastMin;
+    return t > 0 ? t : 0;
+  }
   /// Ce qu'il faudra demain pour rester couverte, si rien d'autre n'est fait
   /// aujourd'hui (le jour le plus ancien sort, demain entre avec son minimum).
   int get tomorrowNeedMin {

@@ -153,22 +153,40 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   bool _focusing = false;
   Timer? _tick;
 
-  /// Barre des 7 jours glissants (comme la fiche Montre suisse) : gris = les
-  /// 6 jours passés, couleur = aujourd'hui, fin = 7 × le minimum.
+  /// Barre des 7 jours glissants : couleur = tout ce qui est fait, trait
+  /// blanc = les 6 jours passés, du trait au bout = la cible du jour.
   Widget _rollingBar(ColorScheme cs, ActivityPace p, Color color) {
     final total = p.expectedMin <= 0 ? 1 : p.expectedMin;
-    final past = (p.pastMin / total).clamp(0.0, 1.0);
-    final today = (p.todayMin / total).clamp(0.0, 1.0 - past);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(3),
-      child: SizedBox(
-        height: 5,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (past > 0) Expanded(flex: (past * 1000).round().clamp(1, 1000), child: ColoredBox(color: cs.onSurface.withValues(alpha: .35))),
-          if (today > 0) Expanded(flex: (today * 1000).round().clamp(1, 1000), child: ColoredBox(color: color)),
-          if (past + today < 1) Expanded(flex: ((1 - past - today) * 1000).round().clamp(1, 1000), child: ColoredBox(color: cs.onSurface.withValues(alpha: .08))),
-        ]),
-      ),
+    final past = (p.pastMin / total).clamp(0.0, 1.0).toDouble();
+    final done = (p.doneMin / total).clamp(0.0, 1.0).toDouble();
+    return SizedBox(
+      height: 11,
+      child: LayoutBuilder(builder: (context, c) {
+        final w = c.maxWidth;
+        return Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 3,
+            height: 5,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Stack(children: [
+                Positioned.fill(child: ColoredBox(color: cs.onSurface.withValues(alpha: .08))),
+                Positioned(left: 0, top: 0, bottom: 0, width: w * done, child: ColoredBox(color: color)),
+              ]),
+            ),
+          ),
+          if (past > 0)
+            Positioned(
+              left: (w * past - 1).clamp(0.0, w - 2),
+              top: 0,
+              bottom: 0,
+              width: 2,
+              child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            ),
+        ]);
+      }),
     );
   }
 
@@ -444,11 +462,19 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     // En Focus, la ligne parle le langage du filtre : 7 jours glissants,
     // fait / 7 × le minimum, sans repère (le but = le bout de la barre).
     final rolling = _focusing && watch != null;
-    final sub = [
-      r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui',
-      if (watch != null && !watch.onPace) 'reste ${fmtMin(watch.missingMin)} pour la Montre suisse'
-      else if (r.hasGoal) 'objectif ${fmtMin(a.goalMin)} / j',
-    ].join(' · ');
+    final String sub;
+    if (rolling && !watch.onPace) {
+      final target = watch.dayTargetMin;
+      sub = r.todayMin == 0 && target > a.goalMin * 1.2
+          ? 'cible du jour ${fmtMin(target)} · d\'habitude ${fmtMin(a.goalMin)}'
+          : '${fmtMin(r.todayMin)} / ${fmtMin(target)} aujourd\'hui · reste ${fmtMin(watch.missingMin)}';
+    } else {
+      sub = [
+        r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui',
+        if (watch != null && !watch.onPace) 'reste ${fmtMin(watch.missingMin)} pour la Montre suisse'
+        else if (r.hasGoal) 'objectif ${fmtMin(a.goalMin)} / j',
+      ].join(' · ');
+    }
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => widget.onOpenFiche(a),
@@ -456,7 +482,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
         child: Row(children: [
-          _dayRing(cs, r, color),
+          _dayRing(cs, r, color, watch: rolling ? watch : null),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -534,8 +560,9 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   }
 
   /// Icône dans un anneau = la cible du JOUR (fait aujourd'hui / minimum par
-  /// jour), comme l'anneau des routines ; plein vert une fois atteinte.
-  Widget _dayRing(ColorScheme cs, LauncherRow r, Color color) {
+  /// jour), comme l'anneau des routines ; plein une fois atteinte. En Focus
+  /// ([watch]), la cible du jour = du trait des 6 jours au bout de la barre.
+  Widget _dayRing(ColorScheme cs, LauncherRow r, Color color, {ActivityPace? watch}) {
     final a = r.a;
     final icon = a.iconCode != null ? IconData(a.iconCode!, fontFamily: 'MaterialIcons') : Icons.timer_outlined;
     const size = 40.0;
@@ -547,9 +574,10 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         child: Icon(icon, size: 18, color: color),
       );
     }
-    final reached = r.todayMin >= a.goalMin;
+    final target = watch?.dayTargetMin ?? a.goalMin;
+    final reached = watch != null ? watch.onPace : r.todayMin >= a.goalMin;
     return Tooltip(
-      message: '${fmtMin(r.todayMin)} / ${fmtMin(a.goalMin)} aujourd\'hui',
+      message: '${fmtMin(r.todayMin)} / ${fmtMin(target)} aujourd\'hui',
       child: SizedBox(
         width: size,
         height: size,
@@ -561,7 +589,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
               width: size,
               height: size,
               child: CircularProgressIndicator(
-                value: (r.todayMin / a.goalMin).clamp(0.0, 1.0).toDouble(),
+                value: (target <= 0 ? 1.0 : r.todayMin / target).clamp(0.0, 1.0).toDouble(),
                 strokeWidth: 4,
                 strokeCap: StrokeCap.round,
                 color: color,
