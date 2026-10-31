@@ -37,6 +37,10 @@ class BadgeCenter extends ChangeNotifier {
   DateTime? _fetchedAt;
   Future<BadgeDeck>? _inflight;
   String? _snapshotHash; // dernier instantané envoyé au serveur (évite les écritures identiques)
+  /// Programme du jour vécu EN DIRECT (flux d'Aujourd'hui, nuit comprise) :
+  /// les faits du jour le préfèrent à la copie relue toutes les cinq minutes,
+  /// sinon un bloc coché n'apparaît dans Journée parfaite qu'au rechargement.
+  DailySchedule? liveToday;
 
   Future<BadgeDeck> load({bool refresh = false}) {
     final stale = _fetchedAt == null || DateTime.now().difference(_fetchedAt!) > _ttl;
@@ -117,7 +121,7 @@ class BadgeCenter extends ChangeNotifier {
       moodMarks: st.moodMarks,
       objectives: _objectives,
       projects: _projects,
-      schedule: _schedules.where((s) => s.date == ymd).firstOrNull,
+      schedule: liveToday?.date == ymd ? liveToday : _schedules.where((s) => s.date == ymd).firstOrNull,
       pendingChain: pending != null && pending.isLive(now, ymd) ? pending : null,
       acquired: logic.acquired,
       frozenOf: (a) => logic.frozenOf(a.id),
