@@ -4621,9 +4621,9 @@ class _AppRootState extends State<AppRoot>
                               color:
                                   cs.outlineVariant.withValues(alpha: .55)),
                         ),
-                        // Barres élargies (2026-10-30, essai) : 96 px au lieu de 54.
+                        // Barres élargies (2026-10-30, essai) : 192 px au lieu de 54.
                         child: MiniHourBars24h(
-                            bins: bins24, domainColors: domColors, width: 96),
+                            bins: bins24, domainColors: domColors, width: 192),
                       ),
                     ),
                   ),
