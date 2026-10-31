@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, 
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 import 'package:productivitwo_v1/utils/default_estimate.dart' show defaultEstimateFor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
+import 'package:productivitwo_v1/utils/offensive.dart' show openTargets;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/confirm_done.dart' show confirmDone;
 import 'package:productivitwo_v1/widgets/focus_day_sheet.dart' show pickFocusDay, FocusDay, FocusClear;
 import 'package:productivitwo_v1/utils/interventions.dart';
@@ -469,6 +471,29 @@ class _ProjectFicheState extends State<_ProjectFiche> {
               });
   }
 
+  /// « Offensive sur ce projet » (2026-10-31) : l'offensive avec ce projet pour front.
+  Widget _offensiveButton(Project p, DateTime now) {
+    final logic = widget.logic;
+    final ready = openTargets(p, now).length;
+    if (logic == null || ready == 0) return const SizedBox.shrink();
+    const accent = Color(0xFFFF8A4C);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton.icon(
+        onPressed: () => showOffensiveScreen(context, logic, projectId: p.id),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accent,
+          side: BorderSide(color: accent.withValues(alpha: .5)),
+          minimumSize: const Size.fromHeight(46),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.north_east_rounded, size: 18),
+        label: Text('Offensive sur ce projet · $ready action${ready > 1 ? 's' : ''} prête${ready > 1 ? 's' : ''}',
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -507,6 +532,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
           ),
           // Décisions en tête (retour user 2026-10-30) : passer, viser demain, pause.
           if (p.status == 'active' && widget.onSkipToday != null) _decisions(m),
+          if (p.status == 'active') _offensiveButton(p, now),
           if (p.status == 'active') ...[
             FicheTitle('CETTE SEMAINE',
                 trailing: FicheDelta(

@@ -33,8 +33,11 @@ const _text2 = Color(0xFFD4C4BA);
 const _text3 = Color(0xFFB8A69A);
 
 /// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
-Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume}) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, resume: resume)));
+/// [projectId] = front déjà choisi (fiche projet, page focus) ; [firstActionId] = l'action par laquelle commencer.
+Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume, String? projectId, String? firstActionId}) {
+  return Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId)));
 }
 
 enum _Phase { setup, coup, pause, end }
@@ -42,7 +45,9 @@ enum _Phase { setup, coup, pause, end }
 class OffensiveScreen extends StatefulWidget {
   final AppLogic logic;
   final PendingRun? resume;
-  const OffensiveScreen({super.key, required this.logic, this.resume});
+  final String? projectId;
+  final String? firstActionId;
+  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -78,7 +83,10 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void initState() {
     super.initState();
     WakelockPlus.enable().catchError((_) {});
-    _fronts = offensiveFronts(logic.currentProjects, DateTime.now());
+    final fronts = offensiveFronts(logic.currentProjects, DateTime.now());
+    // Front déjà choisi (fiche projet, page focus) : en tête de liste, sélectionné.
+    final pre = fronts.indexWhere((f) => f.project.id == widget.projectId);
+    _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
     final r = widget.resume;
     if (r != null) _restore(r);
@@ -174,6 +182,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _launch() {
     final now = DateTime.now();
     _queue = _previewQueue();
+    final first = widget.firstActionId;
+    if (first != null) {
+      final i = _queue.indexWhere((t) => t.action.id == first);
+      if (i > 0) _queue = [_queue[i], ..._queue.sublist(0, i), ..._queue.sublist(i + 1)];
+    }
     if (_queue.isEmpty) return;
     if (_runningBefore != null) logic.stopActive(notify: false);
     _startedAt = now;
