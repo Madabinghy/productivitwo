@@ -18,11 +18,6 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBad
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show BadgeView;
 import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
 import 'package:productivitwo_v1/run_session_store.dart';
-import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
-import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
-import 'package:productivitwo_v1/utils/run_session.dart' show PendingRun;
-import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
-import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 
 /// Feuille « Mode du jour » (lot 1 Modes et coups ; vue d'élan 2026-10,
@@ -123,7 +118,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         sessions: st.sessions, doneActions: doneActions);
     final week = days60.sublist(days60.length - 7);
     final wm = elanMetrics(week);
-    final month = elanMonth(days60);
     final text3 = cs.onSurface.withValues(alpha: .55);
 
     Widget title(String t, {String? right, Color? rightColor}) => Padding(
@@ -165,24 +159,91 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           const SizedBox(height: 8),
           Text(_modePromise[cur]!, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: text3)),
         ],
-        const SizedBox(height: 10),
-        if (cur == DayMode.high) ...[_offensiveCard(cs), const SizedBox(height: 8), _guerillaCard(cs)] else ...[_guerillaCard(cs), const SizedBox(height: 8), _offensiveCard(cs)],
-        ..._winsSection(cs),
         title('CETTE SEMAINE', right: wm.count == 0 ? 'rien de dit' : 'dit ${saidDays(week)} j sur 7${_rollingLabel(days60)}'),
         ..._weekBands(cs, dark, marks, week, now),
-        title('CE QUE ÇA T’APPREND', right: '30 jours'),
-        ..._learnSection(cs, dark, marks, days60, now),
         title('30 DERNIERS JOURS', right: _schedules == null ? 'chargement…' : 'touche un jour'),
-        ElanMonthGrid(month: month, onDay: (d) => showElanDaySheet(context, logic, marks: marks, day: d, badges: widget.badges)),
-        if (widget.badges?.deck case final deck?) ...[
-          title('CE QUE ÇA VAUT', right: 'badges d’élan'),
-          for (final id in const ['maree-haute', 'vent-contraire', 'malgre-tout', 'barometre'])
-            if (deck.byId(id) case final b?) _badgeRow(cs, b),
+        _monthBars(cs, dark, marks, days60.sublist(days60.length - 30), now),
+        // Le reste (retour user 2026-10-31 : « la page est trop chargée ») : replié.
+        const SizedBox(height: 14),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _more = !_more),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(children: [
+              Expanded(child: Text('EN SAVOIR PLUS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: text3))),
+              Text(_more ? 'replier' : 'victoires · ce que ça t’apprend · badges', style: TextStyle(fontSize: 11.5, color: text3)),
+              Icon(_more ? Icons.expand_less : Icons.expand_more, size: 20, color: text3),
+            ]),
+          ),
+        ),
+        if (_more) ...[
+          ..._winsSection(cs),
+          title('CE QUE ÇA T’APPREND', right: '30 jours'),
+          ..._learnSection(cs, dark, marks, days60, now),
+          if (widget.badges?.deck case final deck?) ...[
+            title('CE QUE ÇA VAUT', right: 'badges d’élan'),
+            for (final id in const ['maree-haute', 'vent-contraire', 'malgre-tout', 'barometre'])
+              if (deck.byId(id) case final b?) _badgeRow(cs, b),
+          ],
         ],
         const SizedBox(height: 10),
         Text('Des faits, un créneau, une suite. Rien ici ne juge la journée.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: text3)),
       ],
     );
+  }
+
+  bool _more = false;
+
+  /// Les 30 derniers jours en un graphique : une barre par jour, empilée par
+  /// mode (part du temps dit), vide = rien de dit ; tap = le jour en détail.
+  Widget _monthBars(ColorScheme cs, bool dark, List<MoodMark> marks, List<ElanDay> days, DateTime now) {
+    final logic = widget.logic;
+    const h = 56.0;
+    Color c(BandMode m) => switch (m) {
+          BandMode.low => modeChipColor(DayMode.low, dark: dark),
+          BandMode.normal => modeChipColor(DayMode.normal, dark: dark),
+          BandMode.high => modeChipColor(DayMode.high, dark: dark),
+          BandMode.recharge => kRechargeBand,
+        };
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(
+        height: h,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (var i = 0; i < days.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => showElanDaySheet(context, logic, marks: marks, day: days[i], badges: widget.badges),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.2),
+                  child: Builder(builder: (_) {
+                    final share = modeShareOf([elanCellsOfDay(marks, days[i].ymd, now, logic.dayStartMin)]);
+                    final today = i == days.length - 1;
+                    if (share.said == 0) {
+                      return Align(alignment: Alignment.bottomCenter, child: Container(height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .1), borderRadius: BorderRadius.circular(2))));
+                    }
+                    return Container(
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(3), border: today ? Border.all(color: cs.onSurface.withValues(alpha: .8), width: 1.2) : null),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        for (final m in const [BandMode.high, BandMode.normal, BandMode.low])
+                          if (share.pct(m) > 0) Expanded(flex: share.pct(m), child: ColoredBox(color: c(m))),
+                      ]),
+                    );
+                  }),
+                ),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 4),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text('il y a 30 j', style: TextStyle(fontSize: 10.5, color: text3)),
+        Text('aujourd’hui', style: TextStyle(fontSize: 10.5, color: text3)),
+      ]),
+    ]);
   }
 
   /// « · élan 7 j 2,9 ↗ » : moyenne glissante sur 7 jours, comparée à hier.
@@ -485,68 +546,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         ),
     ];
   }
-
-  /// Offensive : en forme, à fond — des coups de 10 / 15 min sur un front.
-  Widget _offensiveCard(ColorScheme cs) {
-    final p = _pending(kOffensiveKind);
-    return _launchCard(
-      cs,
-      accent: kOffensiveAccent,
-      lightAccent: const Color(0xFFB4532A),
-      icon: Icons.north_east,
-      title: p != null ? 'Reprendre l’offensive · ${p.done} coup${p.done > 1 ? 's' : ''}' : 'Offensive · en forme, à fond',
-      sub: p != null ? 'Quittée en route : elle reprend au coup suivant.' : 'Des coups de 10 ou 15 min sur un projet, l’un après l’autre.',
-      onTap: () => showOffensiveScreen(context, widget.logic, resume: p).then((_) => mounted ? setState(() {}) : null),
-    );
-  }
-
-  /// La session en attente de ce mode, si elle est reprenable.
-  PendingRun? _pending(String kind) {
-    final p = RunSessionStore.current;
-    return p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
-  }
-
-  Widget _launchCard(ColorScheme cs,
-      {required Color accent, required Color lightAccent, required IconData icon, required String title, required String sub, required VoidCallback onTap}) {
-    return Material(
-      color: accent.withValues(alpha: .10),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: accent.withValues(alpha: .5))),
-          child: Row(children: [
-            Icon(icon, color: cs.brightness == Brightness.dark ? accent : lightAccent),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-                Text(sub, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
-              ]),
-            ),
-            Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .5)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  /// Guérilla : pas bien, mais debout — des coups de 5 min, l'app choisit.
-  Widget _guerillaCard(ColorScheme cs) {
-    final p = _pending(kGuerillaKind);
-    return _launchCard(
-      cs,
-      accent: kGuerillaAccent,
-      lightAccent: const Color(0xFF5E6B2A),
-      icon: Icons.bolt,
-      title: p != null ? 'Reprendre la guérilla · ${p.done} coup${p.done > 1 ? 's' : ''}' : 'Guérilla · la flemme ou moi',
-      sub: p != null ? 'Quittée en route : elle reprend au coup suivant.' : 'Pas bien, mais debout : des coups de 5 min, sans réfléchir.',
-      onTap: () => showGuerillaScreen(context, widget.logic, resume: p).then((_) => mounted ? setState(() {}) : null),
-    );
-  }
-
 
   Widget _note(ColorScheme cs, String t) => Container(
         width: double.infinity,
