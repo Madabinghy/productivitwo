@@ -918,7 +918,7 @@ Bilan : coups · durée · chrono, par projet touché la rangée de briques, « 
 (`planSnapshot`), badge, « Caser la suite demain » (`focusDate` = demain sur l'action en cours). Écritures `patchActionOf`. Stockage
 `ChainRun` `kind:"offensive"` (doneCount = coups gagnés, total = actions finies). Badge **Offensive** (`offensive`, Discipline, symbole
 `arrow`, 1 / 5 / 15) dès 3 coups (`offensiveCounts`). Le deep work 90 min reste à part (un seul gros bloc). ⓘ `kRuleOffensive`.
-Logique pure `utils/offensive.dart`.
+Logique pure `utils/offensive.dart`. **Depuis un projet** (2026-10-31, retour user) : `showOffensiveScreen(projectId:, firstActionId:)` — front présélectionné (en tête de la liste) ; bouton « ↗ Offensive sur ce projet · n actions prêtes » dans la fiche projet (`_offensiveButton`, au-dessus de CETTE SEMAINE, si des actions sont prêtes) ; 4ᵉ option « Offensive » du « Mode d'exécution » de la page focus d'une action de projet (la page laisse place à l'offensive, qui commence par cette action).
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

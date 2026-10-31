@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show OffensiveScreen;
 import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, showMomentActions;
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -395,12 +396,28 @@ class _FocusScreenState extends State<_FocusScreen> {
             opt(25, 'Un sprint', 'le chrono, rien d\'autre'),
             if (est != null && est != 25 && est != 90) opt(est, 'L\'estimation', 'le chrono sur ≈ ${fmtMin(est)}'),
             opt(90, 'Deep work', 'bloc posé dans le programme à partir de maintenant · badge Deep work', deep: true),
+            if (_project != null)
+              ListTile(
+                leading: const SizedBox(width: 44, child: Icon(Icons.north_east_rounded, color: Color(0xFFFF8A4C))),
+                title: const Text('Offensive', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text('enchaîner « ${_project!.title} » en coups de 10 à 25 min, à partir de cette action',
+                    style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
+                onTap: () => Navigator.pop(ctx, -1),
+              ),
             const SizedBox(height: 8),
           ]),
         );
       },
     );
     if (picked == null || !mounted) return;
+    if (picked == -1) {
+      // La page focus laisse la place à l'offensive, front et première action posés.
+      final nav = Navigator.of(context);
+      final p = _project!;
+      nav.pop();
+      nav.push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, projectId: p.id, firstActionId: a.id)));
+      return;
+    }
     if (picked == 90) {
       await _deepWork();
     } else {
