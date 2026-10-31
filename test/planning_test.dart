@@ -41,4 +41,15 @@ void main() {
     expect(capHeldCount([s(held)], '2026-11-01'), 0);
     expect(capHeldCount([s(held)], '2026-11-02'), 1);
   });
+
+  test('répartir la semaine : jours les moins chargés, une fois par jour d\'abord', () {
+    final w = spreadWeek([
+      const WeekWant(activityId: 'run', title: 'Courir', weeklyMin: 180, reason: 'montre'),
+      const WeekWant(activityId: 'f', title: 'Formation', weeklyMin: 300, reason: 'objectif'),
+    ], [120, 60, 300, 0, 200, 240, 100]);
+    expect(w[3], isEmpty);
+    expect([for (final d in w) d['run'] ?? 0].where((m) => m > 0).length, 4);
+    expect(w.fold<int>(0, (s, d) => s + (d['run'] ?? 0)), 180);
+    expect(w.fold<int>(0, (s, d) => s + (d['f'] ?? 0)), 300);
+  });
 }

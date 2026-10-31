@@ -8,11 +8,13 @@ import 'package:productivitwo_v1/utils/claude_link.dart' show claudeNewUri, plan
 import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/fiche_cache.dart' show FicheCache;
 import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
 import 'package:productivitwo_v1/utils/planning.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/reading_due.dart' show readingsDue;
+import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
 
@@ -35,7 +37,7 @@ Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? 
   return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges)));
 }
 
-enum _Step { cap, stakes, frame, fill, done }
+enum _Step { cap, stakes, frame, fill, done, weekStakes, weekSpread, weekDone }
 
 class PlanScreen extends StatefulWidget {
   final AppLogic logic;
@@ -52,6 +54,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
   _Step _step = _Step.cap;
   bool _tomorrow = true;
+  bool _week = false;
   bool _chrono = true;
   PlanLoad _load = PlanLoad.normal;
   DateTime? _startedAt;
@@ -226,6 +229,11 @@ class _PlanScreenState extends State<PlanScreen> {
       }
       if (a != null) logic.start(a.id);
     }
+    if (_week) {
+      setState(() => _step = _Step.weekStakes);
+      _loadWeek();
+      return;
+    }
     setState(() => _step = _Step.stakes);
     _load2();
   }
@@ -275,6 +283,9 @@ class _PlanScreenState extends State<PlanScreen> {
                   _Step.frame => _frameView(),
                   _Step.fill => _fillView(),
                   _Step.done => _doneView(),
+                  _Step.weekStakes => _weekStakesView(),
+                  _Step.weekSpread => _weekSpreadView(),
+                  _Step.weekDone => _weekDoneView(),
                 },
         ),
       ),
@@ -334,8 +345,11 @@ class _PlanScreenState extends State<PlanScreen> {
       _title('Qu\'est-ce qu\'on pose ?'),
       const SizedBox(height: 8),
       _choice(
-        selected: _tomorrow,
-        onTap: () => setState(() => _tomorrow = true),
+        selected: _tomorrow && !_week,
+        onTap: () => setState(() {
+          _tomorrow = true;
+          _week = false;
+        }),
         child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Demain', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
           SizedBox(height: 3),
@@ -344,12 +358,25 @@ class _PlanScreenState extends State<PlanScreen> {
       ),
       const SizedBox(height: 10),
       _choice(
-        selected: !_tomorrow,
-        onTap: () => setState(() => _tomorrow = false),
+        selected: !_tomorrow && !_week,
+        onTap: () => setState(() {
+          _tomorrow = false;
+          _week = false;
+        }),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('La fin d\'aujourd\'hui', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
           const SizedBox(height: 3),
           Text('à partir de ${hmOf(((now + 14) ~/ 15) * 15)}', style: const TextStyle(fontSize: 13, color: _text2)),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      _choice(
+        selected: _week,
+        onTap: () => setState(() => _week = true),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_weekLabel, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+          const SizedBox(height: 3),
+          const Text('les dates qui ne bougent pas, le contrat, un focus par jour', style: TextStyle(fontSize: 13, color: _text2)),
         ]),
       ),
       const SizedBox(height: 16),
@@ -369,7 +396,7 @@ class _PlanScreenState extends State<PlanScreen> {
         ]),
       ),
       const Spacer(),
-      _primary(_tomorrow ? 'Planifier demain' : 'Planifier la fin de journée', _begin),
+      _primary(_week ? 'Planifier la semaine' : (_tomorrow ? 'Planifier demain' : 'Planifier la fin de journée'), _begin),
     ]);
   }
 
@@ -628,6 +655,483 @@ class _PlanScreenState extends State<PlanScreen> {
         ]),
       ),
       _primary(_tomorrow ? 'Terminer · bonne nuit' : 'Terminer', _finish),
+    ]);
+  }
+
+  // ── Semaine ─────────────────────────────────────────────────────────────────
+
+  static const _dayShort = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+  static const _months = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+
+  List<DailySchedule?> _weekDocs = const [];
+  List<List<ScheduleBlock>> _weekBlocks = const [];
+  List<List<String>> _weekDated = const [];
+  final List<WeekWant> _wants = [];
+  final List<(int, String, int)> _prefill = []; // jour, activité, minutes (prépa la veille d'une séance)
+  List<Map<String, int>> _grid = const [];
+  final Map<int, List<PlannedBlock>> _weekPosed = {};
+  int _weekRoutines = 0;
+
+  DateTime _plus(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
+
+  /// Lundi prochain (demain le dimanche).
+  DateTime get _weekStart {
+    final d = logic.livedToday;
+    return _plus(DateTime(d.year, d.month, d.day), 8 - d.weekday);
+  }
+
+  List<DateTime> get _weekDays => [for (var i = 0; i < 7; i++) _plus(_weekStart, i)];
+
+  String get _weekLabel {
+    final a = _weekStart, b = _plus(a, 6);
+    return a.month == b.month
+        ? 'La semaine du ${a.day} au ${b.day} ${_months[b.month - 1]}'
+        : 'La semaine du ${a.day} ${_months[a.month - 1]} au ${b.day} ${_months[b.month - 1]}';
+  }
+
+  Future<void> _loadWeek() async {
+    setState(() => _loading = true);
+    final days = _weekDays;
+    final window = await sync.fetchDayWindow();
+    List<DailySchedule> docs = const [];
+    try {
+      docs = await sync.fetchDailySchedulesRange(ymdOf(days.first), ymdOf(_plus(days.last, 1)));
+    } catch (_) {}
+    var objectives = FicheCache.objectives;
+    if (objectives == null) {
+      try {
+        objectives = await sync.fetchStrategicObjectives();
+      } catch (_) {}
+    }
+    final byYmd = {for (final d in docs) d.date: d};
+    _window = window;
+    _weekDocs = [for (final d in days) byYmd[ymdOf(d)]];
+    _weekBlocks = [
+      for (final d in days)
+        livedDayBlocks(byYmd[ymdOf(d)], byYmd[ymdOf(_plus(d, 1))], logic.dayStartMin).where((b) => b.status == 'pending' || b.status == 'done').toList(),
+    ];
+    _buildWeek(objectives ?? const []);
+    _respread();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _buildWeek(List<StrategicObjective> objectives) {
+    final days = _weekDays;
+    final dated = [for (final _ in days) <String>[]];
+    for (var i = 0; i < 7; i++) {
+      for (final b in _weekBlocks[i].where((b) => b.status == 'pending')) {
+        if (b.gcalEventId != null || b.kind == 'session') dated[i].add('${b.title} · ${b.startTime}');
+      }
+    }
+    _wants.clear();
+    _prefill.clear();
+    void want(String activityId, int weekly, String reason) {
+      final i = _wants.indexWhere((w) => w.activityId == activityId);
+      if (i < 0) {
+        _wants.add(WeekWant(activityId: activityId, title: _activityName(activityId), weeklyMin: weekly, reason: reason));
+      } else if (weekly > _wants[i].weeklyMin) {
+        _wants[i] = WeekWant(activityId: activityId, title: _wants[i].title, weeklyMin: weekly, reason: reason);
+      }
+    }
+
+    // Dates qui ne bougent pas : séances de la semaine, et leur prépa la veille.
+    for (final p in logic.currentProjects) {
+      if (p.status == 'archived' || p.status == 'done' || p.paused) continue;
+      for (final it in interventionsOf(p)) {
+        if (it.isDone) continue;
+        final i = DateTime(it.date.year, it.date.month, it.date.day).difference(days.first).inDays;
+        if (i < 0 || i > 6) continue;
+        final t = it.milestone.title;
+        if (!dated[i].any((d) => d.startsWith(t))) dated[i].add(t);
+        if (it.prep != null && it.prep!.status != 'done' && p.linkedActivityId != null) {
+          _prefill.add((i > 0 ? i - 1 : 0, p.linkedActivityId!, 60));
+          if (!_wants.any((w) => w.activityId == p.linkedActivityId)) {
+            _wants.add(WeekWant(activityId: p.linkedActivityId!, title: _activityName(p.linkedActivityId!), weeklyMin: 0, reason: 'prépa séance'));
+          }
+        }
+      }
+    }
+    _weekDated = dated;
+    // Le contrat : minimums (Montre suisse), engagements des objectifs, plans en retard.
+    for (final a in logic.state.activeActivities) {
+      if (a.isHabit || a.goalMin <= 0 || isBasicNeedName(a.name) || logic.isActivitySnoozed(a.id, days.first) || logic.isDomainResting(a.domainId)) continue;
+      want(a.id, a.goalMin * 7, 'Montre suisse');
+    }
+    for (final o in objectives.where((o) => o.status == 'active')) {
+      for (final c in o.timeCommitments) {
+        if (c.weeklyMin > 0 && logic.state.activities.any((a) => a.id == c.activityId && !a.deleted)) want(c.activityId, c.weeklyMin, 'objectif');
+      }
+    }
+    var behind = 0;
+    for (final m in rankProjectMoments(logic.currentProjects, logic.state.sessions, days.first)) {
+      if (behind >= 3 || !m.behind || m.upcoming || m.project.linkedActivityId == null) continue;
+      behind++;
+      want(m.project.linkedActivityId!, 120, 'plan du projet');
+    }
+    _wants.sort((a, b) => b.weeklyMin.compareTo(a.weeklyMin));
+    _weekRoutines = logic.state.activeActivities
+        .where((a) => a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily && !logic.isAcquired(a.id) && !logic.isActivitySnoozed(a.id, days.first))
+        .length;
+  }
+
+  int _freeOf(int i) => freeMinutes(freeGaps(_weekBlocks[i], _window));
+
+  int _plannedOf(int i) => _grid[i].values.fold(0, (s, m) => s + m);
+
+  /// « Répartir pour moi » : la prépa la veille des séances, puis le contrat
+  /// étalé sur les jours les moins chargés (80 % du libre).
+  void _respread() {
+    final grid = [for (final _ in _weekDays) <String, int>{}];
+    for (final (d, a, m) in _prefill) {
+      grid[d][a] = (grid[d][a] ?? 0) + m;
+    }
+    final free = [
+      for (var i = 0; i < 7; i++) (_freeOf(i) * fillRatio(PlanLoad.normal)).round() - grid[i].values.fold(0, (s, m) => s + m),
+    ];
+    final spread = spreadWeek(_wants.where((w) => w.weeklyMin >= 30).toList(), [for (final f in free) f < 0 ? 0 : f.toInt()]);
+    for (var i = 0; i < 7; i++) {
+      for (final e in spread[i].entries) {
+        grid[i][e.key] = (grid[i][e.key] ?? 0) + e.value;
+      }
+    }
+    _grid = grid;
+  }
+
+  void _cycleCell(int day, String activityId) {
+    const steps = [0, 45, 90];
+    final cur = _grid[day][activityId] ?? 0;
+    final i = steps.indexOf(cur);
+    final next = i < 0 ? 0 : steps[(i + 1) % steps.length];
+    setState(() => next == 0 ? _grid[day].remove(activityId) : _grid[day][activityId] = next);
+  }
+
+  int _sumOf(String activityId) => _grid.fold(0, (s, d) => s + (d[activityId] ?? 0));
+
+  String _short(int m) => m < 60 ? '$m' : (m % 60 == 0 ? '${m ~/ 60}h' : '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}');
+
+  Color _colorOfActivity(String id) {
+    final a = logic.state.activities.where((x) => x.id == id).firstOrNull;
+    return domainColor(a?.domainId, logic.state.activeDomains) ?? kPlanAccent;
+  }
+
+  int get _contractMin => _wants.fold(0, (s, w) => s + w.weeklyMin) + _prefill.fold(0, (s, p) => s + p.$3);
+
+  Widget _weekStakesView() {
+    final winLen = (_window.endMin - _window.startMin).clamp(1, 24 * 60);
+    final datedCount = _weekDated.fold(0, (s, d) => s + d.length);
+    final datedLines = [
+      for (var i = 0; i < 7; i++)
+        for (final t in _weekDated[i]) (i, t),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top(_weekLabel.replaceFirst('La semaine', 'SEMAINE').toUpperCase(), 1),
+      _title('Ce qui se joue cette semaine'),
+      Expanded(
+        child: ListView(children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              Row(children: [
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(children: [
+                        Text(_dayShort[i], style: const TextStyle(fontSize: 11, color: _text3)),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: 64,
+                          clipBehavior: Clip.antiAlias,
+                          alignment: Alignment.bottomCenter,
+                          decoration: BoxDecoration(color: const Color(0xFF27382D), borderRadius: BorderRadius.circular(6)),
+                          child: FractionallySizedBox(
+                            heightFactor: ((winLen - _freeOf(i)) / winLen).clamp(0.0, 1.0),
+                            widthFactor: 1,
+                            child: Container(color: const Color(0xFF2A3550)),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _weekDated[i].isNotEmpty ? (_weekDated[i].length > 1 ? '${_weekDated[i].length} dates' : 'daté') : (_freeOf(i) == 0 ? 'plein' : _short(_freeOf(i))),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: _weekDated[i].isNotEmpty ? _gold : _green),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+              const Align(alignment: Alignment.centerLeft, child: Text('bleu = déjà pris (agenda, séances) · le chiffre = le libre', style: TextStyle(fontSize: 12, color: _text3))),
+            ]),
+          ),
+          _section('DATES QUI NE BOUGENT PAS · $datedCount'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: datedLines.isEmpty
+                ? const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Rien de daté : la semaine est à toi.', style: TextStyle(color: _text2)))
+                : Column(children: [
+                    for (var k = 0; k < datedLines.length; k++) ...[
+                      if (k > 0) const Divider(height: 1, color: _line),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(children: [
+                          Expanded(child: Text(datedLines[k].$2, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white))),
+                          Text(_dayShort[datedLines[k].$1].toLowerCase(), style: const TextStyle(fontSize: 13, color: _gold)),
+                        ]),
+                      ),
+                    ],
+                  ]),
+          ),
+          _section('LE CONTRAT DE LA SEMAINE'),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              if (_wants.isEmpty) const Align(alignment: Alignment.centerLeft, child: Text('Aucun minimum ni engagement de temps.', style: TextStyle(color: _text2))),
+              for (final w in _wants)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(child: Text(w.title, style: const TextStyle(fontSize: 14, color: Colors.white))),
+                    Text(
+                      w.weeklyMin > 0 ? '${fmtMin(w.weeklyMin)} · ${w.reason}' : w.reason,
+                      style: TextStyle(fontSize: 13, color: w.reason == 'objectif' ? const Color(0xFFA9C1FF) : _gold),
+                    ),
+                  ]),
+                ),
+              if (_weekRoutines > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(child: Text('$_weekRoutines routines', style: const TextStyle(fontSize: 14, color: Colors.white))),
+                    const Text('semaine tenue à 80 %', style: TextStyle(fontSize: 13, color: _green)),
+                  ]),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      _primary('Répartir ${fmtMin(_contractMin)} sur la semaine', () => setState(() => _step = _Step.weekSpread)),
+    ]);
+  }
+
+  Widget _weekSpreadView() {
+    const label = 96.0;
+    Widget cell(int day, WeekWant w) {
+      final m = _grid[day][w.activityId] ?? 0;
+      final c = _colorOfActivity(w.activityId);
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: GestureDetector(
+            onTap: () => _cycleCell(day, w.activityId),
+            child: Container(
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: m > 0 ? c : const Color(0xFF27382D), borderRadius: BorderRadius.circular(5)),
+              child: m > 0
+                  ? Text(_short(m), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c.computeLuminance() > .4 ? _ink : Colors.white))
+                  : null,
+            ),
+          ),
+        ),
+      );
+    }
+
+    String loadOf(int i) {
+      final planned = _plannedOf(i), free = _freeOf(i);
+      if (planned == 0 && _weekDated[i].isEmpty) return 'repos';
+      return planned > free * fillRatio(PlanLoad.full) ? 'plein' : 'ok';
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('SEMAINE · RÉPARTIR', 2),
+      _title('Un jour, un focus'),
+      const Text('Touche une case pour poser un bloc d\'activité (45 min, 1h30, rien). Les jours chargés restent légers.', style: TextStyle(fontSize: 13.5, color: _text2)),
+      const SizedBox(height: 10),
+      Expanded(
+        child: ListView(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              Row(children: [
+                const SizedBox(width: label),
+                for (var i = 0; i < 7; i++)
+                  Expanded(child: Center(child: Text(_dayShort[i].substring(0, 1), style: const TextStyle(fontSize: 11, color: _text3)))),
+              ]),
+              if (_weekDated.any((d) => d.isNotEmpty))
+                Row(children: [
+                  const SizedBox(width: label, child: Text('Dates', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _gold))),
+                  for (var i = 0; i < 7; i++)
+                    Expanded(
+                      child: Center(
+                        child: Text(_weekDated[i].isEmpty ? '' : '${_weekDated[i].length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _gold)),
+                      ),
+                    ),
+                ]),
+              for (final w in _wants)
+                Row(children: [
+                  SizedBox(width: label, child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white))),
+                  for (var i = 0; i < 7; i++) cell(i, w),
+                ]),
+              const SizedBox(height: 4),
+              Row(children: [
+                const SizedBox(width: label, child: Text('charge', style: TextStyle(fontSize: 11.5, color: _text3))),
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: Center(
+                      child: Text(loadOf(i), style: TextStyle(fontSize: 10.5, color: loadOf(i) == 'plein' ? _gold : _green)),
+                    ),
+                  ),
+              ]),
+            ]),
+          ),
+          _section('LE CONTRAT · RÉPARTI'),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              for (final w in _wants)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(children: [
+                    Expanded(child: Text(w.title, style: const TextStyle(fontSize: 13.5, color: Colors.white))),
+                    Builder(builder: (_) {
+                      final sum = _sumOf(w.activityId);
+                      final ok = sum >= w.weeklyMin;
+                      return Text(
+                        w.weeklyMin > 0 ? '${fmtMin(sum)} / ${fmtMin(w.weeklyMin)}${ok ? ' ✓' : ''}' : '${fmtMin(sum)} · ${w.reason}',
+                        style: TextStyle(fontSize: 13.5, color: ok ? _green : _gold),
+                      );
+                    }),
+                  ]),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(
+          child: SizedBox(
+            height: 54,
+            child: OutlinedButton(
+              onPressed: () => setState(_respread),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              child: const Text('Répartir pour moi', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: _primary('Valider', _saveWeek)),
+      ]),
+    ]);
+  }
+
+  /// Pose chaque jour : les cases deviennent des blocs d'activité dans les
+  /// créneaux libres (`proposeDay`), ajoutés au programme (rien n'est remplacé).
+  Future<void> _saveWeek() async {
+    setState(() => _loading = true);
+    final now = DateTime.now();
+    final days = _weekDays;
+    _weekPosed.clear();
+    for (var i = 0; i < 7; i++) {
+      final wants = [
+        for (final e in _grid[i].entries)
+          if (e.value >= 30)
+            PlanWant(activityId: e.key, title: _activityName(e.key), minutes: e.value, reason: _wants.where((w) => w.activityId == e.key).map((w) => w.reason).firstOrNull ?? ''),
+      ];
+      if (wants.isEmpty) continue;
+      final planned = proposeDay(freeGaps(_weekBlocks[i], _window), wants, wants.fold(0, (s, w) => s + w.minutes));
+      if (planned.isEmpty) continue;
+      final doc = _weekDocs[i] ?? DailySchedule(date: ymdOf(days[i]));
+      doc.blocks.addAll(planned.map(planBlockOf));
+      doc
+        ..generatedBy = 'plan'
+        ..generatedAt = now
+        ..plannedAt = now
+        ..plannedSameDay = false;
+      await sync.saveDailySchedule(doc);
+      _weekPosed[i] = planned;
+    }
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _step = _Step.weekDone;
+      });
+    }
+  }
+
+  Widget _weekDoneView() {
+    final total = _weekPosed.values.expand((l) => l).fold<int>(0, (s, p) => s + p.minutes);
+    final dated = _weekDated.fold(0, (s, d) => s + d.length);
+    final spent = _startedAt == null ? 0 : DateTime.now().difference(_startedAt!).inMinutes;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('LA SEMAINE EST POSÉE', 3),
+      _title('${fmtMin(total)} réparties · $dated date${dated > 1 ? 's' : ''} tenue${dated > 1 ? 's' : ''}'),
+      Text('Planifiée en ${spent < 1 ? 'moins d\'une' : spent} min${_chrono ? ' · chrono sur Planification' : ''}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+      const SizedBox(height: 10),
+      Expanded(
+        child: ListView(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              for (var i = 0; i < 7; i++) ...[
+                if (i > 0) const Divider(height: 1, color: _line),
+                Builder(builder: (_) {
+                  final posed = _weekPosed[i] ?? const <PlannedBlock>[];
+                  final names = [
+                    if (_weekDated[i].length == 1) _weekDated[i].first.split(' · ').first,
+                    if (_weekDated[i].length > 1) '${_weekDated[i].length} dates',
+                    ...posed.map((p) => p.want.title),
+                  ];
+                  final m = posed.fold<int>(0, (s, p) => s + p.minutes);
+                  final full = m > _freeOf(i) * fillRatio(PlanLoad.full);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    child: Row(children: [
+                      SizedBox(width: 40, child: Text(_dayShort[i], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _text3))),
+                      Expanded(
+                        child: Text(names.isEmpty ? 'libre' : names.join(' · '),
+                            maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, color: names.isEmpty ? _text3 : Colors.white)),
+                      ),
+                      Text(m == 0 ? 'léger' : (full ? 'plein' : fmtMin(m)), style: TextStyle(fontSize: 12, color: m == 0 ? _green : (full ? _gold : _text3))),
+                    ]),
+                  );
+                }),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: kPlanAccent.withValues(alpha: .1), borderRadius: BorderRadius.circular(12)),
+            child: const Text('Chaque soir, « Planifier demain » partira de ce que tu as posé ici : tu n\'auras qu\'à ajuster.',
+                style: TextStyle(fontSize: 12.5, color: Color(0xFFC7D6FF), height: 1.4)),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+            child: const Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Semaine tenue en vue', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Text('contrat tenu à 80 % · une braise à la clé', style: TextStyle(fontSize: 12, color: _text3)),
+                ]),
+              ),
+              Text('+1', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _ember)),
+            ]),
+          ),
+        ]),
+      ),
+      _primary('Terminer', _finish),
     ]);
   }
 }

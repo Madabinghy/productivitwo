@@ -940,6 +940,15 @@ glisser = retirer, « À caser si tu veux » = +45 min, « Avec Claude » = `pla
 progression Cap tenu). « Poser » AJOUTE les blocs au doc du jour visé (rien n'est remplacé) et pose `generatedBy:"plan"`, `plannedAt`,
 `plannedSameDay` (fin d'aujourd'hui = ne compte pas pour Cap tenu).
 **Lot 3 (badge)** : `cap-tenu` (Discipline, symbole `compass`, paliers 5 · 20 · 50) dans `computeBadges` — journées closes `capHeld`, faits « Journées posées la veille » · « Tenues à 70 % » · « La dernière ».
+**Lot 4 (semaine)** : 3ᵉ choix « La semaine du … au … » au cap (lundi prochain → dimanche ; `_week`) → CE QUI SE JOUE CETTE SEMAINE
+(`_weekStakesView` : barre « déjà pris » par jour sur la journée active, libre ou dates ; DATES QUI NE BOUGENT PAS = miroirs agenda /
+blocs de séance + séances natives de la semaine ; LE CONTRAT = minimums ×7 (Montre suisse, hors besoins de base, activités en pause et
+domaines en veille), engagements de temps des objectifs actifs, 2 h par projet en retard sur le plan (3 max), nombre de routines
+quotidiennes) → RÉPARTIR (`_weekSpreadView` : grille activités × jours, tap sur une case = 45 min → 1h30 → rien, ligne « Dates »,
+charge ok / plein / repos, « LE CONTRAT · RÉPARTI » fait / dû ; « Répartir pour moi » = prépa 1 h la veille de chaque séance (projet
+avec activité liée) puis `spreadWeek` (`utils/planning.dart` : morceaux de 45 min, jour le plus libre d'abord, une fois par jour
+d'abord) sur 80 % du libre) → LA SEMAINE EST POSÉE (une ligne par jour). « Valider » ajoute à chaque jour ses blocs d'activité via
+`proposeDay` dans ses créneaux libres, `generatedBy:"plan"`, `plannedAt` (chaque jour compte pour Cap tenu).
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
