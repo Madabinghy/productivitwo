@@ -920,6 +920,16 @@ Bilan : coups · durée · chrono, par projet touché la rangée de briques, « 
 `arrow`, 1 / 5 / 15) dès 3 coups (`offensiveCounts`). Le deep work 90 min reste à part (un seul gros bloc). ⓘ `kRuleOffensive`.
 Logique pure `utils/offensive.dart`.
 
+## Planification (2026-10-31, maquette validée « Mode Planification »)
+
+Poser demain en dix minutes le soir, la semaine le dimanche, à partir de ce qui se joue. **Lot 1 (logique pure)** :
+`utils/planning.dart` — `PlanStake` (`PlanStakeKind` dated · losing · behind : daté qui ne bouge pas, se perd si rien, en retard
+sur le rythme), `freeGaps(blocks, DayWindow)` / `freeMinutes` (créneaux libres hors blocs à faire / faits), `PlanLoad` léger · normal ·
+à fond (`fillRatio` 50 / 80 / 95 % du libre), `proposeDay(gaps, wants, budget)` → `PlannedBlock` (blocs d'ACTIVITÉ, premier créneau
+qui tient, 10 min d'air, quart d'heure, raccourci jusqu'à 30 min), `planBlockOf`. Badge **Cap tenu** : `capHeld(DailySchedule)` =
+programme posé la VEILLE par le mode (`generatedBy:"plan"`, `plannedAt` < jour, pas `plannedSameDay`) et ≥ 70 % des blocs (hors
+miroirs) faits ; `capHeldCount`, paliers `kCapTiers` 5 · 20 · 50.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
