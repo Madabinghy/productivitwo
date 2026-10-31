@@ -80,7 +80,10 @@ class RoutineLauncher extends StatefulWidget {
 
 class _RoutineLauncherState extends State<RoutineLauncher> {
   final _search = TextEditingController();
-  bool _doneOpen = false;
+  /// Focus (par défaut à chaque ouverture) = ce qui reste à faire ; Tout = les
+  /// faites aussi, à leur place dans leur domaine (retour user 2026-10-31,
+  /// comme le lanceur d'activités : plus de repli « Faites » tout en bas).
+  bool _focus = true;
 
   AppLogic get logic => widget.logic;
 
@@ -127,6 +130,9 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final todo = slots.where((s) => !s.reached && !day.dismissed.contains(s.id)).toList();
     final done = slots.where((s) => s.reached || day.dismissed.contains(s.id)).toList();
     final nowLeft = day.of(day.current.key).where((s) => !s.reached && !day.dismissed.contains(s.id)).length;
+    // Une recherche cherche dans toutes, comme dans Tout.
+    final focusing = _focus && q.isEmpty;
+    final shown = focusing ? todo : [...todo, ...done];
     final series = day.slots.where((s) => s.activity.habitFreq == HabitFreq.daily && logic.habitCurrentStreak(s.id) > 0).length;
     final domains = logic.state.activeDomains;
 
@@ -197,18 +203,26 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   ),
           ),
         ),
+        const SizedBox(height: 10),
+        _focusToggle(cs, todo.length, searching: q.isNotEmpty),
         if (todo.isEmpty && done.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),
             child: Text(q.isEmpty ? 'Aucune routine configurée.' : 'Aucune routine ne correspond.',
                 style: TextStyle(color: cs.onSurface.withValues(alpha: .5), fontStyle: FontStyle.italic)),
           ),
-        if (todo.isEmpty && done.isNotEmpty && q.isEmpty)
+        if (focusing && todo.isEmpty && done.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 18, 4, 4),
-            child: Text('Tout est fait pour aujourd\'hui.', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface.withValues(alpha: .7))),
+            child: Row(children: [
+              Expanded(
+                child: Text('Tout est fait pour aujourd\'hui.',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface.withValues(alpha: .7))),
+              ),
+              TextButton(onPressed: () => setState(() => _focus = false), child: const Text('Voir toutes les routines')),
+            ]),
           ),
-        for (final g in byDomain(todo)) ...[
+        for (final g in byDomain(shown)) ...[
           Row(children: [
             Expanded(
               child: ActivityDomainHeader(
@@ -224,51 +238,31 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           ]),
           for (final s in g.slots) _row(cs, day, s),
         ],
-        if (done.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Material(
-            color: cs.onSurface.withValues(alpha: .05),
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => setState(() => _doneOpen = !_doneOpen),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                child: Row(children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: const BoxDecoration(color: Color(0xFF4CBF75), shape: BoxShape.circle),
-                    child: const Icon(Icons.check_rounded, size: 15, color: Color(0xFF0D1A12)),
-                  ),
-                  const SizedBox(width: 10),
-                  Text('Faites · ${done.length}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      done.map((s) => s.activity.name).join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45), fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Icon(_doneOpen ? Icons.expand_less : Icons.expand_more, size: 20, color: cs.onSurface.withValues(alpha: .5)),
-                ]),
-              ),
-            ),
-          ),
-          if (_doneOpen)
-            for (final g in byDomain(done)) ...[
-              ActivityDomainHeader(
-                  name: g.domain?.name ?? 'Sans domaine',
-                  color: g.domain == null ? null : domainColor(g.domain!.id, domains),
-                  padding: const EdgeInsets.fromLTRB(4, 14, 4, 4)),
-              for (final s in g.slots) _row(cs, day, s),
-            ],
-        ],
       ],
     );
   }
+
+  Widget _focusToggle(ColorScheme cs, int left, {required bool searching}) => Row(children: [
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment(value: true, label: Text('Focus · $left'), icon: const Icon(Icons.center_focus_strong_rounded, size: 16)),
+            const ButtonSegment(value: false, label: Text('Tout')),
+          ],
+          selected: {_focus},
+          showSelectedIcon: false,
+          style: SegmentedButton.styleFrom(
+              visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          onSelectionChanged: (v) => setState(() => _focus = v.first),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            searching ? 'recherche dans toutes' : (_focus ? 'ce qui reste à faire aujourd\'hui' : 'les faites aussi, à leur place'),
+            maxLines: 2,
+            style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .5), fontWeight: FontWeight.w600),
+          ),
+        ),
+      ]);
 
   /// Ligne (retour user 2026-10-31) : l'anneau « + » compte une occurrence
   /// tout de suite, tap sur la ligne = le compteur, appui long = la fiche.
