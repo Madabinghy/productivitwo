@@ -6,9 +6,9 @@ import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 
 /// Lanceur d'activités : chrono en cours en tête, ▶ lance, dormantes repliées.
 void main() {
-  testWidgets('ActivityLauncher : en cours, ▶ lance, peu utilisées repliées', (tester) async {
+  testWidgets('ActivityLauncher : focus par défaut, en cours, ▶ lance, peu utilisées repliées', (tester) async {
     final now = DateTime.now();
-    final prod = Activity(id: 'prod', domainId: 'b', name: 'Productivitwo', goalMin: 1);
+    final prod = Activity(id: 'prod', domainId: 'b', name: 'Productivitwo', goalMin: 10);
     final reseau = Activity(id: 'reseau', domainId: 'b', name: 'Réseau', goalMin: 1);
     final reno = Activity(id: 'reno', domainId: 'b', name: 'Rénovation', goalMin: 1);
     final st = AppState(
@@ -38,6 +38,16 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('EN COURS'), findsOneWidget);
+    // Focus par défaut : seule la cible du jour non atteinte (Productivitwo, 5 / 10 min).
+    expect(find.text('Focus · 1'), findsOneWidget);
+    expect(find.text('Réseau'), findsNothing);
+    expect(find.text('Peu utilisées · 1'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'rés');
+    await tester.pump();
+    expect(find.text('Réseau'), findsOneWidget); // la recherche cherche dans toutes
+    await tester.enterText(find.byType(TextField), '');
+    await tester.tap(find.text('Tout'));
+    await tester.pump();
     expect(find.text('Peu utilisées · 1'), findsOneWidget);
     expect(find.text('Rénovation'), findsOneWidget); // aperçu du repli seulement
     await tester.tap(find.byIcon(Icons.play_arrow_rounded).first);

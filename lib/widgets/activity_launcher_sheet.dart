@@ -144,6 +144,10 @@ class ActivityLauncher extends StatefulWidget {
 class _ActivityLauncherState extends State<ActivityLauncher> {
   final _search = TextEditingController();
   bool _dormantOpen = false;
+  // Focus (défaut à chaque ouverture) = seulement les activités dont la cible
+  // du jour n'est pas atteinte, toujours rangées par domaine. Une recherche
+  // montre tout.
+  bool _focus = true;
   Timer? _tick;
 
   AppLogic get logic => widget.logic;
@@ -174,8 +178,10 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final todayTotal = all.fold<int>(0, (s, r) => s + r.todayMin);
     // Pas de section « À rattraper » (retour user 2026-10-30) : on vient au
     // lanceur pour une activité déjà choisie, on la trouve par son domaine.
-    final active = rows.where((r) => !r.dormant).toList();
-    final dormant = rows.where((r) => r.dormant).toList()
+    final toReach = all.where((r) => r.hasGoal && r.todayMin < r.a.goalMin).toList();
+    final focusing = _focus && q.isEmpty;
+    final active = focusing ? toReach : rows.where((r) => !r.dormant).toList();
+    final dormant = focusing ? <LauncherRow>[] : rows.where((r) => r.dormant).toList()
       ..sort((x, y) => x.a.name.toLowerCase().compareTo(y.a.name.toLowerCase()));
     final domains = logic.state.activeDomains;
 
@@ -235,7 +241,19 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
                 : IconButton(icon: const Icon(Icons.close_rounded, size: 18), onPressed: () => setState(() => _search.clear())),
           ),
         ),
-        if (rows.isEmpty)
+        const SizedBox(height: 10),
+        _focusToggle(cs, toReach.length),
+        if (focusing && toReach.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+            child: Column(children: [
+              Icon(Icons.check_circle_rounded, size: 36, color: cs.primary),
+              const SizedBox(height: 8),
+              const Text('Tout est atteint aujourd\'hui', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              TextButton(onPressed: () => setState(() => _focus = false), child: const Text('Voir toutes les activités')),
+            ]),
+          )
+        else if (rows.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),
             child: Text(q.isEmpty ? 'Aucune activité.' : 'Aucune activité ne correspond.',
@@ -282,6 +300,30 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         ],
       ],
     );
+  }
+
+  Widget _focusToggle(ColorScheme cs, int toReach) {
+    final searching = _search.text.trim().isNotEmpty;
+    return Row(children: [
+      SegmentedButton<bool>(
+        segments: [
+          ButtonSegment(value: true, label: Text('Focus · $toReach'), icon: const Icon(Icons.center_focus_strong_rounded, size: 16)),
+          const ButtonSegment(value: false, label: Text('Tout')),
+        ],
+        selected: {_focus},
+        showSelectedIcon: false,
+        style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        onSelectionChanged: (s) => setState(() => _focus = s.first),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(
+          searching ? 'recherche dans toutes' : (_focus ? 'pas encore atteintes aujourd\'hui' : 'toutes les activités'),
+          maxLines: 2,
+          style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .5), fontWeight: FontWeight.w600),
+        ),
+      ),
+    ]);
   }
 
   Widget _sectionHeader(ColorScheme cs, String name, Color? color, String? right, {Color? textColor}) => Row(children: [
