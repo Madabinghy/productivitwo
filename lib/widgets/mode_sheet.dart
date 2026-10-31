@@ -365,7 +365,8 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           height: h,
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: today ? Border.all(color: cs.onSurface.withValues(alpha: .8), width: 1.5) : null),
           clipBehavior: Clip.antiAlias,
-          child: Row(children: [
+          // stretch : sans hauteur imposée, une case colorée vide fait 0 px de haut.
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final v in cells) Expanded(child: ColoredBox(color: _bandColor(cs, dark, v))),
           ]),
         );
@@ -414,7 +415,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           borderRadius: BorderRadius.circular(7),
           child: SizedBox(
             height: 12,
-            child: Row(children: [
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (final m in const [BandMode.normal, BandMode.low, BandMode.high])
                 if (share.pct(m) > 0) Expanded(flex: share.pct(m), child: ColoredBox(color: _bandColor(cs, dark, switch (m) { BandMode.low => 1, BandMode.high => 5, _ => 3 }))),
             ]),
@@ -1034,7 +1035,7 @@ Future<void> showElanDaySheet(BuildContext context, AppLogic logic, {required Li
       const SizedBox(height: 12),
       ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: SizedBox(height: 32, child: Row(children: [for (final v in cells) Expanded(child: ColoredBox(color: colorOf(v)))])),
+        child: SizedBox(height: 32, child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final v in cells) Expanded(child: ColoredBox(color: colorOf(v)))])),
       ),
       const SizedBox(height: 4),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
