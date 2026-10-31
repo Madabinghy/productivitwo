@@ -218,6 +218,7 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
     title: title,
     estimatedMin: defaultEstimateFor(title),
     focusDate: DateTime(now.year, now.month, now.day),
+    focusSetAt: now,
   );
   if (o.activity != null) {
     final a = o.activity!;

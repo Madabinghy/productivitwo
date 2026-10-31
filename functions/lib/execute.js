@@ -232,10 +232,10 @@ function pickTask(t) {
         const est = (_b = (_a = estimatedMinOrUndefined(o.estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(o.title, ctxs)) !== null && _b !== void 0 ? _b : undefined;
         const due = actionDueDate(o.dueDate, "action.dueDate");
         const focus = actionDueDate(o.focusDate, "action.focusDate");
-        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (focus ? { focusSetAt: typeof o.focusSetAt === "string" ? o.focusSetAt : new Date().toISOString() } : {})), (noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
@@ -1729,45 +1729,41 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         estimatedMin: (_j = estimatedMinOrUndefined(a.estimatedMin)) !== null && _j !== void 0 ? _j : null,
                         dueDate: typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null,
                         focusDate: typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null,
+                        focusSetAt: typeof a.focusSetAt === "string" && a.focusSetAt ? a.focusSetAt : null,
                         checklist: Array.isArray(a.checklist)
                             ? a.checklist : [],
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
                     : (obj && "title" in obj ? String(obj.title) : "");
                 const previous = oldByTitle[title];
-                return withBothContexts({
-                    id: (_a = previous === null || previous === void 0 ? void 0 : previous.id) !== null && _a !== void 0 ? _a : (0, uuid_1.v4)(),
-                    title,
-                    done: (_b = previous === null || previous === void 0 ? void 0 : previous.done) !== null && _b !== void 0 ? _b : false,
-                    doneAt: (_c = previous === null || previous === void 0 ? void 0 : previous.doneAt) !== null && _c !== void 0 ? _c : null,
-                    createdAt: new Date().toISOString(),
+                const focusDate = obj && "focusDate" in obj
+                    ? ((_a = actionDueDate(obj.focusDate, "action.focusDate")) !== null && _a !== void 0 ? _a : null)
+                    : (_b = previous === null || previous === void 0 ? void 0 : previous.focusDate) !== null && _b !== void 0 ? _b : null;
+                // Parole tenue : l'heure à laquelle le jour visé a été posé.
+                const focusSetAt = !focusDate ? null
+                    : focusDate === (previous === null || previous === void 0 ? void 0 : previous.focusDate) ? ((_c = previous === null || previous === void 0 ? void 0 : previous.focusSetAt) !== null && _c !== void 0 ? _c : null) : new Date().toISOString();
+                return withBothContexts(Object.assign(Object.assign({ id: (_d = previous === null || previous === void 0 ? void 0 : previous.id) !== null && _d !== void 0 ? _d : (0, uuid_1.v4)(), title, done: (_e = previous === null || previous === void 0 ? void 0 : previous.done) !== null && _e !== void 0 ? _e : false, doneAt: (_f = previous === null || previous === void 0 ? void 0 : previous.doneAt) !== null && _f !== void 0 ? _f : null, createdAt: new Date().toISOString(), 
                     // Préserve le lien chrono et le contexte GTD d'une action conservée
                     // (le payload peut aussi poser linkedActivityId/context explicites).
-                    linkedActivityId: (_e = (_d = obj === null || obj === void 0 ? void 0 : obj.linkedActivityId) !== null && _d !== void 0 ? _d : previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _e !== void 0 ? _e : null,
-                    context: (_g = (_f = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _f !== void 0 ? _f : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _g !== void 0 ? _g : null,
-                    contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
+                    linkedActivityId: (_h = (_g = obj === null || obj === void 0 ? void 0 : obj.linkedActivityId) !== null && _g !== void 0 ? _g : previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _h !== void 0 ? _h : null, context: (_l = (_j = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _l !== void 0 ? _l : null, contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
-                        : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
-                    estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : (0, default_estimates_1.defaultEstimateFor)(title, Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts) ? obj.contexts : []),
+                        : (_m = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _m !== void 0 ? _m : [], estimatedMin: (_p = (_o = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _o !== void 0 ? _o : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _p !== void 0 ? _p : (0, default_estimates_1.defaultEstimateFor)(title, Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts) ? obj.contexts : []), 
                     // Échéance propre fournie (null / "" = effacer) ; sinon celle conservée.
                     dueDate: obj && "dueDate" in obj
-                        ? ((_m = actionDueDate(obj.dueDate, "action.dueDate")) !== null && _m !== void 0 ? _m : null)
-                        : (_o = previous === null || previous === void 0 ? void 0 : previous.dueDate) !== null && _o !== void 0 ? _o : null,
+                        ? ((_q = actionDueDate(obj.dueDate, "action.dueDate")) !== null && _q !== void 0 ? _q : null)
+                        : (_r = previous === null || previous === void 0 ? void 0 : previous.dueDate) !== null && _r !== void 0 ? _r : null, 
                     // Jour visé fourni (null / "" = retirer) ; sinon celui conservé.
-                    focusDate: obj && "focusDate" in obj
-                        ? ((_p = actionDueDate(obj.focusDate, "action.focusDate")) !== null && _p !== void 0 ? _p : null)
-                        : (_q = previous === null || previous === void 0 ? void 0 : previous.focusDate) !== null && _q !== void 0 ? _q : null,
+                    focusDate }, (focusSetAt ? { focusSetAt } : {})), { 
                     // Checklist fournie → normalisée ; sinon celle de l'action conservée.
                     checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
                         ? normalizeChecklist(obj.checklist)
-                        : (_r = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _r !== void 0 ? _r : [],
-                });
+                        : (_s = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _s !== void 0 ? _s : [] }));
             });
         }
         tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), patch);
@@ -2269,11 +2265,11 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
+    const action = withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
         var _a;
         const est = (_a = estimatedMinOrUndefined(estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(title, [...(Array.isArray(contexts) ? contexts : []), context !== null && context !== void 0 ? context : ""]);
         return est !== undefined && est !== null ? { estimatedMin: est } : {};
-    })()), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (cleanNote ? { note: cleanNote } : {})));
+    })()), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (focus ? { focusSetAt: new Date().toISOString() } : {})), (cleanNote ? { note: cleanNote } : {})));
     own.push(action);
     await ref.update({ ownActions: own });
     const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"

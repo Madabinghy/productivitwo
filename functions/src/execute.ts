@@ -201,6 +201,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
       ...(est !== undefined ? { estimatedMin: est } : {}),
       ...(due !== undefined ? { dueDate: due } : {}),
       ...(focus !== undefined ? { focusDate: focus } : {}),
+      ...(focus ? { focusSetAt: typeof o.focusSetAt === "string" ? o.focusSetAt : new Date().toISOString() } : {}),
       ...(noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {}),
       ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
     });
@@ -1905,6 +1906,7 @@ async function executeUpdateTask(
         done: boolean; doneAt: string | null; id?: string;
         linkedActivityId: string | null; context: string | null;
         contexts: string[]; estimatedMin: number | null; dueDate: string | null; focusDate: string | null;
+        focusSetAt: string | null;
         checklist: Array<Record<string, unknown>>;
       }> = {};
       for (const a of oldActions) {
@@ -1920,6 +1922,7 @@ async function executeUpdateTask(
             estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
             dueDate: typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null,
             focusDate: typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null,
+            focusSetAt: typeof a.focusSetAt === "string" && a.focusSetAt ? a.focusSetAt : null,
             checklist: Array.isArray(a.checklist)
               ? (a.checklist as Array<Record<string, unknown>>) : [],
           };
@@ -1931,6 +1934,12 @@ async function executeUpdateTask(
           ? a
           : (obj && "title" in obj ? String(obj.title) : "");
         const previous = oldByTitle[title];
+        const focusDate = obj && "focusDate" in obj
+          ? (actionDueDate(obj.focusDate, "action.focusDate") ?? null)
+          : previous?.focusDate ?? null;
+        // Parole tenue : l'heure à laquelle le jour visé a été posé.
+        const focusSetAt = !focusDate ? null
+          : focusDate === previous?.focusDate ? (previous?.focusSetAt ?? null) : new Date().toISOString();
         return withBothContexts({
           id: previous?.id ?? uuidv4(),
           title,
@@ -1954,9 +1963,8 @@ async function executeUpdateTask(
             ? (actionDueDate(obj.dueDate, "action.dueDate") ?? null)
             : previous?.dueDate ?? null,
           // Jour visé fourni (null / "" = retirer) ; sinon celui conservé.
-          focusDate: obj && "focusDate" in obj
-            ? (actionDueDate(obj.focusDate, "action.focusDate") ?? null)
-            : previous?.focusDate ?? null,
+          focusDate,
+          ...(focusSetAt ? { focusSetAt } : {}),
           // Checklist fournie → normalisée ; sinon celle de l'action conservée.
           checklist: Array.isArray(obj?.checklist)
             ? normalizeChecklist(obj!.checklist as unknown[])
@@ -2517,6 +2525,7 @@ async function executeAddActivityAction(
     })(),
     ...(due !== undefined ? { dueDate: due } : {}),
     ...(focus !== undefined ? { focusDate: focus } : {}),
+    ...(focus ? { focusSetAt: new Date().toISOString() } : {}),
     ...(cleanNote ? { note: cleanNote } : {}),
   });
   own.push(action);

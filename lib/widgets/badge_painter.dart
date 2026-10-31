@@ -429,6 +429,13 @@ class BadgePainter extends CustomPainter {
         // Cap tenu : une boussole, l'aiguille vers le nord-est.
         c.drawCircle(const Offset(50, 42), 19, stroke(5));
         c.drawPath(_poly([60, 32, 54, 47, 40, 52, 46, 37]), fill);
+      case 'pledge':
+        // Parole tenue : un cadenas fermé, une coche dedans.
+        c.drawArc(Rect.fromCircle(center: const Offset(50, 34), radius: 10), math.pi, math.pi, false, stroke(5));
+        line(40, 34, 40, 40, 5);
+        line(60, 34, 60, 40, 5);
+        c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(33, 39, 34, 25), const Radius.circular(5)), stroke(5));
+        polyline([42, 51, 48, 57, 58, 46], 4.5);
       case 'bolt':
         // Guérilla : un éclair.
         c.drawPath(_poly([56, 18, 38, 46, 50, 46, 44, 68, 64, 38, 52, 38]), fill);

@@ -823,6 +823,7 @@ class TodayViewState extends State<TodayView> {
         restDomains: _huntStore.restDomains,
         seasons: _huntStore.seasons,
         acquired: _huntStore.acquired,
+        paroles: _huntStore.paroles,
       );
 
   String _stakesKey = '';

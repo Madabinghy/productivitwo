@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
 import 'package:productivitwo_v1/utils/planning.dart' show capHeld, kCapTiers;
+import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show guerillaCounts, guerillaLift, isGuerillaRun, kGuerillaTiers;
 import 'package:productivitwo_v1/utils/offensive.dart' show isOffensiveRun, kOffensiveTiers, offensiveCounts;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -613,6 +614,7 @@ BadgeDeck computeBadges({
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
+  Map<String, ParoleDay> paroles = const {},
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -975,6 +977,21 @@ BadgeDeck computeBadges({
       ('Journées posées la veille', '$planned'),
       ('Tenues à 70 %', '${capDays.length}'),
       if (capDays.isNotEmpty) ('La dernière', _fmtDate(_ymdDay(capDays.last.date))),
+    ],
+  ));
+
+  // Parole tenue (2026-10-31) : ≥ 3 actions visées la veille, toutes faites.
+  final parole = paroleStats(paroles, paroleIndex(projects, activities), dayStartMin, todayYmd);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'parole-tenue', family: BadgeFamily.discipline, name: 'Parole tenue', symbol: 'pledge', tiers: kParoleTiers, unit: 'journées', unitLong: 'journées où toutes les actions visées la veille ont été faites'),
+    level: _levelOf(kParoleTiers, parole.held),
+    value: parole.held,
+    tierDates: [for (final t in kParoleTiers) t <= parole.held ? _ymdDay(parole.heldYmds[t - 1]) : null],
+    facts: [
+      ('Paroles données', '${parole.given}'),
+      ('Tenues', '${parole.held}'),
+      if (parole.bestRun > 1) ('Record d\'affilée', _plural(parole.bestRun, 'jour', 'jours')),
+      if (parole.heldYmds.isNotEmpty) ('La dernière', _fmtDate(_ymdDay(parole.heldYmds.last))),
     ],
   ));
 

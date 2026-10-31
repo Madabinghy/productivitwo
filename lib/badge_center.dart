@@ -86,6 +86,7 @@ class BadgeCenter extends ChangeNotifier {
       restDomains: logic.restDomains,
       seasons: logic.seasons,
       acquired: logic.acquired,
+      paroles: logic.paroles,
     );
     deck = d;
     logic.embers = d.embers;

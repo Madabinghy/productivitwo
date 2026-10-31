@@ -3161,6 +3161,13 @@ class FirestoreSync {
     await _meta().set({'emberSpends': spends}, SetOptions(merge: true));
   }
 
+  /// Parole d'un jour (`data/meta.paroles.<ymd>`, Parole tenue 2026-10-31) :
+  /// fusion par jour, les autres jours ne bougent pas.
+  Future<void> setParoleDay(String ymd, Map<String, dynamic> day) async {
+    if (uid == null) return;
+    await _meta().set({'paroles': {ymd: day}}, SetOptions(merge: true));
+  }
+
   /// Réglage « Élan : demander à chaque moment » (`data/meta.elanPromptsAll`).
   Future<void> setElanPromptsAll(bool enabled) async {
     if (uid == null) return;

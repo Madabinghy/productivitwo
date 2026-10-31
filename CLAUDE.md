@@ -951,6 +951,20 @@ avec activité liée) puis `spreadWeek` (`utils/planning.dart` : morceaux de 45 
 d'abord) sur 80 % du libre) → LA SEMAINE EST POSÉE (une ligne par jour). « Valider » ajoute à chaque jour ses blocs d'activité via
 `proposeDay` dans ses créneaux libres, `generatedBy:"plan"`, `plannedAt` (chaque jour compte pour Cap tenu).
 
+## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
+
+La veille, on donne sa parole sur au moins `kParoleMin` (3) actions pour le lendemain ; le lendemain, toutes faites avant la bascule
+= une journée de Parole tenue (badge `parole-tenue`, Discipline, symbole `pledge`, paliers `kParoleTiers` 5 · 20 · 50 journées, record
+d'affilée en fait ; compteur des journées tenues, pas une série). **Anti-triche** : `TaskAction.focusSetAt` (posé par le setter de
+`focusDate` côté app, par `action_patch` / `push_gantt` / `update_task` / `add_activity_action` côté MCP) — seule une action visée AVANT
+le début de son jour vécu compte (`paroleCandidates`) ; la parole d'un jour est GELÉE dans `data/meta.paroles.<ymd> {ids, givenAt?}`
+(`FirestoreSync.setParoleDay`, fusion par jour) au premier tick du jour vécu (`AppLogic.freezeTodayParole`) ou par « Donner ma parole »
+(`giveParole`) — une action déplacée ensuite reste dans la parole, la journée ne compte pas, rien n'est perdu. Faite = cochée avant la
+fin du jour vécu (`paroleOutcome`). Pas de report automatique d'une visée non faite : elle passe « À RE-VISER ». Logique pure
+`utils/parole.dart` (`paroleIndex`, `freezeParole`, `paroleStats`, `paroleOfDay`). **Lot 1 livré** (modèle + MCP + logique + badge).
+À venir : lot 2 = étape « Ta parole pour demain » de Planifier demain (non faites du jour en tête des propositions) ; lot 3 = tuile
+PAROLE, enjeu « Parole tenue · la dernière », fiche du badge.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

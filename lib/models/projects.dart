@@ -75,7 +75,18 @@ class TaskAction {
   // jour-là » — jamais une échéance (jamais en retard), jamais un bloc. C'est
   // la date par défaut d'une action ; `dueDate` ne sert qu'aux vraies dates
   // butoirs. Lire via `workDate` / `isFocusedOn` (utils/actions_logic.dart).
-  DateTime? focusDate;
+  DateTime? _focusDate;
+  DateTime? get focusDate => _focusDate;
+  /// Poser le jour visé note QUAND il a été posé (`focusSetAt`, Parole tenue
+  /// 2026-10-31) : seule une action visée avant le début de son jour compte
+  /// pour la parole.
+  set focusDate(DateTime? v) {
+    final same = (v == null && _focusDate == null) ||
+        (v != null && _focusDate != null && v.year == _focusDate!.year && v.month == _focusDate!.month && v.day == _focusDate!.day);
+    _focusDate = v;
+    if (!same) focusSetAt = v == null ? null : DateTime.now();
+  }
+  DateTime? focusSetAt;
   // Détail de l'action (B, 2026-10) : consignes, fichiers, contraintes — tout
   // ce que le titre ne doit plus porter. Affiché au tap, jamais dans la liste.
   String? note;
@@ -92,10 +103,12 @@ class TaskAction {
     List<String>? contexts,
     this.estimatedMin,
     this.dueDate,
-    this.focusDate,
+    DateTime? focusDate,
+    this.focusSetAt,
     this.note,
     List<ChecklistItem>? checklist,
-  })  : id = id ?? _uuid.v4(),
+  })  : _focusDate = focusDate,
+        id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
         contexts = contexts ?? [],
         checklist = checklist ?? [];
@@ -133,6 +146,7 @@ class TaskAction {
         'estimatedMin': estimatedMin,
         'dueDate': dueDate == null ? null : _actionYmd(dueDate!),
         'focusDate': focusDate == null ? null : _actionYmd(focusDate!),
+        if (focusDate != null && focusSetAt != null) 'focusSetAt': focusSetAt!.toIso8601String(),
         if (note != null && note!.trim().isNotEmpty) 'note': note,
         'checklist': checklist.map((c) => c.toJson()).toList(),
       };
@@ -160,6 +174,7 @@ class TaskAction {
       estimatedMin: _parseEstimatedMin(j['estimatedMin']),
       dueDate: _parseDateOrNull(j['dueDate']),
       focusDate: _parseDateOrNull(j['focusDate']),
+      focusSetAt: j['focusSetAt'] is String ? DateTime.tryParse(j['focusSetAt']) : null,
       note: (j['note'] is String && (j['note'] as String).trim().isNotEmpty) ? j['note'] as String : null,
       checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
     );

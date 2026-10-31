@@ -96,6 +96,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         restDomains: widget.logic.restDomains,
         seasons: widget.logic.seasons,
         acquired: widget.logic.acquired,
+        paroles: widget.logic.paroles,
       );
       if (mounted) setState(() => _deck = deck);
     } catch (e) {

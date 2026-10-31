@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
+import 'package:productivitwo_v1/utils/parole.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -1185,6 +1186,7 @@ class AppLogic implements HuntStore {
     if (ymd != _lastTickLivedYmd) {
       _lastTickLivedYmd = ymd;
       unawaited(settleFinishedDay());
+      unawaited(freezeTodayParole());
     }
     _checkFlemmeChrono();
     if (!askBlockOnChrono) return;
@@ -1863,6 +1865,39 @@ class AppLogic implements HuntStore {
     state.moodMarks.add(mark);
     onChange();
     return mark;
+  }
+
+  // ── Parole tenue (2026-10-31, `utils/parole.dart`) ───────────────────────
+  /// Paroles gelées par jour (`data/meta.paroles`, alimentées par le flux meta).
+  Map<String, ParoleDay> paroles = const {};
+  String? _paroleFrozenYmd;
+
+  /// Gèle la parole du jour vécu : les actions visées pour aujourd'hui avant
+  /// la bascule. Une fois par jour et par appareil ; rien à geler = rien d'écrit.
+  Future<void> freezeTodayParole() async {
+    final s = sync;
+    if (s == null) return;
+    final ymd = livedTodayYmd;
+    if (_paroleFrozenYmd == ymd) return;
+    _paroleFrozenYmd = ymd;
+    try {
+      final index = paroleIndex(await s.fetchProjects(), state.activities);
+      final next = freezeParole(paroles, ymd, paroleCandidates(index, ymd, dayStartMin));
+      if (identical(next, paroles) || next[ymd] == null) return;
+      paroles = next;
+      await s.setParoleDay(ymd, next[ymd]!.toJson());
+    } catch (_) {
+      _paroleFrozenYmd = null;
+    }
+  }
+
+  /// « Donner ma parole » (Planification) : gèle la parole de [ymd] avec ces actions.
+  Future<void> giveParole(String ymd, List<String> ids) async {
+    final next = freezeParole(paroles, ymd, ids, givenAt: DateTime.now());
+    if (next[ymd] == null) return;
+    paroles = next;
+    onChange();
+    await (sync ?? FirestoreSync()).setParoleDay(ymd, next[ymd]!.toJson());
   }
 
   // ── Braises (2026-10-30, `utils/embers.dart`) ─────────────────────────────
