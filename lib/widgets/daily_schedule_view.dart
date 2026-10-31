@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels, kTimeBlockColors;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
@@ -1887,6 +1888,8 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   // Activité posée par une chip : le titre est libre, la frappe ne délie pas
   // (contrairement à une suggestion, dont le texte EST le lien).
   bool _activityPicked = false;
+  /// Bloc de TEMPS choisi (deep · small · buffer), sinon null.
+  late String? _timeBlock = widget.block.timeBlock;
   static const _kActivityChips = 8;
 
   @override
@@ -1918,6 +1921,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       _actionId = s.actionId;
       _linkedLabel = s.kindLabel;
       _activityPicked = false;
+      _timeBlock = null;
     });
   }
 
@@ -1931,11 +1935,29 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       _actionId = null;
       _linkedLabel = 'activité · ${a.name}';
       _activityPicked = true;
+      _timeBlock = null;
+    });
+  }
+
+  /// Bloc de temps en un tap : titre, durée par défaut, aucune source.
+  void _pickTimeBlock(String kind) {
+    setState(() {
+      _timeBlock = kind;
+      _titleCtrl.text = kTimeBlockLabels[kind]!;
+      _category = kind == 'deep' ? 'project' : 'personal';
+      if (widget.isNew) _durationMin = kind == 'deep' ? 90 : 45;
+      _activityId = null;
+      _projectId = null;
+      _taskId = null;
+      _actionId = null;
+      _linkedLabel = null;
+      _activityPicked = false;
     });
   }
 
   void _clearLink() {
     setState(() {
+      _timeBlock = null;
       _activityPicked = false;
       _linkedLabel = null;
       _activityId = null;
@@ -1971,6 +1993,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       actionId: _actionId,
       status: widget.block.status,
       doneAt: widget.block.doneAt,
+      timeBlock: _timeBlock != null && _activityId == null && _projectId == null ? _timeBlock : null,
     ));
     if (mounted) Navigator.pop(context);
   }
@@ -2019,6 +2042,31 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
           // ── Bloc d'ACTIVITÉ en un tap (2026-10) : l'activité d'abord, le
           // titre libre ensuite. Au ▶, l'app proposera la prochaine action de
           // chaque projet lié ; le bloc ne retient que le temps.
+          // ── Bloc de TEMPS (2026-10-31) : du temps réservé, on choisit quoi
+          // faire au moment de le lancer.
+          if (widget.isNew || widget.block.timeBlock != null) ...[
+            Text('BLOC DE TEMPS',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
+            const SizedBox(height: 4),
+            Text('Du temps réservé : au ▶, tu choisis sur quoi tu pars. Fait dès 60 % du créneau tenu.',
+                style: TextStyle(fontSize: 11.5, height: 1.3, color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final k in const ['deep', 'small', 'buffer'])
+                ChoiceChip(
+                  avatar: Icon(Icons.circle, size: 9, color: kTimeBlockColors[k]),
+                  label: Text(kTimeBlockLabels[k]!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  selected: _timeBlock == k,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (v) => v ? _pickTimeBlock(k) : _clearLink(),
+                ),
+            ]),
+            const SizedBox(height: 14),
+          ],
           if (widget.isNew && widget.activities.isNotEmpty) ...[
             Text('BLOC D\'ACTIVITÉ',
                 style: TextStyle(
