@@ -966,8 +966,12 @@ fin du jour vécu (`paroleOutcome`). Pas de report automatique d'une visée non 
 demain) — déjà visées demain présélectionnées, propositions `paroleProposals` (visées aujourd'hui et pas faites en tête, « pas faite
 aujourd'hui » en ambre, puis à re-viser, puis la prochaine action de chaque projet vivant, en retard d'abord), total estimé face au libre
 après les blocs, « Donner ma parole · n actions » (≥ 3 : pose `focusDate` = demain, retire la visée de demain des actions décochées,
-`giveParole`) ou « Poser demain sans parole » ; l'écran POSÉ liste la parole. À venir : lot 3 = tuile PAROLE, enjeu « Parole tenue ·
-la dernière », feuille « Ta parole aujourd'hui ».
+`giveParole`) ou « Poser demain sans parole » ; l'écran POSÉ liste la parole. **Lot 3 livré** : la tuile ACTIONS devient
+PAROLE quand une parole (≥ 3) existe (`actionsTile(parole:)` : « k / n tenue », une case par action, « la dernière · … » / « +n hors
+parole »), mobile et web ; enjeu dans Ta journée (`buildStakeBoard(parole:)` : « Parole tenue · encore n », la dernière passe en
+`seriesTonight` = SE PERD CE SOIR) ; feuille « Ta parole aujourd'hui » (`_openFocusedActionsSheet`, `_paroleToday`) : « donnée hier à
+21:40 · encore n pour tenir », TA PAROLE · À FAIRE puis AJOUTÉES AUJOURD'HUI · HORS PAROLE, ⓘ `kRuleParole`. Reste possible : frise des
+14 jours dans la fiche du badge, ligne du bilan du soir.
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
