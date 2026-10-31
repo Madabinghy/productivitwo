@@ -1319,7 +1319,7 @@ iOS 18, lien sinon), Maintenant (`NowWidget` : moyen + verrou rectangulaire, chr
 (`WatchWidget`), Projet du moment (kind `ProjectsWidget`). Les intents écrivent d'abord `today_json` (optimiste) puis appellent
 le MCP (`log_routine_hit`, `mark_block_done` avec le doc du bloc, `mark_checklist_item`, `mark_action_done`, `update_action`).
 Liens de l'app (`_handleDeepLink`, main.dart) : `…://perfect` · `program` · `today` · `guerilla` · `offensive` (→
-`TodayViewState.openRun`) · `project/<id>`. Pas de confirmation possible dans un widget : la coche est directe.
+`TodayViewState.openRun`) · `project/<id>`. Pas de confirmation possible dans un widget : la coche est directe. ⚠️ `FlutterDeepLinkingEnabled = false` dans `ios/Runner/Info.plist` (2026-10-31, bug : depuis Flutter 3.27 le moteur poussait en plus une route vide `/perfect`… au-dessus de l'app — fond gris, page qui glisse) : les liens passent par `app_links` seul.
 
 ## MCP local (`mcp-server/index.js`)
 
