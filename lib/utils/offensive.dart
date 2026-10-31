@@ -7,14 +7,14 @@ import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
 /// Offensive (maquette validée 2026-10-30) : l'équivalent de la Guérilla quand
 /// on est EN FORME. On choisit un FRONT (un projet, ou « tout mélanger » = la
 /// prochaine action de chaque projet, la plus en retard d'abord) et la durée
-/// d'un coup (10 ou 15 min) ; l'app enchaîne les actions, une étape en avant.
+/// d'un coup (10, 15 ou 25 min) ; l'app enchaîne les actions, une étape en avant.
 /// Un coup est GAGNÉ quand son minuteur arrive au bout, même sans finir
 /// l'action. Point d'étape tous les [kOffensivePauseEvery] coups. Une
 /// offensive est une [ChainRun] `kind:"offensive"` (doneCount = coups gagnés) ;
 /// elle compte pour le badge Offensive dès [kOffensiveCountedMin] coups. Le
 /// deep work 90 min reste à part (un seul gros bloc). Logique pure.
 const kOffensiveKind = 'offensive';
-const kOffensiveDurations = [10, 15];
+const kOffensiveDurations = [10, 15, 25];
 const kOffensivePauseEvery = 3;
 const kOffensiveCountedMin = 3;
 const kOffensiveTiers = [1, 5, 15];

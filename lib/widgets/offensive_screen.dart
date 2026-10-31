@@ -464,7 +464,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           const SizedBox(height: 6),
           const Text('En forme : on avance à fond', style: TextStyle(fontSize: 28, height: 1.15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          const Text('Des coups de 10 ou 15 min sur tes vraies actions de projet, l’une après l’autre. Tu choisis le front, l’app enchaîne.',
+          const Text('Des coups de 10, 15 ou 25 min sur tes vraies actions de projet, l’une après l’autre. Tu choisis le front, l’app enchaîne.',
               style: TextStyle(fontSize: 14.5, height: 1.4, color: _text2)),
           _label('DURÉE D’UN COUP'),
           Row(children: [

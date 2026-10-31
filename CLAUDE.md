@@ -907,7 +907,7 @@ de l'action précédente s'arrête quand la suivante n'a pas d'activité.
 
 L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête
 quand le mode est En forme, sinon sous la Guérilla ; `_launchCard`) → écran `widgets/offensive_screen.dart` (`showOffensiveScreen`) :
-durée d'un coup (10 / 15 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
+durée d'un coup (10 / 15 / 25 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
 `frontLine` « 2 en retard · séance le 9 nov · 4 actions prêtes » — ou « Tout mélanger » = la prochaine action de chaque projet, en
 retard d'abord). Puis les actions l'une après l'autre (`buildOffensiveQueue` / `openTargets` : hors tâches à venir, par date de travail
 puis ordre Gantt) : « Projet › Tâche », titre, minuteur du coup, étape en cours + « Ensuite », liste des étapes ; « Étape faite »
@@ -1276,6 +1276,19 @@ sans l'app, `doc` = le doc qui porte le bloc, action visée + étape en cours `i
 Les anciennes clés restent tant que les anciens widgets existent.
 
 ---
+
+## Widgets iOS — écrans (lot 2, 2026-10-31)
+
+`ios/ProductivitwoWidget/ProductivitwoWidget.swift` réécrit sur `today_json` (thème vert sombre, `TodayProvider` : une entrée à
+chaque début / fin de bloc sur 16 h, le bloc en cours est retrouvé par l'heure — `TodayData.current(at:)`). Widgets : Journée
+parfaite (kind `ProductivitwoWidget` : petit, verrou rond + en ligne), Guérilla · Offensive (`LaunchersWidget`, `OpenURLIntent`
+iOS 18, lien sinon), Maintenant (`NowWidget` : moyen + verrou rectangulaire, chrono `Text(style: .timer)`, « Étape faite » /
+« Action faite » / « Bloc fait »), Programme (`ScheduleWidget`, journée vécue), Routines (`RoutinesWidget` : moment courant, +1 =
+`AddRoutineHitIntent`), Visées aujourd'hui (kind `FocusTaskWidget`, `MarkActionIntent` projet ou activité), Montre suisse
+(`WatchWidget`), Projet du moment (kind `ProjectsWidget`). Les intents écrivent d'abord `today_json` (optimiste) puis appellent
+le MCP (`log_routine_hit`, `mark_block_done` avec le doc du bloc, `mark_checklist_item`, `mark_action_done`, `update_action`).
+Liens de l'app (`_handleDeepLink`, main.dart) : `…://perfect` · `program` · `today` · `guerilla` · `offensive` (→
+`TodayViewState.openRun`) · `project/<id>`. Pas de confirmation possible dans un widget : la coche est directe.
 
 ## MCP local (`mcp-server/index.js`)
 

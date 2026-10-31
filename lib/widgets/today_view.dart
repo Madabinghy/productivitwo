@@ -895,18 +895,24 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
+  /// Lance (ou reprend) une Guérilla / une Offensive — boutons de l'en-tête
+  /// et widget « Lanceurs » de l'écran d'accueil (lien `…://guerilla`).
+  Future<void> openRun(String kind) async {
+    final p = RunSessionStore.current;
+    final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
+    if (kind == kGuerillaKind) {
+      await showGuerillaScreen(context, widget.logic, resume: pending);
+    } else {
+      await showOffensiveScreen(context, widget.logic, resume: pending);
+    }
+    if (mounted) setState(() {});
+  }
+
   Widget _launcherBtn(ColorScheme cs, String kind, IconData icon, String tooltip, Color accent, Color lightAccent) {
     final p = RunSessionStore.current;
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     final c = cs.brightness == Brightness.dark ? accent : lightAccent;
-    Future<void> open() async {
-      if (kind == kGuerillaKind) {
-        await showGuerillaScreen(context, widget.logic, resume: pending);
-      } else {
-        await showOffensiveScreen(context, widget.logic, resume: pending);
-      }
-      if (mounted) setState(() {});
-    }
+    Future<void> open() => openRun(kind);
 
     return Stack(clipBehavior: Clip.none, children: [
       SizedBox(

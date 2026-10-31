@@ -11,11 +11,14 @@ import SwiftUI
 @main
 struct ProductivitwoWidgetBundle: WidgetBundle {
     var body: some Widget {
-        ProductivitwoWidget()
+        ProductivitwoWidget()   // Journée parfaite
+        LaunchersWidget()
+        NowWidget()
         ScheduleWidget()
         RoutinesWidget()
-        ProjectsWidget()
-        FocusTaskWidget()
+        FocusTaskWidget()       // Visées aujourd'hui
+        WatchWidget()
+        ProjectsWidget()        // Projet du moment
         // Live Activity « minuteur » (iOS 16.1+).
         if #available(iOS 16.1, *) {
             TimerLiveActivity()
