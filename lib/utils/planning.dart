@@ -161,3 +161,49 @@ bool capHeld(DailySchedule s) {
 /// Journées « Cap tenu » parmi des programmes clos (avant [today]).
 int capHeldCount(List<DailySchedule> schedules, String todayYmd) =>
     schedules.where((s) => s.date.compareTo(todayYmd) < 0 && capHeld(s)).length;
+
+// ── Semaine ───────────────────────────────────────────────────────────────────
+
+/// Une activité à répartir sur la semaine (minimum vital × jours, objectif, plan).
+class WeekWant {
+  final String activityId;
+  final String title;
+  final int weeklyMin;
+  final String reason;
+  const WeekWant({required this.activityId, required this.title, required this.weeklyMin, required this.reason});
+}
+
+/// Répartit chaque activité en morceaux ([chunk] min) sur les jours ([free] =
+/// minutes libres par jour, déjà multipliées par la part qu'on remplit) : le
+/// jour le moins chargé d'abord, jamais deux morceaux de la même activité le
+/// même jour tant qu'un autre jour peut la prendre. Renvoie, par jour, les
+/// minutes par activité.
+List<Map<String, int>> spreadWeek(List<WeekWant> wants, List<int> free, {int chunk = 45}) {
+  final left = [...free];
+  final out = [for (final _ in free) <String, int>{}];
+  for (final w in wants) {
+    var rest = w.weeklyMin;
+    while (rest >= 30) {
+      final piece = rest >= chunk ? chunk : ((rest + 14) ~/ 15) * 15;
+      var best = -1;
+      for (var d = 0; d < left.length; d++) {
+        if (left[d] < piece) continue;
+        if (best < 0) {
+          best = d;
+          continue;
+        }
+        final hasD = out[d].containsKey(w.activityId), hasB = out[best].containsKey(w.activityId);
+        if (hasD != hasB) {
+          if (!hasD) best = d;
+          continue;
+        }
+        if (left[d] > left[best]) best = d;
+      }
+      if (best < 0) break;
+      out[best][w.activityId] = (out[best][w.activityId] ?? 0) + piece;
+      left[best] -= piece;
+      rest -= piece;
+    }
+  }
+  return out;
+}
