@@ -117,3 +117,72 @@ List<String> elanHourTicks(int dayStartMin) {
   final h = dayStartMin ~/ 60;
   return ['$h h', '${(h + 6) % 24} h', '${(h + 12) % 24} h', '${(h + 18) % 24} h'];
 }
+
+// ── Ce que ça t'apprend (PR 2) ────────────────────────────────────────────────
+
+/// Moment d'un quart d'heure de la journée vécue : matin (< 12 h), après-midi
+/// (< 18 h), soir (le reste, nuit comprise).
+String bandMomentOf(int index, int dayStartMin, {int stepMin = 15}) {
+  final min = (dayStartMin + index * stepMin) % (24 * 60);
+  if (min >= dayStartMin && min < 12 * 60) return 'matin';
+  if (min >= 12 * 60 && min < 18 * 60) return 'aprem';
+  return 'soir';
+}
+
+/// Quarts d'heure passés en Flemme par moment, sur ces jours.
+Map<String, int> lowByMoment(Iterable<List<int?>> days, int dayStartMin) {
+  final out = {'matin': 0, 'aprem': 0, 'soir': 0};
+  for (final d in days) {
+    for (var i = 0; i < d.length; i++) {
+      if (bandModeOf(d[i]) == BandMode.low) out[bandMomentOf(i, dayStartMin)] = out[bandMomentOf(i, dayStartMin)]! + 1;
+    }
+  }
+  return out;
+}
+
+/// Le moment le plus en Flemme (null si aucune flemme).
+String? hardestMoment(Map<String, int> byMoment) {
+  final e = byMoment.entries.where((e) => e.value > 0).toList()..sort((a, b) => b.value.compareTo(a.value));
+  return e.isEmpty ? null : e.first.key;
+}
+
+/// Fenêtres de flemme où tu as quand même fait quelque chose, sur ces jours.
+({int won, int total}) lowWindowsOf(List<ElanDay> days) {
+  var won = 0, total = 0;
+  for (final d in days) {
+    for (final m in d.marks) {
+      if (m.value < 1 || m.value > 2) continue;
+      total++;
+      if (m.won) won++;
+    }
+  }
+  return (won: won, total: total);
+}
+
+/// Guérillas (≥ [since]) dont le corps va mieux à la fin qu'au début.
+({int up, int total}) guerillaRebound(List<ChainRun> runs, DateTime since) {
+  var up = 0, total = 0;
+  for (final r in runs) {
+    if (r.kind != 'guerilla' || r.endedAt.isBefore(since) || r.bodyBefore == null || r.bodyAfter == null) continue;
+    total++;
+    if (r.bodyAfter! > r.bodyBefore!) up++;
+  }
+  return (up: up, total: total);
+}
+
+/// Part du temps dit passé en Flemme, par paquets de 7 jours (du plus ancien
+/// au plus récent) ; null = rien de dit cette semaine-là.
+List<int?> weeklyLowPct(List<List<int?>> days, {int weeks = 4}) {
+  final out = <int?>[];
+  for (var w = weeks; w >= 1; w--) {
+    final end = days.length - (w - 1) * 7;
+    final start = end - 7;
+    if (start < 0) {
+      out.add(null);
+      continue;
+    }
+    final share = modeShareOf(days.sublist(start, end));
+    out.add(share.said == 0 ? null : share.pct(BandMode.low));
+  }
+  return out;
+}

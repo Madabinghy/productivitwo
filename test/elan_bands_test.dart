@@ -47,4 +47,29 @@ void main() {
     expect(saidDays(days), 1);
     expect(lowWinsOf(days.first), 1);
   });
+
+  test('ce que ça t\'apprend : creux, fenêtres, guérillas, tendance', () {
+    // Flemme de 13 h à 15 h (dayStart 5 h : index 32 → 40).
+    final d = List<int?>.filled(96, null)..fillRange(32, 40, 1)..fillRange(4, 8, 2);
+    final by = lowByMoment([d], 300);
+    expect(by['aprem'], 8);
+    expect(by['matin'], 4);
+    expect(hardestMoment(by), 'aprem');
+    expect(bandMomentOf(80, 300), 'soir'); // 01:00 la nuit → soir
+    expect(lowWindowsOf([const ElanDay('x', [ElanMarkView('matin', 1, true), ElanMarkView('soir', 2, false), ElanMarkView('aprem', 3, true)], null)]),
+        (won: 1, total: 2));
+    final now = DateTime(2026, 10, 31);
+    final runs = [
+      ChainRun(date: '2026-10-31', startedAt: now, endedAt: now, doneCount: 3, total: 3, completed: true, kind: 'guerilla', bodyBefore: 2, bodyAfter: 4),
+      ChainRun(date: '2026-10-31', startedAt: now, endedAt: now, doneCount: 3, total: 3, completed: true, kind: 'guerilla', bodyBefore: 3, bodyAfter: 3),
+      ChainRun(date: '2026-10-31', startedAt: now, endedAt: now, doneCount: 3, total: 3, completed: true),
+    ];
+    expect(guerillaRebound(runs, now.subtract(const Duration(days: 30))), (up: 1, total: 2));
+    final normal = List<int?>.filled(96, 3);
+    final w = weeklyLowPct([for (var i = 0; i < 21; i++) normal, for (var i = 0; i < 7; i++) d]);
+    expect(w.length, 4);
+    expect(w.first, 0);
+    expect(w.last, 100);
+  });
 }
+

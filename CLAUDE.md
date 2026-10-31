@@ -984,8 +984,11 @@ créneaux du jour, de la bande du jour et du graphique à points : une phrase (`
 démarrages malgré tout), une bande par jour en quarts d'heure (`elanCellsOfDay`, `bandModeOf` : Flemme ambre · Normal vert · En forme
 cyan · Recharge `kRechargeBand` · pas dit), « ⚡ n » = flemmes gagnées (`lowWinsOf`), « dit k jours sur 7 » (`saidDays`), TON TEMPS DIT
 (`modeShareOf`). Tap sur une bande ou une case des 30 jours = **un jour en détail** (`showElanDaySheet` : bande, trois chiffres, le fil
-des pointages heure · mode · durée, victoires du jour). À venir (PR 2) : « Ce que ça t'apprend » (creux, flemmes gagnées sur 30 j,
-remontée après guérilla, tendance) à la place de FACE À LA FLEMME, des 30 jours et de la tendance. `ElanWeekGraph` n'est plus affiché ; la moyenne glissante sur 7 jours reste en
+des pointages heure · mode · durée, victoires du jour). **PR 2 livrée** : CE QUE ÇA T'APPREND (`_learnSection`, 30 jours) à la place
+de FACE À LA FLEMME, des trois chiffres du mois et de TENDANCE — ton creux (`lowByMoment` / `hardestMoment` : temps en Flemme par
+moment, `bandMomentOf`), « En Flemme, tu démarres quand même k/n » (`lowWindowsOf`), « Après une guérilla, tu remontes k/n »
+(`guerillaRebound` : `bodyAfter` > `bodyBefore`), « Ta tendance » (`weeklyLowPct` : part de Flemme sur 4 semaines) ; la grille des
+30 jours reste dessous (tap = un jour en détail), puis les badges du mode. `ElanWeekGraph` n'est plus affiché ; la moyenne glissante sur 7 jours reste en
 titre de la section (« dit 6 j sur 7 · élan 7 j 2,9 ↗ », `_rollingLabel`).
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
