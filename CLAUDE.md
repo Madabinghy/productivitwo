@@ -1264,6 +1264,17 @@ Pas de ré-auth : réutilise `mcp_uid` + `mcp_token` de l'App Group (posés par
 Les intents du widget (`MarkRoutineDoneIntent`…) restent séparés (boutons de widget).
 Détails et étapes Xcode : `docs/siri_integration.md`.
 
+## Widgets iOS (refonte 2026-10-31, maquette validée « Widgets revus »)
+
+Lot 1 (données) : `WidgetService.update` écrit en plus `today_json` dans l'App Group — UNE clé, calculée avec la logique de
+l'app sur la journée vécue (`_todayJson`, helpers purs `utils/widget_payload.dart` : `widgetBlock`, `blockStartAt`,
+`perfectCells`) : `blocks` (programme vécu, nuit comprise, `startMs` / `endMs` pour que le widget retrouve le bloc en cours
+sans l'app, `doc` = le doc qui porte le bloc, action visée + étape en cours `itemId` pour « Étape faite »), `running` (chrono),
+`perfect` (`perfectDayTile` : valeur, sous-ligne, cases), `embers`, `mode` (Flemme / Normal / En forme / Recharge + victoires),
+`routines` (moment courant, ce qui reste `queue`, compte), `focused` (actions visées aujourd'hui), `watch` (Montre suisse),
+`project` (projet du moment, briques, prochaine action). Faits du jour via `WidgetService.badges` (posé par l'écran racine).
+Les anciennes clés restent tant que les anciens widgets existent.
+
 ---
 
 ## MCP local (`mcp-server/index.js`)
