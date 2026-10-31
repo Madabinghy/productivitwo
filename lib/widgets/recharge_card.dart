@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleRecharge;
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show kRechargeColor, kRechargeInk;
 
@@ -49,6 +51,8 @@ class RechargeCard extends StatelessWidget {
             morning ? 'BONJOUR · ${_dur(now.difference(since)).toUpperCase()} DE RECHARGE' : 'RECHARGE DEPUIS ${_hm(since)}',
             style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: kRechargeInk.withValues(alpha: .85)),
           ),
+          const Spacer(),
+          const InfoDot(kRuleRecharge, size: 16),
         ]),
         const SizedBox(height: 6),
         Text(morning ? 'Comment tu démarres ?' : 'Tes modes s’arrêtent jusqu’à demain',
