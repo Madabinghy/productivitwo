@@ -109,7 +109,11 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            // Le bouton reste collé au-dessus du clavier ; le reste défile.
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const Text('☀ À faire aujourd\'hui', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
               Text('L\'action est visée aujourd\'hui : elle t\'attend dans ta journée.',
@@ -181,6 +185,9 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
                       ),
                   ]),
                 ),
+                  ]),
+                ),
+              ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: canSave ? save : null,
