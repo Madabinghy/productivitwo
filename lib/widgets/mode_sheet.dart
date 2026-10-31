@@ -6,7 +6,9 @@ import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show BadgeState;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/elan_bands.dart';
 import 'package:productivitwo_v1/utils/elan_view.dart';
+import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue;
@@ -122,10 +124,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final week = days60.sublist(days60.length - 7);
     final wm = elanMetrics(week);
     final month = elanMonth(days60);
-    final slots = todayElanSlots(
-        marks: marks, schedule: byYmd[logic.livedTodayYmd], hits: st.habitHits, activities: st.activities, now: now, dayStartMin: logic.dayStartMin,
-        sessions: st.sessions, doneActions: doneActions);
-    final pointedToday = slots.where((s) => s.pointed).length;
     final text3 = cs.onSurface.withValues(alpha: .55);
     final hardest = hardestBucket(week);
 
@@ -142,48 +140,27 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
       children: [
         const Row(children: [
-          Text('Mode du jour', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text('Là, tu es comment ?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           InfoDot(kRuleModes),
         ]),
         const SizedBox(height: 2),
-        Text('Une posture, changeable à tout moment. Elle pointe ton élan et repart en Normal demain.', style: TextStyle(fontSize: 12.5, color: text3)),
+        Text('Un tap. L’app adapte ce qu’elle te propose, et ta semaine se dessine plus bas.', style: TextStyle(fontSize: 12.5, color: text3)),
         if (rechargeSince != null) ...[
           const SizedBox(height: 12),
           RechargeBanner(since: rechargeSince, now: now),
         ],
         const SizedBox(height: 12),
-        Row(children: [
-          for (final m in DayMode.values) ...[
-            if (m != DayMode.low) const SizedBox(width: 8),
-            Expanded(child: _modeTile(cs, dark, m, selected: rechargeSince == null && m == cur, onTap: () {
-              if (m != cur || rechargeSince != null) logic.setMode(m);
-            })),
-          ],
-        ]),
+        for (final m in DayMode.values) ...[
+          if (m != DayMode.low) const SizedBox(height: 8),
+          _modeCard(cs, dark, m, selected: rechargeSince == null && m == cur, since: m == cur ? _sinceLabel(marks, now) : null, onTap: () {
+            if (m != cur || rechargeSince != null) logic.setMode(m);
+          }),
+        ],
         const SizedBox(height: 10),
         if (cur == DayMode.high) ...[_offensiveCard(cs), const SizedBox(height: 8), _guerillaCard(cs)] else ...[_guerillaCard(cs), const SizedBox(height: 8), _offensiveCard(cs)],
         ..._winsSection(cs),
-        title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday créneau${pointedToday > 1 ? 'x' : ''} pointé${pointedToday > 1 ? 's' : ''}'}'),
-        Row(children: [
-          for (final s in slots) ...[
-            if (s.bucket != 'matin') const SizedBox(width: 8),
-            Expanded(child: _slotTile(cs, dark, s)),
-          ],
-        ]),
-        const SizedBox(height: 10),
-        ElanDayStrip(cells: elanTimeline(marks, now, logic.dayStartMin), dayStartMin: logic.dayStartMin),
-        title('CETTE SEMAINE',
-            right: wm.count == 0
-                ? 'aucun pointage'
-                : 'moyenne ${fmtElan(wm.mean)} · ${wm.slots} créneau${wm.slots > 1 ? 'x' : ''}${wm.count > wm.slots ? ' · ${wm.count} changements' : ''}',
-            rightColor: wm.count == 0 ? null : kElanAccent),
-        if (wm.count == 0)
-          _note(cs, 'Pointe ton élan (le mode du jour suffit) : la semaine se dessinera ici, un point par pointage.')
-        else ...[
-          ElanWeekGraph(days: week, mean: wm.mean, rolling: rollingElanMeans(days60, 7)),
-          const SizedBox(height: 8),
-          _legend(cs),
-        ],
+        title('CETTE SEMAINE', right: wm.count == 0 ? 'rien de dit' : 'dit ${saidDays(week)} j sur 7${_rollingLabel(days60)}'),
+        ..._weekBands(cs, dark, marks, week, now),
         if (wm.lowCount > 0) ...[
           title('FACE À LA FLEMME', right: '${wm.lowWon} / ${wm.lowCount} · ${(wm.discipline! * 100).round()} %', rightColor: kPalierGreen),
           _note(cs,
@@ -191,7 +168,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
               '${hardest == null ? '' : ' ${_bucketSentence(hardest)} est ton créneau difficile.'}'),
         ],
         title('30 DERNIERS JOURS', right: _schedules == null ? 'chargement…' : '${month.pointedDays} jour${month.pointedDays > 1 ? 's' : ''} pointé${month.pointedDays > 1 ? 's' : ''}'),
-        ElanMonthGrid(month: month),
+        ElanMonthGrid(month: month, onDay: (d) => showElanDaySheet(context, logic, marks: marks, day: d, badges: widget.badges)),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: _stat(cs, month.mean == null ? '—' : fmtElan(month.mean!), 'élan moyen sur le mois')),
@@ -215,27 +192,161 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     );
   }
 
-  Widget _modeTile(ColorScheme cs, bool dark, DayMode m, {required bool selected, required VoidCallback onTap}) {
+  /// « · élan 7 j 2,9 ↗ » : moyenne glissante sur 7 jours, comparée à hier.
+  String _rollingLabel(List<ElanDay> days60) {
+    final r = rollingElanMeans(days60, 2);
+    final today = r.last;
+    if (today == null) return '';
+    final prev = r.first;
+    final arrow = prev == null ? '' : (today - prev > 0.05 ? ' ↗' : (today - prev < -0.05 ? ' ↘' : ' →'));
+    return ' · élan 7 j ${fmtElan(today)}$arrow';
+  }
+
+  static const _modePromise = {
+    DayMode.low: 'Je te propose des petits démarrages : 10 min, malgré tout · Guérilla',
+    DayMode.normal: 'Le programme tel qu’il est, une chose après l’autre',
+    DayMode.high: 'Je te pousse vers le gros : Offensive · Deep work 90 min',
+  };
+
+  /// « depuis 14:20 » : l'heure du dernier pointage réel du jour vécu.
+  String? _sinceLabel(List<MoodMark> marks, DateTime now) {
+    final ymd = widget.logic.livedTodayYmd;
+    final w = elanWindows(marks, ymd, dayStartMin: widget.logic.dayStartMin).where((w) => w.mark.value >= 1).toList();
+    if (w.isEmpty) return null;
+    final t = w.last.mark.at;
+    return 'depuis ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// « Là, tu es comment ? » (maquette « Ton élan, autrement ») : une grande
+  /// carte par mode, avec ce que l'app va proposer.
+  Widget _modeCard(ColorScheme cs, bool dark, DayMode m, {required bool selected, String? since, required VoidCallback onTap}) {
     final c = modeChipColor(m, dark: dark);
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-        decoration: BoxDecoration(
-          color: selected ? c.withValues(alpha: .14) : cs.surfaceContainerHighest.withValues(alpha: .35),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: selected ? c.withValues(alpha: .6) : Colors.transparent),
+    return Material(
+      color: selected ? c.withValues(alpha: .14) : c.withValues(alpha: .05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: selected ? c : c.withValues(alpha: .35), width: selected ? 2 : 1.2)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+              child: Icon(modeIcon(m), color: dark ? Colors.black : Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text.rich(TextSpan(children: [
+                  TextSpan(text: kModeLabels[m]!, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  if (selected) TextSpan(text: since == null ? ' · maintenant' : ' · $since', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+                ])),
+                const SizedBox(height: 2),
+                Text(_modePromise[m]!, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .7))),
+              ]),
+            ),
+          ]),
         ),
-        child: Column(children: [
-          Icon(modeIcon(m), size: 20, color: selected ? c : cs.onSurface.withValues(alpha: .6)),
-          const SizedBox(height: 4),
-          Text(kModeLabels[m]!, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: selected ? c : cs.onSurface)),
-          Text(_modeShort(m), textAlign: TextAlign.center, style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: .55))),
-        ]),
       ),
     );
   }
+
+  Color _bandColor(ColorScheme cs, bool dark, int? v) => switch (bandModeOf(v)) {
+        BandMode.low => modeChipColor(DayMode.low, dark: dark),
+        BandMode.normal => modeChipColor(DayMode.normal, dark: dark),
+        BandMode.high => modeChipColor(DayMode.high, dark: dark),
+        BandMode.recharge => kRechargeBand,
+        null => cs.onSurface.withValues(alpha: .07),
+      };
+
+  /// La semaine en bandes : une phrase, une bande par jour (6 h → nuit),
+  /// « ⚡ n » = fenêtres de flemme où tu as quand même fait quelque chose ;
+  /// tap = le jour en détail. Puis la répartition du temps dit.
+  List<Widget> _weekBands(ColorScheme cs, bool dark, List<MoodMark> marks, List<ElanDay> week, DateTime now) {
+    final logic = widget.logic;
+    final rows = [for (final d in week) (d.ymd, elanCellsOfDay(marks, d.ymd, now, logic.dayStartMin))];
+    final wins = week.fold<int>(0, (s, d) => s + lowWinsOf(d));
+    final share = modeShareOf(rows.map((r) => r.$2));
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+    Widget band(List<int?> cells, {double h = 22, bool today = false}) => Container(
+          height: h,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: today ? Border.all(color: cs.onSurface.withValues(alpha: .8), width: 1.5) : null),
+          clipBehavior: Clip.antiAlias,
+          child: Row(children: [
+            for (final v in cells) Expanded(child: ColoredBox(color: _bandColor(cs, dark, v))),
+          ]),
+        );
+    return [
+      Text(weekBandSentence(rows, wins), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, height: 1.3)),
+      const SizedBox(height: 10),
+      Padding(
+        padding: const EdgeInsets.only(left: 40, right: 40),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          for (final t in elanHourTicks(logic.dayStartMin)) Text(t, style: TextStyle(fontSize: 10, color: text3)),
+        ]),
+      ),
+      const SizedBox(height: 4),
+      for (var i = 0; i < week.length; i++)
+        InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => showElanDaySheet(context, logic, marks: marks, day: week[i], badges: widget.badges),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              SizedBox(
+                width: 36,
+                child: Text(days[DateTime.parse(week[i].ymd).weekday - 1],
+                    style: TextStyle(fontSize: 12.5, fontWeight: i == week.length - 1 ? FontWeight.w800 : FontWeight.w600, color: i == week.length - 1 ? cs.onSurface : text3)),
+              ),
+              Expanded(child: band(rows[i].$2, today: i == week.length - 1)),
+              SizedBox(
+                width: 40,
+                child: Text(lowWinsOf(week[i]) == 0 ? '' : '⚡ ${lowWinsOf(week[i])}',
+                    textAlign: TextAlign.right, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: modeChipColor(DayMode.low, dark: dark))),
+              ),
+            ]),
+          ),
+        ),
+      const SizedBox(height: 8),
+      Wrap(spacing: 12, runSpacing: 4, children: [
+        for (final m in BandMode.values) _swatch(cs, _bandColor(cs, dark, switch (m) { BandMode.low => 1, BandMode.normal => 3, BandMode.high => 5, BandMode.recharge => kRechargeValue }), kBandModeLabels[m]!),
+        _swatch(cs, _bandColor(cs, dark, null), 'pas dit'),
+        Text('⚡ démarré malgré la flemme', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: modeChipColor(DayMode.low, dark: dark))),
+      ]),
+      if (share.said > 0) ...[
+        const SizedBox(height: 14),
+        Text('TON TEMPS DIT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: text3)),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: SizedBox(
+            height: 12,
+            child: Row(children: [
+              for (final m in const [BandMode.normal, BandMode.low, BandMode.high])
+                if (share.pct(m) > 0) Expanded(flex: share.pct(m), child: ColoredBox(color: _bandColor(cs, dark, switch (m) { BandMode.low => 1, BandMode.high => 5, _ => 3 }))),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          for (final m in const [BandMode.normal, BandMode.low, BandMode.high])
+            Text('${kBandModeLabels[m]} ${share.pct(m)} %', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .7))),
+        ]),
+      ],
+      const SizedBox(height: 4),
+      Text('Touche un jour pour le voir en détail.', style: TextStyle(fontSize: 11.5, color: text3)),
+    ];
+  }
+
+
+  Widget _swatch(ColorScheme cs, Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .7))),
+      ]);
 
   /// VICTOIRES SUR LA FLEMME · n (retour user 2026-10-30 : « Flemme | 8 victoires », mais lesquelles ?) :
   /// une ligne par victoire du jour, heure · quoi · comment. Rien sans victoire.
@@ -338,64 +449,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     );
   }
 
-  String _modeShort(DayMode m) => switch (m) { DayMode.low => 'petites choses', DayMode.normal => 'le programme', DayMode.high => 'deep work' };
-
-  Widget _slotTile(ColorScheme cs, bool dark, ElanSlot s) {
-    final c = s.value == null ? cs.onSurface.withValues(alpha: .15) : elanColor(s.value!);
-    final text3 = cs.onSurface.withValues(alpha: .55);
-    final String big;
-    final String detail;
-    if (s.value != null) {
-      big = '${s.value} · ${kElanLabels[s.value!]}';
-      detail = [
-        'pointé ${_hm(s.at!)}',
-        if (s.changes > 1) '${s.changes} changements',
-        if (s.wins > 0) '${s.wins} chose${s.wins > 1 ? 's' : ''} faite${s.wins > 1 ? 's' : ''} ensuite' else if (s.value! <= 2) 'rien de fait ensuite',
-      ].join(' · ');
-    } else if (s.started) {
-      big = 'pas pointé';
-      detail = s.current ? 'c’est maintenant' : 'créneau passé';
-    } else {
-      big = 'pas encore';
-      detail = 'à partir de ${s.startHour} h';
-    }
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: .35),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(top: BorderSide(color: c, width: 3)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(s.label.toUpperCase(), style: TextStyle(fontSize: 10, letterSpacing: .6, fontWeight: FontWeight.w700, color: s.current ? cs.primary : text3)),
-        const SizedBox(height: 2),
-        Text(big, style: TextStyle(fontSize: s.value != null ? 15 : 13, fontWeight: FontWeight.w800, color: s.value != null ? cs.onSurface : text3)),
-        Text(detail, style: TextStyle(fontSize: 10.5, height: 1.25, color: text3)),
-      ]),
-    );
-  }
-
-  Widget _legend(ColorScheme cs) {
-    final muted = cs.onSurface.withValues(alpha: .55);
-    return Wrap(spacing: 12, runSpacing: 4, children: [
-      for (var i = 1; i <= 5; i++)
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, color: elanColor(i))),
-          const SizedBox(width: 4),
-          Text(kElanLabels[i], style: TextStyle(fontSize: 11, color: muted)),
-        ]),
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: kPalierGreen, width: 2))),
-        const SizedBox(width: 4),
-        Text('gagnée', style: TextStyle(fontSize: 11, color: muted)),
-      ]),
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 12, height: 2, color: kElanAccent),
-        const SizedBox(width: 4),
-        Text('moyenne sur 7 jours', style: TextStyle(fontSize: 11, color: muted)),
-      ]),
-    ]);
-  }
 
   Widget _note(ColorScheme cs, String t) => Container(
         width: double.infinity,
@@ -466,13 +519,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final streak = m.pointedStreak;
     if (streak >= 3) parts.add('Aucun jour sans pointage depuis $streak jours : Baromètre avance.');
     return parts.isEmpty ? 'Les semaines se lisent en lignes dans la grille.' : parts.join(' ');
-  }
-
-  static String _hm(DateTime t) => '${t.hour}:${t.minute.toString().padLeft(2, '0')}';
-  static String _dayLabel(DateTime d) {
-    const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
-    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
   }
 
   static String _bucketSentence(String b) => switch (b) { 'matin' => 'Le matin', 'aprem' => 'L’après-midi', _ => 'Le soir' };
@@ -657,7 +703,8 @@ class _RollingPainter extends CustomPainter {
 /// jour ; aujourd'hui encadré, jours sans pointage en pointillé. Tap = le jour.
 class ElanMonthGrid extends StatelessWidget {
   final ElanMonth month;
-  const ElanMonthGrid({super.key, required this.month});
+  final void Function(ElanDay day)? onDay;
+  const ElanMonthGrid({super.key, required this.month, this.onDay});
 
   @override
   Widget build(BuildContext context) {
@@ -674,8 +721,10 @@ class ElanMonthGrid extends StatelessWidget {
           for (var i = 0; i < days.length; i++)
             Tooltip(
               message: _tip(days[i]),
-              triggerMode: TooltipTriggerMode.tap,
-              child: Container(
+              triggerMode: onDay == null ? TooltipTriggerMode.tap : TooltipTriggerMode.longPress,
+              child: GestureDetector(
+                onTap: onDay == null ? null : () => onDay!(days[i]),
+                child: Container(
                 width: size,
                 height: size,
                 decoration: BoxDecoration(
@@ -685,6 +734,7 @@ class ElanMonthGrid extends StatelessWidget {
                       ? Border.all(color: cs.onSurface, width: 1.5)
                       : (days[i].mean == null ? Border.all(color: cs.onSurface.withValues(alpha: .15)) : null),
                 ),
+              ),
               ),
             ),
         ],
@@ -862,3 +912,111 @@ class RechargeBanner extends StatelessWidget {
     );
   }
 }
+
+/// Couleur de la recharge dans les bandes (plus claire que `kRechargeColor`
+/// pour se lire sur le fond sombre).
+const kRechargeBand = Color(0xFF3B5585);
+
+/// Un jour en détail (maquette « Ton élan, autrement ») : sa bande, trois
+/// chiffres, le fil des pointages (heure · mode · durée), et pour aujourd'hui
+/// les victoires sur la flemme.
+Future<void> showElanDaySheet(BuildContext context, AppLogic logic, {required List<MoodMark> marks, required ElanDay day, BadgeCenter? badges}) {
+  return showFiche<void>(context, builder: (ctx, scroll) {
+    final cs = Theme.of(ctx).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
+    final now = DateTime.now();
+    final cells = elanCellsOfDay(marks, day.ymd, now, logic.dayStartMin);
+    final windows = elanWindows(marks, day.ymd, dayStartMin: logic.dayStartMin);
+    final isToday = day.ymd == logic.livedTodayYmd;
+    final wins = isToday ? (badges?.todayFacts().flemmeWins ?? const []) : const [];
+    final share = modeShareOf([cells]);
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    String dur(int min) => min >= 60 ? '${min ~/ 60} h${min % 60 == 0 ? '' : (min % 60).toString().padLeft(2, '0')}' : '$min min';
+    Color colorOf(int? v) => switch (bandModeOf(v)) {
+          BandMode.low => modeChipColor(DayMode.low, dark: dark),
+          BandMode.normal => modeChipColor(DayMode.normal, dark: dark),
+          BandMode.high => modeChipColor(DayMode.high, dark: dark),
+          BandMode.recharge => kRechargeBand,
+          null => cs.onSurface.withValues(alpha: .07),
+        };
+    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const wd = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    final date = DateTime.parse(day.ymd);
+    final events = <(DateTime, Widget)>[];
+    for (final w in windows) {
+      final v = w.mark.value;
+      final end = w.end.isAfter(now) ? now : w.end;
+      final min = end.difference(w.mark.at).inMinutes;
+      final mode = bandModeOf(v);
+      if (mode == null) continue;
+      events.add((
+        w.mark.at,
+        _eventRow(cs, hm(w.mark.at), colorOf(v), kBandModeLabels[mode]!,
+            [if (min > 0) dur(min), if (w.low && day.marks.any((m) => m.value <= 2 && m.value >= 1 && m.won)) 'tu as quand même fait quelque chose'].join(' · '))
+      ));
+    }
+    for (final w in wins) {
+      events.add((w.at, _eventRow(cs, hm(w.at), null, w.what, w.how)));
+    }
+    events.sort((a, b) => a.$1.compareTo(b.$1));
+    return ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(20, 4, 20, 32), children: [
+      Text('${wd[date.weekday - 1]} ${date.day} ${months[date.month - 1]}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 2),
+      Text(share.dominant == null ? 'rien de dit ce jour-là' : 'surtout ${kBandModeLabels[share.dominant]}', style: TextStyle(fontSize: 13, color: text3)),
+      const SizedBox(height: 12),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(height: 32, child: Row(children: [for (final v in cells) Expanded(child: ColoredBox(color: colorOf(v)))])),
+      ),
+      const SizedBox(height: 4),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        for (final t in elanHourTicks(logic.dayStartMin)) Text(t, style: TextStyle(fontSize: 10, color: text3)),
+      ]),
+      const SizedBox(height: 12),
+      Row(children: [
+        for (final (big, label, c) in [
+          ('⚡ ${isToday ? wins.length : lowWinsOf(day)}', isToday ? 'victoires sur la flemme' : 'flemmes gagnées', modeChipColor(DayMode.low, dark: dark)),
+          ('${share.pct(BandMode.normal)} %', 'en Normal', modeChipColor(DayMode.normal, dark: dark)),
+          ('${share.pct(BandMode.high)} %', 'en forme', modeChipColor(DayMode.high, dark: dark)),
+        ]) ...[
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(12)),
+              child: Column(children: [
+                Text(big, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: c)),
+                Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: text3)),
+              ]),
+            ),
+          ),
+          if (label != 'en forme') const SizedBox(width: 6),
+        ],
+      ]),
+      const SizedBox(height: 16),
+      Text('LE FIL DE LA JOURNÉE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: text3)),
+      const SizedBox(height: 8),
+      if (events.isEmpty) Text('Aucun pointage ce jour-là.', style: TextStyle(fontSize: 13, color: text3, fontStyle: FontStyle.italic)),
+      for (final e in events) e.$2,
+    ]);
+  });
+}
+
+Widget _eventRow(ColorScheme cs, String time, Color? dot, String title, String detail) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 46, child: Text(time, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .55), fontFeatures: const [FontFeature.tabularFigures()]))),
+        SizedBox(
+          width: 22,
+          child: dot == null
+              ? const Text('⚡', style: TextStyle(fontSize: 13, color: Color(0xFFF2A93B)))
+              : Padding(padding: const EdgeInsets.only(top: 3), child: Container(width: 12, height: 12, decoration: BoxDecoration(color: dot, shape: BoxShape.circle))),
+        ),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+            if (detail.isNotEmpty) Text(detail, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+          ]),
+        ),
+      ]),
+    );

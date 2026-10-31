@@ -974,6 +974,20 @@ parole »), mobile et web ; enjeu dans Ta journée (`buildStakeBoard(parole:)` :
 21:40 · encore n pour tenir », TA PAROLE · À FAIRE puis AJOUTÉES AUJOURD'HUI · HORS PAROLE, ⓘ `kRuleParole`. Reste possible : frise des
 14 jours dans la fiche du badge, ligne du bilan du soir.
 
+## Ton élan, autrement (2026-10-31, maquette validée)
+
+La feuille du mode (`showModeSheet`, `widgets/mode_sheet.dart`) se lit de haut en bas : je dis comment je suis, je lance, je vois ma
+semaine, je comprends. **PR 1 livrée** : en tête « Là, tu es comment ? » = trois grandes cartes (`_modeCard` : Flemme · Normal · En
+forme, « · depuis 14:20 » sur le mode en cours, ce que l'app propose dans ce mode) à la place des trois tuiles ; puis Guérilla / Offensive
+et les victoires du jour ; puis **CETTE SEMAINE en bandes** (`_weekBands`, logique pure `utils/elan_bands.dart`) à la place des
+créneaux du jour, de la bande du jour et du graphique à points : une phrase (`weekBandSentence` : mode dominant, jour de la flemme,
+démarrages malgré tout), une bande par jour en quarts d'heure (`elanCellsOfDay`, `bandModeOf` : Flemme ambre · Normal vert · En forme
+cyan · Recharge `kRechargeBand` · pas dit), « ⚡ n » = flemmes gagnées (`lowWinsOf`), « dit k jours sur 7 » (`saidDays`), TON TEMPS DIT
+(`modeShareOf`). Tap sur une bande ou une case des 30 jours = **un jour en détail** (`showElanDaySheet` : bande, trois chiffres, le fil
+des pointages heure · mode · durée, victoires du jour). À venir (PR 2) : « Ce que ça t'apprend » (creux, flemmes gagnées sur 30 j,
+remontée après guérilla, tendance) à la place de FACE À LA FLEMME, des 30 jours et de la tendance. `ElanWeekGraph` n'est plus affiché ; la moyenne glissante sur 7 jours reste en
+titre de la section (« dit 6 j sur 7 · élan 7 j 2,9 ↗ », `_rollingLabel`).
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
