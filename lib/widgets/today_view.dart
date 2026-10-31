@@ -50,6 +50,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
+import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
@@ -890,6 +891,8 @@ class TodayViewState extends State<TodayView> {
           _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
           const SizedBox(width: 8),
           _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
+          const SizedBox(width: 8),
+          _planBtn(cs),
         ]),
       ]),
     ]);
@@ -937,6 +940,29 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
+
+  /// Lanceur du mode Planification (2026-10-31) : poser demain ou la fin de journée.
+  Future<void> openPlan() async {
+    await showPlanScreen(context, widget.logic, badges: widget.badges);
+    if (mounted) setState(() {});
+  }
+
+  Widget _planBtn(ColorScheme cs) {
+    final c = cs.brightness == Brightness.dark ? kPlanAccent : const Color(0xFF3B5BB5);
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Material(
+        color: c.withValues(alpha: .12),
+        shape: CircleBorder(side: BorderSide(color: c.withValues(alpha: .55))),
+        child: InkWell(
+          onTap: openPlan,
+          customBorder: const CircleBorder(),
+          child: Tooltip(message: 'Planifier · prendre le cap', child: Icon(Icons.explore_outlined, size: 20, color: c)),
+        ),
+      ),
+    );
+  }
 
   // ── En parallèle : Routines · Objectifs (« une carte, une fiche », lot 4) ──
 
