@@ -150,7 +150,27 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   // montre tout.
   bool _focus = true;
   Map<String, ActivityPace> _watch = const {};
+  bool _focusing = false;
   Timer? _tick;
+
+  /// Barre des 7 jours glissants (comme la fiche Montre suisse) : gris = les
+  /// 6 jours passés, couleur = aujourd'hui, fin = 7 × le minimum.
+  Widget _rollingBar(ColorScheme cs, ActivityPace p, Color color) {
+    final total = p.expectedMin <= 0 ? 1 : p.expectedMin;
+    final past = (p.pastMin / total).clamp(0.0, 1.0);
+    final today = (p.todayMin / total).clamp(0.0, 1.0 - past);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        height: 5,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (past > 0) Expanded(flex: (past * 1000).round().clamp(1, 1000), child: ColoredBox(color: cs.onSurface.withValues(alpha: .35))),
+          if (today > 0) Expanded(flex: (today * 1000).round().clamp(1, 1000), child: ColoredBox(color: color)),
+          if (past + today < 1) Expanded(flex: ((1 - past - today) * 1000).round().clamp(1, 1000), child: ColoredBox(color: cs.onSurface.withValues(alpha: .08))),
+        ]),
+      ),
+    );
+  }
 
   Map<String, ActivityPace> _watchPace(DateTime now) {
     final st = logic.state;
@@ -196,6 +216,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     _watch = _watchPace(now);
     final toReach = all.where((r) => _watch[r.a.id] != null && !_watch[r.a.id]!.onPace).toList();
     final focusing = _focus && q.isEmpty;
+    _focusing = focusing;
     final active = focusing ? toReach : rows.where((r) => !r.dormant).toList();
     final dormant = focusing ? <LauncherRow>[] : rows.where((r) => r.dormant).toList()
       ..sort((x, y) => x.a.name.toLowerCase().compareTo(y.a.name.toLowerCase()));
@@ -420,6 +441,9 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final color = domainColor(a.domainId, logic.state.activeDomains) ?? cs.primary;
     final late = r.behind;
     final watch = _watch[a.id];
+    // En Focus, la ligne parle le langage du filtre : 7 jours glissants,
+    // fait / 7 × le minimum, sans repère (le but = le bout de la barre).
+    final rolling = _focusing && watch != null;
     final sub = [
       r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui',
       if (watch != null && !watch.onPace) 'reste ${fmtMin(watch.missingMin)} pour la Montre suisse'
@@ -441,7 +465,15 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
                   child: Text(a.name,
                       maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
                 ),
-                if (r.hasGoal) ...[
+                if (rolling) ...[
+                  const SizedBox(width: 8),
+                  Text('${fmtMin(watch.doneMin)} / ${fmtMin(watch.expectedMin)}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: watch.onPace ? _kOnTrack : _kLate,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
+                ] else if (r.hasGoal) ...[
                   const SizedBox(width: 8),
                   Text('${fmtMin(r.windowMin)} / ${fmtMin(r.totalMin)}',
                       style: TextStyle(
@@ -460,7 +492,12 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
               ),
               // Barre de la fiche objectif : fin = minimum de toute la
               // fenêtre, repère = attendu à ce jour.
-              if (r.hasGoal)
+              if (rolling)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 3),
+                  child: _rollingBar(cs, watch, color),
+                )
+              else if (r.hasGoal)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
                   child: ExpectedBar(
