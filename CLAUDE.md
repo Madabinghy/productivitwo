@@ -929,6 +929,16 @@ sur le rythme), `freeGaps(blocks, DayWindow)` / `freeMinutes` (créneaux libres 
 qui tient, 10 min d'air, quart d'heure, raccourci jusqu'à 30 min), `planBlockOf`. Badge **Cap tenu** : `capHeld(DailySchedule)` =
 programme posé la VEILLE par le mode (`generatedBy:"plan"`, `plannedAt` < jour, pas `plannedSameDay`) et ≥ 70 % des blocs (hors
 miroirs) faits ; `capHeldCount`, paliers `kCapTiers` 5 · 20 · 50.
+**Lot 2 (écran mobile)** : 3ᵉ rond 🧭 de l'en-tête d'Aujourd'hui (`_planBtn` / `openPlan`, à côté de Guérilla et Offensive) →
+`widgets/plan_screen.dart` (`showPlanScreen`, plein écran, accent `kPlanAccent` bleu) : PRENDRE LE CAP (Demain par défaut à partir de
+midi, sinon « La fin d'aujourd'hui » ; interrupteur « Chrono sur Planification » — activité créée au besoin dans le domaine
+Organisation, sinon le premier ; chrono arrêté à la fin) → CE QUI SE JOUE (`_buildStakes` : daté = miroirs agenda / séances du jour
+visé ; se perd = séries de routines quotidiennes, Montre suisse `tomorrowNeedMin`, relevés au dernier jour ; en retard = prépa de séance
+à 3 j et projets en retard sur le plan avec une activité liée ; cases à cocher) → LE TEMPS QUI RESTE (blocs déjà posés + créneaux
+libres `freeGaps` de la journée active, état Léger / Normal / À fond) → REMPLIR (`proposeDay` : blocs d'activité avec leur raison,
+glisser = retirer, « À caser si tu veux » = +45 min, « Avec Claude » = `planDayPrompt`) → POSÉ (ce qu'on tient, laissé pour plus tard,
+progression Cap tenu). « Poser » AJOUTE les blocs au doc du jour visé (rien n'est remplacé) et pose `generatedBy:"plan"`, `plannedAt`,
+`plannedSameDay` (fin d'aujourd'hui = ne compte pas pour Cap tenu).
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
