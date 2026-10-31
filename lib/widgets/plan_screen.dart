@@ -342,9 +342,70 @@ class _PlanScreenState extends State<PlanScreen> {
       for (final f in fixed) ScheduleBlock(startTime: hmOf(f.startMin), durationMin: f.minutes, title: f.want.title, category: 'project'),
     ];
     final used = fixed.fold<int>(0, (s, f) => s + f.minutes);
-    _plan = [...fixed, ...proposeDay(freeGaps(busy, _effectiveWindow), rest, _budget - used < 0 ? 0 : _budget - used)]
-      ..sort((a, b) => a.startMin.compareTo(b.startMin));
+    // Ajoutés à la main (« + … ») : posés APRÈS le reste, sur le temps libre
+    // réel — le plafond de l'état (Léger / Normal / À fond) ne vaut que pour
+    // la proposition, pas pour un ajout explicite.
+    final extraIds = _extra.map((w) => w.activityId).toSet();
+    final core = rest.where((w) => !extraIds.contains(w.activityId)).toList();
+    final added = rest.where((w) => extraIds.contains(w.activityId)).toList();
+    final first = proposeDay(freeGaps(busy, _effectiveWindow), core, _budget - used < 0 ? 0 : _budget - used);
+    final busy2 = [
+      ...busy,
+      for (final f in first) ScheduleBlock(startTime: hmOf(f.startMin), durationMin: f.minutes, title: f.want.title, category: 'project'),
+    ];
+    final gaps2 = freeGaps(busy2, _effectiveWindow);
+    final second = proposeDay(gaps2, added, freeMinutes(gaps2));
+    _plan = [...fixed, ...first, ...second]..sort((a, b) => a.startMin.compareTo(b.startMin));
   }
+
+  /// « + … » : ajoute un bloc ; s'il ne tient nulle part, on le dit (avant,
+  /// l'ajout était ignoré sans un mot).
+  void _addExtra(PlanWant w) {
+    setState(() {
+      _dropped.remove(w.activityId);
+      _extra.add(w);
+      _propose();
+    });
+    if (_plan.any((p) => p.want.activityId == w.activityId)) return;
+    setState(() {
+      _extra.removeWhere((x) => x.activityId == w.activityId);
+      _propose();
+    });
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text('Plus de créneau libre de 30 min pour ${w.title} : raccourcis ou retire un bloc.')));
+  }
+
+  /// Les blocs DÉJÀ posés de la journée visée (fin de journée : ceux qui ne
+  /// sont pas finis), affichés dans la liste à leur heure.
+  List<ScheduleBlock> get _shownPosed {
+    final from = _tomorrow ? 0 : _effectiveWindow.startMin;
+    return _blocks.where((b) => b.status == 'pending' && blockStartMin(b) + b.durationMin > from).toList();
+  }
+
+  List<({ScheduleBlock? posed, PlannedBlock? planned})> _timeline() {
+    final out = <(int, ({ScheduleBlock? posed, PlannedBlock? planned}))>[
+      for (final b in _shownPosed) (blockStartMin(b), (posed: b, planned: null)),
+      for (final p in _plan) (p.startMin, (posed: null, planned: p)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    return [for (final e in out) e.$2];
+  }
+
+  Widget _posedRow(ScheduleBlock b) => Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF3A5A4A))),
+        child: Row(children: [
+          const Icon(Icons.lock_outline, size: 16, color: _text3),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${b.title} · ${fmtMin(b.durationMin)}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: _text2)),
+              Text('${b.startTime} → ${hmOf(blockStartMin(b) + b.durationMin)} · déjà posé', style: const TextStyle(fontSize: 12, color: _text3)),
+            ]),
+          ),
+        ]),
+      );
 
   /// Régler un bloc proposé : heure de début (pas de 15 min) et durée.
   Future<void> _editPlanned(PlannedBlock p) async {
@@ -732,7 +793,10 @@ class _PlanScreenState extends State<PlanScreen> {
       _top(_tomorrow ? 'DEMAIN · REMPLIR' : 'CE SOIR · REMPLIR', 3),
       Row(children: [
         Expanded(child: _title(_tomorrow ? 'Ta journée de demain' : 'Ta fin de journée')),
-        Text('${fmtMin(total)} / ${fmtMin(_budget)}', style: const TextStyle(fontSize: 13, color: _text2)),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('${fmtMin(total)} proposées', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _text2)),
+          Text('sur ${fmtMin(_budget)} · ${kPlanLoadLabels[_load]}', style: const TextStyle(fontSize: 11.5, color: _text3)),
+        ]),
       ]),
       ClipRRect(
         borderRadius: BorderRadius.circular(4),
@@ -770,11 +834,11 @@ class _PlanScreenState extends State<PlanScreen> {
         ),
       Expanded(
         child: ListView(children: [
-          _section('PROPOSÉ · TOUCHE POUR RÉGLER · GLISSE POUR RETIRER'),
-          if (_plan.isEmpty)
-            const Padding(padding: EdgeInsets.all(12), child: Text('Rien à poser : ajoute une activité ci-dessous, ou garde ta journée libre.', style: TextStyle(color: _text2))),
-          for (final p in _plan)
-            Dismissible(
+          _section(_tomorrow ? 'TA JOURNÉE · TOUCHE UN BLOC PROPOSÉ POUR LE RÉGLER, GLISSE POUR LE RETIRER' : 'TA FIN DE JOURNÉE · TOUCHE UN BLOC PROPOSÉ POUR LE RÉGLER, GLISSE POUR LE RETIRER'),
+          if (_plan.isEmpty && _shownPosed.isEmpty)
+            const Padding(padding: EdgeInsets.all(12), child: Text('Rien à poser : ajoute un bloc ci-dessous, ou garde ta journée libre.', style: TextStyle(color: _text2))),
+          for (final e in _timeline())
+            if (e.posed case final b?) _posedRow(b) else Builder(builder: (_) { final p = e.planned!; return Dismissible(
               key: ValueKey('plan-${p.want.activityId}'),
               direction: DismissDirection.endToStart,
               onDismissed: (_) => setState(() {
@@ -810,7 +874,7 @@ class _PlanScreenState extends State<PlanScreen> {
                 ]),
               ),
               ),
-            ),
+            ); }),
           if (_timeMode) ...[
             _section('AJOUTER'),
             Wrap(spacing: 6, runSpacing: 6, children: [
@@ -819,26 +883,22 @@ class _PlanScreenState extends State<PlanScreen> {
                   label: Text('+ ${kTimeBlockLabels[k]}', style: TextStyle(fontWeight: FontWeight.w700, color: kTimeBlockColors[k])),
                   backgroundColor: Colors.transparent,
                   side: BorderSide(color: kTimeBlockColors[k]!),
-                  onPressed: () => setState(() {
-                    final m = k == 'deep' ? 90 : 45;
-                    _extra.add(PlanWant(activityId: timeWantId(k, 100 + _extra.length), title: kTimeBlockLabels[k]!, minutes: m, reason: k == 'deep' ? _deepPreview() : ''));
-                    _propose();
-                  }),
+                  onPressed: () => _addExtra(PlanWant(
+                      activityId: timeWantId(k, 100 + _extra.length),
+                      title: kTimeBlockLabels[k]!,
+                      minutes: k == 'deep' ? 90 : 45,
+                      reason: k == 'deep' ? _deepPreview() : '')),
                 ),
             ]),
           ] else if (others.isNotEmpty) ...[
-            _section('À CASER SI TU VEUX'),
+            _section('AJOUTER · 45 MIN SUR TON TEMPS LIBRE'),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final a in others)
                 ActionChip(
                   label: Text('+ ${a.name} · 45 min', style: const TextStyle(fontWeight: FontWeight.w600, color: _text2)),
                   backgroundColor: Colors.transparent,
                   side: const BorderSide(color: Color(0xFF5F7A6C)),
-                  onPressed: () => setState(() {
-                    _dropped.remove(a.id);
-                    _extra.add(PlanWant(activityId: a.id, title: a.name, minutes: 45, reason: 'à ton choix'));
-                    _propose();
-                  }),
+                  onPressed: () => _addExtra(PlanWant(activityId: a.id, title: a.name, minutes: 45, reason: 'à ton choix')),
                 ),
             ]),
           ],
