@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
+import 'package:productivitwo_v1/widgets/focus_gauge_guide.dart';
+import 'package:productivitwo_v1/utils/focus_gauge.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
@@ -190,6 +192,24 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     );
   }
 
+  /// ⓘ en Focus : le tuto de la jauge, illustré par une activité à couvrir.
+  Widget _gaugeInfo(ColorScheme cs, List<LauncherRow> toReach) {
+    final ex = pickGaugeExample([for (final r in toReach) if (_watch[r.a.id] != null) _watch[r.a.id]!]);
+    final color = ex == null ? cs.primary : (domainColor(ex.activity.domainId, logic.state.activeDomains) ?? cs.primary);
+    return Semantics(
+      button: true,
+      label: 'Comment lire la jauge',
+      child: InkResponse(
+        radius: 20,
+        onTap: () => showFocusGaugeGuide(context, ex == null ? FocusGaugeStory.sampleStory : FocusGaugeStory.of(ex), color),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(Icons.info_outline_rounded, size: 18, color: cs.onSurface.withValues(alpha: .5)),
+        ),
+      ),
+    );
+  }
+
   Map<String, ActivityPace> _watchPace(DateTime now) {
     final st = logic.state;
     final resting = {for (final d in st.activeDomains) if (logic.isDomainResting(d.id)) d.id};
@@ -263,7 +283,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       children: [
         Row(children: [
           const Text('Activités', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-          const InfoDot(kRuleActivityPace),
+          if (focusing) _gaugeInfo(cs, toReach) else const InfoDot(kRuleActivityPace),
           const Spacer(),
           TextButton.icon(
             onPressed: widget.onNew,

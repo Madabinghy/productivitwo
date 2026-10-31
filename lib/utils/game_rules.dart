@@ -58,7 +58,7 @@ const kRuleStakes = GameRule('Ta journée en enjeux', [
   RuleCard('✔️', 'Gagné · perdu', 'Le tableau compte ce que la journée a déjà gagné ou laissé filer.'),
 ]);
 
-const kRuleActivityPace = GameRule('Lire une activité', [
+const kRuleActivityPace = GameRule('Lire une activité · vue Tout', [
   RuleCard('⭕', 'L’anneau = aujourd’hui', 'Le temps fait aujourd’hui face à ton objectif du jour. Plein vert : atteint.'),
   RuleCard('📏', 'La barre = la semaine', 'Le temps fait depuis lundi. Le bout de la barre est le minimum de toute la semaine.'),
   RuleCard('│', 'Le trait = attendu à ce jour',
