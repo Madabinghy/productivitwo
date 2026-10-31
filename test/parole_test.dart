@@ -78,4 +78,27 @@ void main() {
     final round = parseParoles(parolesToJson(paroles));
     expect(round.keys.toSet(), paroles.keys.toSet());
   });
+
+  test('propositions : pas faites aujourd\'hui, à re-viser, puis projets en retard', () {
+    final setAt = DateTime(2026, 10, 1);
+    final today = act('t', '2026-11-02', setAt);
+    final old = act('o', '2026-10-30', setAt);
+    final done = act('d', '2026-11-02', setAt, doneAt: DateTime(2026, 11, 2, 9));
+    final late = TaskAction(id: 'p', title: 'p');
+    final task = ProjectTask(id: 'k', title: 'Tâche', startDate: DateTime(2026, 10, 1), actions: [late]);
+    final proj = Project(id: 'P', title: 'Projet', createdBy: 'user', startDate: DateTime(2026, 10, 1), tasks: [task]);
+    final idx = paroleIndex([proj], [Activity(id: 'a', domainId: 'd', name: 'A', ownActions: [today, old, done])]);
+    final props = paroleProposals(
+      index: idx,
+      projects: [proj],
+      today: DateTime(2026, 11, 2),
+      chosen: const {},
+      nextActionOf: (p) => (task: task, action: late),
+      isLive: (_) => true,
+      isOverdue: (_, __) => true,
+    );
+    expect(props.map((p) => p.item.action.id).toList(), ['t', 'o', 'p']);
+    expect(props.first.reason, 'pas faite aujourd\'hui');
+    expect(props[1].reason, 'visée il y a 3 j · à re-viser');
+  });
 }

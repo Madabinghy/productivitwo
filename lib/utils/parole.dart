@@ -163,3 +163,60 @@ ParoleDay? paroleOfDay(Map<String, ParoleDay> paroles, Map<String, ParoleAction>
   final frozen = freezeParole(paroles, ymd, paroleCandidates(index, ymd, dayStartMin));
   return frozen[ymd];
 }
+
+/// Une action proposée à l'étape « Ta parole pour demain », avec sa raison.
+class ParoleProposal {
+  final ParoleAction item;
+  final String reason;
+  final bool warn; // raison en ambre (pas faite, en retard)
+  const ParoleProposal(this.item, this.reason, {this.warn = false});
+}
+
+/// Ce que l'étape du soir propose (sans les déjà choisies) : d'abord les visées
+/// aujourd'hui et pas faites, puis les visées plus anciennes (à re-viser), puis
+/// la prochaine action de chaque projet vivant (en retard d'abord).
+List<ParoleProposal> paroleProposals({
+  required Map<String, ParoleAction> index,
+  required List<Project> projects,
+  required DateTime today,
+  required Set<String> chosen,
+  required ({ProjectTask task, TaskAction action})? Function(Project) nextActionOf,
+  required bool Function(Project) isLive,
+  required bool Function(TaskAction, ProjectTask?) isOverdue,
+  int max = 8,
+}) {
+  final t = DateTime(today.year, today.month, today.day);
+  final out = <ParoleProposal>[];
+  final seen = <String>{...chosen};
+  final todayNotDone = <ParoleProposal>[];
+  final stale = <(DateTime, ParoleProposal)>[];
+  for (final e in index.entries) {
+    final a = e.value.action;
+    if (a.done || a.focusDate == null || seen.contains(e.key)) continue;
+    if (e.value.project != null && !isLive(e.value.project!)) continue;
+    final f = DateTime(a.focusDate!.year, a.focusDate!.month, a.focusDate!.day);
+    if (f == t) {
+      todayNotDone.add(ParoleProposal(e.value, 'pas faite aujourd\'hui', warn: true));
+    } else if (f.isBefore(t)) {
+      final n = t.difference(f).inDays;
+      stale.add((f, ParoleProposal(e.value, n == 1 ? 'visée hier · à re-viser' : 'visée il y a $n j · à re-viser')));
+    }
+  }
+  stale.sort((a, b) => b.$1.compareTo(a.$1));
+  for (final p in [...todayNotDone, ...stale.map((x) => x.$2)]) {
+    if (seen.add(p.item.action.id)) out.add(p);
+  }
+  final next = <(bool, ParoleProposal)>[];
+  for (final p in projects) {
+    if (!isLive(p)) continue;
+    final n = nextActionOf(p);
+    if (n == null || seen.contains(n.action.id)) continue;
+    final late = isOverdue(n.action, n.task);
+    next.add((late, ParoleProposal(ParoleAction(n.action, project: p, task: n.task), late ? 'en retard' : 'prochaine action', warn: late)));
+  }
+  next.sort((a, b) => (b.$1 ? 1 : 0) - (a.$1 ? 1 : 0));
+  for (final p in next) {
+    if (seen.add(p.$2.item.action.id)) out.add(p.$2);
+  }
+  return out.take(max).toList();
+}
