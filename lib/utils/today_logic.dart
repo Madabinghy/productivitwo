@@ -102,6 +102,7 @@ List<({String category, int min})> minutesByCategory(List<ScheduleBlock> blocks)
 /// chrono d'une routine tourne sur son activité liée, pas sur la routine).
 bool sessionMatchesBlock(Session s, ScheduleBlock b,
     {String? projectLinkedActivityId, String? activityLinkedActivityId}) {
+  if (b.timeBlock != null) return true; // bloc de temps : tout chrono compte
   if (b.taskId != null) return s.taskId == b.taskId;
   if (b.activityId != null) {
     return s.activityId == b.activityId ||
@@ -119,7 +120,9 @@ bool sessionMatchesBlock(Session s, ScheduleBlock b,
 int loggedMinForBlock(ScheduleBlock b, Iterable<Session> sessions, DateTime start, DateTime end,
     {DateTime? now}) {
   bool Function(Session) match;
-  if (b.actionId != null) {
+  if (b.timeBlock != null) {
+    match = (_) => true; // bloc de temps : le chrono, quelle que soit l'activité
+  } else if (b.actionId != null) {
     match = (s) => s.actionId == b.actionId;
   } else if (b.taskId != null) {
     match = (s) => s.taskId == b.taskId;
@@ -222,7 +225,7 @@ const kFreeBlockClaimMaxMin = 180;
 ScheduleBlock? freeBlockToClaim(List<ScheduleBlock> blocks, int nowMin) {
   for (final b in blocks) {
     if (b.status != 'pending') continue;
-    if (b.projectId != null || b.taskId != null || b.activityId != null || b.sessionTemplateId != null) continue;
+    if (b.projectId != null || b.taskId != null || b.activityId != null || b.sessionTemplateId != null || b.timeBlock != null) continue;
     if (b.kind != 'normal' || b.category == 'break') continue;
     if (b.durationMin > kFreeBlockClaimMaxMin) continue;
     final s = blockStartMin(b);

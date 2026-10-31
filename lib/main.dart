@@ -2902,6 +2902,10 @@ class _AppRootState extends State<AppRoot>
   /// routine ou activité. Bloc libre (perso/pause) → géré côté DailyScheduleView
   /// (sheet de renommage), pas d'appel ici.
   void _openBlockSource(ScheduleBlock block) {
+    if (block.timeBlock != null) {
+      _launchTimeBlock(block);
+      return;
+    }
     if (block.projectId != null) {
       final project =
           _dashboardProjects.firstWhereOrNull((p) => p.id == block.projectId);
@@ -2965,8 +2969,31 @@ class _AppRootState extends State<AppRoot>
   /// met la tâche en focus (ses actions s'affichent dans l'onglet Maintenant).
   /// [goToNow] = false : lancement depuis la carte MAINTENANT d'Aujourd'hui,
   /// on reste sur l'onglet.
+  /// Bloc de TEMPS (Deep work · Petites choses · Tampon) : rien n'est attribué
+  /// au bloc, on choisit au moment de le lancer. Lot 1 : le chrono, sur
+  /// l'activité choisie ; le bloc se coche par le temps tenu (60 %).
+  Future<void> _launchTimeBlock(ScheduleBlock block) async {
+    final st = _state;
+    if (st == null) return;
+    final id = await showActivityPicker(context,
+        activities: st.activeActivities.where((a) => !a.isHabit).toList(),
+        domains: st.activeDomains,
+        title: '${block.title} · sur quoi tu pars ?',
+        subtitle: 'Le chrono part sur l’activité choisie ; le bloc compte dès 60 % de son créneau tenu.');
+    if (id == null || !mounted) return;
+    logic.start(id);
+    setState(() {
+      _focusProject = null;
+      _focusTask = null;
+    });
+  }
+
   Future<void> _launchScheduledBlock(ScheduleBlock block,
       {bool goToNow = true}) async {
+    if (block.timeBlock != null) {
+      await _launchTimeBlock(block);
+      return;
+    }
     // Séance programmée : chrono sur l'activité + player sur SON déroulé.
     if (block.sessionTemplateId != null && block.activityId != null) {
       final tpl =

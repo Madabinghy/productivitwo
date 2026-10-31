@@ -77,6 +77,10 @@ class _PlanScreenState extends State<PlanScreen> {
   final Map<String, (int, int)> _manual = {};
   bool _loading = false;
   int _capCount = 0;
+  /// Blocs de temps (Deep work · Petites choses · Tampon) plutôt que blocs
+  /// d'activité : on choisit quoi faire au moment de lancer le bloc.
+  bool _timeMode = true;
+  static const _kTimeModePref = 'plan_time_mode';
   /// Parole tenue : les actions choisies pour demain (ids), dans l'ordre.
   final List<String> _parole = [];
   Set<String> _paroleBefore = {};
@@ -92,6 +96,8 @@ class _PlanScreenState extends State<PlanScreen> {
     SharedPreferences.getInstance().then((p) {
       final v = p.getBool(_kChronoPref);
       if (v != null && mounted) setState(() => _chrono = v);
+      final t = p.getBool(_kTimeModePref);
+      if (t != null && mounted) setState(() => _timeMode = t);
     }).catchError((_) {});
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _runningSession != null) setState(() {});
@@ -295,16 +301,33 @@ class _PlanScreenState extends State<PlanScreen> {
 
   String _activityName(String id) => logic.state.activities.where((a) => a.id == id).map((a) => a.name).firstOrNull ?? 'Activité';
 
+  /// « pour : … » sous un bloc Deep work : un aperçu de ce qui sera en tête
+  /// au moment de le lancer (rien n'est attribué au bloc).
+  String _deepPreview() {
+    final names = <String>[
+      for (final id in _parole)
+        if (_paroleIndex[id] != null) _paroleIndex[id]!.action.title,
+      for (final st in _stakes.where((x) => x.kind == PlanStakeKind.behind && _kept.contains(x.id))) st.title,
+    ];
+    if (names.isEmpty) return 'ce qui sera le plus utile à ce moment-là';
+    return 'pour : ${names.take(3).join(' · ')}';
+  }
+
   void _propose() {
     final wants = <PlanWant>[];
     final ids = <String>{};
-    for (final kind in [PlanStakeKind.dated, PlanStakeKind.losing, PlanStakeKind.behind]) {
+    if (_timeMode) {
+      wants.addAll(timeBlockWants(_budget, reasons: {'deep': _deepPreview(), 'small': 'mails, appels, petites actions', 'buffer': 'pour l’imprévu ou ce qui a débordé'}));
+      ids.addAll(wants.map((w) => w.activityId));
+    }
+    for (final kind in _timeMode ? const <PlanStakeKind>[] : [PlanStakeKind.dated, PlanStakeKind.losing, PlanStakeKind.behind]) {
       for (final s in _stakes.where((s) => s.kind == kind && _kept.contains(s.id) && s.activityId != null)) {
         if (!ids.add(s.activityId!)) continue;
         wants.add(PlanWant(activityId: s.activityId!, title: _activityName(s.activityId!), minutes: s.minutes, reason: _reasonOf(s)));
       }
     }
     for (final w in _extra) {
+      if ((timeKindOf(w.activityId) != null) != _timeMode) continue;
       if (ids.add(w.activityId)) wants.add(w);
     }
     final fixed = <PlannedBlock>[];
@@ -423,7 +446,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Future<void> _save() async {
     final doc = _doc ?? DailySchedule(date: _ymd);
     for (final p in _plan) {
-      doc.blocks.add(planBlockOf(p));
+      doc.blocks.add(planOrTimeBlockOf(p));
     }
     doc
       ..generatedBy = 'plan'
@@ -699,6 +722,8 @@ class _PlanScreenState extends State<PlanScreen> {
     final others = logic.state.activeActivities.where((a) => !a.isHabit && a.goalMin > 0 && !isBasicNeedName(a.name) && !used.contains(a.id) && !logic.isActivitySnoozed(a.id, _day)).take(5).toList();
     final domains = logic.state.activeDomains;
     Color colorOf(String activityId) {
+      final tk = timeKindOf(activityId);
+      if (tk != null) return kTimeBlockColors[tk]!;
       final a = logic.state.activities.where((x) => x.id == activityId).firstOrNull;
       return domainColor(a?.domainId, domains) ?? kPlanAccent;
     }
@@ -714,6 +739,35 @@ class _PlanScreenState extends State<PlanScreen> {
         child: LinearProgressIndicator(
             value: _budget == 0 ? 0 : (total / _budget).clamp(0.0, 1.0), minHeight: 8, color: kPlanAccent, backgroundColor: const Color(0xFF27382D)),
       ),
+      const SizedBox(height: 10),
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: true, label: Text('Blocs de temps')),
+          ButtonSegment(value: false, label: Text('Détailler par activité')),
+        ],
+        selected: {_timeMode},
+        showSelectedIcon: false,
+        style: SegmentedButton.styleFrom(
+          selectedBackgroundColor: kPlanAccent,
+          selectedForegroundColor: _ink,
+          foregroundColor: _text2,
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+        ),
+        onSelectionChanged: (v) {
+          setState(() {
+            _timeMode = v.first;
+            _manual.clear();
+            _dropped.clear();
+            _propose();
+          });
+          SharedPreferences.getInstance().then((p) => p.setBool(_kTimeModePref, v.first)).catchError((_) => false);
+        },
+      ),
+      if (_timeMode)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Du temps réservé, pas des tâches : tu choisiras quoi faire au moment de lancer le bloc.', style: TextStyle(fontSize: 12.5, color: _text2)),
+        ),
       Expanded(
         child: ListView(children: [
           _section('PROPOSÉ · TOUCHE POUR RÉGLER · GLISSE POUR RETIRER'),
@@ -746,16 +800,33 @@ class _PlanScreenState extends State<PlanScreen> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('${p.want.title} · ${fmtMin(p.minutes)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
                       Text('${hmOf(p.startMin)} → ${hmOf(p.endMin)}', style: const TextStyle(fontSize: 12, color: _text3)),
+                      if (timeKindOf(p.want.activityId) != null && p.want.reason.isNotEmpty)
+                        Text(p.want.reason, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: colorOf(p.want.activityId))),
                     ]),
                   ),
-                  Text(p.want.reason, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _gold)),
+                  if (timeKindOf(p.want.activityId) == null) Text(p.want.reason, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _gold)),
                   const SizedBox(width: 6),
                   const Icon(Icons.tune, size: 18, color: _text3),
                 ]),
               ),
               ),
             ),
-          if (others.isNotEmpty) ...[
+          if (_timeMode) ...[
+            _section('AJOUTER'),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final k in const ['deep', 'small', 'buffer'])
+                ActionChip(
+                  label: Text('+ ${kTimeBlockLabels[k]}', style: TextStyle(fontWeight: FontWeight.w700, color: kTimeBlockColors[k])),
+                  backgroundColor: Colors.transparent,
+                  side: BorderSide(color: kTimeBlockColors[k]!),
+                  onPressed: () => setState(() {
+                    final m = k == 'deep' ? 90 : 45;
+                    _extra.add(PlanWant(activityId: timeWantId(k, 100 + _extra.length), title: kTimeBlockLabels[k]!, minutes: m, reason: k == 'deep' ? _deepPreview() : ''));
+                    _propose();
+                  }),
+                ),
+            ]),
+          ] else if (others.isNotEmpty) ...[
             _section('À CASER SI TU VEUX'),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final a in others)

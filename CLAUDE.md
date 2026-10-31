@@ -991,6 +991,20 @@ moment, `bandMomentOf`), « En Flemme, tu démarres quand même k/n » (`lowWind
 30 jours reste dessous (tap = un jour en détail), puis les badges du mode. `ElanWeekGraph` n'est plus affiché ; la moyenne glissante sur 7 jours reste en
 titre de la section (« dit 6 j sur 7 · élan 7 j 2,9 ↗ », `_rollingLabel`).
 
+## Blocs de temps (2026-10-31, maquette validée « Planifier du temps, pas des tâches »)
+
+Retour user : un programme détaillé est faux dès la première interruption. On réserve du TEMPS, on choisit quoi faire au moment de
+lancer. `ScheduleBlock.timeBlock` = `deep` (Deep work) · `small` (Petites choses) · `buffer` (Tampon), sans source ; tout chrono compte
+dans son créneau (`loggedMinForBlock`, `sessionMatchesBlock`), donc il est fait à 60 % du créneau tenu, quelle que soit l'activité
+(proposition « Marquer fait ? » en journée, `blocksSettledByChrono` au règlement du soir) ; jamais revendiqué par un chrono
+(`freeBlockToClaim`). **Lot 1 livré** : Planifier demain, étape REMPLIR, bascule « Blocs de temps | Détailler par activité » (défaut
+blocs de temps, mémorisée `plan_time_mode`) — `timeBlockWants` (`utils/planning.dart` : Deep work 2 h, Petites choses 45 min, Deep work
+1 h 30, Tampon 45 min, au plus trois Deep work, clés `~time:<kind>:n`, `timeKindOf`), « pour : … » sous un Deep work = aperçu (parole,
+projets en retard), « + Deep work · + Petites choses · + Tampon », réglage à la main comme avant ; posé par `planOrTimeBlockOf`. ▶ sur un
+bloc de temps (`_launchTimeBlock`, main.dart) : choix de l'activité du chrono. À venir (lot 2) : « Sur quoi tu pars ? » (file classée :
+parole, séances, retards, visées, prochaines actions ; changer d'action en cours de bloc), « Le bloc est fini » (ce que tu as vraiment
+fait), badge Deep work sur un bloc `deep` tenu 60 min, `plan_day` qui pose des blocs de temps.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

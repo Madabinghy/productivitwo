@@ -61,6 +61,11 @@ class ScheduleBlock {
   String? prepForDate;    // "YYYY-MM-DD" — jour du bloc cible (souvent J+1)
   String? prepForBlockId; // id du bloc cible dans daily_schedules/{prepForDate}
   String? domainId;       // domaine ciblé (kind:"session")
+  // Bloc de TEMPS (2026-10-31, « Planifier du temps, pas des tâches ») : "deep"
+  // (Deep work) | "small" (Petites choses) | "buffer" (Tampon). Pas de source :
+  // on choisit quoi faire au moment de le lancer ; il est fait dès que le
+  // chrono, sur n'importe quelle activité, couvre 60 % de son créneau.
+  String? timeBlock;
   // ── Check-in du soir ───────────────────────────────────────────────────────
   // Pourquoi l'engagement a sauté — fait tracké, écrit par le check-in guidé.
   // Enum ouvert : "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
@@ -111,6 +116,7 @@ class ScheduleBlock {
     this.prepForDate,
     this.prepForBlockId,
     this.domainId,
+    this.timeBlock,
     this.skipReason,
     this.reportReason,
     this.carriedFromDate,
@@ -130,6 +136,7 @@ class ScheduleBlock {
   int dayOffset = 0;
 
   bool get isPrep => kind == 'prep';
+  bool get isTimeBlock => timeBlock != null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -151,6 +158,7 @@ class ScheduleBlock {
         'prepForDate': prepForDate,
         'prepForBlockId': prepForBlockId,
         'domainId': domainId,
+        if (timeBlock != null) 'timeBlock': timeBlock,
         'skipReason': skipReason,
         'reportReason': reportReason,
         'carriedFromDate': carriedFromDate,
@@ -179,6 +187,7 @@ class ScheduleBlock {
         prepForDate: j['prepForDate'],
         prepForBlockId: j['prepForBlockId'],
         domainId: j['domainId'],
+        timeBlock: j['timeBlock'] is String ? j['timeBlock'] as String : null,
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
         carriedFromDate: j['carriedFromDate'],

@@ -411,7 +411,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final nowMin = livedNowMin(now, widget.logic.dayStartMin);
     for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
-          b.activityId == null ||
+          (b.activityId == null && b.timeBlock == null) ||
           b.noAutoWin ||
           _won.contains(b.id)) {
         continue;
@@ -422,7 +422,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       if (blockStartMin(b) > nowMin) continue;
       // Sens inverse du binding : une source validée ailleurs (routine faite,
       // temps loggué) coche son bloc — qu'il soit défi ou bloc routine/activité.
-      final act = _activityById(b.activityId!);
+      final act = b.activityId == null ? null : _activityById(b.activityId!);
       final bool reached;
       if (act != null && act.isHabit) {
         // Routine validée (FAB, donjon, minuteur…) → atteinte de la cible.
@@ -481,6 +481,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Réel attribuable au bloc (action → tâche → activité, cf. loggedMinForBlock).
   /// Bloc routine (activité habit) sans tâche : pas de temps, c'est un compteur.
   int _loggedMinFor(ScheduleBlock b, DateTime dayStart, DateTime dayEnd) {
+    if (b.timeBlock != null) {
+      // Bloc de temps : tout chrono, mais seulement dans SON créneau.
+      final base = livedDayStart(DateTime.now(), widget.logic.dayStartMin).subtract(Duration(minutes: widget.logic.dayStartMin));
+      final s0 = base.add(Duration(minutes: blockStartMin(b)));
+      final e0 = base.add(Duration(minutes: blockEndMin(b)));
+      return loggedMinForBlock(b, widget.logic.state.sessions, s0, e0);
+    }
     if (b.actionId == null && b.taskId == null && b.activityId != null) {
       final act = _activityById(b.activityId!);
       if (act == null || act.isHabit) return 0;
