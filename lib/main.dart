@@ -2875,6 +2875,7 @@ class _AppRootState extends State<AppRoot>
     if (logic.currentProjects.isEmpty && _dashboardProjects.isNotEmpty) {
       logic.updateGanttCounts(_dashboardProjects);
     }
+    WidgetService.badges = _badges; // faits du jour pour les widgets revus
     WidgetService.update(logic);
     WidgetService.provisionAuth(_sync); // expose uid+token aux widgets actionnables (1×/session)
     _sync.pushProductivitySnapshot(logic.productivitySnapshot()); // → ORION (levier du jour)

@@ -13,9 +13,19 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn;
+import 'package:productivitwo_v1/utils/dashboard_tiles.dart' show perfectDayTile;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
+import 'package:productivitwo_v1/utils/mode.dart' show kModeLabels;
+import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
+import 'package:productivitwo_v1/utils/routine_moments.dart' show buildRoutineDay;
+import 'package:productivitwo_v1/utils/widget_payload.dart';
 
 const _kAppGroup = 'group.com.madabinghy.productivitwo';
 const _kIosWidgetChannel = MethodChannel('com.madabinghy.productivitwo/widget');
@@ -52,6 +62,8 @@ class WidgetService {
   WidgetService._();
 
   static WidgetDiag? lastDiag;
+  /// Posé par l'écran racine : faits du jour vécu (journée parfaite, Montre suisse…).
+  static BadgeCenter? badges;
   static bool _authProvisioned = false;
 
   /// Écrit (une fois par session) uid + token API dans l'App Group pour que les
@@ -193,9 +205,12 @@ class WidgetService {
         }
       } catch (_) {}
 
+      final todayJson = await _todayJson(logic);
+
       if (Platform.isIOS) {
         // Écriture directe via Method Channel — UserDefaults(suiteName:) côté Swift
         await Future.wait([
+          _kIosWidgetChannel.invokeMethod('setString', {'key': 'today_json', 'value': todayJson}),
           _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_done', 'value': routinesDone}),
           _kIosWidgetChannel.invokeMethod('setInt', {'key': 'routines_total', 'value': routinesTotal}),
           _kIosWidgetChannel.invokeMethod('setString', {'key': 'gantt_json', 'value': ganttJson}),
@@ -216,6 +231,7 @@ class WidgetService {
           HomeWidget.saveWidgetData<String>('projects_json', projectsJson),
           HomeWidget.saveWidgetData<String>('schedule_json', scheduleJson),
           HomeWidget.saveWidgetData<String>('focus_task_json', focusTaskJson),
+          HomeWidget.saveWidgetData<String>('today_json', todayJson),
         ]);
         await HomeWidget.updateWidget(
           androidName: 'ProductivitwoWidget',
@@ -240,6 +256,169 @@ class WidgetService {
         ts: DateTime.now(),
       );
     }
+  }
+
+  /// Widgets revus (2026-10-31) : tout ce que l'écran d'accueil montre, calculé
+  /// avec la même logique que l'app, sur la journée vécue. Une clé, un JSON.
+  static Future<String> _todayJson(AppLogic logic) async {
+    final now = DateTime.now();
+    final lived = logic.livedToday;
+    final ymd = logic.livedTodayYmd;
+    final next = DateTime(lived.year, lived.month, lived.day + 1);
+    final nextYmd = '${next.year.toString().padLeft(4, '0')}-${next.month.toString().padLeft(2, '0')}-${next.day.toString().padLeft(2, '0')}';
+    final out = <String, dynamic>{'ymd': ymd, 'at': now.millisecondsSinceEpoch};
+
+    // Programme de la journée vécue (nuit après minuit comprise).
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        Future<DailySchedule?> read(String d) async {
+          final snap = await FirebaseFirestore.instance.doc('users/$uid/daily_schedules/$d').get();
+          final data = snap.data();
+          return data == null ? null : DailySchedule.from(data);
+        }
+
+        final day = await read(ymd);
+        final nxt = await read(nextYmd);
+        final blocks = livedDayBlocks(day, nxt, logic.dayStartMin)
+            .where((b) => b.status == 'pending' || b.status == 'done')
+            .where((b) => b.kind != 'prep' && b.kind != 'session')
+            .toList()
+          ..sort((a, b) => blockStartAt(a, lived).compareTo(blockStartAt(b, lived)));
+        out['blocks'] = [
+          for (final b in blocks) widgetBlock(b, lived, b.docDate ?? ymd, logic.currentProjects),
+        ];
+      }
+    } catch (_) {}
+
+    // Chrono en cours.
+    Session? run;
+    for (final s in logic.state.sessions) {
+      if (s.endAt != null || s.deleted) continue;
+      if (run == null || s.startAt.isAfter(run.startAt)) run = s;
+    }
+    if (run != null) {
+      final a = logic.state.activities.where((x) => x.id == run!.activityId).firstOrNull;
+      out['running'] = {'activity': a?.name ?? 'Chrono', 'startMs': run.startAt.millisecondsSinceEpoch};
+    }
+
+    // Journée parfaite, braises, mode.
+    final bc = badges;
+    final facts = bc?.todayFacts();
+    final ledger = logic.emberLedgerNow();
+    final tile = perfectDayTile(facts, ledger);
+    if (facts != null && tile != null) {
+      final total = facts.routines.length + facts.countedBlocks.length;
+      final done = facts.routinesReached + facts.blocksDone;
+      out['perfect'] = {
+        'value': tile.value,
+        'sub': tile.sub,
+        'cells': perfectCells(done, total),
+        'done': done,
+        'total': total,
+      };
+    }
+    out['embers'] = '${ledger.available} / $kEmberCap';
+    out['mode'] = {
+      'label': logic.inRecharge ? 'Recharge' : kModeLabels[logic.mode],
+      'key': logic.inRecharge ? 'recharge' : logic.mode.name,
+      'wins': facts?.disciplineWinsToday ?? 0,
+    };
+
+    // Routines du moment : ce qui reste, puis le compte des faites.
+    final lymd = logic.livedYmdNow;
+    final rd = buildRoutineDay(
+      activities: logic.state.activeActivities,
+      hits: logic.state.habitHits,
+      now: now,
+      pushed: logic.routinePushed(lymd),
+      deferred: logic.state.nowSkippedByYmd[lymd] ?? const [],
+      dismissed: logic.nowDoneSet(lymd),
+      dayStartMin: logic.dayStartMin,
+      moments: logic.moments,
+      exclude: logic.acquiredIds,
+    );
+    final all = rd.countAll;
+    final q = rd.queue;
+    out['routines'] = {
+      'moment': rd.current.thisOne,
+      'done': all.done,
+      'total': all.total,
+      'later': all.total - all.done - q.length,
+      'todo': [
+        for (final s in q.take(6))
+          {
+            'id': s.id,
+            'label': s.activity.name,
+            'done': s.share?.done ?? s.todo.dayDone,
+            'target': s.share?.target ?? s.todo.dayTarget ?? s.todo.weekTarget,
+            'series': logic.habitCurrentStreak(s.id),
+          },
+      ],
+    };
+
+    // Actions visées aujourd'hui.
+    final focused = <Map<String, dynamic>>[];
+    for (final p in logic.currentProjects) {
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          if (isFocusedOn(a, lived)) {
+            focused.add({'title': a.title, 'done': a.done, 'projectId': p.id, 'taskId': t.id, 'actionId': a.id});
+          }
+        }
+      }
+    }
+    for (final act in logic.state.activeActivities) {
+      for (final a in act.ownActions) {
+        if (isFocusedOn(a, lived)) focused.add({'title': a.title, 'done': a.done, 'activityId': act.id, 'actionId': a.id});
+      }
+    }
+    focused.sort((a, b) => (a['done'] == true ? 1 : 0).compareTo(b['done'] == true ? 1 : 0));
+    out['focused'] = {
+      'done': focused.where((a) => a['done'] == true).length,
+      'total': focused.length,
+      'items': focused.take(6).toList(),
+    };
+
+    // Montre suisse : activités couvertes sur 7 jours glissants.
+    if (facts != null) {
+      final pace = facts.pace;
+      final behind = pace.where((x) => !x.onPace).toList()..sort((a, b) => b.missingMin.compareTo(a.missingMin));
+      out['watch'] = {
+        'covered': pace.length - behind.length,
+        'total': pace.length,
+        'behind': [
+          for (final x in behind.take(3))
+            {
+              'name': x.activity.name,
+              'missing': x.missingMin,
+              'frac': x.expectedMin > 0 ? (x.doneMin / x.expectedMin).clamp(0.0, 1.0) : 1.0,
+            },
+        ],
+      };
+    }
+
+    // Projet du moment : briques et prochaine action.
+    final ranked = rankProjectMoments(logic.currentProjects, logic.state.sessions, lived)
+        .where((m) => !m.upcoming)
+        .toList();
+    if (ranked.isNotEmpty) {
+      final m = ranked.first;
+      final row = projectBricks(m.project, lived);
+      out['project'] = {
+        'id': m.project.id,
+        'title': m.project.title,
+        'pill': m.daysToSession != null
+            ? (m.daysToSession == 0 ? 'séance aujourd\'hui' : m.daysToSession == 1 ? 'séance demain' : 'séance dans ${m.daysToSession} j')
+            : (m.behind ? 'en retard sur le plan' : null),
+        'bricks': [for (final b in row.bricks.take(16)) b.state.name],
+        'line': '${m.plan.done} / ${m.plan.total} tâches${m.behind ? ' · ${m.plan.expected - m.plan.done} en retard sur le plan' : ''}',
+        if (m.next != null) 'next': m.next!.action.title,
+      };
+    }
+
+    return jsonEncode(out);
   }
 
   // Couleur Flutter → "#RRGGBB" (ou null).
