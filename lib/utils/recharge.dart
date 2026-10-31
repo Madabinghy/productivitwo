@@ -1,6 +1,4 @@
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 
 /// Recharge (maquette validée 2026-10-30) : la nuit sort des modes. Du début
 /// du sommeil (bloc « Sommeil » ou chrono Sommeil, après le dernier pointage)
@@ -49,41 +47,21 @@ bool isBasicNeedBlock(ScheduleBlock b, Map<String, Activity> activitiesById) =>
 bool isRestBlock(ScheduleBlock b, Map<String, Activity> activitiesById) =>
     isRestName(b.title) || isRestName(activitiesById[b.activityId]?.name);
 
-bool _isSleepBlock(ScheduleBlock b, Map<String, Activity> byId) => isSleepName(b.title) || isSleepName(byId[b.activityId]?.name);
 
-/// Débuts de sommeil d'une journée vécue qui commence à [dayStart] : blocs
-/// Sommeil du programme de ce jour ([blocks] : doc du jour, ou journée vécue
-/// fusionnée avec `dayOffset`) et du lendemain avant la bascule
-/// ([nextDayBlocks]), chronos Sommeil lancés dans la journée vécue.
+/// Débuts de sommeil d'une journée vécue qui commence à [dayStart] : les
+/// chronos Sommeil lancés dans la journée vécue. Depuis le 2026-10-31, le bloc
+/// Sommeil du programme ne démarre plus la recharge (on ne se couche pas pile à
+/// l'heure) : Aujourd'hui propose « Je vais me coucher » (`bedtimePrompt`).
 List<DateTime> sleepStartsOf({
   required DateTime dayStart,
-  required List<ScheduleBlock> blocks,
-  List<ScheduleBlock> nextDayBlocks = const [],
   required List<Session> sessions,
   required Map<String, Activity> activitiesById,
 }) {
-  final midnight = DateTime(dayStart.year, dayStart.month, dayStart.day);
-  final dayStartMin = dayStart.difference(midnight).inMinutes;
   final dayEnd = dayStart.add(const Duration(days: 1));
-  final out = <DateTime>[];
-  bool live(ScheduleBlock b) => b.status != 'deleted' && b.status != 'skipped';
-  for (final b in blocks) {
-    if (!live(b) || !_isSleepBlock(b, activitiesById)) continue;
-    final m = blockStartMin(b);
-    if (b.dayOffset == 0 && m < dayStartMin) continue; // la nuit de la veille
-    out.add(midnight.add(Duration(minutes: m)));
-  }
-  for (final b in nextDayBlocks) {
-    if (!live(b) || !_isSleepBlock(b, activitiesById)) continue;
-    final m = blockStartMin(b);
-    if (m < dayStartMin) out.add(midnight.add(Duration(minutes: 24 * 60 + m)));
-  }
-  for (final s in sessions) {
-    if (s.deleted || !isSleepName(activitiesById[s.activityId]?.name)) continue;
-    if (s.startAt.isBefore(dayStart) || !s.startAt.isBefore(dayEnd)) continue;
-    out.add(s.startAt);
-  }
-  return out..sort();
+  return [
+    for (final s in sessions)
+      if (!s.deleted && isSleepName(activitiesById[s.activityId]?.name) && !s.startAt.isBefore(dayStart) && s.startAt.isBefore(dayEnd)) s.startAt,
+  ]..sort();
 }
 
 /// Début de la recharge d'une journée vécue : le premier début de sommeil
@@ -126,11 +104,8 @@ Map<String, DateTime> rechargeByYmd({
     final day = DateTime.tryParse(ymd);
     if (day == null) continue;
     final dayStart = DateTime(day.year, day.month, day.day).add(Duration(minutes: dayStartMin));
-    final next = ymdOf(DateTime(day.year, day.month, day.day + 1));
     final starts = sleepStartsOf(
       dayStart: dayStart,
-      blocks: schedulesByYmd[ymd]?.blocks ?? const [],
-      nextDayBlocks: schedulesByYmd[next]?.blocks ?? const [],
       sessions: sessions,
       activitiesById: byId,
     );
@@ -169,4 +144,30 @@ DateTime? rechargeSince({
   final done = blocks.any((b) => b.status == 'done' && b.doneAt != null && !b.doneAt!.isBefore(dayStart) && !isRestBlock(b, activitiesById));
   if (done) return null;
   return lastSleepStart ?? dayStart;
+}
+
+// ── Aller se coucher (2026-10-31) ─────────────────────────────────────────────
+
+/// Ce que la carte du soir propose avant le bloc Sommeil.
+enum BedtimeStep { plan, bed }
+
+/// La carte « Je vais me coucher » d'Aujourd'hui, avant le bloc Sommeil du
+/// programme ([sleepAt]) : une heure avant, si demain n'est pas posé
+/// ([planned]), proposer de planifier ; une fois posé (ou dès 30 min avant),
+/// proposer d'aller se coucher. Visible jusqu'à 3 h après l'heure du bloc,
+/// jamais en recharge, jamais quand la personne a dit « Pas encore »
+/// ([snoozedUntil]). Null = rien à proposer.
+BedtimeStep? bedtimePrompt({
+  required DateTime now,
+  required DateTime? sleepAt,
+  required bool planned,
+  required bool inRecharge,
+  DateTime? snoozedUntil,
+}) {
+  if (sleepAt == null || inRecharge) return null;
+  if (snoozedUntil != null && now.isBefore(snoozedUntil)) return null;
+  final before = sleepAt.difference(now).inMinutes;
+  if (before > 60 || before < -180) return null;
+  if (!planned) return BedtimeStep.plan;
+  return BedtimeStep.bed;
 }

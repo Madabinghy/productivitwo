@@ -19,18 +19,17 @@ void main() {
     expect(isRestName('Lecture'), isFalse);
   });
 
-  test('débuts de sommeil : bloc du soir, bloc de la nuit du lendemain, chrono', () {
+  test('débuts de sommeil : seulement les chronos Sommeil de la journée vécue', () {
     final starts = sleepStartsOf(
       dayStart: dayStart,
-      blocks: [
-        ScheduleBlock(startTime: '03:00', durationMin: 60, title: 'Sommeil'), // nuit de la veille
-        ScheduleBlock(startTime: '22:40', durationMin: 440, title: 'Sommeil'),
+      sessions: [
+        Session(activityId: 's', startAt: DateTime(2026, 10, 28, 23, 10)),
+        Session(activityId: 's', startAt: DateTime(2026, 10, 28, 3)), // nuit de la veille
+        Session(activityId: 'w', startAt: DateTime(2026, 10, 28, 22)),
       ],
-      nextDayBlocks: [ScheduleBlock(startTime: '00:30', durationMin: 300, title: 'Sommeil')],
-      sessions: [Session(activityId: 's', startAt: DateTime(2026, 10, 28, 23, 10))],
       activitiesById: byId,
     );
-    expect(starts, [DateTime(2026, 10, 28, 22, 40), DateTime(2026, 10, 28, 23, 10), DateTime(2026, 10, 29, 0, 30)]);
+    expect(starts, [DateTime(2026, 10, 28, 23, 10)]);
   });
 
   test('« Pas encore couché » : un pointage après le bloc repousse la recharge au chrono', () {
@@ -78,5 +77,18 @@ void main() {
     expect(morning(DateTime(2026, 10, 29, 7)), DateTime(2026, 10, 28, 22, 40));
     expect(morning(DateTime(2026, 10, 29, 7, 30), hits: [HabitHit(habitId: 'h', ts: DateTime(2026, 10, 29, 7, 10))]), isNull);
     expect(morning(DateTime(2026, 10, 29, 8), sessions: [Session(activityId: 'w', startAt: DateTime(2026, 10, 29, 7, 50))]), isNull);
+  });
+
+  test('aller se coucher : planifier une heure avant, puis se coucher', () {
+    final sleepAt = DateTime(2026, 10, 30, 23);
+    BedtimeStep? at(DateTime now, {bool planned = false, bool rech = false, DateTime? snooze}) =>
+        bedtimePrompt(now: now, sleepAt: sleepAt, planned: planned, inRecharge: rech, snoozedUntil: snooze);
+    expect(at(DateTime(2026, 10, 30, 21, 50)), isNull);
+    expect(at(DateTime(2026, 10, 30, 22, 10)), BedtimeStep.plan);
+    expect(at(DateTime(2026, 10, 30, 22, 10), planned: true), BedtimeStep.bed);
+    expect(at(DateTime(2026, 10, 30, 23, 40), planned: true), BedtimeStep.bed);
+    expect(at(DateTime(2026, 10, 30, 23, 40), planned: true, rech: true), isNull);
+    expect(at(DateTime(2026, 10, 30, 22, 40), planned: true, snooze: DateTime(2026, 10, 30, 23)), isNull);
+    expect(at(DateTime(2026, 10, 31, 2, 30), planned: true), isNull);
   });
 }

@@ -63,8 +63,8 @@ async function resolveCoacheeUid(docId, data) {
  *  seuls les domaines du périmètre apparaissent — nulle part ailleurs, même
  *  pas agrégés ; le mode "status" omet temps, blocs et boîte à idées. */
 async function buildDashboard(coacheeUid, sharing) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
-    var _t;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
+    var _u;
     const detail = sharing.granularity === "detail";
     const sharedDomains = new Set(sharing.domainIds);
     const now = new Date();
@@ -169,7 +169,7 @@ async function buildDashboard(coacheeUid, sharing) {
         const t = Date.parse(String((_h = v.ts) !== null && _h !== void 0 ? _h : ""));
         if (!isFinite(t))
             continue;
-        ((_k = hitsByHabit[_t = String((_j = v.habitId) !== null && _j !== void 0 ? _j : "")]) !== null && _k !== void 0 ? _k : (hitsByHabit[_t] = [])).push(t);
+        ((_k = hitsByHabit[_u = String((_j = v.habitId) !== null && _j !== void 0 ? _j : "")]) !== null && _k !== void 0 ? _k : (hitsByHabit[_u] = [])).push(t);
     }
     const weekTarget = (h) => {
         var _a;
@@ -270,6 +270,7 @@ async function buildDashboard(coacheeUid, sharing) {
             marks: moodSnap.docs.map((d) => d.data()),
             schedulesByYmd: new Map(schedSnapW.docs.map((d) => [d.id, (d.data().blocks || [])])),
             hits: hitsSnapW.docs.map((d) => d.data()),
+            sessions: ((_s = sessSnap === null || sessSnap === void 0 ? void 0 : sessSnap.docs) !== null && _s !== void 0 ? _s : []).map((d) => d.data()),
             activities: actSnap.docs.map((d) => (Object.assign({ id: d.id }, d.data()))),
             todayYmd: (0, elan_1.livedParts)(now, tz, dayStart).ymd,
             offsetMin: tz,
@@ -301,7 +302,7 @@ async function buildDashboard(coacheeUid, sharing) {
             : new Date(lastActivityAt).toISOString(),
         todayBlocks: detail ? blocks : null,
         weekMinutesByActivity: detail ? minutesByActivity : null,
-        pendingIdeas: detail ? ((_s = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _s !== void 0 ? _s : 0) : null,
+        pendingIdeas: detail ? ((_t = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _t !== void 0 ? _t : 0) : null,
         intention: detail ? intention : null,
     };
 }

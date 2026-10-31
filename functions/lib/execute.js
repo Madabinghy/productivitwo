@@ -779,6 +779,7 @@ async function executeGetUserContext(uid) {
         marks: moodSnap.docs.map((d) => d.data()),
         schedulesByYmd: new Map(schedWeekSnap.docs.map((d) => [d.id, (d.data().blocks || [])])),
         hits: habitHitsSnap.docs.map((d) => d.data()),
+        sessions: (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => d.data()),
         activities: activitiesSnap.docs.map((d) => (Object.assign({ id: d.id }, d.data()))),
         todayYmd: (0, elan_1.livedParts)(now, tzCtx, dayStartCtx).ymd,
         offsetMin: tzCtx,

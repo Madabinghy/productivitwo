@@ -839,8 +839,7 @@ MCP : `update_activity_goal` / `update_activity` acceptent `goalMin: 0` et `pinG
 
 La nuit sort des modes (logique pure `utils/recharge.dart` ↔ `functions/src/elan.ts`, **garder alignés**). **Début** = premier
 début de sommeil APRÈS le dernier pointage d'élan réel du jour vécu : bloc dont le titre ou l'activité est un nom de sommeil
-(`isSleepName` : Sommeil · Dormir · Nuit · Coucher ; doc du jour après la bascule, doc du lendemain avant) ou chrono Sommeil
-(`sleepStartsOf`, `rechargeStart`) — le serveur ne lit que les blocs. **En recharge maintenant** (`AppLogic.rechargeSinceNow` /
+(`isSleepName` : Sommeil · Dormir · Nuit · Coucher) — **depuis le 2026-10-31, seul le chrono Sommeil démarre la recharge** (`sleepStartsOf` : sessions seulement ; serveur `rechargeStartMs(sessions:)`, `elanSummary(sessions:)` ; retour user : on ne se couche pas pile à l'heure, le mode doit continuer de compter). **Carte « Je vais me coucher »** (`BedtimeCard`, `recharge_card.dart` ; logique pure `bedtimePrompt`) en tête d'Aujourd'hui, à partir d'une heure avant le premier bloc Sommeil du soir (≥ 18 h) et jusqu'à 3 h après : demain pas planifié (doc du lendemain sans `generatedBy:"plan"` / `plannedAt`) → « Pose demain, puis au lit » (Planifier demain = `openPlan`, lien Aller me coucher) ; planifié → « Va te coucher » (lance le chrono Sommeil de l'activité du bloc, sinon « Sommeil », créée au besoin) ; « Pas encore » = 30 min de répit. **En recharge maintenant** (`AppLogic.rechargeSinceNow` /
 `inRecharge`, d'après `todayBlocks`) : soir au sommeil sans pointage depuis, chrono Sommeil qui tourne, matin avant le premier
 geste (pointage, +1, chrono hors repos, bloc fait). **Écrans** : `ModePill` « 🌙 Recharge » (bleu nuit `kRechargeColor` /
 `kRechargeInk`), `RechargeBanner` en tête de la feuille du mode, `RechargeCard` (`widgets/recharge_card.dart`) en tête d'Aujourd'hui

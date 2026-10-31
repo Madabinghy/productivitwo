@@ -55,6 +55,7 @@ import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, 
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName, bedtimePrompt;
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
 import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
@@ -706,6 +707,7 @@ class TodayViewState extends State<TodayView> {
                 if (!_showTomorrow) ...[
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
                   RechargeCard(logic: widget.logic),
+                  _bedtimeCard(),
                   PendingRunCard(logic: widget.logic),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
@@ -946,6 +948,49 @@ class TodayViewState extends State<TodayView> {
 
 
   /// Lanceur du mode Planification (2026-10-31) : poser demain ou la fin de journée.
+  DateTime? _bedSnooze;
+
+  /// Carte « Je vais me coucher » avant le bloc Sommeil du soir (`bedtimePrompt`).
+  Widget _bedtimeCard() {
+    final logic = widget.logic;
+    final byId = {for (final a in logic.state.activities) a.id: a};
+    final sleep = (_schedule?.blocks ?? const <ScheduleBlock>[])
+        .where((b) => b.status == 'pending' && blockStartMin(b) >= 18 * 60 && (isSleepName(b.title) || isSleepName(byId[b.activityId]?.name)))
+        .toList()
+      ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+    if (sleep.isEmpty) return const SizedBox.shrink();
+    final d = logic.livedToday;
+    final sleepAt = DateTime(d.year, d.month, d.day).add(Duration(minutes: blockStartMin(sleep.first)));
+    final next = _nextDoc;
+    final planned = next != null && next.generatedBy == 'plan' && next.plannedAt != null && !next.plannedSameDay;
+    final step = bedtimePrompt(now: DateTime.now(), sleepAt: sleepAt, planned: planned, inRecharge: logic.inRecharge, snoozedUntil: _bedSnooze);
+    if (step == null) return const SizedBox.shrink();
+    return BedtimeCard(
+      step: step,
+      sleepAt: sleepAt,
+      onPlan: openPlan,
+      onBed: () => _goToBed(sleep.first),
+      onSnooze: () => setState(() => _bedSnooze = DateTime.now().add(const Duration(minutes: 30))),
+    );
+  }
+
+  /// Lance le chrono Sommeil (activité du bloc, sinon « Sommeil », créée au besoin).
+  void _goToBed(ScheduleBlock block) {
+    final logic = widget.logic;
+    final acts = logic.state.activities.where((a) => !a.deleted && !a.isHabit).toList();
+    var a = acts.where((a) => a.id == block.activityId && isSleepName(a.name)).firstOrNull ?? acts.where((a) => isSleepName(a.name)).firstOrNull;
+    if (a == null) {
+      final domains = logic.state.activeDomains;
+      final dom = domains.where((d) => isSleepName(d.name) || d.name.toLowerCase().contains('santé')).firstOrNull ?? domains.firstOrNull;
+      if (dom == null) return;
+      a = Activity(domainId: dom.id, name: 'Sommeil', goalMin: 0);
+      logic.state.activities.add(a);
+      logic.onChange();
+    }
+    logic.start(a.id);
+    setState(() {});
+  }
+
   Future<void> openPlan() async {
     await showPlanScreen(context, widget.logic, badges: widget.badges);
     if (mounted) setState(() {});

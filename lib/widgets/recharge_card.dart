@@ -4,7 +4,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleRecharge;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
-import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
+import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName, BedtimeStep;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show kRechargeColor, kRechargeInk;
 
 String _hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -112,5 +112,84 @@ class RechargeCard extends StatelessWidget {
       logic.sync?.deleteSession(s.id);
     }
     logic.setMode(mode);
+  }
+}
+
+/// Avant le bloc Sommeil (2026-10-31, retour user : la recharge ne démarre plus
+/// toute seule) : une heure avant, « Pose demain, puis au lit » si demain n'est
+/// pas planifié ; sinon « Va te coucher » → chrono Sommeil (= recharge).
+class BedtimeCard extends StatelessWidget {
+  final BedtimeStep step;
+  final DateTime sleepAt;
+  final VoidCallback onPlan;
+  final VoidCallback onBed;
+  final VoidCallback onSnooze;
+  const BedtimeCard({super.key, required this.step, required this.sleepAt, required this.onPlan, required this.onBed, required this.onSnooze});
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = step == BedtimeStep.plan;
+    final late = DateTime.now().isAfter(sleepAt);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: kRechargeColor.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kRechargeInk.withValues(alpha: .25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.bedtime_outlined, size: 16, color: kRechargeInk),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              late ? 'BLOC SOMMEIL DEPUIS ${_hm(sleepAt)}' : 'AVANT DE DORMIR · SOMMEIL À ${_hm(sleepAt)}',
+              style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: kRechargeInk.withValues(alpha: .85)),
+            ),
+          ),
+          const InfoDot(kRuleRecharge, size: 16),
+        ]),
+        const SizedBox(height: 6),
+        Text(plan ? 'Pose demain, puis au lit' : 'Va te coucher, la journée est finie',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kRechargeInk)),
+        const SizedBox(height: 4),
+        Text(
+          plan
+              ? 'Quelques minutes pour poser demain : le soir, ça se décide mieux.'
+              : 'Le chrono Sommeil lance ta recharge : la nuit ne compte plus dans tes modes.',
+          style: TextStyle(fontSize: 12.5, color: kRechargeInk.withValues(alpha: .75)),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: FilledButton.icon(
+            onPressed: plan ? onPlan : onBed,
+            style: FilledButton.styleFrom(
+              backgroundColor: kRechargeInk,
+              foregroundColor: kRechargeColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: Icon(plan ? Icons.explore_outlined : Icons.bedtime, size: 18),
+            label: Text(plan ? 'Planifier demain' : 'Je vais me coucher', style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+        Row(children: [
+          if (plan)
+            TextButton(
+              onPressed: onBed,
+              style: TextButton.styleFrom(foregroundColor: kRechargeInk, padding: EdgeInsets.zero),
+              child: const Text('Aller me coucher'),
+            ),
+          const Spacer(),
+          TextButton(
+            onPressed: onSnooze,
+            style: TextButton.styleFrom(foregroundColor: kRechargeInk.withValues(alpha: .7), padding: EdgeInsets.zero),
+            child: const Text('Pas encore'),
+          ),
+        ]),
+      ]),
+    );
   }
 }

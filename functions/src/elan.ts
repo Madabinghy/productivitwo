@@ -165,21 +165,13 @@ export function isBasicNeedName(s: string | null | undefined): boolean {
   return ["manger", "repas", "dejeuner", "diner", "petit-dej", "petit dej", "gouter"].some((p) => n.startsWith(p));
 }
 
-function blockMin(b: BlockLite): number | null {
-  const p = (b.startTime ?? "").split(":");
-  if (p.length < 2) return null;
-  const h = Number(p[0]), m = Number(p[1]);
-  return isFinite(h) && isFinite(m) ? h * 60 + m : null;
-}
-
-/** Début de la recharge du jour vécu `ymd` (epoch ms) : premier bloc Sommeil
- *  (doc du jour après la bascule, doc du lendemain avant) qui suit le dernier
- *  pointage d'élan. Le serveur ne regarde que les blocs (l'app y ajoute les
- *  chronos Sommeil). */
+/** Début de la recharge du jour vécu `ymd` (epoch ms) : premier chrono Sommeil
+ *  lancé dans la journée vécue qui suit le dernier pointage d'élan. Depuis le
+ *  2026-10-31, le bloc Sommeil du programme ne démarre plus la recharge (on ne
+ *  se couche pas pile à l'heure) : l'app propose « Je vais me coucher ». */
 export function rechargeStartMs(opts: {
   ymd: string;
-  blocks: BlockLite[];
-  nextBlocks: BlockLite[];
+  sessions: SessionLite[];
   activityNames: Map<string, string>;
   lastMarkMs: number | null;
   offsetMin: number | null | undefined;
@@ -187,27 +179,25 @@ export function rechargeStartMs(opts: {
 }): number | null {
   const dayStartMin = opts.dayStartMin ?? DEFAULT_DAY_START_MIN;
   const [y, mo, d] = opts.ymd.split("-").map(Number);
-  const midnightLocal = Date.UTC(y, mo - 1, d);
-  const sleep = (b: BlockLite) =>
-    b.status !== "deleted" && b.status !== "skipped" && (isSleepName(b.title) || isSleepName(opts.activityNames.get(b.activityId ?? "")));
+  // Heure murale (les chronos sont écrits sans fuseau), convertie à la fin.
+  const startWall = Date.UTC(y, mo - 1, d) + dayStartMin * 60_000;
+  const endWall = startWall + 24 * 60 * 60_000;
   const starts: number[] = [];
-  const toMs = (localMin: number) => {
-    const local = midnightLocal + localMin * 60_000;
-    return local - offsetFor(new Date(local), opts.offsetMin) * 60_000;
-  };
-  for (const b of opts.blocks) {
-    const m = blockMin(b);
-    if (m !== null && m >= dayStartMin && sleep(b)) starts.push(toMs(m));
-  }
-  for (const b of opts.nextBlocks) {
-    const m = blockMin(b);
-    if (m !== null && m < dayStartMin && sleep(b)) starts.push(toMs(24 * 60 + m));
+  for (const s of opts.sessions) {
+    if (s.deleted === true || !s.startAt || !isSleepName(opts.activityNames.get(s.activityId ?? ""))) continue;
+    const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(s.startAt);
+    const wall = hasZone
+      ? Date.parse(s.startAt) + offsetFor(new Date(Date.parse(s.startAt)), opts.offsetMin) * 60_000
+      : Date.parse(`${s.startAt}Z`);
+    if (!isFinite(wall) || wall < startWall || wall >= endWall) continue;
+    starts.push(wall - offsetFor(new Date(wall), opts.offsetMin) * 60_000);
   }
   starts.sort((a, b) => a - b);
   for (const t of starts) if (opts.lastMarkMs === null || t >= opts.lastMarkMs) return t;
   return null;
 }
 
+export interface SessionLite { activityId?: string | null; startAt?: string; deleted?: boolean }
 export interface ActivityLite { id: string; name?: string; type?: string; habitFreq?: number | string | null; habitTarget?: number | null; deleted?: boolean }
 export interface HitLite { habitId: string; ts: string }
 export interface BlockLite { status?: string; doneAt?: string | null; title?: string; activityId?: string | null; startTime?: string }
@@ -268,6 +258,8 @@ export function elanSummary(opts: {
   schedulesByYmd: Map<string, BlockLite[]>;
   hits: HitLite[];
   activities: ActivityLite[];
+  /** Chronos des derniers jours : les chronos Sommeil ouvrent la recharge. */
+  sessions?: SessionLite[];
   todayYmd: string;
   days?: number;
   offsetMin?: number | null;
@@ -289,11 +281,9 @@ export function elanSummary(opts: {
       .filter((mk) => mk.kind === "elan" && mk.ymd === ymd)
       .map((mk) => Date.parse(mk.at))
       .filter((t) => isFinite(t));
-    const nextYmd = new Date(Date.UTC(y, m - 1, d - i + 1)).toISOString().slice(0, 10);
     const recharge = rechargeStartMs({
       ymd,
-      blocks: opts.schedulesByYmd.get(ymd) ?? [],
-      nextBlocks: opts.schedulesByYmd.get(nextYmd) ?? [],
+      sessions: opts.sessions ?? [],
       activityNames,
       lastMarkMs: dayMarkMs.length ? Math.max(...dayMarkMs) : null,
       offsetMin: opts.offsetMin,
