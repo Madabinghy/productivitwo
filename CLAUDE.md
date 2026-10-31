@@ -1009,7 +1009,9 @@ vivant ; Petites choses = actions ≤ 20 min devant ; `QueueItem.activity` = chr
 (`blockOutcome(activityId: null)`), « Caser un bloc … demain » garde `timeBlock`. Tampon ou file vide → choix de l'activité du chrono.
 Badge Deep work : un bloc `deep` compte dès 60 min cumulées de chronos dans son créneau (`deepWorkSessions`). Serveur (⚠️ `firebase
 deploy --only functions`) : `schedule_day` accepte `timeBlock`, `BLOCK_RULES` dit « blocs de temps par défaut ». Web : un bloc de temps
-s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »).
+s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »). **« Nouveau bloc »** (2026-10-31) : puces BLOC DE TEMPS
+(Deep work 90 min · Petites choses 45 · Tampon 45, `_pickTimeBlock`, `daily_schedule_view.dart`) en tête, avant BLOC D'ACTIVITÉ — un bloc
+de temps se pose le jour même en un tap ; le Planifier « La fin d'aujourd'hui » propose aussi des blocs de temps.
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
