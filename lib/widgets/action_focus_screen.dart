@@ -411,11 +411,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     );
     if (picked == null || !mounted) return;
     if (picked == -1) {
-      // La page focus laisse la place à l'offensive, front et première action posés.
-      final nav = Navigator.of(context);
-      final p = _project!;
-      nav.pop();
-      nav.push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, projectId: p.id, firstActionId: a.id)));
+      _openOffensive();
       return;
     }
     if (picked == 90) {
@@ -423,6 +419,15 @@ class _FocusScreenState extends State<_FocusScreen> {
     } else {
       _start(minutes: picked);
     }
+  }
+
+  /// La page focus laisse la place à l'offensive, front et première action posés.
+  void _openOffensive() {
+    final p = _project;
+    if (p == null) return;
+    final nav = Navigator.of(context);
+    nav.pop();
+    nav.push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, projectId: p.id, firstActionId: a.id)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────
@@ -454,6 +459,12 @@ class _FocusScreenState extends State<_FocusScreen> {
         actions: [
           if (!after && canChrono && _phase == _Phase.before)
             IconButton(tooltip: 'Lancer le chrono', icon: const Icon(Icons.timer_outlined), onPressed: () => _start(minutes: a.estimatedMin)),
+          if (!after && _project != null && _phase == _Phase.before)
+            IconButton(
+              tooltip: 'Offensive sur ce projet',
+              icon: const Icon(Icons.north_east_rounded, color: Color(0xFFFF8A4C)),
+              onPressed: _openOffensive,
+            ),
           if (widget.moreActions.isNotEmpty)
             IconButton(
               tooltip: 'Autres gestes',
