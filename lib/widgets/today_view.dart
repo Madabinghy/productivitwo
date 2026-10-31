@@ -1468,6 +1468,28 @@ class TodayViewState extends State<TodayView> {
         final board = _stakeBoard() ?? StakeBoard.empty;
         final evening = isEvening(widget.logic.livedNowMinNow);
         final ledger = evening ? _eveningLedger(board) : null;
+        final stakes = StakesList(
+          board: board,
+          evening: evening,
+          watchBlocking: board.watchOutOfReach > 0 ? watchBlockersOf(widget.logic).length : 0,
+          onWatchSettings: () async {
+            await showWatchMinimumsSheet(ctx, widget.logic);
+            setLocal(() {});
+          },
+          onOpenBadges: () {
+            Navigator.of(ctx).pop();
+            _openBadgeGallery();
+          },
+          onRun: (s) {
+            if (s.gesture.kind == StakeGestureKind.routine) {
+              _runStake(s);
+              setLocal(() {});
+            } else {
+              Navigator.of(ctx).pop();
+              _runStake(s);
+            }
+          },
+        );
         return ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
@@ -1479,6 +1501,8 @@ class TodayViewState extends State<TodayView> {
               chipColor: kStakeHunt,
             ),
             const SizedBox(height: 12),
+            // Le soir, ENCORE POSSIBLE CE SOIR passe en tête (retour user 2026-10-30) : le bilan après.
+            if (evening) ...[stakes, const SizedBox(height: 12)],
             if (ledger != null && !ledger.isEmpty)
               EveningLedgerCard(ledger: ledger)
             else if (!evening)
@@ -1495,28 +1519,7 @@ class TodayViewState extends State<TodayView> {
                 setLocal(() {});
               },
             ),
-            StakesList(
-              board: board,
-              evening: evening,
-              watchBlocking: board.watchOutOfReach > 0 ? watchBlockersOf(widget.logic).length : 0,
-              onWatchSettings: () async {
-                await showWatchMinimumsSheet(ctx, widget.logic);
-                setLocal(() {});
-              },
-              onOpenBadges: () {
-                Navigator.of(ctx).pop();
-                _openBadgeGallery();
-              },
-              onRun: (s) {
-                if (s.gesture.kind == StakeGestureKind.routine) {
-                  _runStake(s);
-                  setLocal(() {});
-                } else {
-                  Navigator.of(ctx).pop();
-                  _runStake(s);
-                }
-              },
-            ),
+            if (!evening) stakes,
           ],
         );
       });
