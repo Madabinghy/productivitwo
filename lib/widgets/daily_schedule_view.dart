@@ -1032,7 +1032,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   /// Fiche de la source (tâche / activité), sinon la feuille du bloc.
   void _openDetail(BuildContext context, ColorScheme cs, ScheduleBlock block) {
-    final hasSource = block.projectId != null || block.activityId != null;
+    final hasSource = block.projectId != null || block.activityId != null || block.timeBlock != null;
     if (hasSource && widget.onOpenSource != null) {
       widget.onOpenSource!(block);
     } else {
@@ -1061,10 +1061,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final title = focusAction?.title ?? block.title;
     final nextStep = focusAction == null ? null : nextChecklistItem(focusAction);
     final steps = focusAction != null && focusAction.checklist.isNotEmpty;
-    final launchable = widget.onLaunch != null && !isDone && (block.projectId != null || block.activityId != null);
+    final launchable = widget.onLaunch != null && !isDone && (block.projectId != null || block.activityId != null || block.timeBlock != null);
     // Flemme (maquette « Malgré tout ») : le petit pas d'abord, « Tout le bloc » à côté.
     // Les deux comptent : c'est démarrer, 10 min, qui fait la victoire.
     final smallStep = launchable &&
+        block.timeBlock == null &&
         widget.onLaunchTimed != null &&
         widget.logic.mode == DayMode.low &&
         !isBasicNeedBlock(block, {for (final a in widget.logic.state.activities) a.id: a});
@@ -1095,7 +1096,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   right: '${focusAction.checklist.where((c) => c.done).length} / ${focusAction.checklist.length}'),
             ])
           : null,
-      primaryLabel: isDone ? 'Rouvrir' : (smallStep ? '10 min, malgré tout' : (launchable ? (current ? 'Lancer' : 'Commencer') : 'Fait')),
+      primaryLabel: isDone
+          ? 'Rouvrir'
+          : (smallStep
+              ? '10 min, malgré tout'
+              : (launchable ? (block.timeBlock == 'deep' ? 'Lancer l’offensive' : (block.timeBlock == 'small' ? 'Lancer la guérilla' : (current ? 'Lancer' : 'Commencer'))) : 'Fait')),
       primaryIcon: isDone ? Icons.undo_rounded : (smallStep ? Icons.timer_outlined : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded)),
       chainLabel: smallStep ? 'Tout le bloc · ${fmtMin(block.durationMin)}' : null,
       chainIcon: smallStep ? Icons.play_arrow_rounded : null,
@@ -1153,7 +1158,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     } else {
       loggedMin = 0;
     }
-    final launchable = widget.onLaunch != null && !isDone && !current && (block.projectId != null || block.activityId != null);
+    final launchable = widget.onLaunch != null && !isDone && !current && (block.projectId != null || block.activityId != null || block.timeBlock != null);
     final blockCtx = widget.logic.contextOfBlock(block);
     return Container(
             constraints: const BoxConstraints(minHeight: 48),
@@ -2052,11 +2057,11 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                     letterSpacing: 1,
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
             const SizedBox(height: 4),
-            Text('Du temps réservé : au ▶, tu choisis sur quoi tu pars. Fait dès 60 % du créneau tenu.',
+            Text('Deep work lance une Offensive, Petites choses une Guérilla. Fait dès 60 % du créneau tenu.',
                 style: TextStyle(fontSize: 11.5, height: 1.3, color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in const ['deep', 'small', 'buffer'])
+              for (final k in [ 'deep', 'small', if (widget.block.timeBlock == 'buffer') 'buffer'])
                 ChoiceChip(
                   avatar: Icon(Icons.circle, size: 9, color: kTimeBlockColors[k]),
                   label: Text(kTimeBlockLabels[k]!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),

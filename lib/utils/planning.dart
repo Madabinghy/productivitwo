@@ -222,8 +222,8 @@ String timeWantId(String kind, int n) => '$_kTimePrefix$kind:$n';
 String? timeKindOf(String activityId) => activityId.startsWith(_kTimePrefix) ? activityId.substring(_kTimePrefix.length).split(':').first : null;
 
 /// Les blocs de temps d'une journée pour [budget] minutes : du Deep work
-/// d'abord (2 h, puis 1 h 30), des Petites choses (45 min), un Tampon
-/// (45 min) ; jamais plus de trois Deep work.
+/// d'abord (2 h, puis 1 h 30), des Petites choses (45 min) ; jamais plus de
+/// trois Deep work. Deep work = Offensive, Petites choses = Guérilla.
 List<PlanWant> timeBlockWants(int budget, {Map<String, String> reasons = const {}}) {
   final out = <PlanWant>[];
   var rem = budget;
@@ -238,7 +238,8 @@ List<PlanWant> timeBlockWants(int budget, {Map<String, String> reasons = const {
   if (rem >= 90) add('deep', rem >= 120 ? 120 : 90);
   if (rem >= 45) add('small', 45);
   if (rem >= 135) add('deep', 90);
-  if (rem >= 45) add('buffer', 45);
+  // Plus de Tampon proposé (retour user 2026-10-31) : la marge vient déjà du
+  // niveau Léger / Normal / À fond, qui ne remplit pas tout le temps libre.
   while (rem >= 90 && deep < 3) {
     add('deep', 90);
   }

@@ -9,7 +9,7 @@ import 'package:productivitwo_v1/utils/block_queue.dart';
 void main() {
   test('blocs de temps pour un budget', () {
     final w = timeBlockWants(330);
-    expect(w.map((x) => '${timeKindOf(x.activityId)}:${x.minutes}').toList(), ['deep:120', 'small:45', 'deep:90', 'buffer:45']);
+    expect(w.map((x) => '${timeKindOf(x.activityId)}:${x.minutes}').toList(), ['deep:120', 'small:45', 'deep:90']);
     expect(timeBlockWants(60).map((x) => timeKindOf(x.activityId)).toList(), ['small']);
     expect(timeBlockWants(600).where((x) => timeKindOf(x.activityId) == 'deep').length, 3);
     expect(timeKindOf('abc'), isNull);
