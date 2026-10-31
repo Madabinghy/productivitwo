@@ -99,7 +99,7 @@ export function applyActionPatch(
       const cur = typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null;
       if (v !== cur) {
         changes.push(`jour visé ${cur ?? "—"} → ${v ?? "—"}`);
-        a = { ...a, focusDate: v };
+        a = { ...a, focusDate: v, focusSetAt: v ? new Date().toISOString() : null };
       }
     }
   }

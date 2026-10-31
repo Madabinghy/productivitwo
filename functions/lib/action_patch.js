@@ -86,7 +86,7 @@ function applyActionPatch(action, patch, nowIso = new Date().toISOString()) {
             const cur = typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null;
             if (v !== cur) {
                 changes.push(`jour visé ${cur !== null && cur !== void 0 ? cur : "—"} → ${v !== null && v !== void 0 ? v : "—"}`);
-                a = Object.assign(Object.assign({}, a), { focusDate: v });
+                a = Object.assign(Object.assign({}, a), { focusDate: v, focusSetAt: v ? new Date().toISOString() : null });
             }
         }
     }

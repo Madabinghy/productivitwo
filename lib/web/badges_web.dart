@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'dart:async';
@@ -33,6 +34,8 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
   List<Season> seasons = const [];
   /// Routines acquises (`data/meta.acquired`) : hors journée parfaite, comme sur le mobile.
   Map<String, Acquired> acquired = const {};
+  /// Paroles gelées (`data/meta.paroles`) : le badge Parole tenue du web.
+  Map<String, ParoleDay> paroles = const {};
   WebHuntStore(this.sync) {
     _sub = sync.streamMetaDoc().listen((m) {
       _hunts = parseBadgeHunts(m['badgeHunts']);
@@ -41,6 +44,7 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
       restDomains = parseRestDomains(m['restDomains']);
       seasons = parseSeasons(m['seasons']);
       acquired = parseAcquired(m['acquired']);
+      paroles = parseParoles(m['paroles']);
       notifyListeners();
     });
   }
@@ -109,9 +113,10 @@ class WebDeckSource extends ChangeNotifier {
     Map<String, String> restDomains = const {},
     List<Season> seasons = const [],
     Map<String, Acquired> acquired = const {},
+    Map<String, ParoleDay> paroles = const {},
   }) {
     final key =
-        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.dropped.length}|${acquired.length}';
+        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.dropped.length}|${acquired.length}|${paroles.length}';
     if (_deck != null && key == _key) return _deck!;
     _key = key;
     return _deck = computeBadges(
@@ -130,6 +135,7 @@ class WebDeckSource extends ChangeNotifier {
       restDomains: restDomains,
       seasons: seasons,
       acquired: acquired,
+      paroles: paroles,
     );
   }
 }
@@ -217,6 +223,7 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
         restDomains: widget.huntStore?.restDomains ?? const {},
         seasons: widget.huntStore?.seasons ?? const [],
         acquired: widget.huntStore?.acquired ?? const {},
+        paroles: widget.huntStore?.paroles ?? const {},
       );
 
   @override
