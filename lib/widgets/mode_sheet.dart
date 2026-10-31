@@ -149,11 +149,21 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           RechargeBanner(since: rechargeSince, now: now),
         ],
         const SizedBox(height: 12),
-        for (final m in DayMode.values) ...[
-          if (m != DayMode.low) const SizedBox(height: 8),
-          _modeCard(cs, dark, m, selected: rechargeSince == null && m == cur, since: m == cur ? _sinceLabel(marks, now) : null, onTap: () {
-            if (m != cur || rechargeSince != null) logic.setMode(m);
-          }),
+        // Les trois modes côte à côte (retour user : « trois choses qui vont ensemble »),
+        // puis ce que l'app propose dans le mode choisi.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final m in DayMode.values) ...[
+            if (m != DayMode.low) const SizedBox(width: 8),
+            Expanded(
+              child: _modeCard(cs, dark, m, selected: rechargeSince == null && m == cur, since: m == cur ? _sinceLabel(marks, now) : null, onTap: () {
+                if (m != cur || rechargeSince != null) logic.setMode(m);
+              }),
+            ),
+          ],
+        ]),
+        if (rechargeSince == null) ...[
+          const SizedBox(height: 8),
+          Text(_modePromise[cur]!, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: text3)),
         ],
         const SizedBox(height: 10),
         if (cur == DayMode.high) ...[_offensiveCard(cs), const SizedBox(height: 8), _guerillaCard(cs)] else ...[_guerillaCard(cs), const SizedBox(height: 8), _offensiveCard(cs)],
@@ -292,6 +302,8 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     return out;
   }
 
+  static const _modeShort = {DayMode.low: 'petits démarrages', DayMode.normal: 'le programme', DayMode.high: 'le gros'};
+
   static const _modePromise = {
     DayMode.low: 'Je te propose des petits démarrages : 10 min, malgré tout · Guérilla',
     DayMode.normal: 'Le programme tel qu’il est, une chose après l’autre',
@@ -313,35 +325,30 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final c = modeChipColor(m, dark: dark);
     return Material(
       color: selected ? c.withValues(alpha: .14) : c.withValues(alpha: .05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: selected ? c : c.withValues(alpha: .35), width: selected ? 2 : 1.2)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: selected ? c : c.withValues(alpha: .35), width: selected ? 2 : 1.2)),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          child: Column(children: [
             Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-              child: Icon(modeIcon(m), color: dark ? Colors.black : Colors.white, size: 22),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: selected ? c : c.withValues(alpha: .22), shape: BoxShape.circle),
+              child: Icon(modeIcon(m), color: selected ? (dark ? Colors.black : Colors.white) : c, size: 20),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text.rich(TextSpan(children: [
-                  TextSpan(text: kModeLabels[m]!, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                  if (selected) TextSpan(text: since == null ? ' · maintenant' : ' · $since', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
-                ])),
-                const SizedBox(height: 2),
-                Text(_modePromise[m]!, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .7))),
-              ]),
-            ),
+            const SizedBox(height: 6),
+            Text(kModeLabels[m]!, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: selected ? c : cs.onSurface)),
+            Text(selected ? (since ?? 'maintenant') : _modeShort[m]!,
+                textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? c : cs.onSurface.withValues(alpha: .55))),
           ]),
         ),
       ),
     );
   }
+
 
   Color _bandColor(ColorScheme cs, bool dark, int? v) => switch (bandModeOf(v)) {
         BandMode.low => modeChipColor(DayMode.low, dark: dark),
