@@ -1009,7 +1009,12 @@ vivant ; Petites choses = actions ≤ 20 min devant ; `QueueItem.activity` = chr
 (`blockOutcome(activityId: null)`), « Caser un bloc … demain » garde `timeBlock`. Tampon ou file vide → choix de l'activité du chrono.
 Badge Deep work : un bloc `deep` compte dès 60 min cumulées de chronos dans son créneau (`deepWorkSessions`). Serveur (⚠️ `firebase
 deploy --only functions`) : `schedule_day` accepte `timeBlock`, `BLOCK_RULES` dit « blocs de temps par défaut ». Web : un bloc de temps
-s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »). **« Nouveau bloc »** (2026-10-31) : puces BLOC DE TEMPS
+s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »). **Un bloc = un MODE** (2026-10-31, retour user : « programmer des modes de fonctionnement de temps ») :
+▶ sur un Deep work lance l'**Offensive**, sur des Petites choses la **Guérilla** (`_launchTimeBlock`, reprise d'une session en attente du
+même mode) ; boutons « Lancer l'offensive » / « Lancer la guérilla » sur la carte du bloc et MAINTENANT (`now_card.dart`, jamais « 10 min,
+malgré tout » sur un bloc de temps) ; le chrono des coups compte pour le bloc (60 %). La file « Sur quoi tu pars ? » ne sert plus qu'à
+un ancien Tampon. **Tampon retiré** : plus proposé (`timeBlockWants`) ni dans « + » / « Nouveau bloc » (la marge vient du niveau Léger /
+Normal / À fond) ; un Tampon existant reste modifiable. **« Nouveau bloc »** (2026-10-31) : puces BLOC DE TEMPS
 (Deep work 90 min · Petites choses 45 · Tampon 45, `_pickTimeBlock`, `daily_schedule_view.dart`) en tête, avant BLOC D'ACTIVITÉ — un bloc
 de temps se pose le jour même en un tap ; le Planifier « La fin d'aujourd'hui » propose aussi des blocs de temps.
 

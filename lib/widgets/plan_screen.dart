@@ -317,7 +317,7 @@ class _PlanScreenState extends State<PlanScreen> {
     final wants = <PlanWant>[];
     final ids = <String>{};
     if (_timeMode) {
-      wants.addAll(timeBlockWants(_budget, reasons: {'deep': _deepPreview(), 'small': 'mails, appels, petites actions', 'buffer': 'pour l’imprévu ou ce qui a débordé'}));
+      wants.addAll(timeBlockWants(_budget, reasons: {'deep': 'Offensive · ${_deepPreview()}', 'small': 'Guérilla · routines et petites actions'}));
       ids.addAll(wants.map((w) => w.activityId));
     }
     for (final kind in _timeMode ? const <PlanStakeKind>[] : [PlanStakeKind.dated, PlanStakeKind.losing, PlanStakeKind.behind]) {
@@ -830,7 +830,7 @@ class _PlanScreenState extends State<PlanScreen> {
       if (_timeMode)
         const Padding(
           padding: EdgeInsets.only(top: 6),
-          child: Text('Du temps réservé, pas des tâches : tu choisiras quoi faire au moment de lancer le bloc.', style: TextStyle(fontSize: 12.5, color: _text2)),
+          child: Text('Du temps réservé à un mode : Deep work lance une Offensive, Petites choses une Guérilla. Tu choisis sur quoi au moment venu.', style: TextStyle(fontSize: 12.5, color: _text2)),
         ),
       Expanded(
         child: ListView(children: [
@@ -878,7 +878,7 @@ class _PlanScreenState extends State<PlanScreen> {
           if (_timeMode) ...[
             _section('AJOUTER'),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in const ['deep', 'small', 'buffer'])
+              for (final k in const ['deep', 'small'])
                 ActionChip(
                   label: Text('+ ${kTimeBlockLabels[k]}', style: TextStyle(fontWeight: FontWeight.w700, color: kTimeBlockColors[k])),
                   backgroundColor: Colors.transparent,
@@ -887,7 +887,7 @@ class _PlanScreenState extends State<PlanScreen> {
                       activityId: timeWantId(k, 100 + _extra.length),
                       title: kTimeBlockLabels[k]!,
                       minutes: k == 'deep' ? 90 : 45,
-                      reason: k == 'deep' ? _deepPreview() : '')),
+                      reason: k == 'deep' ? 'Offensive · ${_deepPreview()}' : 'Guérilla · routines et petites actions')),
                 ),
             ]),
           ] else if (others.isNotEmpty) ...[

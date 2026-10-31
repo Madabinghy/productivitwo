@@ -175,7 +175,7 @@ class _NowCardState extends State<NowCard> {
     final overlay = Overlay.of(anchor).context.findRenderObject() as RenderBox;
     final pos = RelativeRect.fromRect(
         box.localToGlobal(Offset.zero, ancestor: overlay) & box.size, Offset.zero & overlay.size);
-    final launchable = b.projectId != null || b.activityId != null;
+    final launchable = b.projectId != null || b.activityId != null || b.timeBlock != null;
     final session = _openSession;
     final blockAct = _activity(b.activityId);
     final project = _project(b.projectId);
@@ -386,8 +386,8 @@ class _NowCardState extends State<NowCard> {
 
     final hasSource = b != null &&
         widget.onOpenSource != null &&
-        (b.projectId != null || b.activityId != null);
-    final launchable = b != null && (b.projectId != null || b.activityId != null);
+        (b.projectId != null || b.activityId != null || b.timeBlock != null);
+    final launchable = b != null && (b.projectId != null || b.activityId != null || b.timeBlock != null);
 
     final mode = widget.logic.mode;
     final buttons = <Widget>[];
@@ -411,9 +411,12 @@ class _NowCardState extends State<NowCard> {
       }
     } else if (b != null) {
       if (launchable) {
-        final tenMin = mode == DayMode.low && widget.onLaunchTimed != null;
+        final tenMin = mode == DayMode.low && widget.onLaunchTimed != null && b.timeBlock == null;
+        final label = b.timeBlock == 'deep'
+            ? 'Lancer l’offensive'
+            : (b.timeBlock == 'small' ? 'Lancer la guérilla' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer')));
         buttons.add(Expanded(
-            child: _btn(pal, tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'), primary: true, onTap: () {
+            child: _btn(pal, label, primary: true, onTap: () {
           HapticFeedback.lightImpact();
           if (tenMin) {
             widget.onLaunchTimed!(b, 10);
@@ -422,7 +425,7 @@ class _NowCardState extends State<NowCard> {
           }
         })));
         if (tenMin) more.add(MomentAction('Lancer sans minuteur', icon: Icons.play_arrow_rounded, onTap: () => widget.onLaunch(b)));
-        if (!tenMin && widget.onLaunchTimed != null) {
+        if (!tenMin && widget.onLaunchTimed != null && b.timeBlock == null) {
           more.add(MomentAction('10 min, malgré tout', icon: Icons.timer_outlined, hint: 'un minuteur de 10 min sur ce bloc', onTap: () => widget.onLaunchTimed!(b, 10)));
         }
         more.add(MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'marquer le bloc fait', onTap: () => _markDone(b)));

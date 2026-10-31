@@ -10,6 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart';
+import 'package:productivitwo_v1/widgets/offensive_screen.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
@@ -2978,6 +2981,20 @@ class _AppRootState extends State<AppRoot>
   Future<void> _launchTimeBlock(ScheduleBlock block) async {
     final st = _state;
     if (st == null) return;
+    // Un bloc de temps réserve un MODE (retour user 2026-10-31) : Deep work =
+    // Offensive, Petites choses = Guérilla ; leur chrono compte pour le bloc.
+    if (block.timeBlock == 'deep' || block.timeBlock == 'small') {
+      final pending = RunSessionStore.current;
+      final kind = block.timeBlock == 'deep' ? kOffensiveKind : kGuerillaKind;
+      final resume = pending != null && pending.kind == kind && pending.isLive(DateTime.now(), logic.livedTodayYmd) ? pending : null;
+      if (block.timeBlock == 'deep') {
+        await showOffensiveScreen(context, logic, resume: resume);
+      } else {
+        await showGuerillaScreen(context, logic, resume: resume);
+      }
+      if (mounted) setState(() {});
+      return;
+    }
     final today = logic.livedToday;
     final projects = _dashboardProjects;
     final parole = paroleOfDay(logic.paroles, paroleIndex(projects, st.activeActivities), logic.livedTodayYmd, logic.dayStartMin);
