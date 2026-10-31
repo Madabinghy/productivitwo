@@ -979,7 +979,7 @@ parole »), mobile et web ; enjeu dans Ta journée (`buildStakeBoard(parole:)` :
 La feuille du mode (`showModeSheet`, `widgets/mode_sheet.dart`) se lit de haut en bas : je dis comment je suis, je lance, je vois ma
 semaine, je comprends. **PR 1 livrée** : en tête « Là, tu es comment ? » = trois tuiles CÔTE À CÔTE (`_modeCard`, retour user 2026-10-31 :
 « trois choses qui vont ensemble » ; Flemme · Normal · En forme, « depuis 14:20 » sur le mode en cours, sinon « petits démarrages · le
-programme · le gros ») et, dessous, une ligne = ce que l'app propose dans le mode choisi (`_modePromise`) ; puis Guérilla / Offensive
+programme · le gros ») et, dessous, une ligne = ce que l'app propose dans le mode choisi (`_modePromise`) ; **un tap ne change pas le mode** (retour user 2026-10-31) : il l'explique dans une carte sous les tuiles (`_preview`, `_modeExplainCard`, `_modeExplain` : « Passer en Flemme ? », ce que le mode change, « Pas maintenant » · « Passer en Flemme » ; sur le mode en cours « Tu es en Normal depuis 13:15 » · OK) ; puis Guérilla / Offensive
 et les victoires du jour ; puis **CETTE SEMAINE en bandes** (`_weekBands`, logique pure `utils/elan_bands.dart`) à la place des
 créneaux du jour, de la bande du jour et du graphique à points : une phrase (`weekBandSentence` : mode dominant, jour de la flemme,
 démarrages malgré tout), une bande par jour en quarts d'heure (`elanCellsOfDay`, `bandModeOf` : Flemme ambre · Normal vert · En forme
