@@ -907,7 +907,7 @@ de l'action précédente s'arrête quand la suivante n'a pas d'activité.
 
 L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête
 quand le mode est En forme, sinon sous la Guérilla ; `_launchCard`) → écran `widgets/offensive_screen.dart` (`showOffensiveScreen`) :
-durée d'un coup (10 / 15 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
+durée d'un coup (10 / 15 / 25 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
 `frontLine` « 2 en retard · séance le 9 nov · 4 actions prêtes » — ou « Tout mélanger » = la prochaine action de chaque projet, en
 retard d'abord). Puis les actions l'une après l'autre (`buildOffensiveQueue` / `openTargets` : hors tâches à venir, par date de travail
 puis ordre Gantt) : « Projet › Tâche », titre, minuteur du coup, étape en cours + « Ensuite », liste des étapes ; « Étape faite »
