@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
@@ -1072,7 +1073,7 @@ class TodayViewState extends State<TodayView> {
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: badgesTile(bc?.deck, board),
         perfect: perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
-        actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today),
+        actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
         projects: projectTile,
         onProgram: _openProgramSheet,
         onRoutines: _openRoutinesFiche,
@@ -1201,6 +1202,13 @@ class TodayViewState extends State<TodayView> {
   /// Tuile ACTIONS (2026-10-30, retour user) : une feuille des actions visées
   /// aujourd'hui au lieu de l'onglet Actions. Tap = page focus de l'action,
   /// appui long = viser demain / retirer le jour visé.
+  /// La parole du jour vécu (Parole tenue) : gelée, sinon les candidates.
+  ParoleDay? _paroleToday() {
+    final l = widget.logic;
+    final d = paroleOfDay(l.paroles, paroleIndex(l.currentProjects, l.state.activeActivities), l.livedTodayYmd, l.dayStartMin);
+    return d == null || d.ids.length < kParoleMin ? null : d;
+  }
+
   void _openFocusedActionsSheet() {
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
@@ -1222,7 +1230,20 @@ class TodayViewState extends State<TodayView> {
             for (final a in act.ownActions)
               if (focusedToday(a)) _FocusedItem(a, owner: act),
         ];
-        final open = items.where((e) => !e.action.done).toList();
+        final parole = _paroleToday();
+        final pIds = parole?.ids.toSet() ?? const <String>{};
+        if (parole != null) {
+          // Une action de la parole visée ensuite ailleurs y reste.
+          final idx = paroleIndex(widget.logic.currentProjects, widget.logic.state.activeActivities);
+          for (final id in parole.ids) {
+            if (items.any((e) => e.action.id == id)) continue;
+            final x = idx[id];
+            if (x != null) items.add(_FocusedItem(x.action, project: x.project, task: x.task, owner: x.activity));
+          }
+        }
+        final open = items.where((e) => !e.action.done && !pIds.contains(e.action.id)).toList();
+        final paroleOpen = items.where((e) => !e.action.done && pIds.contains(e.action.id)).toList();
+        final paroleDone = items.where((e) => e.action.done && pIds.contains(e.action.id)).length;
         final done = items.where((e) => e.action.done).toList();
         String detail(_FocusedItem e) => [
               if (e.project != null) '${e.project!.title}${e.task != null && e.task!.id != kFlowTaskId ? ' › ${e.task!.title}' : ''}',
@@ -1233,12 +1254,25 @@ class TodayViewState extends State<TodayView> {
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
           children: [
-            FicheHeader(
-              title: 'Visées aujourd\'hui',
-              chip: '${done.length} / ${items.length} faite${done.length > 1 ? 's' : ''}',
-              chipColor: open.isEmpty && items.isNotEmpty ? kPalierGreen : kPalierAmber,
-              kpi: 'touche une action pour l\'ouvrir en focus · ⋯ ou appui long pour la gérer',
-            ),
+            if (parole == null)
+              FicheHeader(
+                title: 'Visées aujourd\'hui',
+                chip: '${done.length} / ${items.length} faite${done.length > 1 ? 's' : ''}',
+                chipColor: open.isEmpty && items.isNotEmpty ? kPalierGreen : kPalierAmber,
+                kpi: 'touche une action pour l\'ouvrir en focus · ⋯ ou appui long pour la gérer',
+                info: const InfoDot(kRuleParole),
+              )
+            else
+              FicheHeader(
+                title: 'Ta parole aujourd\'hui',
+                chip: '$paroleDone / ${parole.ids.length} tenue',
+                chipColor: paroleOpen.isEmpty ? kPalierGreen : kPalierAmber,
+                kpi: [
+                  if (parole.givenAt != null) 'donnée ${_givenLabel(parole.givenAt!)}',
+                  paroleOpen.isEmpty ? 'parole tenue' : (paroleOpen.length == 1 ? 'plus qu\'une pour tenir' : 'encore ${paroleOpen.length} pour tenir'),
+                ].join(' · '),
+                info: const InfoDot(kRuleParole),
+              ),
             if (widget.sync != null)
               Align(
                 alignment: Alignment.centerLeft,
@@ -1252,8 +1286,24 @@ class TodayViewState extends State<TodayView> {
                 ),
               ),
             if (items.isEmpty) const FicheNote('Rien n\'est visé aujourd\'hui.'),
+            if (paroleOpen.isNotEmpty) ...[
+              FicheTitle('TA PAROLE · ${paroleOpen.length} À FAIRE'),
+              for (final e in paroleOpen)
+                FicheStep(
+                  title: e.action.title,
+                  detail: detail(e),
+                  onTap: () async {
+                    await _openFocusedItem(e);
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                  onLongPress: () async {
+                    await _refocusItem(e);
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                ),
+            ],
             if (open.isNotEmpty) ...[
-              FicheTitle('À FAIRE · ${open.length}'),
+              FicheTitle(parole == null ? 'À FAIRE · ${open.length}' : 'AJOUTÉES AUJOURD\'HUI · HORS PAROLE · ${open.length}'),
               for (final e in open)
                 FicheStep(
                   title: e.action.title,
@@ -1520,10 +1570,19 @@ class TodayViewState extends State<TodayView> {
         projects: widget.logic.currentProjects,
         activities: widget.logic.state.activeActivities,
         dayStartMin: widget.logic.dayStartMin,
+        parole: _paroleToday(),
       );
     } catch (_) {
       return null;
     }
+  }
+
+  String _givenLabel(DateTime at) {
+    final hm = '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+    final d = DateTime(at.year, at.month, at.day);
+    final t = widget.logic.livedToday;
+    final diff = DateTime(t.year, t.month, t.day).difference(d).inDays;
+    return diff == 1 ? 'hier à $hm' : diff == 0 ? 'à $hm' : 'le ${at.day}/${at.month} à $hm';
   }
 
   /// Un rallumage armé ou annulé, un +1 qui le rend effectif : le deck se

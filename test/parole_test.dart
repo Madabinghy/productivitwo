@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
+import 'package:productivitwo_v1/utils/dashboard_tiles.dart' show actionsTile;
 
 TaskAction act(String id, String focus, DateTime setAt, {DateTime? doneAt}) {
   final p = focus.split('-').map(int.parse).toList();
@@ -100,5 +101,18 @@ void main() {
     expect(props.map((p) => p.item.action.id).toList(), ['t', 'o', 'p']);
     expect(props.first.reason, 'pas faite aujourd\'hui');
     expect(props[1].reason, 'visée il y a 3 j · à re-viser');
+  });
+
+  test('tuile : la parole du jour', () {
+    final setAt = DateTime(2026, 11, 1, 21);
+    final a1 = act('1', '2026-11-02', setAt, doneAt: DateTime(2026, 11, 2, 9));
+    final a2 = act('2', '2026-11-02', setAt);
+    final a3 = act('3', '2026-11-02', setAt);
+    final extra = act('4', '2026-11-02', DateTime(2026, 11, 2, 10));
+    final acts = [Activity(id: 'a', domainId: 'd', name: 'A', ownActions: [a1, a2, a3, extra])];
+    final tile = actionsTile(projects: const [], activities: acts, today: DateTime(2026, 11, 2), parole: const ParoleDay('2026-11-02', ['1', '2', '3']))!;
+    expect(tile.label, 'PAROLE');
+    expect(tile.value, '1 / 3 tenue');
+    expect(tile.sub, startsWith('encore 2'));
   });
 }

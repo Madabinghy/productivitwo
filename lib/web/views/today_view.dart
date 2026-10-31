@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -862,7 +863,14 @@ class TodayViewState extends State<TodayView> {
       projects: widget.projects,
       activities: widget.activities.where((a) => !a.deleted).toList(),
       dayStartMin: widget.dayStartMin,
+      parole: _paroleToday(),
     );
+  }
+
+  /// Parole tenue : la parole du jour vécu (lecture seule sur le web).
+  ParoleDay? _paroleToday() {
+    final d = paroleOfDay(_huntStore.paroles, paroleIndex(widget.projects, widget.activities), ymdOf(_livedToday), widget.dayStartMin);
+    return d == null || d.ids.length < kParoleMin ? null : d;
   }
 
   bool get _evening => isEvening(_nowMin);
@@ -992,7 +1000,7 @@ class TodayViewState extends State<TodayView> {
       ]),
       badges: badgesTile(_deck(), board),
       perfect: perfectDayTile(facts, _deck().embers),
-      actions: actionsTile(projects: widget.projects, activities: active, today: today),
+      actions: actionsTile(projects: widget.projects, activities: active, today: today, parole: _paroleToday()),
       projects: projectsTile(widget.projects, today, sessions: _sessions),
       onProgram: scrollToNow,
       onRoutines: () => _unfold('routines'),

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/parole.dart' show ParoleDay, kParoleMin;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/reading_due.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, isFocusedOn, isStaleFocus, shortDateFr;
@@ -175,6 +176,7 @@ StakeBoard buildStakeBoard({
   int dayStartMin = kDefaultDayStartMin,
   int top = kStakesTop,
   int familyCap = kStakesFamilyCap,
+  ParoleDay? parole,
 }) {
   final now = facts.now;
   final today = _day(now);
@@ -521,9 +523,46 @@ StakeBoard buildStakeBoard({
   }
 
   // ── 4. Actions visées aujourd'hui (ou à re-viser) ───────────────────────────
+  // Parole tenue : les actions de la parole du jour (≥ 3) ; la dernière se perd ce soir.
+  final paroleIds = parole == null || parole.ids.length < kParoleMin ? const <String>{} : parole.ids.toSet();
+  var paroleLeft = 0;
+  if (paroleIds.isNotEmpty) {
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        paroleLeft += t.actions.where((a) => paroleIds.contains(a.id) && !a.done).length;
+      }
+    }
+    for (final act in activities) {
+      paroleLeft += act.ownActions.where((a) => paroleIds.contains(a.id) && !a.done).length;
+    }
+  }
   void focusGain(TaskAction a, {Project? p, ProjectTask? t, Activity? owner}) {
     final focused = isFocusedOn(a, today);
     if (!focused && !isStaleFocus(a, today)) return;
+    if (paroleIds.contains(a.id) && !a.done) {
+      add(
+        StakeGesture(
+          key: 'action:${a.id}',
+          kind: StakeGestureKind.action,
+          title: a.title,
+          costMin: a.estimatedMin ?? 45,
+          project: p,
+          task: t,
+          action: a,
+          owner: owner,
+          progress: a.estimatedMin == null ? null : '≈ ${fmtMin(a.estimatedMin!)}',
+        ),
+        StakeGain(
+          kind: paroleLeft == 1 ? StakeGainKind.seriesTonight : StakeGainKind.focus,
+          label: paroleLeft == 1 ? 'Parole tenue · la dernière' : 'Parole tenue · encore $paroleLeft',
+          detail: p == null ? owner?.name : '${p.title}${t == null ? '' : ' › ${t.title}'}',
+          weight: paroleLeft == 1 ? 32 : 24,
+          sourceId: 'focus:${a.id}',
+          gauge: (done: parole!.ids.length - paroleLeft, after: parole.ids.length - paroleLeft + 1, total: parole.ids.length),
+        ),
+      );
+      return;
+    }
     add(
       StakeGesture(
         key: 'action:${a.id}',
