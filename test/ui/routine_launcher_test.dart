@@ -6,9 +6,9 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 
 /// Lanceur de routines (FAB) : à faire par domaine, « Faites · n » replié,
-/// l'anneau ouvre le compteur et + compte une occurrence.
+/// l'anneau « + » compte une occurrence, la ligne ouvre le compteur.
 void main() {
-  testWidgets('RoutineLauncher : faites repliées, anneau = compteur', (tester) async {
+  testWidgets('RoutineLauncher : faites repliées, anneau = +1, ligne = compteur', (tester) async {
     Activity r(String id, String dom, {int target = 1}) => Activity(
         id: id, domainId: dom, name: id, role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: target, createdAt: DateTime(2026, 1, 1));
     final st = AppState(
@@ -27,13 +27,17 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Faites · 1'), findsOneWidget);
     expect(find.text('MUSCULATION'), findsOneWidget);
-    // L'anneau des Pompes (rien de fait : « + ») ouvre le compteur.
+    // L'anneau des Pompes (rien de fait : « + ») compte une occurrence tout de suite.
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
-    expect(find.text('0 / 20'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    expect(logic.state.habitHits.where((h) => h.habitId == 'Pompes').length, 1);
+    // Tap sur la ligne = le compteur.
+    await tester.tap(find.text('Pompes'));
     await tester.pumpAndSettle();
     expect(find.text('1 / 20'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 20'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
