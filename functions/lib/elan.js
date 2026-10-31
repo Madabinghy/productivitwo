@@ -145,38 +145,28 @@ function isBasicNeedName(s) {
     const n = normName(s);
     return ["manger", "repas", "dejeuner", "diner", "petit-dej", "petit dej", "gouter"].some((p) => n.startsWith(p));
 }
-function blockMin(b) {
-    var _a;
-    const p = ((_a = b.startTime) !== null && _a !== void 0 ? _a : "").split(":");
-    if (p.length < 2)
-        return null;
-    const h = Number(p[0]), m = Number(p[1]);
-    return isFinite(h) && isFinite(m) ? h * 60 + m : null;
-}
-/** Début de la recharge du jour vécu `ymd` (epoch ms) : premier bloc Sommeil
- *  (doc du jour après la bascule, doc du lendemain avant) qui suit le dernier
- *  pointage d'élan. Le serveur ne regarde que les blocs (l'app y ajoute les
- *  chronos Sommeil). */
+/** Début de la recharge du jour vécu `ymd` (epoch ms) : premier chrono Sommeil
+ *  lancé dans la journée vécue qui suit le dernier pointage d'élan. Depuis le
+ *  2026-10-31, le bloc Sommeil du programme ne démarre plus la recharge (on ne
+ *  se couche pas pile à l'heure) : l'app propose « Je vais me coucher ». */
 function rechargeStartMs(opts) {
-    var _a;
+    var _a, _b;
     const dayStartMin = (_a = opts.dayStartMin) !== null && _a !== void 0 ? _a : exports.DEFAULT_DAY_START_MIN;
     const [y, mo, d] = opts.ymd.split("-").map(Number);
-    const midnightLocal = Date.UTC(y, mo - 1, d);
-    const sleep = (b) => { var _a; return b.status !== "deleted" && b.status !== "skipped" && (isSleepName(b.title) || isSleepName(opts.activityNames.get((_a = b.activityId) !== null && _a !== void 0 ? _a : ""))); };
+    // Heure murale (les chronos sont écrits sans fuseau), convertie à la fin.
+    const startWall = Date.UTC(y, mo - 1, d) + dayStartMin * 60000;
+    const endWall = startWall + 24 * 60 * 60000;
     const starts = [];
-    const toMs = (localMin) => {
-        const local = midnightLocal + localMin * 60000;
-        return local - offsetFor(new Date(local), opts.offsetMin) * 60000;
-    };
-    for (const b of opts.blocks) {
-        const m = blockMin(b);
-        if (m !== null && m >= dayStartMin && sleep(b))
-            starts.push(toMs(m));
-    }
-    for (const b of opts.nextBlocks) {
-        const m = blockMin(b);
-        if (m !== null && m < dayStartMin && sleep(b))
-            starts.push(toMs(24 * 60 + m));
+    for (const s of opts.sessions) {
+        if (s.deleted === true || !s.startAt || !isSleepName(opts.activityNames.get((_b = s.activityId) !== null && _b !== void 0 ? _b : "")))
+            continue;
+        const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(s.startAt);
+        const wall = hasZone
+            ? Date.parse(s.startAt) + offsetFor(new Date(Date.parse(s.startAt)), opts.offsetMin) * 60000
+            : Date.parse(`${s.startAt}Z`);
+        if (!isFinite(wall) || wall < startWall || wall >= endWall)
+            continue;
+        starts.push(wall - offsetFor(new Date(wall), opts.offsetMin) * 60000);
     }
     starts.sort((a, b) => a - b);
     for (const t of starts)
@@ -223,7 +213,7 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
 }
 /** Résumé des `days` derniers jours vécus (aujourd'hui compris). */
 function elanSummary(opts) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d;
     const days = (_a = opts.days) !== null && _a !== void 0 ? _a : 7;
     const dayStartMin = (_b = opts.dayStartMin) !== null && _b !== void 0 ? _b : exports.DEFAULT_DAY_START_MIN;
     const [y, m, d] = opts.todayYmd.split("-").map(Number);
@@ -239,11 +229,9 @@ function elanSummary(opts) {
             .filter((mk) => mk.kind === "elan" && mk.ymd === ymd)
             .map((mk) => Date.parse(mk.at))
             .filter((t) => isFinite(t));
-        const nextYmd = new Date(Date.UTC(y, m - 1, d - i + 1)).toISOString().slice(0, 10);
         const recharge = rechargeStartMs({
             ymd,
-            blocks: (_d = opts.schedulesByYmd.get(ymd)) !== null && _d !== void 0 ? _d : [],
-            nextBlocks: (_e = opts.schedulesByYmd.get(nextYmd)) !== null && _e !== void 0 ? _e : [],
+            sessions: (_d = opts.sessions) !== null && _d !== void 0 ? _d : [],
             activityNames,
             lastMarkMs: dayMarkMs.length ? Math.max(...dayMarkMs) : null,
             offsetMin: opts.offsetMin,

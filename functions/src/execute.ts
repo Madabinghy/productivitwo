@@ -20,7 +20,7 @@ import { applyActionPatch } from "./action_patch";
 import { parseSnapshot, parseHunts, validateHunt, badgesSummary, formatBadgeList, huntLines } from "./badges_mcp";
 import {
   elanBucket, elanSummary, formatElanSummary, livedParts, validMoodValue, DEFAULT_DAY_START_MIN,
-  MoodKind, MoodMarkDoc, ELAN_LABELS, EFFORT_LABELS, MOOD_LABELS, BlockLite,
+  MoodKind, MoodMarkDoc, ELAN_LABELS, EFFORT_LABELS, MOOD_LABELS, BlockLite, SessionLite,
 } from "./elan";
 import { removeTask, freeTaskBlocks } from "./task_delete";
 import { modeOf, modeElanValue, MODE_LABELS, MODE_KINDS, parseRestDomains, activeRests, parseBudgetWindowDays, modeRules, budgetRules } from "./mode";
@@ -840,6 +840,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
     marks: moodSnap.docs.map((d) => d.data() as unknown as MoodMarkDoc),
     schedulesByYmd: new Map(schedWeekSnap.docs.map((d) => [d.id, ((d.data().blocks || []) as BlockLite[])])),
     hits: habitHitsSnap.docs.map((d) => d.data() as { habitId: string; ts: string }),
+    sessions: liveSessionDocs(sessionsSnap).map((d) => d.data() as SessionLite),
     activities: activitiesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as unknown as { id: string; type?: string; habitFreq?: number; habitTarget?: number; deleted?: boolean }),
     todayYmd: livedParts(now, tzCtx, dayStartCtx).ymd,
     offsetMin: tzCtx,

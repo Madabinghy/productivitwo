@@ -1798,7 +1798,7 @@ class AppLogic implements HuntStore {
     return rechargeSince(
       now: now,
       dayStart: dayStart,
-      sleepStarts: sleepStartsOf(dayStart: dayStart, blocks: todayBlocks, sessions: state.sessions, activitiesById: byId),
+      sleepStarts: sleepStartsOf(dayStart: dayStart, sessions: state.sessions, activitiesById: byId),
       dayMarks: [for (final m in state.moodMarks) if (m.isElan && m.ymd == ymd) m],
       sessions: state.sessions,
       hits: state.habitHits,

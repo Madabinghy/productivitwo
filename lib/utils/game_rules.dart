@@ -104,7 +104,7 @@ const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
 
 const kRuleRecharge = GameRule('La recharge', [
   RuleCard('🌙', 'La nuit sort des modes', 'Pendant la recharge, ni Flemme, ni Normal, ni En forme : ce temps ne compte ni dans ton élan, ni comme de la flemme.'),
-  RuleCard('⏰', 'Quand elle démarre', 'Toute seule à l’heure de ton bloc Sommeil du programme, ou dès que tu lances le chrono Sommeil. Un pointage de mode après coup l’arrête.'),
+  RuleCard('⏰', 'Quand elle démarre', 'Quand tu lances le chrono Sommeil, jamais toute seule. Une heure avant ton bloc Sommeil, la carte te propose de poser demain puis « Je vais me coucher ».'),
   RuleCard('🚶', 'Pas encore couché ?', 'Le bouton te remet dans ton mode. Si c’est le chrono Sommeil qui tourne, il l’arrête aussi (moins de 5 min = lancé par erreur, retiré).'),
   RuleCard('☀️', 'Au réveil', 'La carte te demande comment tu démarres : Flemme, Normal ou En forme. Sans choix, ton premier geste (+1, chrono) te met en Normal.'),
 ]);

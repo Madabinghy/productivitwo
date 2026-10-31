@@ -5,7 +5,7 @@ import * as admin from "firebase-admin";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { executePushAssistantMessage } from "./execute";
-import { elanSummary, formatElanSummary, livedParts, DEFAULT_DAY_START_MIN, MoodMarkDoc, BlockLite } from "./elan";
+import { elanSummary, formatElanSummary, livedParts, DEFAULT_DAY_START_MIN, MoodMarkDoc, BlockLite, SessionLite } from "./elan";
 import { parseSnapshot, parseHunts, badgesForCoach, badgesSummary } from "./badges_mcp";
 
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
@@ -306,6 +306,7 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
       marks: moodSnap.docs.map((d) => d.data() as unknown as MoodMarkDoc),
       schedulesByYmd: new Map(schedSnapW.docs.map((d) => [d.id, ((d.data().blocks || []) as BlockLite[])])),
       hits: hitsSnapW.docs.map((d) => d.data() as { habitId: string; ts: string }),
+      sessions: (sessSnap?.docs ?? []).map((d) => d.data() as SessionLite),
       activities: actSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as unknown as { id: string; type?: string; habitFreq?: number; habitTarget?: number; deleted?: boolean }),
       todayYmd: livedParts(now, tz, dayStart).ymd,
       offsetMin: tz,
