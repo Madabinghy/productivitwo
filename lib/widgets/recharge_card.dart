@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show kRechargeColor, kRechargeInk;
 
 String _hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -30,6 +31,8 @@ class RechargeCard extends StatelessWidget {
     final ymd = livedProgramYmd(now, logic.dayStartMin);
     final morning = !logic.state.moodMarks.any((m) => m.isElan && m.ymd == ymd) && logic.livedNowMinNow < 12 * 60;
     final mode = logic.mode;
+    final byId = {for (final a in logic.state.activities) a.id: a};
+    final sleepRunning = logic.state.sessions.any((x) => x.endAt == null && !x.deleted && isSleepName(byId[x.activityId]?.name));
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -79,6 +82,13 @@ class RechargeCard extends StatelessWidget {
               ),
             ],
           ])
+        else if (sleepRunning)
+          // Recharge lancée par le chrono Sommeil : rester debout = l'arrêter.
+          TextButton(
+            onPressed: () => _stillUp(mode),
+            style: TextButton.styleFrom(foregroundColor: kRechargeInk, padding: EdgeInsets.zero),
+            child: const Text('Pas encore couché · arrêter le chrono Sommeil'),
+          )
         else
           TextButton(
             onPressed: () => logic.setMode(mode),
@@ -87,5 +97,16 @@ class RechargeCard extends StatelessWidget {
           ),
       ]),
     );
+  }
+
+  /// Arrête le chrono Sommeil (une session de moins de 5 min = lancée trop tôt :
+  /// retirée) et remet le mode : la recharge s'arrête.
+  void _stillUp(DayMode mode) {
+    final s = logic.stopActive(notify: false);
+    if (s != null && s.endAt != null && s.endAt!.difference(s.startAt).inMinutes < 5) {
+      logic.deleteSession(s.id);
+      logic.sync?.deleteSession(s.id);
+    }
+    logic.setMode(mode);
   }
 }

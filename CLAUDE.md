@@ -846,7 +846,7 @@ geste (pointage, +1, chrono hors repos, bloc fait). **Écrans** : `ModePill` « 
 `kRechargeInk`), `RechargeBanner` en tête de la feuille du mode, `RechargeCard` (`widgets/recharge_card.dart`) en tête d'Aujourd'hui
 — matin « Bonjour · 7 h 25 de recharge · Comment tu démarres ? » (Flemme · Normal · En forme ; sans choix le premier geste vaut
 Normal, rien n'est écrit), soir « Recharge depuis 22:40 » + « Pas encore couché · garder … » (repointe le mode : la recharge attend
-le chrono Sommeil). **Statistiques** : un pointage VIRTUEL de valeur `kRechargeValue` (0) ferme le dernier pointage du jour
+le chrono Sommeil). **Chrono Sommeil lancé** (2026-10-31, retour user : le bouton ne changeait rien) : si la recharge vient d'un chrono Sommeil qui tourne, le bouton devient « Pas encore couché · arrêter le chrono Sommeil » (`_stillUp` : arrête le chrono, retire la session si < 5 min, remet le mode). **Statistiques** : un pointage VIRTUEL de valeur `kRechargeValue` (0) ferme le dernier pointage du jour
 (`withRechargeMarks`, `AppLogic.elanMarksWithRecharge` : feuille du mode, Domaines, `ElanStatsCard`, badges via `BadgeCenter`) ;
 une fenêtre de recharge ne compte ni dans l'élan moyen, ni dans les créneaux, ni comme flemme (`MoodMark.lowElan` exclut 0,
 `modeFromElan(0)` = Normal : ni malgré tout ni à fond) et n'est jamais « corrigée » par `dedupeMoodMarks`. Bande du jour : case
