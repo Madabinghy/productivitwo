@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/half_days.dart' show ActivityPace, minutesByActivityDay, paceOn;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart' show minutesByActivity;
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show ActivityDomainHeader;
@@ -148,7 +149,18 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   // du jour n'est pas atteinte, toujours rangées par domaine. Une recherche
   // montre tout.
   bool _focus = true;
+  Map<String, ActivityPace> _watch = const {};
   Timer? _tick;
+
+  Map<String, ActivityPace> _watchPace(DateTime now) {
+    final st = logic.state;
+    final resting = {for (final d in st.activeDomains) if (logic.isDomainResting(d.id)) d.id};
+    final pace = paceOn(now,
+        activities: st.activities.where((a) => !resting.contains(a.domainId)).toList(),
+        minutes: minutesByActivityDay(st.sessions, now),
+        frozenOf: (a) => logic.frozenOf(a.id));
+    return {for (final p in pace) p.activity.id: p};
+  }
 
   AppLogic get logic => widget.logic;
 
@@ -178,7 +190,11 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final todayTotal = all.fold<int>(0, (s, r) => s + r.todayMin);
     // Pas de section « À rattraper » (retour user 2026-10-30) : on vient au
     // lanceur pour une activité déjà choisie, on la trouve par son domaine.
-    final toReach = all.where((r) => r.hasGoal && r.todayMin < r.a.goalMin).toList();
+    // Focus = les activités pas encore COUVERTES pour la Montre suisse (7 × le
+    // minimum sur les 7 derniers jours glissants, retour user 2026-10-31) : ce
+    // qui se joue vraiment ce soir, pas l'anneau du jour.
+    _watch = _watchPace(now);
+    final toReach = all.where((r) => _watch[r.a.id] != null && !_watch[r.a.id]!.onPace).toList();
     final focusing = _focus && q.isEmpty;
     final active = focusing ? toReach : rows.where((r) => !r.dormant).toList();
     final dormant = focusing ? <LauncherRow>[] : rows.where((r) => r.dormant).toList()
@@ -249,7 +265,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
             child: Column(children: [
               Icon(Icons.check_circle_rounded, size: 36, color: cs.primary),
               const SizedBox(height: 8),
-              const Text('Tout est atteint aujourd\'hui', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Text('Tout est couvert pour la Montre suisse', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               TextButton(onPressed: () => setState(() => _focus = false), child: const Text('Voir toutes les activités')),
             ]),
           )
@@ -318,7 +334,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       const SizedBox(width: 10),
       Expanded(
         child: Text(
-          searching ? 'recherche dans toutes' : (_focus ? 'pas encore atteintes aujourd\'hui' : 'toutes les activités'),
+          searching ? 'recherche dans toutes' : (_focus ? 'pas encore couvertes sur 7 jours · Montre suisse' : 'toutes les activités'),
           maxLines: 2,
           style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .5), fontWeight: FontWeight.w600),
         ),
@@ -403,9 +419,11 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final isRunning = running?.id == a.id;
     final color = domainColor(a.domainId, logic.state.activeDomains) ?? cs.primary;
     final late = r.behind;
+    final watch = _watch[a.id];
     final sub = [
       r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui',
-      if (r.hasGoal) 'objectif ${fmtMin(a.goalMin)} / j',
+      if (watch != null && !watch.onPace) 'reste ${fmtMin(watch.missingMin)} pour la Montre suisse'
+      else if (r.hasGoal) 'objectif ${fmtMin(a.goalMin)} / j',
     ].join(' · ');
     return InkWell(
       borderRadius: BorderRadius.circular(14),
