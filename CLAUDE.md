@@ -962,8 +962,12 @@ le début de son jour vécu compte (`paroleCandidates`) ; la parole d'un jour es
 (`giveParole`) — une action déplacée ensuite reste dans la parole, la journée ne compte pas, rien n'est perdu. Faite = cochée avant la
 fin du jour vécu (`paroleOutcome`). Pas de report automatique d'une visée non faite : elle passe « À RE-VISER ». Logique pure
 `utils/parole.dart` (`paroleIndex`, `freezeParole`, `paroleStats`, `paroleOfDay`). **Lot 1 livré** (modèle + MCP + logique + badge).
-À venir : lot 2 = étape « Ta parole pour demain » de Planifier demain (non faites du jour en tête des propositions) ; lot 3 = tuile
-PAROLE, enjeu « Parole tenue · la dernière », fiche du badge.
+**Lot 2 livré** : étape « Ta parole pour demain » de Planifier demain (`_Step.parole`, `plan_screen.dart`, après REMPLIR, seulement pour
+demain) — déjà visées demain présélectionnées, propositions `paroleProposals` (visées aujourd'hui et pas faites en tête, « pas faite
+aujourd'hui » en ambre, puis à re-viser, puis la prochaine action de chaque projet vivant, en retard d'abord), total estimé face au libre
+après les blocs, « Donner ma parole · n actions » (≥ 3 : pose `focusDate` = demain, retire la visée de demain des actions décochées,
+`giveParole`) ou « Poser demain sans parole » ; l'écran POSÉ liste la parole. À venir : lot 3 = tuile PAROLE, enjeu « Parole tenue ·
+la dernière », feuille « Ta parole aujourd'hui ».
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 

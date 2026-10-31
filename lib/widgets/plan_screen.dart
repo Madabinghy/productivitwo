@@ -14,7 +14,10 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/fiche_cache.dart' show FicheCache;
 import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask;
+import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/planning.dart';
+import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/reading_due.dart' show readingsDue;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
@@ -40,7 +43,7 @@ Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? 
   return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges)));
 }
 
-enum _Step { cap, stakes, frame, fill, done, weekStakes, weekSpread, weekDone }
+enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekSpread, weekDone }
 
 class PlanScreen extends StatefulWidget {
   final AppLogic logic;
@@ -74,6 +77,10 @@ class _PlanScreenState extends State<PlanScreen> {
   final Map<String, (int, int)> _manual = {};
   bool _loading = false;
   int _capCount = 0;
+  /// Parole tenue : les actions choisies pour demain (ids), dans l'ordre.
+  final List<String> _parole = [];
+  Set<String> _paroleBefore = {};
+  bool _paroleGiven = false;
 
   @override
   void initState() {
@@ -192,6 +199,16 @@ class _PlanScreenState extends State<PlanScreen> {
     _kept
       ..clear()
       ..addAll(_stakes.where((s) => s.keep).map((s) => s.id));
+    if (_tomorrow) {
+      final ids = [
+        for (final e in _paroleIndex.entries)
+          if (!e.value.action.done && e.value.action.focusDate != null && ymdOf(e.value.action.focusDate!) == _ymd) e.key,
+      ];
+      _parole
+        ..clear()
+        ..addAll(ids);
+      _paroleBefore = ids.toSet();
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -447,6 +464,7 @@ class _PlanScreenState extends State<PlanScreen> {
                   _Step.stakes => _stakesView(),
                   _Step.frame => _frameView(),
                   _Step.fill => _fillView(),
+                  _Step.parole => _paroleView(),
                   _Step.done => _doneView(),
                   _Step.weekStakes => _weekStakesView(),
                   _Step.weekSpread => _weekSpreadView(),
@@ -775,7 +793,12 @@ class _PlanScreenState extends State<PlanScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(flex: 2, child: _primary(_tomorrow ? 'Poser demain' : 'Poser la fin de journée', _save)),
+        Expanded(
+          flex: 2,
+          child: _tomorrow
+              ? _primary('Suivant · ta parole', () => setState(() => _step = _Step.parole))
+              : _primary('Poser la fin de journée', _save),
+        ),
       ]),
     ]);
   }
@@ -805,6 +828,15 @@ class _PlanScreenState extends State<PlanScreen> {
             _section('LAISSÉ POUR PLUS TARD'),
             Text(left.map((s) => s.title).join(' · '), style: const TextStyle(fontSize: 13, color: _text3)),
           ],
+          if (_paroleGiven) ...[
+            _section('TA PAROLE POUR DEMAIN · ${_parole.length}'),
+            for (final id in _parole)
+              if (_paroleIndex[id] != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Text('· ${_paroleIndex[id]!.action.title}', style: const TextStyle(fontSize: 14, color: Colors.white)),
+                ),
+          ],
           const SizedBox(height: 16),
           if (_tomorrow)
             Container(
@@ -832,6 +864,158 @@ class _PlanScreenState extends State<PlanScreen> {
       ),
       _primary(_tomorrow ? 'Terminer · bonne nuit' : 'Terminer', _finish),
     ]);
+  }
+
+  // ── Parole tenue (2026-10-31) ───────────────────────────────────────────────
+
+  Map<String, ParoleAction>? _paroleIndexCache;
+  Map<String, ParoleAction> get _paroleIndex =>
+      _paroleIndexCache ??= paroleIndex(logic.currentProjects.where(_liveProject).toList(), logic.state.activities);
+
+  bool _liveProject(Project p) =>
+      p.status != 'archived' && p.status != 'done' && !p.paused && !isFolderProject(p, logic.currentProjects);
+
+  List<ParoleProposal> get _proposals {
+    final today = logic.livedToday;
+    return paroleProposals(
+      index: _paroleIndex,
+      projects: logic.currentProjects,
+      today: today,
+      chosen: _parole.toSet(),
+      nextActionOf: (p) {
+        final n = nextAction(p);
+        if (n == null || isUpcomingTask(n.task, _day)) return null;
+        return n;
+      },
+      isLive: _liveProject,
+      isOverdue: (a, t) => isOverdueAction(a, t, today),
+    );
+  }
+
+  int _estOf(TaskAction a) => a.estimatedMin ?? 45;
+
+  Widget _paroleView() {
+    final chosen = [for (final id in _parole) if (_paroleIndex[id] != null) _paroleIndex[id]!];
+    final total = chosen.fold<int>(0, (s, x) => s + _estOf(x.action));
+    final planned = _plan.fold<int>(0, (s, p) => s + p.minutes);
+    final free = freeMinutes(_gaps);
+    final props = _proposals;
+    final enough = chosen.length >= kParoleMin;
+    Widget row(ParoleAction x, {int? rank, String? reason, bool warn = false}) {
+      final selected = rank != null;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Material(
+          color: selected ? _card : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: selected ? kPlanAccent.withValues(alpha: .45) : const Color(0xFF2C4436)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => selected ? _parole.remove(x.action.id) : _parole.add(x.action.id)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+              child: Row(children: [
+                if (selected)
+                  Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(color: kPlanAccent, shape: BoxShape.circle),
+                    child: Text('$rank', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _ink)),
+                  )
+                else
+                  const SizedBox(width: 26, child: Icon(Icons.add, color: kPlanAccent)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(x.action.title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    Text(
+                      [x.context, if (reason != null) reason, '≈ ${fmtMin(_estOf(x.action))}'].where((t) => t.isNotEmpty).join(' · '),
+                      style: TextStyle(fontSize: 12, color: warn ? const Color(0xFFFFB27A) : _text3),
+                    ),
+                  ]),
+                ),
+                if (selected) const Icon(Icons.close, size: 18, color: _text3),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('DEMAIN · TA PAROLE', 4),
+      _title('Ta parole pour demain'),
+      Text('Au moins $kParoleMin actions que tu t\'engages à finir demain. Toutes faites demain soir = une journée de Parole tenue.',
+          style: const TextStyle(fontSize: 13.5, color: _text2, height: 1.4)),
+      Expanded(
+        child: ListView(children: [
+          _section('TA PAROLE · ${chosen.length}'),
+          if (chosen.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Touche une proposition pour l\'ajouter.', style: TextStyle(fontSize: 13, color: _text3, fontStyle: FontStyle.italic)),
+            ),
+          for (var i = 0; i < chosen.length; i++) row(chosen[i], rank: i + 1),
+          if (chosen.isNotEmpty)
+            Text(
+              '≈ ${fmtMin(total)} au total · ${fmtMin((free - planned).clamp(0, 24 * 60))} libres demain après tes blocs${total > (free - planned) ? ' : ça déborde' : ' : ça tient'}',
+              style: TextStyle(fontSize: 12.5, color: total > (free - planned) ? const Color(0xFFFFB27A) : _text3),
+            ),
+          if (props.isNotEmpty) ...[
+            _section('PROPOSÉES · TAP POUR AJOUTER'),
+            for (final p in props) row(p.item, reason: p.reason, warn: p.warn),
+          ],
+        ]),
+      ),
+      Text(
+        enough ? 'Tu pourras en ajouter demain, mais seule la parole donnée ce soir compte pour le badge.' : 'Encore ${kParoleMin - chosen.length} pour donner ta parole.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12, color: _text3),
+      ),
+      const SizedBox(height: 8),
+      _primary(enough ? 'Donner ma parole · ${chosen.length} actions' : 'Poser demain sans parole', () => _giveParoleAndSave(enough)),
+    ]);
+  }
+
+  Future<void> _giveParoleAndSave(bool give) async {
+    final day = _day;
+    final projects = <String, Project>{};
+    final activities = <String, Activity>{};
+    void touch(ParoleAction x) {
+      if (x.project != null) projects[x.project!.id] = x.project!;
+      if (x.activity != null) activities[x.activity!.id] = x.activity!;
+    }
+    // Retirées de la liste : elles ne sont plus visées demain.
+    for (final id in _paroleBefore.difference(_parole.toSet())) {
+      final x = _paroleIndex[id];
+      if (x == null) continue;
+      x.action.focusDate = null;
+      touch(x);
+    }
+    for (final id in _parole) {
+      final x = _paroleIndex[id];
+      if (x == null) continue;
+      final f = x.action.focusDate;
+      if (f == null || ymdOf(f) != _ymd) {
+        x.action.focusDate = DateTime(day.year, day.month, day.day);
+        touch(x);
+      }
+    }
+    for (final p in projects.values) {
+      unawaited(sync.saveProjectTasks(p.id, p.tasks));
+    }
+    for (final a in activities.values) {
+      unawaited(sync.updateOwnActions(a.id, a.ownActions));
+    }
+    if (give) {
+      await logic.giveParole(_ymd, List.of(_parole));
+      _paroleGiven = true;
+    }
+    logic.onChange();
+    await _save();
   }
 
   // ── Semaine ─────────────────────────────────────────────────────────────────
