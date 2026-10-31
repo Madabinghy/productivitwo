@@ -939,6 +939,7 @@ libres `freeGaps` de la journée active, état Léger / Normal / À fond) → RE
 glisser = retirer, « À caser si tu veux » = +45 min, « Avec Claude » = `planDayPrompt`) → POSÉ (ce qu'on tient, laissé pour plus tard,
 progression Cap tenu). « Poser » AJOUTE les blocs au doc du jour visé (rien n'est remplacé) et pose `generatedBy:"plan"`, `plannedAt`,
 `plannedSameDay` (fin d'aujourd'hui = ne compte pas pour Cap tenu).
+**Régler à la main** (2026-10-31, retour user) : à REMPLIR, tap sur un bloc proposé = feuille Début (± 15 min, tap = heure) · Durée (± 15 min, 30 / 45 / 1 h / 1h30 / 2 h) · Retirer ; le réglage est gardé (`_manual`, bordure bleue) et le reste se repose autour à chaque nouvelle proposition ; chevauchement d'un bloc déjà posé signalé, pas bloqué. Sommeil, sieste et repas (`isBasicNeedName`) ne sont jamais proposés ni « à caser ».
 **Lot 3 (badge)** : `cap-tenu` (Discipline, symbole `compass`, paliers 5 · 20 · 50) dans `computeBadges` — journées closes `capHeld`, faits « Journées posées la veille » · « Tenues à 70 % » · « La dernière ».
 **Lot 4 (semaine)** : 3ᵉ choix « La semaine du … au … » au cap (lundi prochain → dimanche ; `_week`) → CE QUI SE JOUE CETTE SEMAINE
 (`_weekStakesView` : barre « déjà pris » par jour sur la journée active, libre ou dates ; DATES QUI NE BOUGENT PAS = miroirs agenda /
