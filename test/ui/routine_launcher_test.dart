@@ -5,10 +5,10 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 
-/// Lanceur de routines (FAB) : à faire par domaine, « Faites · n » replié,
+/// Lanceur de routines (FAB) : Focus = à faire par domaine, Tout = les faites aussi,
 /// l'anneau « + » compte une occurrence, la ligne ouvre le compteur.
 void main() {
-  testWidgets('RoutineLauncher : faites repliées, anneau = +1, ligne = compteur', (tester) async {
+  testWidgets('RoutineLauncher : Focus sans les faites, anneau = +1, ligne = compteur', (tester) async {
     Activity r(String id, String dom, {int target = 1}) => Activity(
         id: id, domainId: dom, name: id, role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: target, createdAt: DateTime(2026, 1, 1));
     final st = AppState(
@@ -25,7 +25,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Faites · 1'), findsOneWidget);
+    expect(find.text('Focus · 2'), findsOneWidget);
+    expect(find.text('Café'), findsNothing); // faite : seulement dans Tout
     expect(find.text('MUSCULATION'), findsOneWidget);
     // L'anneau des Pompes (rien de fait : « + ») compte une occurrence tout de suite.
     await tester.tap(find.byIcon(Icons.add_rounded).last);
@@ -38,6 +39,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
     expect(find.text('2 / 20'), findsOneWidget);
+    Navigator.of(tester.element(find.text('2 / 20'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tout'));
+    await tester.pumpAndSettle();
+    expect(find.text('Café'), findsOneWidget); // la faite, à sa place dans Santé
     expect(tester.takeException(), isNull);
   });
 
@@ -50,7 +56,7 @@ void main() {
       home: Scaffold(body: RoutineLauncher(logic: logic, sync: FirestoreSync(), onNew: () {}, onChrono: (_) {}, onTimer: (_) {})),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Faites · 1'));
+    await tester.tap(find.text('Voir toutes les routines'));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.pumpAndSettle();
