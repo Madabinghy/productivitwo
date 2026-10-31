@@ -425,6 +425,10 @@ class BadgePainter extends CustomPainter {
         // Offensive : une flèche qui monte.
         line(34, 58, 64, 28, 6);
         polyline([48, 28, 64, 28, 64, 44], 6);
+      case 'compass':
+        // Cap tenu : une boussole, l'aiguille vers le nord-est.
+        c.drawCircle(const Offset(50, 42), 19, stroke(5));
+        c.drawPath(_poly([60, 32, 54, 47, 40, 52, 46, 37]), fill);
       case 'bolt':
         // Guérilla : un éclair.
         c.drawPath(_poly([56, 18, 38, 46, 50, 46, 44, 68, 64, 38, 52, 38]), fill);

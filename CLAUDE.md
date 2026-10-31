@@ -939,6 +939,7 @@ libres `freeGaps` de la journée active, état Léger / Normal / À fond) → RE
 glisser = retirer, « À caser si tu veux » = +45 min, « Avec Claude » = `planDayPrompt`) → POSÉ (ce qu'on tient, laissé pour plus tard,
 progression Cap tenu). « Poser » AJOUTE les blocs au doc du jour visé (rien n'est remplacé) et pose `generatedBy:"plan"`, `plannedAt`,
 `plannedSameDay` (fin d'aujourd'hui = ne compte pas pour Cap tenu).
+**Lot 3 (badge)** : `cap-tenu` (Discipline, symbole `compass`, paliers 5 · 20 · 50) dans `computeBadges` — journées closes `capHeld`, faits « Journées posées la veille » · « Tenues à 70 % » · « La dernière ».
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 

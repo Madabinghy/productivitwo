@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
+import 'package:productivitwo_v1/utils/planning.dart' show capHeld, kCapTiers;
 import 'package:productivitwo_v1/utils/guerilla.dart' show guerillaCounts, guerillaLift, isGuerillaRun, kGuerillaTiers;
 import 'package:productivitwo_v1/utils/offensive.dart' show isOffensiveRun, kOffensiveTiers, offensiveCounts;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -962,6 +963,21 @@ BadgeDeck computeBadges({
     ],
   ));
 
+  // Cap tenu (2026-10-31, mode Planification) : journée posée la veille et tenue à 70 %.
+  final capDays = schedules.where((x) => x.date.compareTo(todayYmd) < 0 && capHeld(x)).toList()..sort((a, b) => a.date.compareTo(b.date));
+  final planned = schedules.where((x) => x.date.compareTo(todayYmd) < 0 && x.generatedBy == 'plan' && !x.plannedSameDay).length;
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'cap-tenu', family: BadgeFamily.discipline, name: 'Cap tenu', symbol: 'compass', tiers: kCapTiers, unit: 'journées', unitLong: 'journées posées la veille et tenues à 70 %'),
+    level: _levelOf(kCapTiers, capDays.length),
+    value: capDays.length,
+    tierDates: [for (final t in kCapTiers) t <= capDays.length ? _ymdDay(capDays[t - 1].date) : null],
+    facts: [
+      ('Journées posées la veille', '$planned'),
+      ('Tenues à 70 %', '${capDays.length}'),
+      if (capDays.isNotEmpty) ('La dernière', _fmtDate(_ymdDay(capDays.last.date))),
+    ],
+  ));
+
   // Actions accomplies : une ligne à paliers.
   final doneAt = <DateTime>[];
   var doneCount = 0;
@@ -1224,4 +1240,9 @@ List<DateTime> deepWorkSessions(List<Session> sessions, List<DailySchedule> sche
   }
   out.sort();
   return out;
+}
+
+DateTime _ymdDay(String ymd) {
+  final p = ymd.split('-');
+  return DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
 }
