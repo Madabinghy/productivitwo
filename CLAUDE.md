@@ -870,6 +870,17 @@ sommeil — et toujours : domaines non partagés, texte des idées et notes, auc
 que `watchFlag` signale un fond qui se dégrade (5 nuits courtes sur 5+ mesurées, ou parole tenue < 50 % sur 4+ jours donnés) ;
 bandeau « … un signal de fond se dégrade : nuits courtes », action « En parler en séance » (mot pré-rempli) ; aucune notification.
 
+## Revue du dimanche (2026-11-01, maquette validée « Revue du dimanche »)
+
+Dix minutes le dimanche : ce qui a tenu, ce qui a avancé, ce qui a coûté (trancher), puis poser la semaine suivante. **Lot 1
+livré (logique + données)** : logique pure `utils/week_review.dart` — `reviewWindowOpen` (carte du samedi 18 h au lundi midi,
+journée vécue), `reviewedMonday` (semaine en cours le week-end, la précédente sinon), `weekDays`, `WeekReview {at, intention,
+decisions}` (`data/meta.weekReviews.<lundi>`, `FirestoreSync.setWeekReview`, flux meta → `AppLogic.weekReviews`,
+`AppLogic.saveWeekReview`, dans `kBackupMetaKeys`), `weekIntention` (phrase posée le dimanche d'avant, rappelée la semaine
+suivante), `projectWeeks` (actions cochées et tâches finies par projet vivant), `stalledProjects` (vivants, pas en pause, une
+action ouverte, rien coché depuis 10 j), `minutesByDomainOf`, `ReviewDecision`. `coachSignals(days:)` accepte les jours de la
+semaine revue (jeux par jour, sommeil).
+
 ## Minimum des activités (calibration, 2026-10-30)
 
 `AppLogic.autoAdjustStandardsRealtime` (au lancement mobile) cale `goalMin` des activités-temps sur la moyenne 30 j (monte ≥ 120 %,

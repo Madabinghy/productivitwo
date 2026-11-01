@@ -46,8 +46,9 @@ Map<String, dynamic> coachSignals({
   List<MoodMark> marks = const [],
   Set<String> Function(Activity a)? frozenOf,
   Map<String, Acquired> acquired = const {},
+  List<String>? days,
 }) {
-  final days = signalDays(now, dayStartMin);
+  days ??= signalDays(now, dayStartMin);
   final live = activities.where((a) => !a.deleted).toList();
 
   // Montre suisse : chaque soir, toutes les activités à minimum couvertes sur 7 j.

@@ -51,6 +51,7 @@ const List<String> kBackupMetaKeys = [
   'badgeHunts',
   'emberSpends',
   'paroles',
+  'weekReviews',
   'mirrorActivities',
   'interventionTemplates',
   'ganttVisible',

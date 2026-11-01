@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/offensive_screen.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
+import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
@@ -1807,12 +1808,16 @@ class _AppRootState extends State<AppRoot>
       final budget = parseBudgetWindowDays(m['budgetWindowDays']);
       final paroles = parseParoles(m['paroles']);
       final sameParoles = parolesToJson(paroles).toString() == parolesToJson(logic.paroles).toString();
+      final reviews = parseWeekReviews(m['weekReviews']);
+      final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
+          logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
           momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString() &&
           sameHunts &&
           sameSpends &&
           sameParoles &&
+          sameReviews &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1826,6 +1831,7 @@ class _AppRootState extends State<AppRoot>
       logic.badgeHunts = hunts;
       logic.emberSpends = spends;
       logic.paroles = paroles;
+      logic.weekReviews = reviews;
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
       logic.restPeriods = periods;
