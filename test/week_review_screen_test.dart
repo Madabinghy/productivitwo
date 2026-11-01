@@ -27,7 +27,7 @@ void main() {
     await tester.tap(find.text('Suivant'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Finir la maquette');
-    await tester.tap(find.text('Terminer sans poser la semaine'));
+    await tester.tap(find.text('Terminer la revue'));
     await tester.pumpAndSettle();
     final monday = reviewedMonday(DateTime.now(), 0);
     expect(logic.weekReviews[monday]?.intention, 'Finir la maquette');

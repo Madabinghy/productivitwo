@@ -35,6 +35,10 @@ import 'dart:convert' show jsonDecode, jsonEncode;
 /// des blocs d'activité proposés, puis le récapitulatif. Écrit le programme
 /// avec `generatedBy:"plan"` et `plannedAt` (badge Cap tenu, `capHeld`).
 const kPlanAccent = Color(0xFF9DB8FF);
+
+/// Planifier la semaine : retiré de l'interface le 2026-11-01 (retour user :
+/// « pas exploitable »), le code reste en attendant une autre approche.
+const kWeekPlanEnabled = false;
 const _ink = Color(0xFF0B1430);
 const _bg = Color(0xFF07100D);
 const _card = Color(0xFF0C1C14);
@@ -101,7 +105,7 @@ class _PlanScreenState extends State<PlanScreen> {
     _tomorrow = logic.livedNowMinNow >= 12 * 60;
     // Chrono : activé d'office si une activité « Planification » existe ; ensuite le dernier choix.
     _chrono = _planningActivity() != null;
-    if (widget.startWeek) {
+    if (widget.startWeek && kWeekPlanEnabled) {
       _week = true;
       _chrono = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -654,7 +658,8 @@ class _PlanScreenState extends State<PlanScreen> {
           Text('à partir de ${hmOf(((now + 14) ~/ 15) * 15)}', style: const TextStyle(fontSize: 13, color: _text2)),
         ]),
       ),
-      const SizedBox(height: 10),
+      if (kWeekPlanEnabled) const SizedBox(height: 10),
+      if (kWeekPlanEnabled)
       _choice(
         selected: _week,
         onTap: () => setState(() => _week = true),
