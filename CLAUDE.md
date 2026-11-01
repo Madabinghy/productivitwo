@@ -840,7 +840,7 @@ saisir : chronos Sommeil, bloc Sommeil du programme, élan. **Lot 1 livré (logi
 `kSleepImpactMinNights` (5) de chaque côté, `sentence`). **Lot 2 livré (écrans)** `widgets/sleep_sheet.dart` (`showSleepSheet`, branché sur
 `_openSleepActivity` de main.dart) : en-tête « Sommeil » + chip nuit courte / complète, carte bleu nuit CETTE NUIT (durée, coucher →
 lever, écart à la cible), trois chiffres (moyenne · régularité ± n min · dette 7 nuits), 14 NUITS (`_NightsChart` : une barre par
-nuit du coucher au lever, réveils en creux, bande du bloc Sommeil, ambre sous la cible − 30 min, dernière cerclée ; tap = la nuit),
+nuit du coucher au lever, réveils en creux, bande du bloc Sommeil, trait rouge horizontal « maintenant » de 18 h à 10 h, ambre sous la cible − 30 min, dernière cerclée ; tap = la nuit),
 TON COUCHER (`_BedDots` : un point par nuit, bloc en pointillés, moyenne, trait ROUGE « maintenant HH:MM » de 18 h à 10 h — où tomberait
 le coucher si on allait se coucher là, retour user 2026-11-01 ; « ≈ n par semaine » quand le coucher dérape ≥ 15 min),
 UNE NUIT COURTE CHANGE-T-ELLE TA JOURNÉE ? (ex-« Ce que ça change le lendemain », retour user 2026-11-01 : une phrase dit d'abord ce qu'on compare — les journées après une nuit longue contre après une nuit courte —, puis deux colonnes, ou ce qu'il manque en « journées après une nuit … »), 30 NUITS (grille, tap = la nuit ; nuit sans chrono = ✕ rouge, retour user 2026-11-01), CE SOIR (bloc prévu,

@@ -478,6 +478,13 @@ class _NightsPainter extends CustomPainter {
       lo = lo < pb ? lo : pb;
       hi = hi > pb + planned!.durationMin ? hi : pb + planned!.durationMin;
     }
+    // Trait rouge « maintenant » (retour user 2026-11-01), de 18 h à 10 h.
+    final nowClock = bedClockMin(DateTime.now());
+    final nowM = nowClock >= -360 && nowClock <= 600 ? nowClock + 6 * 60 : null;
+    if (nowM != null) {
+      lo = lo < nowM ? lo : nowM;
+      hi = hi > nowM ? hi : nowM;
+    }
     lo = (lo ~/ 60) * 60;
     hi = ((hi + 59) ~/ 60) * 60;
     const top = 6.0, bottom = 18.0;
@@ -498,6 +505,17 @@ class _NightsPainter extends CustomPainter {
       canvas.drawRRect(
           RRect.fromRectAndRadius(Rect.fromLTRB(left, y(pb), size.width, y(pb + planned!.durationMin)), const Radius.circular(6)),
           Paint()..color = kRechargeBand.withValues(alpha: .22));
+    }
+    if (nowM != null) {
+      final ny = y(nowM);
+      canvas.drawLine(Offset(left, ny), Offset(size.width, ny), Paint()
+        ..color = _kDanger
+        ..strokeWidth = 2);
+      final tp = TextPainter(
+          text: TextSpan(text: 'maintenant ${clockOf(nowClock)}', style: const TextStyle(fontSize: 10, color: _kDanger, fontWeight: FontWeight.w700)),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      tp.paint(canvas, Offset(size.width - tp.width, ny < top + 14 ? ny + 2 : ny - 13));
     }
     final colW = (size.width - left) / nights.length;
     final barW = (colW * .62).clamp(6.0, 18.0);
