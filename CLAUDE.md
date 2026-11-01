@@ -1124,7 +1124,11 @@ arrivent à une heure PROPOSÉE (premier créneau libre, `firstFreeStart`, `Week
 tap dans une colonne = y poser / y déplacer le bloc (`_tapGrid`), glisser = changer l'heure (quart d'heure), tap = garder l'heure,
 appui long = enlever ; « Même heure tous les jours » cale les heures encore proposées des autres jours (`_setTime`, si libre).
 **Ta semaine** (`_weekSpreadView`) : la grille complète, OÙ J'EN SUIS (tap = revenir sur l'activité), « Valider la semaine » pose
-chaque bloc À SON HEURE (`PlannedBlock` direct ; sans heure → `proposeDay`, sinon compté dans `_weekUnfit`).
+chaque bloc À SON HEURE (`PlannedBlock` direct ; sans heure → `proposeDay`, sinon compté dans `_weekUnfit`). **Agenda, ✕ et zoom** (retour user
+2026-11-01) : à l'ouverture de la semaine, `gcalSyncDay` (le ⟳ d'Aujourd'hui) tourne pour les 7 jours avant la lecture des docs :
+les rendez-vous Google sont dans la grille en contour or (`_gcalState` → « 📅 agenda Google à jour » / « non connecté ») ; chaque
+bloc de l'activité en cours porte un ✕ (`_removePiece`, l'appui long marche toujours) et son heure quand il est assez haut ;
+zoom vertical ×1 · ×1,5 · ×2 · ×3 (`_zoomBar`, `_gridH`, repères chaque heure à partir de 700 px), aussi sur Ta semaine.
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 
