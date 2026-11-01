@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -159,4 +162,115 @@ Future<void> showCollectionBadgeSheet(BuildContext context, CollectionBadge b) {
       ),
     ),
   );
+}
+
+/// « Un badge tombe » (badges de collection, lot 2) : l'écusson en grand,
+/// des rayons qui tournent derrière, une fois par palier. Renvoie vrai si
+/// « Voir l'album » a été choisi ; tout ce qui a été montré passe vu.
+Future<bool> showCollectionDrop(BuildContext context, List<CollectionBadge> badges) async {
+  final r = await Navigator.of(context).push<bool>(PageRouteBuilder(
+    opaque: false,
+    barrierColor: Colors.black87,
+    pageBuilder: (_, __, ___) => CollectionDropScreen(badges: badges),
+    transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+  ));
+  CardSeenStore.markCollectionSeen(badges);
+  return r ?? false;
+}
+
+class CollectionDropScreen extends StatefulWidget {
+  final List<CollectionBadge> badges;
+  const CollectionDropScreen({super.key, required this.badges});
+
+  @override
+  State<CollectionDropScreen> createState() => _CollectionDropScreenState();
+}
+
+class _CollectionDropScreenState extends State<CollectionDropScreen> with SingleTickerProviderStateMixin {
+  late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+  int _i = 0;
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.badges[_i];
+    final m = metalOf(b.metal) ?? BadgeMetal.or;
+    final last = _i + 1 >= widget.badges.length;
+    final w = MediaQuery.sizeOf(context).width;
+    final size = w * .5 > 220 ? 220.0 : w * .5;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(children: [
+            Row(children: [
+              Text(widget.badges.length > 1 ? 'BADGE ${_i + 1} / ${widget.badges.length}' : 'UN BADGE TOMBE',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.white70)),
+              const Spacer(),
+              IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.of(context).pop(false)),
+            ]),
+            Expanded(
+              child: Center(
+                child: Stack(alignment: Alignment.center, children: [
+                  RotationTransition(
+                    turns: _spin,
+                    child: CustomPaint(size: Size.square(size * 1.6), painter: _RaysPainter(m.top)),
+                  ),
+                  CollectionShield(badge: b, size: size),
+                ]),
+              ),
+            ),
+            const Text('BADGE DE COLLECTION', style: TextStyle(fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w700, color: Colors.white60)),
+            const SizedBox(height: 4),
+            Text(b.ribbon == null ? '${b.name} ${roman(b.level)}' : b.name,
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 4),
+            Text('${b.figure} · ${b.nextLine}', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: m.top)),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: FilledButton(
+                onPressed: () => last ? Navigator.of(context).pop(false) : setState(() => _i++),
+                style: FilledButton.styleFrom(backgroundColor: m.top, foregroundColor: m.ink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                child: Text(last ? 'Sur l’étagère' : 'Badge suivant', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+            ),
+            if (last) TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Voir l’album', style: TextStyle(color: Colors.white70))),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _RaysPainter extends CustomPainter {
+  final Color color;
+  const _RaysPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide / 2;
+    final p = Paint()
+      ..shader = RadialGradient(colors: [color.withValues(alpha: .35), color.withValues(alpha: 0)]).createShader(Rect.fromCircle(center: c, radius: r));
+    for (var i = 0; i < 18; i++) {
+      final a0 = i * 2 * math.pi / 18;
+      final path = Path()
+        ..moveTo(c.dx, c.dy)
+        ..lineTo(c.dx + r * math.cos(a0), c.dy + r * math.sin(a0))
+        ..lineTo(c.dx + r * math.cos(a0 + .14), c.dy + r * math.sin(a0 + .14))
+        ..close();
+      canvas.drawPath(path, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RaysPainter old) => old.color != color;
 }

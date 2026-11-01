@@ -1397,7 +1397,12 @@ liseré, encre, ruban) et quatre symboles (`cards`, `crest`, `chest`, `crown`) ;
 Widgets `widgets/collection_badge_view.dart` : `CollectionShield`, `CollectionPlaque` (l'écusson monté sur sa plaque gravée : fond
 sombre teinté du métal, liseré et vis, nom · palier · chiffre ; pas encore = silhouette + jauge), `showCollectionBadgeSheet` (écusson
 150, jauge, ce qu'il manque, la règle). Album : « n pts » et « Prochain badge : … » dans l'en-tête, étagère MES BADGES (deux plaques
-par rangée) avant les familles de cartes. **Lot 2 à venir** : « +n pts » au retournement d'une carte, écran « Un badge tombe ».
+par rangée) avant les familles de cartes. **Lot 2 livré** : au retournement, chaque carte dit ce qu'elle rapporte (« +1 pt · bronze →
+argent ») et où en est Collectionneur après elle (`showCardReveal(points:)`) ; paliers vus des badges de collection sur l'appareil
+(`CardSeenStore.pendingCollection` / `markCollectionSeen`, SharedPreferences `collection_badges_seen`, premier passage = vus) ; après
+les cartes, écran « Un badge tombe » (`showCollectionDrop` / `CollectionDropScreen` : écusson en grand, rayons qui tournent au
+métal, « Collectionneur III », chiffre et prochain palier, Badge suivant / Sur l'étagère · Voir l'album) ; un badge en attente sans
+carte (app quittée entre les deux) : « Un badge à poser sur l'étagère » en tête d'Aujourd'hui.
 
 ## Règles du jeu en place (2026-10-30)
 
