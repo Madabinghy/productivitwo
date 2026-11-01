@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -83,9 +84,25 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   /// Focus (par défaut à chaque ouverture) = ce qui reste à faire ; Tout = les
   /// faites aussi, à leur place dans leur domaine (retour user 2026-10-31,
   /// comme le lanceur d'activités : plus de repli « Faites » tout en bas).
-  bool _focus = true;
+  // Rouvert sur le dernier onglet choisi (Focus par défaut la première fois).
+  bool _focus = LauncherTabStore.peek(LauncherTabStore.kRoutines) ?? true;
+
+  void _setFocus(bool v) {
+    setState(() => _focus = v);
+    LauncherTabStore.save(LauncherTabStore.kRoutines, v);
+  }
 
   AppLogic get logic => widget.logic;
+
+  @override
+  void initState() {
+    super.initState();
+    if (LauncherTabStore.peek(LauncherTabStore.kRoutines) == null) {
+      LauncherTabStore.load(LauncherTabStore.kRoutines).then((v) {
+        if (mounted && v != _focus) setState(() => _focus = v);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -252,7 +269,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           showSelectedIcon: false,
           style: SegmentedButton.styleFrom(
               visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-          onSelectionChanged: (v) => setState(() => _focus = v.first),
+          onSelectionChanged: (v) => _setFocus(v.first),
         ),
         const SizedBox(width: 10),
         Expanded(

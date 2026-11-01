@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/focus_gauge_guide.dart';
 import 'package:productivitwo_v1/utils/focus_gauge.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -150,7 +151,13 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   // Focus (défaut à chaque ouverture) = seulement les activités dont la cible
   // du jour n'est pas atteinte, toujours rangées par domaine. Une recherche
   // montre tout.
-  bool _focus = true;
+  // Rouvert sur le dernier onglet choisi (Focus par défaut la première fois).
+  bool _focus = LauncherTabStore.peek(LauncherTabStore.kActivities) ?? true;
+
+  void _setFocus(bool v) {
+    setState(() => _focus = v);
+    LauncherTabStore.save(LauncherTabStore.kActivities, v);
+  }
   Map<String, ActivityPace> _watch = const {};
   bool _focusing = false;
   Timer? _tick;
@@ -225,6 +232,11 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   @override
   void initState() {
     super.initState();
+    if (LauncherTabStore.peek(LauncherTabStore.kActivities) == null) {
+      LauncherTabStore.load(LauncherTabStore.kActivities).then((v) {
+        if (mounted && v != _focus) setState(() => _focus = v);
+      });
+    }
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && logic.runningActivity() != null) setState(() {});
     });
@@ -388,7 +400,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         selected: {_focus},
         showSelectedIcon: false,
         style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-        onSelectionChanged: (s) => setState(() => _focus = s.first),
+        onSelectionChanged: (s) => _setFocus(s.first),
       ),
       const SizedBox(width: 10),
       Expanded(
