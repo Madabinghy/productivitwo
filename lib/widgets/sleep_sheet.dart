@@ -478,6 +478,13 @@ class _NightsPainter extends CustomPainter {
       lo = lo < pb ? lo : pb;
       hi = hi > pb + planned!.durationMin ? hi : pb + planned!.durationMin;
     }
+    // Trait rouge « maintenant » (retour user 2026-11-01), de 18 h à 10 h.
+    final nowClock = bedClockMin(DateTime.now());
+    final nowM = nowClock >= -360 && nowClock <= 600 ? nowClock + 6 * 60 : null;
+    if (nowM != null) {
+      lo = lo < nowM ? lo : nowM;
+      hi = hi > nowM ? hi : nowM;
+    }
     lo = (lo ~/ 60) * 60;
     hi = ((hi + 59) ~/ 60) * 60;
     const top = 6.0, bottom = 18.0;
@@ -498,6 +505,17 @@ class _NightsPainter extends CustomPainter {
       canvas.drawRRect(
           RRect.fromRectAndRadius(Rect.fromLTRB(left, y(pb), size.width, y(pb + planned!.durationMin)), const Radius.circular(6)),
           Paint()..color = kRechargeBand.withValues(alpha: .22));
+    }
+    if (nowM != null) {
+      final ny = y(nowM);
+      canvas.drawLine(Offset(left, ny), Offset(size.width, ny), Paint()
+        ..color = _kDanger
+        ..strokeWidth = 2);
+      final tp = TextPainter(
+          text: TextSpan(text: 'maintenant ${clockOf(nowClock)}', style: const TextStyle(fontSize: 10, color: _kDanger, fontWeight: FontWeight.w700)),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      tp.paint(canvas, Offset(size.width - tp.width, ny < top + 14 ? ny + 2 : ny - 13));
     }
     final colW = (size.width - left) / nights.length;
     final barW = (colW * .62).clamp(6.0, 18.0);
@@ -546,7 +564,11 @@ class _BedDots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return SizedBox(height: 62, width: double.infinity, child: CustomPaint(painter: _BedPainter(nights, avgBed, plannedBed, cs.onSurface)));
+    // Trait rouge « maintenant » (retour user 2026-11-01) : où tomberait le
+    // coucher si on allait se coucher là — seulement de 18 h à 10 h.
+    final now = bedClockMin(DateTime.now());
+    final nowClock = now >= -360 && now <= 600 ? now : null;
+    return SizedBox(height: 62, width: double.infinity, child: CustomPaint(painter: _BedPainter(nights, avgBed, plannedBed, cs.onSurface, nowClock: nowClock)));
   }
 }
 
@@ -555,7 +577,8 @@ class _BedPainter extends CustomPainter {
   final int avgBed;
   final int? plannedBed;
   final Color ink;
-  _BedPainter(this.nights, this.avgBed, this.plannedBed, this.ink);
+  final int? nowClock;
+  _BedPainter(this.nights, this.avgBed, this.plannedBed, this.ink, {this.nowClock});
 
   void _text(Canvas c, String t, Offset o, Color color, {bool center = true}) {
     final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)), textDirection: TextDirection.ltr)
@@ -566,8 +589,9 @@ class _BedPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final beds = [for (final n in nights) bedClockMin(n.bed)];
-    var lo = [...beds, avgBed, if (plannedBed != null) plannedBed!].reduce((a, b) => a < b ? a : b) - 30;
-    var hi = [...beds, avgBed, if (plannedBed != null) plannedBed!].reduce((a, b) => a > b ? a : b) + 30;
+    final pts = [...beds, avgBed, if (plannedBed != null) plannedBed!, if (nowClock != null) nowClock!];
+    var lo = pts.reduce((a, b) => a < b ? a : b) - 30;
+    var hi = pts.reduce((a, b) => a > b ? a : b) + 30;
     lo = (lo ~/ 60) * 60 - (lo < 0 && lo % 60 != 0 ? 60 : 0);
     hi = ((hi + 59) ~/ 60) * 60;
     double x(int m) => 8 + (m - lo) / (hi - lo) * (size.width - 16);
@@ -588,6 +612,14 @@ class _BedPainter extends CustomPainter {
     }
     for (var i = 0; i < beds.length; i++) {
       canvas.drawCircle(Offset(x(beds[i]), 22.0 + (i % 3) * 7), 5, Paint()..color = _kShort.withValues(alpha: .85));
+    }
+    if (nowClock != null) {
+      final nx = x(nowClock!);
+      canvas.drawLine(Offset(nx, 12), Offset(nx, axisY), Paint()
+        ..color = _kDanger
+        ..strokeWidth = 2);
+      final right = nx < size.width - 60;
+      _text(canvas, 'maintenant ${clockOf(nowClock!)}', Offset(right ? nx + 4 : nx - 92, axisY - 14), _kDanger, center: false);
     }
     final ax = x(avgBed);
     canvas.drawLine(Offset(ax, 14), Offset(ax, axisY), Paint()
