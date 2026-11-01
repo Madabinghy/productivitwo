@@ -886,7 +886,16 @@ ligne séparés par des virgules ; `ingredientSuggestions` = ingrédients des au
 faits · pas faits depuis `kStaleDishDays` (14) j · pas encore cuisinés ; `sinceLabel`) ; écrans `widgets/dishes_sheet.dart` —
 `showDishesSheet` (recherche plat ou ingrédient, sections, « Nouveau ») et `showDishSheet` (nom, portions − / +, temps, ingrédients
 avec quantité touchable, ✕, ligne d'ajout, suggestions, Créer / Enregistrer, « Retirer ce plat » = `deleted`). Entrée provisoire :
-menu ⋯ « Mes plats » (la feuille Repas du lot 3 la remplacera).
+menu ⋯ (la feuille Repas du lot 3 la remplacera). **Lot 2 livré (menu + courses)** : logique pure
+`utils/meal_plan.dart` — stockage `data/meta.meals {plans: {<lundi>: {<ymd|midi|soir>: PlannedMeal {recipeId?, title, portions,
+out?}}}, shopping: {<lundi>: {checked: [clés], extra: [{label, qty}]}}}` (`parseMeals`, `AppLogic.meals` / `mealWeek` / `setMeal` /
+`setShoppingChecked` / `setShoppingExtra`, `FirestoreSync.setMealSlot` / `setShopping`, flux meta de main.dart via `_mealsJson`,
+dans `kBackupMetaKeys`) ; `leftoversOf` (un plat de n portions remplit les n − 1 MIDIS suivants restés vides) ; `shoppingFor` (les
+ingrédients de chaque plat posé, une fois par plat, additionnés par libellé — `sumQty` : « 500 g + 500 g = 1 kg », unités
+différentes jointes « 500 g + 1 boîte » —, provenance `from`, puis les ajouts à la main). Écrans `widgets/meal_week_sheet.dart` :
+`showMealWeekSheet` (« Les repas de la semaine », ‹ › semaines, midi et soir des 7 jours, tap = plat de la bibliothèque · Nouveau plat ·
+Dehors / libre · Vider ; restes en « ↳ les restes · … » ; bouton « Liste de courses · n à prendre », lien « Mes plats › ») et
+`showShoppingSheet` (lignes à cocher avec provenance et quantité, « + Ajouter », DANS LE PANIER). Menu ⋯ « Repas de la semaine ».
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 

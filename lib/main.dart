@@ -1,6 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
-import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show showDishesSheet;
+import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'dart:convert';
 import 'dart:io';
@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
+import 'package:productivitwo_v1/utils/meal_plan.dart' show parseMeals;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -1785,6 +1786,7 @@ class _AppRootState extends State<AppRoot>
   final store = FileStore();
   final _sync = FirestoreSync();
   late final BadgeCenter _badges = BadgeCenter(logic: logic, sync: _sync);
+  String _mealsJson = ''; // dernier `data/meta.meals` lu (repas, 2026-11-01)
   String _syncStatus = ''; // '' = en cours, '☁️' = OK, '⚠️' = local
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
@@ -1813,6 +1815,8 @@ class _AppRootState extends State<AppRoot>
       final sameParoles = parolesToJson(paroles).toString() == parolesToJson(logic.paroles).toString();
       final reviews = parseWeekReviews(m['weekReviews']);
       final sport = SportOverrides.from(m['sportPick']);
+      final mealsJson = jsonEncode(m['meals'] ?? const {});
+      final sameMeals = mealsJson == _mealsJson;
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1823,6 +1827,7 @@ class _AppRootState extends State<AppRoot>
           sameParoles &&
           sameReviews &&
           sport.sameAs(logic.sportOverrides) &&
+          sameMeals &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1838,6 +1843,10 @@ class _AppRootState extends State<AppRoot>
       logic.paroles = paroles;
       logic.weekReviews = reviews;
       logic.sportOverrides = sport;
+      if (!sameMeals) {
+        _mealsJson = mealsJson;
+        logic.meals = parseMeals(m['meals']);
+      }
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
       logic.restPeriods = periods;
@@ -4646,7 +4655,7 @@ class _AppRootState extends State<AppRoot>
               } else if (v == 'orion') {
                 OrionScreen.show(context, _sync);
               } else if (v == 'dishes') {
-                showDishesSheet(context, sync: _sync);
+                showMealWeekSheet(context, logic: logic, sync: _sync);
               } else if (v == 'weekly_review') {
                 showWeekReviewScreen(context, logic, badges: _badges);
               } else if (v == 'filters') {
@@ -4723,7 +4732,7 @@ class _AppRootState extends State<AppRoot>
                 child: Row(children: [
                   Icon(Icons.restaurant_menu_rounded, size: 18),
                   SizedBox(width: 12),
-                  Text('Mes plats'),
+                  Text('Repas de la semaine'),
                 ]),
               ),
               const PopupMenuItem(

@@ -35,6 +35,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/meal_plan.dart' show MealWeek, PlannedMeal;
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides, kSportSessionMin, resolveSportPick;
 
 // ---------- Constantes ----------
@@ -1905,6 +1906,38 @@ class AppLogic implements HuntStore {
     weekReviews = {...weekReviews, monday: r};
     onChange();
     await sync?.setWeekReview(monday, r.toJson());
+  }
+
+  /// Menu et courses par lundi (`data/meta.meals`, `utils/meal_plan.dart`).
+  Map<String, MealWeek> meals = const {};
+
+  MealWeek mealWeek(String monday) => meals[monday] ?? const MealWeek();
+
+  Future<void> setMeal(String monday, String key, PlannedMeal? meal) async {
+    final w = mealWeek(monday);
+    final slots = {...w.slots};
+    if (meal == null) {
+      slots.remove(key);
+    } else {
+      slots[key] = meal;
+    }
+    meals = {...meals, monday: MealWeek(slots: slots, checked: w.checked, extra: w.extra)};
+    onChange();
+    await sync?.setMealSlot(monday, key, meal?.toJson());
+  }
+
+  Future<void> setShoppingChecked(String monday, Set<String> checked) async {
+    final w = mealWeek(monday);
+    meals = {...meals, monday: MealWeek(slots: w.slots, checked: checked, extra: w.extra)};
+    onChange();
+    await sync?.setShopping(monday, checked: checked.toList()..sort());
+  }
+
+  Future<void> setShoppingExtra(String monday, List<ShoppingItem> extra) async {
+    final w = mealWeek(monday);
+    meals = {...meals, monday: MealWeek(slots: w.slots, checked: w.checked, extra: extra)};
+    onChange();
+    await sync?.setShopping(monday, extra: [for (final x in extra) x.toJson()]);
   }
 
   /// « Mes activités de sport » (`data/meta.sportPick`, `utils/sport_stats.dart`).
