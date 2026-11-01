@@ -14,7 +14,7 @@ import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
 import 'package:productivitwo_v1/utils/sleep_stats.dart' show clockOf, fmtNight;
 import 'package:productivitwo_v1/utils/watch_minimums.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
-import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen;
+import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kWeekPlanEnabled;
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart' show setActivityMinimum;
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart' show showWeeklyReviewSheet;
 
@@ -437,9 +437,9 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
         for (final d in decisions) Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('✓ $d', style: const TextStyle(fontSize: 14))),
       ],
     ],
-        button: 'Poser la semaine →',
-        onButton: () => _finish(plan: true),
-        footer: TextButton(onPressed: () => _finish(plan: false), child: const Text('Terminer sans poser la semaine')));
+        button: kWeekPlanEnabled ? 'Poser la semaine →' : 'Terminer la revue',
+        onButton: () => _finish(plan: kWeekPlanEnabled),
+        footer: kWeekPlanEnabled ? TextButton(onPressed: () => _finish(plan: false), child: const Text('Terminer sans poser la semaine')) : null);
   }
 
   Future<void> _finish({required bool plan}) async {
