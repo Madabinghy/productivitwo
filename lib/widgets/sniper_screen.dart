@@ -66,6 +66,9 @@ class _SniperScreenState extends State<SniperScreen> {
   /// Tirs ajustés à la main : coches ou minutes par cible.
   final _amounts = <String, int>{};
 
+  /// Ordre des tirs posé à la main (null = l'ordre conseillé).
+  List<String>? _order;
+
   /// Le plan calculé une fois ; les écarts et ajouts s'appliquent dessus.
   SniperPlan _base = const SniperPlan(budgetMin: 0);
   SniperPlan _plan = const SniperPlan(budgetMin: 0);
@@ -161,7 +164,18 @@ class _SniperScreenState extends State<SniperScreen> {
 
   /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
   /// de portée ne rentre sans qu'on le choisisse.
-  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts);
+  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts, order: _order);
+
+  void _reorder(int from, int to) {
+    final keys = [for (final t in _plan.aimed) t.key];
+    if (to > from) to -= 1;
+    final k = keys.removeAt(from);
+    keys.insert(to, k);
+    setState(() {
+      _order = keys;
+      _adjust();
+    });
+  }
 
   void _step(SniperTarget t, {required bool up}) {
     final a = stepAmount(t, up: up);
@@ -189,6 +203,7 @@ class _SniperScreenState extends State<SniperScreen> {
     setState(() {
       _excluded.remove(t.key);
       if (fromOut) _added.add(t.key);
+      if (_order case final o?) _order = [...o.where((k) => k != t.key), t.key];
       _adjust();
     });
   }
@@ -756,7 +771,20 @@ class _SniperScreenState extends State<SniperScreen> {
                         textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: _text3))),
             ]),
           ])),
-          _label('CIBLES · CE QUI SE PERD CE SOIR D’ABORD'),
+          Row(children: [
+            Expanded(child: _label(_order == null ? 'CIBLES · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
+            if (_order != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: TextButton(
+                  onPressed: () => setState(() {
+                    _order = null;
+                    _adjust();
+                  }),
+                  child: const Text('Ordre conseillé', style: TextStyle(fontSize: 13, color: kSniperAccent)),
+                ),
+              ),
+          ]),
           if (_plan.aimed.isEmpty)
             _box(Text(
                 _stakes.isEmpty
@@ -764,16 +792,32 @@ class _SniperScreenState extends State<SniperScreen> {
                     : 'Aucune cible ne tient dans ton temps libre. Regarde plus bas ce qui reste hors de portée.',
                 style: const TextStyle(fontSize: 13.5, height: 1.4, color: _text2)))
           else
-            _box(Column(children: [
-              for (final t in _plan.aimed)
-                _targetRow(t,
-                    on: true,
-                    onTap: () => setState(() {
-                          _excluded.add(t.key);
-                          _added.remove(t.key);
-                          _adjust();
-                        })),
-            ])),
+            _box(ReorderableListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              proxyDecorator: (child, _, __) => Material(color: _card2, borderRadius: BorderRadius.circular(12), elevation: 6, child: child),
+              onReorder: _reorder,
+              children: [
+                for (var i = 0; i < _plan.aimed.length; i++)
+                  ReorderableDelayedDragStartListener(
+                    key: ValueKey(_plan.aimed[i].key),
+                    index: i,
+                    child: _targetRow(_plan.aimed[i],
+                        on: true,
+                        onTap: () => setState(() {
+                              _excluded.add(_plan.aimed[i].key);
+                              _added.remove(_plan.aimed[i].key);
+                              _adjust();
+                            })),
+                  ),
+              ],
+            )),
+          if (_plan.aimed.length > 1 && _order == null)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Appui long sur une cible pour la déplacer.', style: TextStyle(fontSize: 12, color: _text3)),
+            ),
           if (excluded.isNotEmpty) ...[
             _label('ÉCARTÉES · TOUCHE POUR REMETTRE'),
             _box(Column(children: [
