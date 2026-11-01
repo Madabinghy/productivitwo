@@ -220,13 +220,21 @@ String sniperCountLine(int hit, int aimed, {int? full}) {
 /// [amounts] = tirs ajustés à la main (2026-11-01, retour user : 20 pompes
 /// d'un coup, 6 verres d'eau) : coches ou minutes par cible. L'ordre reste
 /// celui des cibles entières, il ne bouge pas pendant qu'on ajuste.
-SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<String> added = const {}, Map<String, int> amounts = const {}}) {
+///
+/// [order] = l'ordre des tirs posé à la main (null = l'ordre conseillé) :
+/// les cibles qu'il ne connaît pas viennent après, dans l'ordre conseillé.
+SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<String> added = const {}, Map<String, int> amounts = const {}, List<String>? order}) {
   final sorted = [
     for (final t in base.aimed)
       if (!excluded.contains(t.key)) t,
     for (final m in base.outOfReach)
       if (added.contains(m.target.key) && !excluded.contains(m.target.key)) m.target,
   ]..sort(compareSniper);
+  if (order != null) {
+    final rank = {for (var i = 0; i < order.length; i++) order[i]: i};
+    final conseil = {for (var i = 0; i < sorted.length; i++) sorted[i].key: i};
+    sorted.sort((a, b) => (rank[a.key] ?? order.length + conseil[a.key]!).compareTo(rank[b.key] ?? order.length + conseil[b.key]!));
+  }
   final aimed = [
     for (final t in sorted)
       if (amounts[t.key] case final a? when t.adjustable && a > 0) t.withAmount(a) else t,

@@ -139,4 +139,17 @@ void main() {
     expect(sniperCountLine(4, 4, full: 2), 'dont 2 pleines · il faut 3 cibles pleines');
     expect(ChainRun.from(r(4, 4, 2).toJson()).fullCount, 2);
   });
+
+  test('réordonner : l’ordre posé à la main fait foi, les nouvelles cibles viennent après', () {
+    final b = Activity(id: 'b', domainId: 'd', name: 'B', goalMin: 10);
+    final c = Activity(id: 'c', domainId: 'd', name: 'C', goalMin: 10);
+    final base = planSniper(stakes: [timed(lecture, 10, w: 30), timed(b, 10, w: 20), timed(c, 10, w: 10)], budgetMin: 25);
+    expect(base.aimed.map((t) => t.title), ['Lecture', 'B']);
+    final mine = adjustPlan(base, order: ['activity:b', 'activity:lec']);
+    expect(mine.aimed.map((t) => t.title), ['B', 'Lecture']);
+    expect(mine.totalMin, base.totalMin);
+    final more = adjustPlan(base, excluded: {'activity:lec'}, added: {'activity:c'}, order: ['activity:b']);
+    expect(more.aimed.map((t) => t.title), ['B', 'C']);
+    expect(adjustPlan(base).aimed.map((t) => t.title), ['Lecture', 'B']);
+  });
 }
