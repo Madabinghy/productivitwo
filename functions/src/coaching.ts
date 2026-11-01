@@ -7,6 +7,7 @@ import { db } from "./db";
 import { executePushAssistantMessage } from "./execute";
 import { elanSummary, formatElanSummary, livedParts, DEFAULT_DAY_START_MIN, MoodMarkDoc, BlockLite, SessionLite } from "./elan";
 import { parseSnapshot, parseHunts, badgesForCoach, badgesSummary } from "./badges_mcp";
+import { CoachSignals, signalsForCoach, signalTiles, signalReportLines, talkingPoints, watchFlag } from "./coach_signals";
 
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
 // lib/utils/engagement_stats.dart (kKeptRatio).
@@ -49,7 +50,9 @@ type Granularity = "status" | "detail";
 // "state" (2026-10) : granularité À PART, opt-in — les pointages d'état (élan,
 // effort, humeur) de la semaine. Sans elle, le coach voit les badges (des
 // faits) mais ni l'élan ni la discipline chiffrée.
-type Sharing = { domainIds: string[]; granularity: Granularity; state: boolean };
+// « games » et « sleep » (2026-11-01, cockpit coach) : opt-in à part — parole
+// tenue, Montre suisse, Métronome, posé la veille ; et le sommeil.
+type Sharing = { domainIds: string[]; granularity: Granularity; state: boolean; games: boolean; sleep: boolean };
 
 function sharingOf(data: Json): Sharing {
   const s = (data.sharing ?? {}) as Json;
@@ -57,6 +60,8 @@ function sharingOf(data: Json): Sharing {
     domainIds: Array.isArray(s.domainIds) ? s.domainIds.map(String) : [],
     granularity: s.granularity === "detail" ? "detail" : "status",
     state: s.state === true,
+    games: s.games === true,
+    sleep: s.sleep === true,
   };
 }
 
@@ -292,6 +297,8 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
   const metaData = metaDoc.exists ? (metaDoc.data() as Json) : {};
   const badges = badgesSummary(badgesForCoach(badgesDoc.exists ? parseSnapshot(badgesDoc.data()) : null, sharedDomains), parseHunts(metaData.badgeHunts));
   if (badges) delete badges._hint;
+  // Signaux de la semaine (instantané de l'app), filtrés par le consentement.
+  const signals = signalsForCoach(badgesDoc.exists ? (badgesDoc.data() as Json).signals : null, sharing, sharedDomains);
   let elan: Json | null = null;
   if (sharing.state) {
     const tz = typeof metaData.tzOffsetMin === "number" ? (metaData.tzOffsetMin as number) : null;
@@ -328,6 +335,12 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
     date: ymd,
     granularity: sharing.granularity,
     stateShared: sharing.state,
+    gamesShared: sharing.games,
+    sleepShared: sharing.sleep,
+    signals,
+    signalTiles: signals ? signalTiles(signals) : null,
+    talkingPoints: signals ? talkingPoints(signals) : [],
+    watchFlag: watchFlag(signals),
     badges,
     elan,
     domains,
@@ -387,6 +400,16 @@ function buildPresessionReport(fiche: Json, dash: Json): string {
   }
   const elan = dash.elan as Json | null;
   if (elan && typeof elan.summary === "string") lines.push(elan.summary);
+  const sig = dash.signals as CoachSignals | null;
+  if (sig) {
+    for (const l of signalReportLines(sig)) lines.push(l);
+    const pts = (dash.talkingPoints as string[]) ?? [];
+    if (pts.length) {
+      lines.push("");
+      lines.push("À aborder en séance :");
+      for (const p of pts) lines.push(`  • ${p}`);
+    }
+  }
   const minutes = (dash.weekMinutesByActivity as Record<string, number>) ?? null;
   const actNames = new Map(
     ((dash.activities as Json[]) ?? []).map((a) => [String(a.id), String(a.name)]));
@@ -455,6 +478,8 @@ export const coachApi = onRequest(
               domainCount: sharing.domainIds.length,
               granularity: sharing.granularity,
               state: sharing.state,
+              games: sharing.games,
+              sleep: sharing.sleep,
             },
           };
         });
@@ -772,12 +797,12 @@ export const coachConsent = onRequest(
         consentAt: FieldValue.serverTimestamp(),
         // L'acceptation (re)part toujours d'un périmètre VIDE : le partage
         // est un opt-in du coaché dans son app, jamais un état hérité.
-        ...(granted ? { sharing: { domainIds: [], granularity: "status", state: false } } : {}),
+        ...(granted ? { sharing: { domainIds: [], granularity: "status", state: false, games: false, sleep: false } } : {}),
       }, { merge: true });
       await logConsentEvent(
         tok!.coachingId as string,
         granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused",
-        granted ? { domainIds: [], granularity: "status", state: false } : sharingOf(d),
+        granted ? { domainIds: [], granularity: "status", state: false, games: false, sleep: false } : sharingOf(d),
       );
       // Lier l'uid si le compte existe déjà (sinon il se liera plus tard).
       try {
@@ -851,8 +876,8 @@ export const coacheeApi = onRequest(
       res.status(401).json({ error: "Token invalide ou expiré" }); return;
     }
 
-    const { action, domainIds, granularity, state } = req.body as {
-      action?: string; domainIds?: string[]; granularity?: string; state?: boolean;
+    const { action, domainIds, granularity, state, games, sleep } = req.body as {
+      action?: string; domainIds?: string[]; granularity?: string; state?: boolean; games?: boolean; sleep?: boolean;
     };
 
     try {
@@ -888,6 +913,8 @@ export const coacheeApi = onRequest(
           domainIds: [...new Set(wanted.filter((id) => valid.has(id)))],
           granularity: gran,
           state: state === true,
+          games: games === true,
+          sleep: sleep === true,
         };
         await coachingRef(fiche.id).set(
           { sharing, updatedAt: FieldValue.serverTimestamp() }, { merge: true });

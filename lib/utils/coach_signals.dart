@@ -131,6 +131,10 @@ Map<String, dynamic> coachSignals({
     'cap': {'days': cap},
     'sleep': {
       'nights': [for (final n in week) n?.minutes],
+      // La nuit qui précède chacun des [days] (pour croiser avec la parole).
+      'nightsBefore': [
+        for (final ymd in days) nights30.whereType<SleepNight>().where((n) => n.nextYmd == ymd).firstOrNull?.minutes,
+      ],
       'targetMin': target,
       'avgMin': st.avgMin,
       'debtMin': st.debtMin,

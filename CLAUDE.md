@@ -855,7 +855,17 @@ veille. **Lot 1 livré (app)** : logique pure `utils/coach_signals.dart` — `co
 qui ont coûté la montre, avec `domainId`), `metronome`, `parole` (jours où une parole ≥ 3 a été donnée), `cap` (`capStateOf` :
 `held` · `posed` · null), et `sleep` (7 nuits en minutes, cible, moyenne, dette, coucher moyen, régularité, bloc prévu, `impact`
 part en Flemme après nuits longues / courtes). Déposé par `BadgeCenter._pushSnapshot` dans `data/badges.signals` (le serveur ne
-recalcule rien ; il filtrera : sommeil = consentement à part, blockers = domaines partagés).
+recalcule rien ; il filtrera : sommeil = consentement à part, blockers = domaines partagés). **Lot 2 livré (serveur + écrans,
+⚠️ `firebase deploy --only functions`)** : consentement `sharing.games` (parole, montre, métronome, posé la veille) et
+`sharing.sleep` (à part), opt-in, acceptés par `coacheeApi.updateSharing`, exposés par `listClients` ; logique pure
+`functions/src/coach_signals.ts` (`signalsForCoach` filtre — rien sans opt-in, blockers des domaines non partagés retirés ;
+`signalTiles`, `signalReportLines` → rapport de pré-séance, `talkingPoints` → « À aborder en séance » (4 phrases, règles fixes,
+jamais d'IA ; croise parole manquée et nuit courte via `sleep.nightsBefore`), `watchFlag` pour le lot 3) ; le dashboard porte
+`signals`, `signalTiles`, `talkingPoints`, `watchFlag`, `gamesShared`, `sleepShared`. Console web (`coach_console_screen.dart`) :
+SA SEMAINE EN SIGNAUX (`_signalsRow`, cinq tuiles, une case par jour ; « privé » quand le sommeil n'est pas partagé) et À ABORDER
+EN SÉANCE. Coaché, « Mon coach » (`coach_space_sheet.dart`) : interrupteurs MES JEUX DE LA JOURNÉE et MON SOMMEIL dans l'éditeur
+de partage, puis CE QUE … VOIT / CE QU'IL NE VOIT PAS (`_sharedList` : engagements, temps et programme, badges, état, jeux,
+sommeil — et toujours : domaines non partagés, texte des idées et notes, aucun export), ⓘ `kRuleCoachSharing`.
 
 ## Minimum des activités (calibration, 2026-10-30)
 
