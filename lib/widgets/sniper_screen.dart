@@ -270,6 +270,7 @@ class _SniperScreenState extends State<SniperScreen> {
         'skipped': _skipped.toList(),
         'fired': _fired,
         'aimedMin': _aimedMin,
+        'full': _fullHits,
         'total': _totalAimed,
       },
     ));
@@ -508,6 +509,10 @@ class _SniperScreenState extends State<SniperScreen> {
     setState(() => _phase = _Phase.end);
   }
 
+  /// Cibles touchées en entier : une cible tombée ailleurs (disparue des
+  /// enjeux à la reprise) compte pleine.
+  int get _fullHits => _hit.length - _aimed.where((t) => _hit.contains(t.key) && t.isMini).length;
+
   int get _firedTotal => _fired.values.fold(0, (s, v) => s + v);
 
   void _save() {
@@ -522,6 +527,7 @@ class _SniperScreenState extends State<SniperScreen> {
       total: _totalAimed,
       completed: _nextIndex(_index) == null,
       kind: kSniperKind,
+      fullCount: _fullHits,
     );
     logic.recordChainRun(run);
     logic.sync?.saveChainRun(run);
@@ -985,7 +991,7 @@ class _SniperScreenState extends State<SniperScreen> {
     final hitTargets = _aimed.where((t) => _hit.contains(t.key)).toList();
     final missed = _aimed.where((t) => !_hit.contains(t.key)).toList();
     final hitN = _hit.length;
-    final counted = logic.state.chainRuns.where((r) => r.id != _runId && sniperCounts(r)).length + (hitN >= kSniperCountedMin && hitN >= _totalAimed ? 1 : 0);
+    final counted = logic.state.chainRuns.where((r) => r.id != _runId && sniperCounts(r)).length + (sniperSessionCounts(hit: hitN, aimed: _totalAimed, full: _fullHits) ? 1 : 0);
     final nextTier = kSniperTiers.firstWhere((t) => t > counted, orElse: () => kSniperTiers.last);
     final aimedHitMin = hitTargets.fold<int>(0, (s, t) => s + t.cost);
     final precision = sniperPrecision(aimedHitMin, _firedTotal);
@@ -997,7 +1003,7 @@ class _SniperScreenState extends State<SniperScreen> {
           const SizedBox(height: 6),
           Text(hitN == 0 ? 'Aucune cible cette fois' : '$hitN / $_totalAimed cible${_totalAimed > 1 ? 's' : ''} touchée${hitN > 1 ? 's' : ''}',
               style: const TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w800)),
-          Text('${fmtMin(_firedTotal)} tirées pour ${fmtMin(aimedHitMin)} visées · ${sniperCountLine(hitN, _totalAimed)}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+          Text('${fmtMin(_firedTotal)} tirées pour ${fmtMin(aimedHitMin)} visées · ${sniperCountLine(hitN, _totalAimed, full: _fullHits)}', style: const TextStyle(fontSize: 13.5, color: _text2)),
           const SizedBox(height: 14),
           Row(children: [
             for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.where((t) => !t.isMini).fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[

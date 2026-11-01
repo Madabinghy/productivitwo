@@ -1071,7 +1071,9 @@ d'un coup, 6 verres d'eau ; Cuisiner proposé à 15 min) : dans le viseur, chaqu
 `sniperStep` : routine par 1, par 5 dès 10 à faire, de 1 à ce qui manque ; temps par 5 min, de 5 à `kSniperMaxMin`) ; la cible
 proposée reste ce qui manque (`SniperTarget.need`), un tir plus petit est un **mini-tir** (`isMini`, `leftAfter` : « mini-tir ·
 il en restera 10 », gains grisés, rien ne « tombe » au bilan) ; agrandir vérifie le temps libre (`fitsPlan` remplace la cible
-de même clé) ; `adjustPlan(amounts:)` garde l'ordre des cibles entières ; montants persistés dans `PendingRun.extra.amounts`. Entrées : lanceur ◎ entre ⚡ et ↗ en haut
+de même clé) ; `adjustPlan(amounts:)` garde l'ordre des cibles entières ; montants persistés dans `PendingRun.extra.amounts`. **Badge** : une session compte quand toutes les cibles visées sont touchées
+dont au moins 3 EN ENTIER (`ChainRun.fullCount`, `sniperSessionCounts` ; une session d'avant n'a pas `fullCount` = toutes pleines) ;
+le bilan dit « dont 3 pleines · session comptée » / « il faut 3 cibles pleines ». Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
 **Un gros bouton, le mode du moment** (2026-11-01, retour user : pas quatre boutons alignés) : sous l'en-tête d'Aujourd'hui, UN gros
 bouton = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge),

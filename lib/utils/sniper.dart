@@ -196,13 +196,19 @@ int sniperPrecision(int aimedMin, int firedMin) {
 
 bool isSniperRun(ChainRun r) => r.kind == kSniperKind;
 
-/// Une session compte : toutes les cibles visées touchées, au moins 3.
-bool sniperCounts(ChainRun r) => isSniperRun(r) && r.doneCount >= kSniperCountedMin && r.doneCount >= r.total;
+/// Une session compte : toutes les cibles visées touchées, dont au moins 3
+/// EN ENTIER (2026-11-01 : un mini-tir est touché mais ne compte pas parmi
+/// les 3 ; une session d'avant les mini-tirs n'a pas `fullCount`).
+bool sniperSessionCounts({required int hit, required int aimed, required int full}) => hit >= aimed && full >= kSniperCountedMin;
+bool sniperCounts(ChainRun r) => isSniperRun(r) && sniperSessionCounts(hit: r.doneCount, aimed: r.total, full: r.fullCount ?? r.doneCount);
 
-String sniperCountLine(int hit, int aimed) {
-  if (hit >= kSniperCountedMin && hit >= aimed) return 'session comptée';
-  if (hit < kSniperCountedMin) return 'une session compte dès $kSniperCountedMin cibles, toutes touchées';
-  return 'une session compte quand toutes les cibles visées tombent';
+String sniperCountLine(int hit, int aimed, {int? full}) {
+  final f = full ?? hit;
+  final mini = hit - f;
+  final pre = mini > 0 ? 'dont $f pleine${f > 1 ? 's' : ''} · ' : '';
+  if (sniperSessionCounts(hit: hit, aimed: aimed, full: f)) return '${pre}session comptée';
+  if (f < kSniperCountedMin) return '$pre${mini > 0 ? 'il faut $kSniperCountedMin cibles pleines' : 'une session compte dès $kSniperCountedMin cibles, toutes touchées'}';
+  return '${pre}une session compte quand toutes les cibles visées tombent';
 }
 
 /// Le plan ajusté à la main (2026-11-01, retour user : écarter une cible

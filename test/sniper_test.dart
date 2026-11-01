@@ -129,4 +129,14 @@ void main() {
     expect(fitsPlan(adj, big), isFalse);
     expect(fitsPlan(adj, big.withAmount(55)), isTrue);
   });
+
+  test('badge Sniper : 3 cibles pleines, les mini-tirs ne comptent pas parmi elles', () {
+    ChainRun r(int done, int total, int? full) => ChainRun(date: '2026-11-01', startedAt: DateTime(2026), endedAt: DateTime(2026), doneCount: done, total: total, completed: true, kind: kSniperKind, fullCount: full);
+    expect(sniperCounts(r(4, 4, 3)), isTrue);
+    expect(sniperCounts(r(4, 4, 2)), isFalse);
+    expect(sniperCounts(r(3, 3, null)), isTrue);
+    expect(sniperCountLine(4, 4, full: 3), 'dont 3 pleines · session comptée');
+    expect(sniperCountLine(4, 4, full: 2), 'dont 2 pleines · il faut 3 cibles pleines');
+    expect(ChainRun.from(r(4, 4, 2).toJson()).fullCount, 2);
+  });
 }
