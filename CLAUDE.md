@@ -1377,6 +1377,11 @@ x or · paliers » + barre, trois cartes par rangée par famille (`albumOrder`) 
 lancement) → `showCardReveal` / `CardRevealScreen` (une carte à la fois, de dos, « Retourner » ou tap = rotation 3D + halo de la
 rareté, « Carte or · Sniper », prochain palier, Carte suivante / Fermer · Voir l'album ; tout ce qui a été montré passe vu).
 Pastille NOUVEAU dans l'album tant qu'une carte n'est pas retournée. Remplace `UnlockSignalCard` (plus affichée).
+**Lot 3 livré (tuile, ce soir, partage)** : tuile BADGES = « k / n cartes » + éventail des trois plus belles cartes (`bestCards`,
+`DashTile.fan`, `CardFan`) ; la carte que donnerait un palier de ce soir (`tonightRarity`) → sous-ligne « carte bronze ce soir » ;
+« Badges en jeu » : section CARTE CE SOIR (`BadgesInPlay.tierCards`, mini carte + « carte argent ») et mini cartes des PROCHES ;
+fiche d'un badge gagné : « Partager la carte » (PNG de la carte, `RepaintBoundary` → `shareImage`, `utils/image_share.dart` :
+feuille de partage sur mobile, téléchargement sur le web). **Les 3 lots sont livrés.**
 
 ## Règles du jeu en place (2026-10-30)
 

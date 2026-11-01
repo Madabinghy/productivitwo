@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, shortDateFr;
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberLedger, kEmberCap;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -22,7 +23,9 @@ class DashTile {
   final List<TileMark> mini;
   /// Objet que la tuile met en avant (projet du moment), ouvert au tap.
   final String? targetId;
-  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const [], this.targetId});
+  /// Tuile Badges : les plus belles cartes, en éventail (badges en cartes, lot 3).
+  final List<BadgeState> fan;
+  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const [], this.targetId, this.fan = const []});
 }
 
 /// Un morceau de la bande du programme : largeur = durée.
@@ -108,9 +111,12 @@ DashTile? objectivesTile(List<(String title, double? weekPercent)> objectives, {
 DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
   if (deck == null) return null;
   final tonight = <String>[];
+  CardRarity? tonightCard;
   for (final s in [...board.top, ...board.rest]) {
     for (final g in s.gains) {
-      if (g.kind == StakeGainKind.tierTonight) tonight.add('${s.gesture.title} ${g.label.replaceFirst(' ce soir', '').replaceFirst('palier ', '')}');
+      if (g.kind != StakeGainKind.tierTonight) continue;
+      tonight.add('${s.gesture.title} ${g.label.replaceFirst(' ce soir', '').replaceFirst('palier ', '')}');
+      tonightCard ??= g.sourceId == null ? null : tonightRarity(deck.byId(g.sourceId!));
     }
   }
   final losing = [
@@ -122,7 +128,7 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
   final String sub;
   if (tonight.isNotEmpty) {
     value = tonight.first;
-    sub = 'palier ce soir${losing.isEmpty ? '' : ' · ${losing.length} série${losing.length > 1 ? 's' : ''} à sauver'}';
+    sub = '${tonightCard == null ? 'palier' : 'carte ${rarityLabel(tonightCard).toLowerCase()}'} ce soir${losing.isEmpty ? '' : ' · ${losing.length} série${losing.length > 1 ? 's' : ''} à sauver'}';
   } else if (losing.isNotEmpty) {
     value = '${losing.length} série${losing.length > 1 ? 's' : ''} ce soir';
     sub = 'à sauver : ${losing.take(2).join(', ')}${losing.length > 2 ? '…' : ''}';
@@ -133,13 +139,31 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     value = '${deck.acquired} paliers';
     sub = 'rien ne se joue ce soir';
   }
+  final album = cardAlbum(deck);
   return DashTile(
     label: 'BADGES',
-    badge: '${deck.acquired} / ${deck.total}',
+    badge: '${album.won} / ${album.total} cartes',
+    fan: bestCards(deck),
     value: value,
     mini: [for (var i = 0; i < (tonight.length + losing.length).clamp(0, 8); i++) i < tonight.length ? TileMark.on : TileMark.warn],
     sub: sub,
   );
+}
+
+/// La carte que donnerait le palier de ce soir (null sans badge).
+CardRarity? tonightRarity(BadgeState? b) {
+  if (b == null || b.complete) return null;
+  return rarityOf(BadgeState(def: b.def, level: b.level + 1, value: b.nextTarget ?? b.value));
+}
+
+/// Les plus belles cartes gagnées : la plus rare d'abord, puis la plus récente.
+List<BadgeState> bestCards(BadgeDeck deck, {int n = 3}) {
+  final won = [for (final b in deck.badges) if (b.acquired) b]..sort((a, b) {
+      final r = rarityOf(b).index.compareTo(rarityOf(a).index);
+      if (r != 0) return r;
+      return (b.obtained ?? DateTime(0)).compareTo(a.obtained ?? DateTime(0));
+    });
+  return won.take(n).toList();
 }
 
 /// Badges non complets, du plus proche de son palier au plus loin (hors
@@ -256,11 +280,13 @@ DashTile? projectsTile(List<Project> projects, DateTime today, {List<Session> se
 /// Les sections de l'écran « Badges en jeu » (aujourd'hui) : ce qui se perd
 /// ce soir, les paliers de ce soir, les chasses, puis les plus proches.
 class BadgesInPlay {
+  /// Carte que donnerait chaque palier de ce soir (par badge).
+  final Map<String, BadgeState> tierCards;
   final List<(Stake, StakeGain)> losing;
   final List<(Stake, StakeGain)> tiers;
   final List<(Stake, StakeGain)> hunts;
   final List<BadgeState> near;
-  const BadgesInPlay(this.losing, this.tiers, this.hunts, this.near);
+  const BadgesInPlay(this.losing, this.tiers, this.hunts, this.near, {this.tierCards = const {}});
   int get today => losing.length + tiers.length + hunts.length;
 }
 
@@ -285,7 +311,13 @@ BadgesInPlay badgesInPlay(StakeBoard board, BadgeDeck? deck) {
   }
   final inPlay = {for (final (_, g) in [...losing, ...tiers, ...hunts]) g.sourceId};
   final near = deck == null ? const <BadgeState>[] : nearBadges(deck).where((b) => !inPlay.contains(b.def.id)).take(8).toList();
-  return BadgesInPlay(losing, tiers, hunts, near);
+  final tierCards = <String, BadgeState>{};
+  for (final (_, g) in tiers) {
+    final b = g.sourceId == null ? null : deck?.byId(g.sourceId!);
+    if (b == null || b.complete) continue;
+    tierCards[b.def.id] = BadgeState(def: b.def, level: b.level + 1, value: b.nextTarget ?? b.value);
+  }
+  return BadgesInPlay(losing, tiers, hunts, near, tierCards: tierCards);
 }
 
 /// JOURNÉE PARFAITE (2026-10-30) : ce qui manque pour la journée parfaite

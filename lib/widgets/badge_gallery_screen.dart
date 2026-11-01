@@ -1,4 +1,8 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:productivitwo_v1/utils/image_share.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -492,7 +496,23 @@ class BadgeTodayActions {
   const BadgeTodayActions({this.routinePlus, this.pointElan, this.openBlock, this.startChrono, this.openChain});
 }
 
+/// La carte en image (PNG) dans la feuille de partage (badges en cartes, lot 3).
+Future<void> _shareCard(BuildContext context, GlobalKey key, BadgeState b) async {
+  final box = context.findRenderObject() as RenderBox?;
+  final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+  try {
+    final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    final img = await boundary.toImage(pixelRatio: 3);
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) return;
+    await shareImage(data.buffer.asUint8List(), 'carte-${b.def.id}.png',
+        text: 'Carte ${rarityLabel(rarityOf(b)).toLowerCase()} · ${b.def.name}', origin: origin);
+  } catch (_) {}
+}
+
 Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic, TodayFacts? facts, BadgeTodayActions? actions}) {
+  final cardKey = GlobalKey();
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
@@ -508,7 +528,16 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        Center(child: BadgeCardView(state: b, width: 170, footer: cardFooter(b, date: _shortDateOf))),
+        Center(child: RepaintBoundary(key: cardKey, child: BadgeCardView(state: b, width: 170, footer: cardFooter(b, date: _shortDateOf)))),
+        if (b.acquired)
+          Center(
+            child: TextButton.icon(
+              onPressed: () => _shareCard(ctx, cardKey, b),
+              icon: const Icon(Icons.ios_share_rounded, size: 18),
+              label: const Text('Partager la carte'),
+              style: TextButton.styleFrom(foregroundColor: kBText2),
+            ),
+          ),
         if (b.def.tiers.length >= 2) ...[
           const SizedBox(height: 12),
           _CardLadder(state: b),
