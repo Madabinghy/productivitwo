@@ -1108,7 +1108,11 @@ familles » ci-dessus ne sert plus qu'aux propositions. **Dates qui comptent** (
 déjà mon activité Interventions ») : le temps des dates de la semaine compte pour leur activité (`_datedMin` : bloc avec activité ou
 projet lié, miroir agenda apparié à une séance par `linkMirrorsToSessions` sur des COPIES, séance native sans bloc = son créneau,
 sinon 1 h) et se retire de ce qu'il reste à placer (« 21h · dont 6h déjà dans l'agenda », « Couvert par tes dates », Où j'en suis
-compté avec les dates) ; Sommeil et besoins de base ne sont plus listés en dates.
+compté avec les dates) ; Sommeil et besoins de base ne sont plus listés en dates. **Ce qui prend la journée** (même jour) : chaque jour de « Je place » porte
+« déjà posé : n blocs · 11h › voir » → feuille de la journée (`_showDay` : journée active, blocs déjà posés avec heures, ✕ = retirer
+un bloc du doc du jour, hors agenda et séances — `_removed`, appliqué à la validation en `status:"deleted"`) ; un jour plein
+accepte quand même un morceau (« + GDS quand même », « dépasse 15 ») et l'écran final dit combien de blocs n'ont pas trouvé de
+créneau (`_weekUnfit`).
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 
