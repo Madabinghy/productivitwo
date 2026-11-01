@@ -847,6 +847,21 @@ Corriger une nuit · Cible & fiche de l'activité. **Une nuit** (`_NightSheet`) 
 cible, couché après le bloc), frise, CHRONOS (tap = `openEditSessionSheet`), LE LENDEMAIN (bande d'élan, élan moyen, victoires,
 actions), Modifier les heures · Supprimer cette nuit (confirmation, sessions supprimées).
 
+## Suivi du sport (2026-11-01, maquette validée « Suivi du sport »)
+
+Une feuille « Sport » comme celle du sommeil, rien à saisir. **Lot 1 livré (logique + réglage)** : logique pure
+`utils/sport_stats.dart` — activités suivies = domaines de sport par défaut (`isSportDomainName` : sport, muscu, fitness,
+course…, `defaultSportIds`) ± réglage « Mes activités de sport » (`SportOverrides {add, remove}` dans `data/meta.sportPick`,
+`AppLogic.sportOverrides` / `saveSportOverrides`, `FirestoreSync.setSportPick`, dans le Coffre), rôle par type (`sportKindOf` :
+activité-temps = séance, routine quotidienne à cible ≥ 5 = répétitions, autre routine = routine de séance). `sportDays` : par
+journée vécue, minutes par activité, séances (`kSportSessionMin` = 10 min cumulées par activité ; +1 d'une routine de séance
+sans chrono de séance sur son activité liée — ou sans aucun chrono si elle n'en a pas), répétitions ; un jour sans séance =
+repos (les répétitions seules n'en font pas une). `sportSummary` (semaine en cours, séances 7 j, semaines à 3 séances sur 8,
+plus long repos sur 30 j), `sportWeeks` / `sportDecline` (« baisse depuis 4 semaines » : 4 semaines closes < moitié des 4 d'avant
+≥ 30 min), `repsStats` (semaine, cible × 7, record d'un jour, 8 semaines), `sportCommitments` (engagements des objectifs actifs
+sur les activités suivies), `sportObjective` (objectif chiffré qui engage le sport : le poids), `sportLaunchOrder` (plus en retard
+d'abord), `sportImpact` (lendemains d'une séance contre d'un jour sans : part de Flemme et nuit qui suit, ≥ 5 de chaque côté).
+
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
 Le coach voit ce que l'app mesure en plus des engagements : sommeil, parole tenue, Montre suisse, Métronome, journée posée la

@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -1809,6 +1810,7 @@ class _AppRootState extends State<AppRoot>
       final paroles = parseParoles(m['paroles']);
       final sameParoles = parolesToJson(paroles).toString() == parolesToJson(logic.paroles).toString();
       final reviews = parseWeekReviews(m['weekReviews']);
+      final sport = SportOverrides.from(m['sportPick']);
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1818,6 +1820,7 @@ class _AppRootState extends State<AppRoot>
           sameSpends &&
           sameParoles &&
           sameReviews &&
+          sport.sameAs(logic.sportOverrides) &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1832,6 +1835,7 @@ class _AppRootState extends State<AppRoot>
       logic.emberSpends = spends;
       logic.paroles = paroles;
       logic.weekReviews = reviews;
+      logic.sportOverrides = sport;
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
       logic.restPeriods = periods;
