@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -4560,9 +4561,9 @@ class _AppRootState extends State<AppRoot>
                               color:
                                   cs.outlineVariant.withValues(alpha: .55)),
                         ),
-                        // Barres élargies (2026-10-30, essai) : 192 px au lieu de 54.
+                        // 192 px (2026-10-30), réduit à 156 le 2026-11-01 pour le bouton Sport.
                         child: MiniHourBars24h(
-                            bins: bins24, segments: segs, width: 192),
+                            bins: bins24, segments: segs, width: 156),
                       ),
                     ),
                   ),
@@ -4579,7 +4580,28 @@ class _AppRootState extends State<AppRoot>
                   // est passé dans l'en-tête d'Aujourd'hui.
                   child: ValueListenableBuilder<int>(
                     valueListenable: _tick,
-                    builder: (context, _, __) => SleepBars(logic: logic, onTap: _openSleepActivity),
+                    builder: (context, _, __) => Row(mainAxisSize: MainAxisSize.min, children: [
+                      SleepBars(logic: logic, onTap: _openSleepActivity),
+                      const SizedBox(width: 6),
+                      // Bouton Sport (2026-11-01) : la feuille Sport en un tap.
+                      Tooltip(
+                        message: 'Sport',
+                        child: InkResponse(
+                          onTap: () => showSportSheet(context, logic: logic, sync: _sync),
+                          radius: 20,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: kSportAccent.withValues(alpha: .16),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: kSportAccent.withValues(alpha: .45)),
+                            ),
+                            child: const Icon(Icons.directions_run_rounded, size: 17, color: kSportAccent),
+                          ),
+                        ),
+                      ),
+                    ]),
                   ),
                 ),
               ),
