@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -64,6 +66,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
   List<String> _domainIds = [];
   String _granularity = 'status';
   bool _shareState = false; // granularité « état » : élan, effort, humeur
+  bool _shareGames = false; // parole tenue, Montre suisse, Métronome, posé la veille
+  bool _shareSleep = false; // sommeil (à part : c'est intime)
   List<Domain> _domains = [];
 
   @override
@@ -91,6 +95,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
         _granularity =
             sharing['granularity'] == 'detail' ? 'detail' : 'status';
         _shareState = sharing['state'] == true;
+        _shareGames = sharing['games'] == true;
+        _shareSleep = sharing['sleep'] == true;
       }
     } catch (e) {
       _error = '$e';
@@ -104,6 +110,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     final selected = _domainIds.toSet();
     var granularity = _granularity;
     var shareState = _shareState;
+    var shareGames = _shareGames;
+    var shareSleep = _shareSleep;
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -227,6 +235,44 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
                     style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.65))),
               ),
               const SizedBox(height: 10),
+              Text('MES JEUX DE LA JOURNÉE',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: cs.onSurface.withOpacity(.45))),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: shareGames,
+                onChanged: (v) => setLocal(() => shareGames = v),
+                title: const Text('Partager parole tenue, Montre suisse, Métronome, journée posée la veille',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    'Une case par jour sur 7 jours : tenu, manqué ou rien à mesurer. Quand la Montre suisse coince, '
+                    'il voit le nom de l\u2019activité seulement si son domaine est partagé.',
+                    style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.65))),
+              ),
+              const SizedBox(height: 6),
+              Text('MON SOMMEIL',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: cs.onSurface.withOpacity(.45))),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: shareSleep,
+                onChanged: (v) => setLocal(() => shareSleep = v),
+                title: const Text('Partager mon sommeil',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    'Durée des 7 dernières nuits, dette, heure de coucher face à ton bloc Sommeil, et l\u2019effet '
+                    'd\u2019une nuit courte sur ta flemme du lendemain. Désactivé tant que tu ne l\u2019actives pas.',
+                    style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.65))),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -254,6 +300,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
         'domainIds': selected.toList(),
         'granularity': granularity,
         'state': shareState,
+        'games': shareGames,
+        'sleep': shareSleep,
       });
       await _reload();
     } catch (e) {
@@ -296,6 +344,55 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
             .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
+  }
+
+  /// Ce que le coach voit et ne voit pas, d'après le partage en cours.
+  Widget _sharedList(ColorScheme cs) {
+    final any = _domainIds.isNotEmpty;
+    final seen = <(bool, String, String)>[
+      (any, 'Tes engagements', 'tenus ou en retard, dans les domaines partagés'),
+      (any && _granularity == 'detail', 'Ton temps et ton programme', 'temps par activité, blocs du jour, nombre d\u2019idées en attente'),
+      (any, 'Tes badges', 'paliers obtenus ; séries des routines des domaines partagés seulement'),
+      (_shareState, 'Ton état', 'élan, efforts, humeur de la semaine'),
+      (_shareGames, 'Tes jeux de la journée', 'parole tenue, Montre suisse, Métronome, posé la veille'),
+      (_shareSleep, 'Ton sommeil', 'durée, dette, heure de coucher, effet sur le lendemain'),
+    ];
+    Widget row(bool on, String title, String sub) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(on ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                size: 18, color: on ? cs.primary : cs.onSurface.withOpacity(.35)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700, color: on ? null : cs.onSurface.withOpacity(.5))),
+                Text(on ? sub : 'non partagé · $sub',
+                    style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+              ]),
+            ),
+          ]),
+        );
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(bottom: 4, top: 6),
+          child: Text(t,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurface.withOpacity(.45))),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: label('CE QUE ${_coachName.toUpperCase()} VOIT')),
+        const InfoDot(kRuleCoachSharing),
+      ]),
+      for (final (_, t, sub) in seen.where((e) => e.$1)) row(true, t, sub),
+      if (seen.every((e) => !e.$1)) Text('Rien pour l\u2019instant.', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.55))),
+      const SizedBox(height: 8),
+      label('CE QU\u2019IL NE VOIT PAS'),
+      for (final (_, t, sub) in seen.where((e) => !e.$1)) row(false, t, sub),
+      row(false, 'Les domaines que tu ne partages pas', 'nulle part, même agrégés dans un total'),
+      row(false, 'Le texte de tes idées et de tes notes', 'ni ta boîte d\u2019idées, ni le détail de tes actions'),
+      row(false, 'De quoi télécharger tes données', 'il lit le cockpit, il n\u2019exporte rien'),
+    ]);
   }
 
   @override
@@ -349,24 +446,13 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
                               style: const TextStyle(
                                   fontSize: 16, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 6),
-                          Text(
-                              _domainIds.isEmpty
-                                  ? 'Le lien est actif, mais il ne voit '
-                                      'encore RIEN — même pas les statuts. '
-                                      'À toi de choisir.'
-                                  : 'Il voit : '
-                                      '${_domainIds.map((id) => domainNames[id] ?? '…').join(' · ')}\n'
-                                      'Granularité : ${_granularity == 'detail' ? 'détail (temps + programme du jour)' : 'statuts seulement'}'
-                                      '${_shareState ? ' · mon état (élan, efforts, humeur) partagé' : ''}.',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurface.withOpacity(.7))),
-                          const SizedBox(height: 4),
-                          Text(_shareState ? 'Il voit ce que tu as fait et, cette semaine, comment tu l\u2019as vécu.' : 'Il voit ce que tu as fait, pas tes états.',
-                              style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontStyle: FontStyle.italic,
-                                  color: cs.onSurface.withOpacity(.45))),
+                          if (_domainIds.isEmpty)
+                            Text(
+                                'Le lien est actif, mais il ne voit encore RIEN, même pas les statuts. À toi de choisir.',
+                                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.7)))
+                          else
+                            Text('Domaines partagés : ${_domainIds.map((id) => domainNames[id] ?? '…').join(' · ')}',
+                                style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.7))),
                           const SizedBox(height: 12),
                           Row(children: [
                             FilledButton(
@@ -385,6 +471,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 18),
+                    _sharedList(cs),
                   ] else ...[
                     Text(
                       _consent == 'revoked'

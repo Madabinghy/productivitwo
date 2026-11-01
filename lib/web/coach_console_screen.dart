@@ -50,6 +50,10 @@ class _Coachee {
   bool get stateShared => (fiche['sharing'] as Map?)?['state'] == true || dash?['stateShared'] == true;
   Map<String, dynamic>? get badges => dash?['badges'] is Map ? Map<String, dynamic>.from(dash!['badges'] as Map) : null;
   Map<String, dynamic>? get elan => dash?['elan'] is Map ? Map<String, dynamic>.from(dash!['elan'] as Map) : null;
+  bool get gamesShared => (fiche['sharing'] as Map?)?['games'] == true || dash?['gamesShared'] == true;
+  bool get sleepShared => (fiche['sharing'] as Map?)?['sleep'] == true || dash?['sleepShared'] == true;
+  Map<String, dynamic>? get signals => dash?['signals'] is Map ? Map<String, dynamic>.from(dash!['signals'] as Map) : null;
+  List<String> get talkingPoints => ((dash?['talkingPoints'] as List?) ?? const []).map((e) => '$e').toList();
 
   List<Map<String, dynamic>> get engagements =>
       ((dash?['engagements'] as List?) ?? [])
@@ -868,6 +872,14 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
           ),
       ],
 
+      // Signaux de la semaine (cockpit coach 2026-11-01) : une case par jour.
+      sectionLabel('SA SEMAINE EN SIGNAUX — 7 DERNIERS JOURS'),
+      _signalsRow(cs, c),
+      if (c.talkingPoints.isNotEmpty) ...[
+        sectionLabel('À ABORDER EN SÉANCE — TIRÉ DES FAITS'),
+        _factCard(cs, [for (final p in c.talkingPoints) '• $p']),
+      ],
+
       // Badges (des faits) et, si partagé, l'état de la semaine.
       if (c.badges != null) ...[
         sectionLabel('SES BADGES'),
@@ -979,6 +991,69 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
             ),
         ]),
       );
+
+  /// Cinq tuiles : sommeil, parole tenue, Montre suisse, Métronome, posé la
+  /// veille ; une case par jour (vert tenu, corail manqué, vide rien à mesurer).
+  Widget _signalsRow(ColorScheme cs, _Coachee c) {
+    final sig = c.signals;
+    if (!c.gamesShared && !c.sleepShared) {
+      return _factCard(cs, const ['Non partagé : sommeil, parole tenue, Montre suisse, Métronome et journée posée la veille restent privés. Le coaché peut les ouvrir depuis « Mon coach ».'], muted: true);
+    }
+    if (sig == null) return _factCard(cs, const ['Partagé, mais rien à mesurer cette semaine (l\u2019app du coaché n\u2019a pas encore envoyé ses signaux).'], muted: true);
+    String fmt(int m) => m < 60 ? '$m min' : '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}';
+    List<bool?> bools(Object? v) => [for (final x in (v as List? ?? const [])) x is bool ? x : null];
+    Widget dots(List<Color?> cells) => Row(children: [
+          for (final col in cells)
+            Expanded(
+              child: Container(
+                height: 7,
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(color: col ?? Colors.white.withOpacity(.08), borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+        ]);
+    Widget tile(String k, String v, String sub, List<Color?> cells, {Color? color}) => Container(
+          width: 168,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(.04), borderRadius: BorderRadius.circular(14)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(k, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(.6))),
+            const SizedBox(height: 2),
+            Text(v, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: color)),
+            Text(sub, maxLines: 2, style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
+            const SizedBox(height: 6),
+            dots(cells),
+          ]),
+        );
+    Color? tri(bool? b) => b == null ? null : (b ? _kGreen : _kCoral);
+    String ratio(List<bool?> d) => '${d.where((x) => x == true).length} / ${d.where((x) => x != null).length}';
+    final tiles = <Widget>[];
+    final sleep = sig['sleep'] as Map?;
+    if (c.sleepShared && sleep != null) {
+      final target = (sleep['targetMin'] as num?)?.toInt() ?? 450;
+      final nights = [for (final n in (sleep['nights'] as List? ?? const [])) (n as num?)?.toInt()];
+      final avg = (sleep['avgMin'] as num?)?.toInt();
+      tiles.add(tile('🌙 Sommeil', avg == null ? '—' : fmt(avg), 'moyenne · dette ${fmt((sleep['debtMin'] as num?)?.toInt() ?? 0)}',
+          [for (final n in nights) n == null ? null : (n < target - 30 ? _kAmber : const Color(0xFF7FB2E8))],
+          color: avg != null && avg < target - 30 ? _kAmber : null));
+    } else if (!c.sleepShared) {
+      tiles.add(tile('🌙 Sommeil', 'privé', 'non partagé par le coaché', List.filled(7, null), color: _kMuted));
+    }
+    if (c.gamesShared) {
+      final parole = bools((sig['parole'] as Map?)?['days']);
+      final watch = bools((sig['watch'] as Map?)?['days']);
+      final metro = bools((sig['metronome'] as Map?)?['days']);
+      final cap = [for (final x in ((sig['cap'] as Map?)?['days'] as List? ?? const [])) x as String?];
+      final blockers = ((sig['watch'] as Map?)?['blockers'] as List? ?? const []);
+      tiles.add(tile('🤝 Parole tenue', ratio(parole), 'jours tenus sur parole donnée', [for (final d in parole) tri(d)]));
+      tiles.add(tile('⌚ Montre suisse', ratio(watch), blockers.isEmpty ? 'soirs couverts' : 'coince : ${(blockers.first as Map)['name']}',
+          [for (final d in watch) tri(d)]));
+      tiles.add(tile('🎵 Métronome', ratio(metro), 'routines du jour tenues', [for (final d in metro) tri(d)]));
+      tiles.add(tile('🧭 Posé la veille', '${cap.where((x) => x != null).length} / 7', 'dont ${cap.where((x) => x == 'held').length} tenus à 70 %',
+          [for (final x in cap) x == null ? null : (x == 'held' ? _kGreen : _kAmber)]));
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: tiles);
+  }
 
   Widget _engagementCard(ColorScheme cs, Map<String, dynamic> e) {
     final id = e['id'].toString();

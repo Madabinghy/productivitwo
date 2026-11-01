@@ -115,3 +115,11 @@ const kRuleParole = GameRule('Parole tenue', [
   RuleCard('➕', 'Ajoutées le jour même', 'Une action visée dans la journée reste utile, mais ne compte pas pour la parole : seule la parole donnée la veille compte.'),
   RuleCard('↪️', 'Pas possible ?', 'Vise-la un autre jour : elle reste dans la parole d’aujourd’hui et la journée ne compte pas. Tes journées déjà gagnées restent acquises.'),
 ]);
+
+const kRuleCoachSharing = GameRule('Ce que voit ton coach', [
+  RuleCard('🔒', 'Rien sans toi', 'Accepter le lien ne partage rien. Tu choisis les domaines, puis chaque type d’information.'),
+  RuleCard('👁', 'Ce qu’il voit', 'Des faits mesurés par l’app : engagements, temps, badges, et ce que tu actives en plus (état, jeux, sommeil).'),
+  RuleCard('🌙', 'Le sommeil, à part', 'C’est intime : il reste privé tant que tu ne l’actives pas, même si tout le reste est partagé.'),
+  RuleCard('🧱', 'Les domaines fermés', 'Un domaine non partagé n’apparaît nulle part : pas de nom d’activité, pas de total, pas de série.'),
+  RuleCard('↩️', 'Révocable', 'Tu modifies ou coupes le partage quand tu veux. Ton coach perd l’accès tout de suite, historique compris.'),
+]);

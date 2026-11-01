@@ -10,6 +10,7 @@ const db_1 = require("./db");
 const execute_1 = require("./execute");
 const elan_1 = require("./elan");
 const badges_mcp_1 = require("./badges_mcp");
+const coach_signals_1 = require("./coach_signals");
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
 // lib/utils/engagement_stats.dart (kKeptRatio).
 const KEPT_RATIO = 0.8;
@@ -23,6 +24,8 @@ function sharingOf(data) {
         domainIds: Array.isArray(s.domainIds) ? s.domainIds.map(String) : [],
         granularity: s.granularity === "detail" ? "detail" : "status",
         state: s.state === true,
+        games: s.games === true,
+        sleep: s.sleep === true,
     };
 }
 /** Journal RGPD : chaque transition de consentement/périmètre est horodatée,
@@ -256,6 +259,8 @@ async function buildDashboard(coacheeUid, sharing) {
     const badges = (0, badges_mcp_1.badgesSummary)((0, badges_mcp_1.badgesForCoach)(badgesDoc.exists ? (0, badges_mcp_1.parseSnapshot)(badgesDoc.data()) : null, sharedDomains), (0, badges_mcp_1.parseHunts)(metaData.badgeHunts));
     if (badges)
         delete badges._hint;
+    // Signaux de la semaine (instantané de l'app), filtrés par le consentement.
+    const signals = (0, coach_signals_1.signalsForCoach)(badgesDoc.exists ? badgesDoc.data().signals : null, sharing, sharedDomains);
     let elan = null;
     if (sharing.state) {
         const tz = typeof metaData.tzOffsetMin === "number" ? metaData.tzOffsetMin : null;
@@ -291,6 +296,12 @@ async function buildDashboard(coacheeUid, sharing) {
         date: ymd,
         granularity: sharing.granularity,
         stateShared: sharing.state,
+        gamesShared: sharing.games,
+        sleepShared: sharing.sleep,
+        signals,
+        signalTiles: signals ? (0, coach_signals_1.signalTiles)(signals) : null,
+        talkingPoints: signals ? (0, coach_signals_1.talkingPoints)(signals) : [],
+        watchFlag: (0, coach_signals_1.watchFlag)(signals),
         badges,
         elan,
         domains,
@@ -310,7 +321,7 @@ async function buildDashboard(coacheeUid, sharing) {
 // Texte déterministe prêt à relire/copier avant séance — les chiffres du
 // dashboard + la fiche (notes, prochaine séance). Aucune IA : les faits.
 function buildPresessionReport(fiche, dash) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     const name = (_b = (_a = fiche.name) !== null && _a !== void 0 ? _a : fiche.email) !== null && _b !== void 0 ? _b : "Coaché";
     const today = new Date().toISOString().slice(0, 10);
     const engagements = (_c = dash.engagements) !== null && _c !== void 0 ? _c : [];
@@ -348,8 +359,20 @@ function buildPresessionReport(fiche, dash) {
     const elan = dash.elan;
     if (elan && typeof elan.summary === "string")
         lines.push(elan.summary);
-    const minutes = (_g = dash.weekMinutesByActivity) !== null && _g !== void 0 ? _g : null;
-    const actNames = new Map(((_h = dash.activities) !== null && _h !== void 0 ? _h : []).map((a) => [String(a.id), String(a.name)]));
+    const sig = dash.signals;
+    if (sig) {
+        for (const l of (0, coach_signals_1.signalReportLines)(sig))
+            lines.push(l);
+        const pts = (_g = dash.talkingPoints) !== null && _g !== void 0 ? _g : [];
+        if (pts.length) {
+            lines.push("");
+            lines.push("À aborder en séance :");
+            for (const p of pts)
+                lines.push(`  • ${p}`);
+        }
+    }
+    const minutes = (_h = dash.weekMinutesByActivity) !== null && _h !== void 0 ? _h : null;
+    const actNames = new Map(((_j = dash.activities) !== null && _j !== void 0 ? _j : []).map((a) => [String(a.id), String(a.name)]));
     if (minutes != null && Object.keys(minutes).length > 0) {
         const top = Object.entries(minutes)
             .sort((a, b) => b[1] - a[1])
@@ -358,10 +381,10 @@ function buildPresessionReport(fiche, dash) {
         lines.push(`Temps (7 j) : ${top.join(" · ")}`);
     }
     lines.push("");
-    if ((_j = fiche.nextSession) === null || _j === void 0 ? void 0 : _j.trim()) {
+    if ((_k = fiche.nextSession) === null || _k === void 0 ? void 0 : _k.trim()) {
         lines.push(`Prochaine séance : ${fiche.nextSession.trim()}`);
     }
-    if ((_k = fiche.notes) === null || _k === void 0 ? void 0 : _k.trim()) {
+    if ((_l = fiche.notes) === null || _l === void 0 ? void 0 : _l.trim()) {
         lines.push(`Notes de coaching :`);
         lines.push(fiche.notes.trim());
     }
@@ -413,6 +436,8 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                         domainCount: sharing.domainIds.length,
                         granularity: sharing.granularity,
                         state: sharing.state,
+                        games: sharing.games,
+                        sleep: sharing.sleep,
                     },
                 };
             });
@@ -737,8 +762,8 @@ exports.coachConsent = (0, https_1.onRequest)({ cors: true, invoker: "public" },
             }
         }
         const prevConsent = String((_e = d.consent) !== null && _e !== void 0 ? _e : "pending");
-        await coachingRef(tok.coachingId).set(Object.assign({ consent: granted ? "granted" : "revoked", consentAt: firestore_1.FieldValue.serverTimestamp() }, (granted ? { sharing: { domainIds: [], granularity: "status", state: false } } : {})), { merge: true });
-        await logConsentEvent(tok.coachingId, granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused", granted ? { domainIds: [], granularity: "status", state: false } : sharingOf(d));
+        await coachingRef(tok.coachingId).set(Object.assign({ consent: granted ? "granted" : "revoked", consentAt: firestore_1.FieldValue.serverTimestamp() }, (granted ? { sharing: { domainIds: [], granularity: "status", state: false, games: false, sleep: false } } : {})), { merge: true });
+        await logConsentEvent(tok.coachingId, granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused", granted ? { domainIds: [], granularity: "status", state: false, games: false, sleep: false } : sharingOf(d));
         // Lier l'uid si le compte existe déjà (sinon il se liera plus tard).
         try {
             const user = await admin.auth().getUserByEmail(d.email);
@@ -811,7 +836,7 @@ exports.coacheeApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
         res.status(401).json({ error: "Token invalide ou expiré" });
         return;
     }
-    const { action, domainIds, granularity, state } = req.body;
+    const { action, domainIds, granularity, state, games, sleep } = req.body;
     try {
         const fiche = await coacheeFiche(uid, email);
         if (action === "getLink") {
@@ -846,6 +871,8 @@ exports.coacheeApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
                 domainIds: [...new Set(wanted.filter((id) => valid.has(id)))],
                 granularity: gran,
                 state: state === true,
+                games: games === true,
+                sleep: sleep === true,
             };
             await coachingRef(fiche.id).set({ sharing, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
             await logConsentEvent(fiche.id, "sharing_updated", sharing);
