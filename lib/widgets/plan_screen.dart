@@ -23,6 +23,9 @@ import 'package:productivitwo_v1/utils/reading_due.dart' show readingsDue;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
+import 'package:productivitwo_v1/utils/week_spread.dart';
+import 'package:productivitwo_v1/utils/sport_stats.dart' show resolveSportPick, SportKind;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
 /// Mode Planification (maquette validée 2026-10-31) : poser demain (ou la fin
 /// d'aujourd'hui) en quelques minutes — ce qui se joue, le temps qui reste,
@@ -1171,6 +1174,22 @@ class _PlanScreenState extends State<PlanScreen> {
   List<Map<String, int>> _grid = const [];
   final Map<int, List<PlannedBlock>> _weekPosed = {};
   int _weekRoutines = 0;
+  // Répartir par familles (2026-11-01, maquette « Répartir la semaine, autrement »).
+  Map<String, PlanFamily> _families = const {};
+  Map<String, PlanFamily> _famOverrides = const {};
+  bool _workSaturday = false;
+  Map<String, String> _reasons = const {};
+  Map<String, int> _unplaced = const {};
+  int _dailyReserve = 0;
+  static const _kFamiliesPref = 'plan_families';
+  static const _kWorkSatPref = 'plan_work_saturday';
+  static const _famColors = {
+    PlanFamily.work: Color(0xFFF09A3C),
+    PlanFamily.fond: Color(0xFFB06CDC),
+    PlanFamily.body: Color(0xFFF2DC4C),
+    PlanFamily.daily: Color(0xFF4CBF75),
+    PlanFamily.base: Color(0xFF5F7268),
+  };
 
   DateTime _plus(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
 
@@ -1210,7 +1229,14 @@ class _PlanScreenState extends State<PlanScreen> {
       for (final d in days)
         livedDayBlocks(byYmd[ymdOf(d)], byYmd[ymdOf(_plus(d, 1))], logic.dayStartMin).where((b) => b.status == 'pending' || b.status == 'done').toList(),
     ];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kFamiliesPref);
+      _famOverrides = raw == null ? const {} : parseFamilies(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+      _workSaturday = prefs.getBool(_kWorkSatPref) ?? false;
+    } catch (_) {}
     _buildWeek(objectives ?? const []);
+    _classify();
     _respread();
     if (mounted) setState(() => _loading = false);
   }
@@ -1278,43 +1304,81 @@ class _PlanScreenState extends State<PlanScreen> {
 
   int _plannedOf(int i) => _grid[i].values.fold(0, (s, m) => s + m);
 
-  /// « Répartir pour moi » : la prépa la veille des séances, puis le contrat
-  /// étalé sur les jours les moins chargés (80 % du libre).
+  void _classify() {
+    final st = logic.state;
+    final byId = {for (final a in st.activities) a.id: a};
+    final pick = resolveSportPick(st.activities, st.domains, logic.sportOverrides);
+    _families = classifyWants(
+      _wants.where((w) => w.weeklyMin > 0).toList(),
+      domainOf: (id) => byId[id]?.domainId,
+      isBase: (id) => isBasicNeedName(byId[id]?.name),
+      isSport: (id) => pick.kinds[id] == SportKind.session,
+      overrides: _famOverrides,
+    );
+  }
+
+  PlanFamily _familyOf(String id) => _families[id] ?? PlanFamily.work;
+
+  /// « Répartir » : la prépa la veille des séances, puis chaque famille avec
+  /// sa règle (fond chaque jour, séances espacées, Deep work en semaine), sur
+  /// 80 % du libre ; « au quotidien » reste libre, les besoins de base jamais posés.
   void _respread() {
-    final grid = [for (final _ in _weekDays) <String, int>{}];
+    final pre = [for (final _ in _weekDays) <String, int>{}];
     for (final (d, a, m) in _prefill) {
-      grid[d][a] = (grid[d][a] ?? 0) + m;
+      pre[d][a] = (pre[d][a] ?? 0) + m;
     }
-    final free = [
-      for (var i = 0; i < 7; i++) (_freeOf(i) * fillRatio(PlanLoad.normal)).round() - grid[i].values.fold(0, (s, m) => s + m),
-    ];
-    final spread = spreadWeek(_wants.where((w) => w.weeklyMin >= 30).toList(), [for (final f in free) f < 0 ? 0 : f.toInt()]);
-    for (var i = 0; i < 7; i++) {
-      for (final e in spread[i].entries) {
-        grid[i][e.key] = (grid[i][e.key] ?? 0) + e.value;
-      }
-    }
-    _grid = grid;
+    final free = [for (var i = 0; i < 7; i++) (_freeOf(i) * fillRatio(PlanLoad.normal)).round()];
+    final spread = spreadByFamily(_wants.where((w) => w.weeklyMin > 0).toList(), _families, free, prefill: pre, workSaturday: _workSaturday);
+    _grid = spread.days;
+    _reasons = {
+      ...spread.reasons,
+      for (final (d, a, _) in _prefill) '$d|$a': 'Prépa de la séance du lendemain.',
+    };
+    _unplaced = spread.unplaced;
+    _dailyReserve = spread.dailyReserve;
   }
 
-  void _cycleCell(int day, String activityId) {
-    const steps = [0, 45, 90];
-    final cur = _grid[day][activityId] ?? 0;
-    final i = steps.indexOf(cur);
-    final next = i < 0 ? 0 : steps[(i + 1) % steps.length];
-    setState(() => next == 0 ? _grid[day].remove(activityId) : _grid[day][activityId] = next);
+  Future<void> _setFamily(String id, PlanFamily f) async {
+    _famOverrides = {..._famOverrides, id: f};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kFamiliesPref, jsonEncode(_famOverrides.map((k, v) => MapEntry(k, v.name))));
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _classify();
+      _respread();
+    });
   }
 
-  int _sumOf(String activityId) => _grid.fold(0, (s, d) => s + (d[activityId] ?? 0));
+  Future<void> _pickFamily(WeekWant w) async {
+    final cur = _familyOf(w.activityId);
+    final f = await showModalBottomSheet<PlanFamily>(
+      context: context,
+      backgroundColor: _card,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text('${w.title} · quelle famille ?', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+          ),
+          for (final f in PlanFamily.values)
+            ListTile(
+              leading: CircleAvatar(radius: 7, backgroundColor: _famColors[f]),
+              title: Text(kFamilyLabels[f]!, style: const TextStyle(color: Colors.white)),
+              subtitle: Text(kFamilyRules[f]!, style: const TextStyle(color: _text3, fontSize: 12)),
+              trailing: f == cur ? const Icon(Icons.check_rounded, color: kPlanAccent) : null,
+              onTap: () => Navigator.pop(ctx, f),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (f != null && f != cur) await _setFamily(w.activityId, f);
+  }
 
   String _short(int m) => m < 60 ? '$m' : (m % 60 == 0 ? '${m ~/ 60}h' : '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}');
-
-  Color _colorOfActivity(String id) {
-    final a = logic.state.activities.where((x) => x.id == id).firstOrNull;
-    return domainColor(a?.domainId, logic.state.activeDomains) ?? kPlanAccent;
-  }
-
-  int get _contractMin => _wants.fold(0, (s, w) => s + w.weeklyMin) + _prefill.fold(0, (s, p) => s + p.$3);
 
   Widget _weekStakesView() {
     final winLen = (_window.endMin - _window.startMin).clamp(1, 24 * 60);
@@ -1385,133 +1449,273 @@ class _PlanScreenState extends State<PlanScreen> {
                     ],
                   ]),
           ),
-          _section('LE CONTRAT DE LA SEMAINE'),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
-            child: Column(children: [
-              if (_wants.isEmpty) const Align(alignment: Alignment.centerLeft, child: Text('Aucun minimum ni engagement de temps.', style: TextStyle(color: _text2))),
-              for (final w in _wants)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    Expanded(child: Text(w.title, style: const TextStyle(fontSize: 14, color: Colors.white))),
-                    Text(
-                      w.weeklyMin > 0 ? '${fmtMin(w.weeklyMin)} · ${w.reason}' : w.reason,
-                      style: TextStyle(fontSize: 13, color: w.reason == 'objectif' ? const Color(0xFFA9C1FF) : _gold),
-                    ),
-                  ]),
-                ),
-              if (_weekRoutines > 0)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    Expanded(child: Text('$_weekRoutines routines', style: const TextStyle(fontSize: 14, color: Colors.white))),
-                    const Text('semaine tenue à 80 %', style: TextStyle(fontSize: 13, color: _green)),
-                  ]),
-                ),
-            ]),
-          ),
+          _section('LE CONTRAT, TRIÉ'),
+          const Text('Chaque chose à sa façon. Touche une activité pour la changer de famille.', style: TextStyle(fontSize: 12.5, color: _text3)),
+          if (_wants.isEmpty)
+            const Padding(padding: EdgeInsets.only(top: 8), child: Text('Aucun minimum ni engagement de temps.', style: TextStyle(color: _text2))),
+          for (final f in PlanFamily.values) ..._familyCard(f),
+          if (_weekRoutines > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('+ $_weekRoutines routines quotidiennes · semaine tenue à 80 %', style: const TextStyle(fontSize: 12.5, color: _green)),
+            ),
         ]),
       ),
       const SizedBox(height: 10),
-      _primary('Répartir ${fmtMin(_contractMin)} sur la semaine', () => setState(() => _step = _Step.weekSpread)),
+      _primary('Répartir la semaine', () => setState(() {
+            _respread();
+            _step = _Step.weekSpread;
+          })),
     ]);
   }
 
-  Widget _weekSpreadView() {
-    const label = 96.0;
-    Widget cell(int day, WeekWant w) {
-      final m = _grid[day][w.activityId] ?? 0;
-      final c = _colorOfActivity(w.activityId);
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: GestureDetector(
-            onTap: () => _cycleCell(day, w.activityId),
-            child: Container(
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: m > 0 ? c : const Color(0xFF27382D), borderRadius: BorderRadius.circular(5)),
-              child: m > 0
-                  ? Text(_short(m), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c.computeLuminance() > .4 ? _ink : Colors.white))
-                  : null,
+  int _workFree() {
+    var m = 0;
+    for (var d = 0; d < 7; d++) {
+      if (d < 5 || (d == 5 && _workSaturday)) m += (_freeOf(d) * fillRatio(PlanLoad.normal)).round();
+    }
+    return m;
+  }
+
+  List<Widget> _familyCard(PlanFamily f) {
+    final items = _wants.where((w) => w.weeklyMin > 0 && _familyOf(w.activityId) == f).toList();
+    if (items.isEmpty) return const [];
+    final c = _famColors[f]!;
+    final total = items.fold(0, (s, w) => s + w.weeklyMin);
+    final right = switch (f) {
+      PlanFamily.work => '≈ ${fmtMin(total)}',
+      PlanFamily.fond || PlanFamily.daily => '${fmtMin((total / 7).round())} / j',
+      PlanFamily.body => '${items.fold(0, (s, w) => s + bodySessions(w.weeklyMin).count)} séances',
+      PlanFamily.base => 'jamais posé',
+    };
+    String chip(WeekWant w) => switch (f) {
+          PlanFamily.work => fmtMin(w.weeklyMin),
+          PlanFamily.fond || PlanFamily.daily => fmtMin((w.weeklyMin / 7).round()),
+          PlanFamily.body => () {
+              final s = bodySessions(w.weeklyMin);
+              return '${s.count} × ${fmtMin(s.minutes)}';
+            }(),
+          PlanFamily.base => '',
+        };
+    final workFree = f == PlanFamily.work ? _workFree() : 0;
+    return [
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border(left: BorderSide(color: c, width: 4))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text(kFamilyLabels[f]!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white))),
+            Text(right, style: const TextStyle(fontSize: 12.5, color: _text3)),
+          ]),
+          const SizedBox(height: 2),
+          Text(kFamilyRules[f]!, style: TextStyle(fontSize: 12.5, color: c, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final w in items)
+              GestureDetector(
+                onTap: () => _pickFamily(w),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(color: const Color(0xFF17291F), borderRadius: BorderRadius.circular(9)),
+                  child: Text.rich(TextSpan(style: const TextStyle(fontSize: 12.5, color: Colors.white), children: [
+                    TextSpan(text: w.title),
+                    if (chip(w).isNotEmpty) TextSpan(text: '  ${chip(w)}', style: const TextStyle(color: _text3)),
+                  ])),
+                ),
+              ),
+          ]),
+          if (f == PlanFamily.work && total > workFree)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '${fmtMin(total)} dépassent ton temps libre en semaine (${fmtMin(workFree)}) : ce qui ne tient pas sera dit, pas tassé dans le week-end.',
+                style: const TextStyle(fontSize: 12.5, color: _gold),
+              ),
             ),
+        ]),
+      ),
+    ];
+  }
+
+  Future<void> _editBlock(int day, String id) async {
+    final cur = _grid[day][id] ?? 0;
+    var newDay = day, newMin = cur;
+    final res = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: _card,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        Widget seg<T>(List<T> values, T sel, String Function(T) label, void Function(T) on) => Row(children: [
+              for (final v in values)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: GestureDetector(
+                      onTap: () => setLocal(() => on(v)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(color: v == sel ? kPlanAccent : const Color(0xFF17291F), borderRadius: BorderRadius.circular(10)),
+                        child: Text(label(v), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: v == sel ? _ink : Colors.white)),
+                      ),
+                    ),
+                  ),
+                ),
+            ]);
+        final fam = _familyOf(id);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('${_activityName(id)} · ${_dayLong[day]}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+              Text(kFamilyLabels[fam]!, style: const TextStyle(fontSize: 12.5, color: _text3)),
+              const SizedBox(height: 12),
+              const Text('Jour', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+              const SizedBox(height: 6),
+              seg<int>(List.generate(7, (i) => i), newDay, (i) => _dayShort[i].substring(0, 1), (v) => newDay = v),
+              const SizedBox(height: 12),
+              const Text('Durée', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+              const SizedBox(height: 6),
+              seg<int>(const [30, 45, 60, 90, 120], newMin, (m) => _short(m), (v) => newMin = v),
+              if (_reasons['$day|$id'] != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFF17291F), borderRadius: BorderRadius.circular(12)),
+                  child: Text('Pourquoi ici : ${_reasons['$day|$id']}', style: const TextStyle(fontSize: 12.5, color: _text2, height: 1.4)),
+                ),
+              ],
+              const SizedBox(height: 14),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, 'remove'),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), minimumSize: const Size.fromHeight(48)),
+                    child: const Text('Enlever'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(ctx, 'ok'),
+                    style: FilledButton.styleFrom(backgroundColor: kPlanAccent, foregroundColor: _ink, minimumSize: const Size.fromHeight(48)),
+                    child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ]),
+            ]),
           ),
-        ),
+        );
+      }),
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      _grid[day].remove(id);
+      final why = _reasons.remove('$day|$id');
+      if (res == 'ok') {
+        _grid[newDay][id] = (_grid[newDay][id] ?? 0) + newMin;
+        _reasons = {..._reasons, '$newDay|$id': newDay == day ? (why ?? 'Réglé à la main.') : 'Déplacé à la main.'};
+      }
+    });
+  }
+
+  static const _famOrder = [PlanFamily.fond, PlanFamily.work, PlanFamily.body, PlanFamily.daily, PlanFamily.base];
+  static const _dayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+  Widget _weekSpreadView() {
+    final days = _weekDays;
+    Widget dayCard(int i) {
+      final free = _freeOf(i);
+      final planned = _plannedOf(i);
+      final ratio = free <= 0 ? (planned > 0 ? 1.0 : 0.0) : (planned / free).clamp(0.0, 1.0);
+      final weekend = i >= 5;
+      final label = planned == 0 ? (_weekDated[i].isEmpty ? 'repos' : 'dates seules') : (ratio >= .9 ? '${fmtMin(planned)} · plein' : (ratio < .35 ? '${fmtMin(planned)} · léger' : fmtMin(planned)));
+      final entries = _grid[i].entries.where((e) => e.value > 0).toList()
+        ..sort((a, b) => _famOrder.indexOf(_familyOf(a.key)).compareTo(_famOrder.indexOf(_familyOf(b.key))));
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            SizedBox(width: 62, child: Text('${_dayShort[i][0]}${_dayShort[i].substring(1).toLowerCase()} ${days[i].day}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.white))),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(value: ratio, minHeight: 6, color: weekend || ratio < .35 ? _green : kPlanAccent, backgroundColor: const Color(0xFF17291F)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontSize: 11.5, color: ratio >= .9 ? _gold : _text3)),
+          ]),
+          if (_weekDated[i].isNotEmpty || entries.isNotEmpty) const SizedBox(height: 7),
+          Wrap(spacing: 5, runSpacing: 5, children: [
+            for (final t in _weekDated[i])
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: _text3.withValues(alpha: .6), width: 1.2)),
+                child: Text('📅 $t', style: const TextStyle(fontSize: 11.5, color: Colors.white)),
+              ),
+            for (final e in entries)
+              GestureDetector(
+                onTap: () => _editBlock(i, e.key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(color: _famColors[_familyOf(e.key)], borderRadius: BorderRadius.circular(8)),
+                  child: Text.rich(TextSpan(style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF14100A)), children: [
+                    TextSpan(text: _familyOf(e.key) == PlanFamily.work ? 'Deep work · ${_activityName(e.key)}' : _activityName(e.key)),
+                    TextSpan(text: '  ${_short(e.value)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ])),
+                ),
+              ),
+          ]),
+        ]),
       );
     }
 
-    String loadOf(int i) {
-      final planned = _plannedOf(i), free = _freeOf(i);
-      if (planned == 0 && _weekDated[i].isEmpty) return 'repos';
-      return planned > free * fillRatio(PlanLoad.full) ? 'plein' : 'ok';
-    }
-
+    final unplacedWork = _unplaced.entries.where((e) => e.value >= 30).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _top('SEMAINE · RÉPARTIR', 2),
-      _title('Un jour, un focus'),
-      const Text('Touche une case pour poser un bloc d\'activité (45 min, 1h30, rien). Les jours chargés restent légers.', style: TextStyle(fontSize: 13.5, color: _text2)),
-      const SizedBox(height: 10),
+      _title('Ta semaine'),
+      const Text('Touche un bloc pour le déplacer, changer sa durée ou l\'enlever.', style: TextStyle(fontSize: 13.5, color: _text2)),
+      const SizedBox(height: 4),
       Expanded(
         child: ListView(children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
-            child: Column(children: [
-              Row(children: [
-                const SizedBox(width: label),
-                for (var i = 0; i < 7; i++)
-                  Expanded(child: Center(child: Text(_dayShort[i].substring(0, 1), style: const TextStyle(fontSize: 11, color: _text3)))),
-              ]),
-              if (_weekDated.any((d) => d.isNotEmpty))
-                Row(children: [
-                  const SizedBox(width: label, child: Text('Dates', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _gold))),
-                  for (var i = 0; i < 7; i++)
-                    Expanded(
-                      child: Center(
-                        child: Text(_weekDated[i].isEmpty ? '' : '${_weekDated[i].length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _gold)),
-                      ),
-                    ),
-                ]),
-              for (final w in _wants)
-                Row(children: [
-                  SizedBox(width: label, child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white))),
-                  for (var i = 0; i < 7; i++) cell(i, w),
-                ]),
-              const SizedBox(height: 4),
-              Row(children: [
-                const SizedBox(width: label, child: Text('charge', style: TextStyle(fontSize: 11.5, color: _text3))),
-                for (var i = 0; i < 7; i++)
-                  Expanded(
-                    child: Center(
-                      child: Text(loadOf(i), style: TextStyle(fontSize: 10.5, color: loadOf(i) == 'plein' ? _gold : _green)),
-                    ),
-                  ),
-              ]),
-            ]),
-          ),
-          _section('LE CONTRAT · RÉPARTI'),
+          for (var i = 0; i < 7; i++) dayCard(i),
+          const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
-            child: Column(children: [
-              for (final w in _wants)
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (_dailyReserve > 0)
+                Text.rich(TextSpan(style: const TextStyle(fontSize: 12.5, color: _text3, height: 1.4), children: [
+                  TextSpan(text: '+ ${fmtMin(_dailyReserve)} au quotidien', style: const TextStyle(color: _green, fontWeight: FontWeight.w700)),
+                  TextSpan(text: ' gardées libres chaque jour (${_wants.where((w) => _familyOf(w.activityId) == PlanFamily.daily).map((w) => w.title).take(3).join(', ')}…), sans bloc.'),
+                ])),
+              for (final e in unplacedWork)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    Expanded(child: Text(w.title, style: const TextStyle(fontSize: 13.5, color: Colors.white))),
-                    Builder(builder: (_) {
-                      final sum = _sumOf(w.activityId);
-                      final ok = sum >= w.weeklyMin;
-                      return Text(
-                        w.weeklyMin > 0 ? '${fmtMin(sum)} / ${fmtMin(w.weeklyMin)}${ok ? ' ✓' : ''}' : '${fmtMin(sum)} · ${w.reason}',
-                        style: TextStyle(fontSize: 13.5, color: ok ? _green : _gold),
-                      );
-                    }),
-                  ]),
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('${_activityName(e.key)} : ${fmtMin(e.value)} ne tiennent pas dans la semaine.', style: const TextStyle(fontSize: 12.5, color: _gold)),
                 ),
+              if (_dailyReserve == 0 && unplacedWork.isEmpty) const Text('Tout le contrat tient dans la semaine.', style: TextStyle(fontSize: 12.5, color: _green)),
             ]),
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _workSaturday,
+            activeThumbColor: kPlanAccent,
+            title: const Text('Travailler le samedi', style: TextStyle(color: Colors.white, fontSize: 14)),
+            subtitle: const Text('sinon le week-end garde le fond et le corps', style: TextStyle(color: _text3, fontSize: 12)),
+            onChanged: (v) {
+              SharedPreferences.getInstance().then((p) => p.setBool(_kWorkSatPref, v)).catchError((_) => false);
+              setState(() {
+                _workSaturday = v;
+                _respread();
+              });
+            },
           ),
         ]),
       ),
@@ -1523,7 +1727,7 @@ class _PlanScreenState extends State<PlanScreen> {
             child: OutlinedButton(
               onPressed: () => setState(_respread),
               style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              child: const Text('Répartir pour moi', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text('Recommencer', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ),
@@ -1541,8 +1745,9 @@ class _PlanScreenState extends State<PlanScreen> {
     final days = _weekDays;
     _weekPosed.clear();
     for (var i = 0; i < 7; i++) {
+      final entries = _grid[i].entries.toList()..sort((a, b) => _famOrder.indexOf(_familyOf(a.key)).compareTo(_famOrder.indexOf(_familyOf(b.key))));
       final wants = [
-        for (final e in _grid[i].entries)
+        for (final e in entries)
           if (e.value >= 30)
             PlanWant(activityId: e.key, title: _activityName(e.key), minutes: e.value, reason: _wants.where((w) => w.activityId == e.key).map((w) => w.reason).firstOrNull ?? ''),
       ];
