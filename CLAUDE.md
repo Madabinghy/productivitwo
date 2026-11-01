@@ -847,6 +847,16 @@ Corriger une nuit · Cible & fiche de l'activité. **Une nuit** (`_NightSheet`) 
 cible, couché après le bloc), frise, CHRONOS (tap = `openEditSessionSheet`), LE LENDEMAIN (bande d'élan, élan moyen, victoires,
 actions), Modifier les heures · Supprimer cette nuit (confirmation, sessions supprimées).
 
+## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
+
+Le coach voit ce que l'app mesure en plus des engagements : sommeil, parole tenue, Montre suisse, Métronome, journée posée la
+veille. **Lot 1 livré (app)** : logique pure `utils/coach_signals.dart` — `coachSignals(...)` sur les 7 derniers jours clos
+(`signalDays`) : une case par jour (`true` / `false` / `null` = rien à mesurer) pour `watch` (+ `blockers` : les 3 activités
+qui ont coûté la montre, avec `domainId`), `metronome`, `parole` (jours où une parole ≥ 3 a été donnée), `cap` (`capStateOf` :
+`held` · `posed` · null), et `sleep` (7 nuits en minutes, cible, moyenne, dette, coucher moyen, régularité, bloc prévu, `impact`
+part en Flemme après nuits longues / courtes). Déposé par `BadgeCenter._pushSnapshot` dans `data/badges.signals` (le serveur ne
+recalcule rien ; il filtrera : sommeil = consentement à part, blockers = domaines partagés).
+
 ## Minimum des activités (calibration, 2026-10-30)
 
 `AppLogic.autoAdjustStandardsRealtime` (au lancement mobile) cale `goalMin` des activités-temps sur la moyenne 30 j (monte ≥ 120 %,
