@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/coach_signals.dart';
 import 'package:productivitwo_v1/utils/today_facts.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberEventKind;
 import 'dart:convert' show jsonEncode;
@@ -166,6 +167,20 @@ class BadgeCenter extends ChangeNotifier {
         ],
       },
     };
+    // Signaux de la semaine pour le coach (2026-11-01, `utils/coach_signals.dart`).
+    body['signals'] = coachSignals(
+      now: DateTime.now(),
+      dayStartMin: logic.dayStartMin,
+      activities: logic.state.activities,
+      sessions: logic.state.sessions,
+      hits: logic.state.habitHits,
+      schedules: _schedules,
+      paroles: logic.paroles,
+      projects: _projects,
+      marks: logic.state.moodMarks,
+      frozenOf: (a) => logic.frozenOf(a.id),
+      acquired: logic.acquired,
+    );
     final hash = jsonEncode(body);
     if (hash == _snapshotHash) return;
     _snapshotHash = hash;
