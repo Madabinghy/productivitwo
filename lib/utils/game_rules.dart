@@ -109,7 +109,8 @@ const kRuleSniper = GameRule('Le Sniper', [
   RuleCard('◎', 'Le temps exact', 'L’app calcule ce qui fait tomber chaque enjeu du jour : 37 min de Lecture si c’est pile ce qui couvre la Montre suisse, +1 pour la dernière routine du Métronome.'),
   RuleCard('🎯', 'L’ordre', 'Ce qui se perd ce soir d’abord, puis les paliers de ce soir, puis ce qui rapporte le plus par minute. Seulement ce qui tient avant ton prochain rendez-vous.'),
   RuleCard('🌊', 'Sans décision', 'Un tir à la fois, minuteur pile et alarme. Touché : deux minutes de pause, puis le tir suivant part tout seul. Dépasser ne sert à rien.'),
-  RuleCard('🏅', 'Le badge', 'Une session compte quand toutes les cibles visées tombent, au moins 3. Écarte une cible au départ plutôt que de la passer en route.'),
+  RuleCard('🎚', 'Ajuster le tir', 'Avant de viser, − / + sur chaque cible : 10 pompes au lieu de 20, 20 min de Cuisiner au lieu de 15. En dessous de ce qui manque, c’est un mini-tir : il avance, mais l’enjeu ne tombe que quand tout est fait.'),
+  RuleCard('🏅', 'Le badge', 'Une session compte quand toutes les cibles visées sont touchées, dont au moins 3 en entier : les mini-tirs ne comptent pas parmi les 3. Écarte une cible au départ plutôt que de la passer en route.'),
 ]);
 
 const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
