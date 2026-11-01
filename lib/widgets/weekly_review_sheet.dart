@@ -30,7 +30,7 @@ class _WeeklyReviewSheetState extends State<_WeeklyReviewSheet> {
     final ok = await widget.sync.triggerOrionTask('weekly_review');
     if (!mounted) return;
     setState(() => _triggering = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text(ok
           ? 'ORION analyse tes projets — les propositions arriveront dans « À valider ».'
           : 'Impossible de lancer la revue ORION (réessaie plus tard).'),
@@ -130,7 +130,7 @@ class _WeeklyReviewSheetState extends State<_WeeklyReviewSheet> {
                                     .saveProject(p..status = 'archived');
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
+                                      SnackBar(persist: false, 
                                           content: Text(
                                               '« ${p.title} » archivé.')));
                                 }

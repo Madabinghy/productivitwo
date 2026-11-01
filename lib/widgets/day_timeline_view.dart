@@ -148,7 +148,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
       title: title,
     );
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
           content: Text(
               'Modifié ici — Google Agenda n\'a pas suivi (la prochaine sync réalignera).')));
     }
@@ -214,7 +214,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
       await _pushMirror(b);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — le bloc reprendra sa place.')));
       }
     }
@@ -260,7 +260,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
       if (choice == 'both') {
         final ok = await gcalDeleteEvent(_sync, b.gcalEventId!);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
               content: Text(ok
                   ? '« ${b.title} » supprimé — ici et dans Google Agenda.'
                   : 'Masqué ici — la suppression dans l\'agenda a échoué.')));
@@ -272,7 +272,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
     await cancelChallengeNotifications(b);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('« ${b.title} » retiré du programme.'),
         duration: const Duration(seconds: 2),
       ));
@@ -425,7 +425,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
       await _pushMirror(b);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — le bloc reprendra sa place.')));
       }
     }

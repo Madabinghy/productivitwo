@@ -307,7 +307,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -341,7 +341,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }

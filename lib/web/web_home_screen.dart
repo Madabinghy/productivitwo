@@ -278,7 +278,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     final next = !(_autoPlan ?? false);
     await _sync.setAutoPlan(next);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text(next
           ? 'Programmation automatique activée : Claude complète ton programme chaque matin vers 6 h.'
           : 'Programmation automatique désactivée : retour au mode manuel.'),

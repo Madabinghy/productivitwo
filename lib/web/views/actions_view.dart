@@ -292,7 +292,7 @@ class _ActionsViewState extends State<ActionsView> {
       await widget.sync.saveHabitHit(logic.state.habitHits.last);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Routine validée : ${act.name}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 1400),

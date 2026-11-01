@@ -564,7 +564,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       // Validation optimiste : en cas d'échec, l'écran reste intact.
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a été écrit, réessaie.')));
       }
     }

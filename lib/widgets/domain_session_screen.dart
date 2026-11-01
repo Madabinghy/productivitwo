@@ -156,7 +156,7 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
   void _showResult() {
     if (_stage == _Stage.result) return;
     setState(() => _stage = _Stage.result);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
       content: Text('Domaine défini — je m\'en servirai chaque jour'),
       duration: Duration(seconds: 3),
       behavior: SnackBarBehavior.floating,

@@ -368,7 +368,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       final n = DateTime.now();
       t.action.focusDate = DateTime(n.year, n.month, n.day + 1);
       _persist(t);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('« ${t.action.title} » visée demain')));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(persist: false, content: Text('« ${t.action.title} » visée demain')));
     }
     _finish();
   }

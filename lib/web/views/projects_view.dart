@@ -259,7 +259,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     await widget.sync.saveProject(p);
     widget.onRefresh();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(persist: false, 
       content: Text(done ? '« ${p.title} » terminé — rangé dans Terminés' : '« ${p.title} » rouvert'),
       action: SnackBarAction(label: 'Annuler', onPressed: () => _setDone(p, !done)),
     ));

@@ -459,7 +459,7 @@ class TodayViewState extends State<TodayView> {
       ),
     ));
     if (count != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Journée reposée — $count blocs'),
         duration: const Duration(seconds: 3),
       ));
@@ -630,7 +630,7 @@ class TodayViewState extends State<TodayView> {
     }
     if (!mounted) return;
     setState(() => _syncing = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text(ok
           ? '🗓️ Agenda synchronisé — aujourd\'hui et demain sont à jour.'
           : reason == 'not_connected'
@@ -671,7 +671,7 @@ class TodayViewState extends State<TodayView> {
       ),
     ));
     if (count != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Journée posée — $count blocs'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,

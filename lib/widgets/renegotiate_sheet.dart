@@ -328,7 +328,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
       if (mounted) {
         Navigator.pop(context);
         if (availability != null && availability != kAvailableNow) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text(
                 'Noté — je te relance ${_untilFr(availability)}. D\'ici là, je suis le flow.'),
             duration: const Duration(seconds: 3),
@@ -433,7 +433,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
       await cancelChallengeNotifications(b);
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text(
                 'Bloc supprimé — il n\'aurait pas dû être posé. Le rapport hebdo le compte.')));
       }
@@ -460,7 +460,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
   void _fail() {
     if (mounted) {
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
           content: Text('Échec réseau — rien n\'a changé, réessaie.')));
     }
   }
@@ -482,7 +482,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     if (opt.keep) {
       // Gardé tel quel — rien ne change, donc rien n'est écrit.
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
           content: Text('Gardé tel quel — on en reparle si ça recasse.')));
       return;
     }
@@ -573,7 +573,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a changé, réessaie.')));
       }
     }
@@ -618,7 +618,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a changé, réessaie.')));
       }
     }

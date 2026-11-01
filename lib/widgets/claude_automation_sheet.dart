@@ -43,7 +43,7 @@ class _ClaudeAutomationSheetState extends State<_ClaudeAutomationSheet> {
     final ok = await launchUrl(claudeNewUri(a.prompt), mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
       await Clipboard.setData(ClipboardData(text: a.prompt));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
         content: Text('Impossible d\'ouvrir Claude — demande copiée, colle-la dans Claude.'),
         behavior: SnackBarBehavior.floating,
       ));
@@ -106,7 +106,7 @@ class _ClaudeAutomationSheetState extends State<_ClaudeAutomationSheet> {
                   onTap: () async {
                     await Clipboard.setData(ClipboardData(text: a.prompt));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
                         content: Text('« ${a.title} » copié'),
                         duration: const Duration(seconds: 2),
                         behavior: SnackBarBehavior.floating,

@@ -1375,6 +1375,12 @@ rien). Restent : minuteur de fin (id 30 / alarme `alarm` 42) et messages ORION /
 n'est PAS poussé (il s'affiche ce jour-là dans l'app) ; `pushAllowed` : interrupteur « Messages ORION / coach » de Paramètres ›
 Notifications = `orion_config/main.pushEnabled` (absent = activé ; `FirestoreSync.fetchOrionPushEnabled` / `setOrionPushEnabled`).
 
+## SnackBar : toujours `persist: false` (2026-11-01)
+
+Depuis Flutter 3.x récent, une `SnackBar` avec une `action` (« Annuler ») a `persist = true` par défaut et ne disparaît plus
+seule (bug user : « faite · Annuler » restait affiché). Toutes les `SnackBar(` de `lib/` portent `persist: false` ; toute
+nouvelle SnackBar aussi.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet

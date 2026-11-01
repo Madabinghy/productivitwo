@@ -122,7 +122,7 @@ class _ProposalCardState extends State<ProposalCard> {
       await action();
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(done)));
+            .showSnackBar(SnackBar(persist: false, content: Text(done)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -139,7 +139,7 @@ class _ProposalCardState extends State<ProposalCard> {
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Aucun projet disponible.')));
+          const SnackBar(persist: false, content: Text('Aucun projet disponible.')));
       return null;
     }
     return showModalBottomSheet<Project>(

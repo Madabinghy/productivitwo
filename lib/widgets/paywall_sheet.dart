@@ -139,7 +139,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
       if (!mounted) return;
       if (e != PurchasesErrorCode.purchaseCancelledError) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : ${e.name}')),
+          SnackBar(persist: false, content: Text('Erreur : ${e.name}')),
         );
       }
     } catch (_) {
@@ -156,7 +156,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Aucun achat à restaurer')),
+          const SnackBar(persist: false, content: Text('Aucun achat à restaurer')),
         );
       }
     }

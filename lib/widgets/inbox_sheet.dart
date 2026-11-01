@@ -155,7 +155,7 @@ class _InboxSheetState extends State<_InboxSheet> {
     if (!mounted) return;
     setState(() => _sweeping = false);
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
+        .showSnackBar(SnackBar(persist: false, content: Text(msg), duration: const Duration(seconds: 4)));
   }
 
   Future<void> _saveEdit(CaptureItem item) async {

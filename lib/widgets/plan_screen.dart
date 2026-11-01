@@ -388,7 +388,7 @@ class _PlanScreenState extends State<PlanScreen> {
     });
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text('Plus de créneau libre de 30 min pour ${w.title} : raccourcis ou retire un bloc.')));
+      ..showSnackBar(SnackBar(persist: false, content: Text('Plus de créneau libre de 30 min pour ${w.title} : raccourcis ou retire un bloc.')));
   }
 
   /// Les blocs DÉJÀ posés de la journée visée (fin de journée : ceux qui ne

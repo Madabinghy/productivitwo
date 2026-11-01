@@ -1231,7 +1231,7 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
                     final e = _end;
                     if (e != null && !e.isAfter(_start)) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
+                        const SnackBar(persist: false, 
                             content: Text("La fin doit être après le début.")),
                       );
                       return;
@@ -1536,7 +1536,7 @@ class _RunningActivityBannerState extends State<RunningActivityBanner>
                     await widget.logic.stopActiveWithAdjustment();
                 setState(() {});
                 if (delta != null && delta > 0 && name != null && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
                     content: Text('Objectif ajusté : $name +${delta}min'),
                     duration: const Duration(seconds: 3),
                   ));
@@ -1734,7 +1734,7 @@ Future<bool> openEditSessionSheet(
   if (newEnd != null && !newEnd.isAfter(newStart)) {
     if (!context.mounted) return false;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("La fin doit être après le début.")),
+      const SnackBar(persist: false, content: Text("La fin doit être après le début.")),
     );
     return false;
   }
@@ -2304,7 +2304,7 @@ class _AppRootState extends State<AppRoot>
         _lastGlobalScan = DateTime.now();
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            SnackBar(persist: false, 
                 content: Text("$bumps routine(s) passée(s) en mode manuel"),
                 duration: const Duration(seconds: 2)),
           );
@@ -2411,7 +2411,7 @@ class _AppRootState extends State<AppRoot>
         final bumps = await logic.scanAllActivities();
         if (bumps > 0 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            SnackBar(persist: false, 
                 content: Text("$bumps routine(s) passée(s) en mode manuel"),
                 duration: const Duration(seconds: 2)),
           );
@@ -2426,7 +2426,7 @@ class _AppRootState extends State<AppRoot>
         final facts = [...steps, ...tuned];
         if (facts.isNotEmpty && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            SnackBar(persist: false, 
                 content: Text('Ajustements — ${facts.join(' · ')}'),
                 duration: const Duration(seconds: 4)),
           );
@@ -2670,7 +2670,7 @@ class _AppRootState extends State<AppRoot>
       _doSave(); // persiste les nouveaux badges en local + Firestore
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         duration: const Duration(seconds: 4),
         content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
       ));
@@ -2688,7 +2688,7 @@ class _AppRootState extends State<AppRoot>
     if (newBadges.isNotEmpty && mounted) {
       final meta = badgeMeta(newBadges.last.id);
       _confettiController.play();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         duration: const Duration(seconds: 4),
         content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
       ));
@@ -2847,7 +2847,7 @@ class _AppRootState extends State<AppRoot>
                 ?.name ??
             'Routine';
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✓ $rName — fait 🔥 · chrono en cours, arrête quand tu veux')));
+            SnackBar(persist: false, content: Text('✓ $rName — fait 🔥 · chrono en cours, arrête quand tu veux')));
         setState(() {});
       }
       return;
@@ -3155,7 +3155,7 @@ class _AppRootState extends State<AppRoot>
     if (project == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Projet introuvable.')));
+            const SnackBar(persist: false, content: Text('Projet introuvable.')));
       }
       return;
     }
@@ -3179,7 +3179,7 @@ class _AppRootState extends State<AppRoot>
     }
     if (activity == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text(
                 'Aucune activité de temps dans ce domaine pour lancer le chrono.')));
       }
@@ -3289,7 +3289,7 @@ class _AppRootState extends State<AppRoot>
       logic.onChange();
       await _sync.saveSession(s);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('${fmt(min)} rattachées à « ${c.action.title} »'),
         duration: const Duration(seconds: 3),
       ));
@@ -3595,7 +3595,7 @@ class _AppRootState extends State<AppRoot>
     logic.onFlemmeVictory ??= (session, name) {
       if (!mounted) return;
       final wins = _badges.todayFacts().disciplineWinsToday;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Victoire sur la flemme · 10 min tenues sur $name${wins > 0 ? ' · $wins aujourd’hui' : ''}'),
         duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
@@ -3603,7 +3603,7 @@ class _AppRootState extends State<AppRoot>
     };
     logic.onSportRoutineCounted ??= (r) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('${r.name} +1 · séance comptée'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
@@ -3642,7 +3642,7 @@ class _AppRootState extends State<AppRoot>
                 _doSave(); // persiste les nouveaux badges
                 final meta = badgeMeta(newBadges.last.id);
                 _confettiController.play();
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
                   duration: const Duration(seconds: 4),
                   content: Text('${meta.emoji} Badge débloqué : ${meta.label}'),
                 ));
@@ -3785,7 +3785,7 @@ class _AppRootState extends State<AppRoot>
         if (t == null) continue;
         if (t.todayFlag) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
                 content: Text('Déjà dans ton programme (étoile).')));
           }
         } else {
@@ -4006,7 +4006,7 @@ class _AppRootState extends State<AppRoot>
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('🔥 Défi programmé ${_relativeDayLabel(day)} à $hhmm'),
         duration: const Duration(seconds: 3),
       ));
@@ -4056,7 +4056,7 @@ class _AppRootState extends State<AppRoot>
         if (!mounted) return;
         setState(() {});
         if (delta != null && delta > 0 && name != null) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text('Objectif ajusté : $name +${delta}min'),
             duration: const Duration(seconds: 3),
           ));
@@ -4220,7 +4220,7 @@ class _AppRootState extends State<AppRoot>
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Données de démo chargées ✓')),
+        const SnackBar(persist: false, content: Text('Données de démo chargées ✓')),
       );
     }
   }
@@ -4412,7 +4412,7 @@ class _AppRootState extends State<AppRoot>
       }
       if (tgt > 0 && routineTodayCount(logic, r) >= tgt) return;
       logic.incHabit(r.id, 1, logic.livedToday);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('✅ Routine validée : ${r.name}'),
         duration: const Duration(seconds: 2),
       ));

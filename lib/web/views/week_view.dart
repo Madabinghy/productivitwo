@@ -262,7 +262,7 @@ class _WeekViewState extends State<WeekView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(persist: false, 
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         duration: Duration(milliseconds: actionLabel == null ? 2000 : 5000),

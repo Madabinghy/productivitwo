@@ -22,7 +22,7 @@ extension ClosingSnackBar on ScaffoldMessengerState {
 void showUndoSnackBar(BuildContext context, String message, VoidCallback onUndo, {Duration duration = const Duration(seconds: 5)}) {
   final messenger = ScaffoldMessenger.of(context);
   messenger.hideCurrentSnackBar();
-  messenger.showClosingSnackBar(SnackBar(
+  messenger.showClosingSnackBar(SnackBar(persist: false, 
     content: Text(message),
     duration: duration,
     action: SnackBarAction(label: 'Annuler', onPressed: onUndo),

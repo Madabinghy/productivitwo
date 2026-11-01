@@ -557,7 +557,7 @@ class _GoalsViewState extends State<GoalsView> {
     widget.logic?.onChange();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text('« ${a.title} » faite'),
       action: SnackBarAction(
         label: 'Annuler',
@@ -591,7 +591,7 @@ class _GoalsViewState extends State<GoalsView> {
     widget.logic?.onChange();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text('« ${a.title} » visée demain'),
       action: SnackBarAction(
         label: 'Annuler',

@@ -139,7 +139,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
   void _toast(String t) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
+      ..showSnackBar(SnackBar(persist: false, content: Text(t), duration: const Duration(milliseconds: 2600)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────

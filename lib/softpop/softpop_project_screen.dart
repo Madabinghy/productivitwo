@@ -72,7 +72,7 @@ class _SoftPopProjectScreenState extends State<SoftPopProjectScreen> {
     if (!wasDone && m.done) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
+        ..showSnackBar(SnackBar(persist: false, 
           content: Text('Jalon atteint ! ${m.xp} 🎉',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           backgroundColor: SoftPop.teal,

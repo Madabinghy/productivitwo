@@ -149,7 +149,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
     unawaited(widget.sync.saveProject(project));
     Navigator.pop(context);
     widget.onCreated();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       content: Text(firstAction.isEmpty
           ? 'Projet créé — ajoute tes actions au fil de l\'eau.'
           : 'Projet créé — première action : « $firstAction »'),

@@ -98,7 +98,7 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
       widget.sync.saveHabitHit(logic.state.habitHits.last);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('✅ Routine validée : ${act.name}'),
         duration: const Duration(milliseconds: 1200),
       ));

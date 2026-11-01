@@ -29,7 +29,7 @@ class _SoftPopStreakScreenState extends State<SoftPopStreakScreen> {
   void _toast(String msg, Color c, {String emoji = ''}) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(persist: false, 
         content: Text('$emoji  $msg'.trim(),
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         duration: const Duration(milliseconds: 1300),

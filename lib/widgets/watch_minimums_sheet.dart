@@ -62,7 +62,7 @@ void setActivityMinimum(BuildContext context, AppLogic logic, Activity a, int mi
   onChanged?.call();
   final messenger = ScaffoldMessenger.maybeOf(context);
   messenger?.hideCurrentSnackBar();
-  messenger?.showSnackBar(SnackBar(
+  messenger?.showSnackBar(SnackBar(persist: false, 
     content: Text(min <= 0 ? '${a.name} : plus de minimum' : '${a.name} : minimum ${fmtMin(min)} / j'),
     action: SnackBarAction(
       label: 'Annuler',

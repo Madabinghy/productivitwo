@@ -180,7 +180,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     }
     if (mounted) {
       setState(() => _weekModeChosen = mode);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text(mode == 'minimal'
             ? 'Semaine minimale posée — rien à rattraper, le plan reprend où il s\'est arrêté.'
             : 'Vital protégé — on en reparle dimanche.'),
@@ -219,7 +219,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     await _sync.setWeeklyReportDecision(r.weekStart, 'applied');
     if (mounted) {
       setState(() => _decisionStatus = 'applied');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Décidé — « ${d.to} » dès lundi.'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,

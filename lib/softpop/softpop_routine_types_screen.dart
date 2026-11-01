@@ -55,7 +55,7 @@ class _SoftPopRoutineTypesScreenState extends State<SoftPopRoutineTypesScreen> {
   void _toast(String msg, Color c) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(persist: false, 
         content: Text(msg,
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         duration: const Duration(milliseconds: 1100),

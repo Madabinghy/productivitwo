@@ -553,7 +553,7 @@ class _ActionsViewState extends State<ActionsView> {
     // Petite icône, aucun feedback : des projets se retrouvaient en pause
     // sans qu'on sache pourquoi (taps accidentels) → snackbar + Annuler.
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(persist: false, 
       content: Text(p.paused
           ? '⏸ « ${p.title} » mis en pause'
           : '▶ « ${p.title} » repris'),
@@ -756,7 +756,7 @@ class _ActionsViewState extends State<ActionsView> {
       }
       await _persistEntry(e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Action supprimée'),
             duration: Duration(seconds: 2)));
       }
@@ -971,7 +971,7 @@ class _ActionsViewState extends State<ActionsView> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showClosingSnackBar(SnackBar(
+        ..showClosingSnackBar(SnackBar(persist: false, 
           duration: const Duration(seconds: 4),
           content: Text('☀ Visée ${focusLabel(e.action.focusDate!, today)} : ${e.action.title}'),
           action: SnackBarAction(
@@ -999,7 +999,7 @@ class _ActionsViewState extends State<ActionsView> {
           actionId: e.action.id,
         )));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('📅 Programmé — $pickedDay à $hhmm ($duration min)'),
         duration: const Duration(seconds: 2),
       ));
@@ -1523,7 +1523,7 @@ class _ActionsViewState extends State<ActionsView> {
     _captureCtrl.clear();
     unawaited(_sync.saveCaptureItem(CaptureItem(text: text, createdAt: DateTime.now())));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
       duration: const Duration(seconds: 2),
       content: Text('Dans la boîte d\'entrée : $text'),
     ));
@@ -2116,7 +2116,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showClosingSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(persist: false, 
         duration: const Duration(seconds: 4),
         content: Text('Visée demain : ${a.title}'),
         action: SnackBarAction(
@@ -2271,7 +2271,7 @@ class _ActionsViewState extends State<ActionsView> {
           if (mounted) {
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
-              ..showClosingSnackBar(SnackBar(
+              ..showClosingSnackBar(SnackBar(persist: false, 
                 duration: const Duration(seconds: 4),
                 content: Text('Fait : ${a.title}'),
                 action: SnackBarAction(label: 'Annuler', onPressed: () => _toggleDone(e, false)),
@@ -2459,7 +2459,7 @@ class _ActionsViewState extends State<ActionsView> {
                 persist();
                 if (changed && a.done) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
                       duration: const Duration(seconds: 2),
                       content: Text('Action faite : ${a.title}')));
                 }
@@ -2567,7 +2567,7 @@ class _ActionsViewState extends State<ActionsView> {
         .toList()
       ..sort((x, y) => x.title.toLowerCase().compareTo(y.title.toLowerCase()));
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucun projet actif.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Aucun projet actif.')));
       return;
     }
     final p = await showModalBottomSheet<Project>(
@@ -2613,12 +2613,12 @@ class _ActionsViewState extends State<ActionsView> {
         activity: a, actionId: e.action.id, projectId: p.id, taskId: taskId);
     if (!mounted) return;
     if (target == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rattachement impossible — réessaie.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Rattachement impossible — réessaie.')));
       return;
     }
     widget.logic.onChange();
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('« ${e.action.title} » → ${p.title} › ${target.title}'), duration: const Duration(seconds: 3)));
   }
 

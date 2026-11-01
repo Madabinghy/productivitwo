@@ -388,7 +388,7 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
       if (fresh != null && mounted) setState(() => _artifact = fresh);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content:
                 Text('Régénération échouée — l\'artefact actuel est intact.')));
       }

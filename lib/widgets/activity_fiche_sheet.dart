@@ -514,7 +514,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       }
     }
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucune action de projet à lier dans ce domaine.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Aucune action de projet à lier dans ce domaine.')));
       return;
     }
     final picked = await showModalBottomSheet<({Project project, ProjectTask task, TaskAction action})>(

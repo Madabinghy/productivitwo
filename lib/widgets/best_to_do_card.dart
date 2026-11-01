@@ -94,7 +94,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
     final ymd = yyyymmdd(DateTime.now());
     logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
     setState(() {});
-    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(persist: false, 
       content: Text('Validée pour aujourd\'hui : ${a.name}'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(
@@ -122,7 +122,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
     logic.setNowSkipped(ymd, ids);
     setState(() {});
     if (!wasSkipped) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Reculée en fin de liste : ${a.name}'),
         duration: const Duration(seconds: 3),
       ));

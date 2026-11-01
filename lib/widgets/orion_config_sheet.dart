@@ -119,7 +119,7 @@ class _OrionConfigSheetState extends State<OrionConfigSheet> {
         final skipped = data['skipped'] as bool? ?? false;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            SnackBar(persist: false, 
               content: Text(
                 skipped
                     ? 'Config sauvegardée — limite journalière atteinte (5/5)'

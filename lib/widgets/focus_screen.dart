@@ -211,7 +211,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     await save();
   }
 
-  void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text(text),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,

@@ -654,7 +654,7 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
                                         '${activeDomains[di].name}  ${fmtDate(d)} — ${fmtMin(mins)}';
                                     ScaffoldMessenger.of(context)
                                       ..clearSnackBars()
-                                      ..showSnackBar(SnackBar(
+                                      ..showSnackBar(SnackBar(persist: false, 
                                         content: Text(msg),
                                         duration:
                                             const Duration(seconds: 2),

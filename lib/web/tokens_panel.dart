@@ -91,7 +91,7 @@ class TokensPanelState extends State<TokensPanel>
   void _copy(String text, String msg) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      SnackBar(persist: false, content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 

@@ -102,7 +102,7 @@ class _MoveSheetState extends State<_MoveSheet> {
           alarmSoundKey: widget.logic.state.alarmSound);
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
           content: Text(
               'Déplacé à ${_hFr(startTime)} — rien d\'autre ne bouge, pas compté comme sauté.'),
           duration: const Duration(seconds: 3),
@@ -112,7 +112,7 @@ class _MoveSheetState extends State<_MoveSheet> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a changé, réessaie.')));
       }
     }

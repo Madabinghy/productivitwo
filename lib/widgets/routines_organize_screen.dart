@@ -77,7 +77,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
     setState(() => _chipOpen = null);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(persist: false, 
           content: Text('Déplacée vers ${momentOf(momentKey).label} : ${a.name}'),
           duration: const Duration(milliseconds: 2600)));
   }

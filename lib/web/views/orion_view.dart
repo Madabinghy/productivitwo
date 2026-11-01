@@ -914,7 +914,7 @@ class OrionViewState extends State<OrionView> {
             ? taskId
             : need.substring(0, need.length.clamp(0, 40));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          SnackBar(persist: false, 
             content: Text(isDeterministic
                 ? 'Tâche ORION exécutée : $label'
                 : 'ORION activé (LLM) : $label…'),
@@ -943,7 +943,7 @@ class OrionViewState extends State<OrionView> {
       );
       if (resp.statusCode == 200 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          const SnackBar(persist: false, 
               content: Text('Cycle ORION déclenché'),
               behavior: SnackBarBehavior.floating),
         );

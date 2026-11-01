@@ -497,7 +497,7 @@ class _ExampleCard extends StatelessWidget {
   void _copy(BuildContext context, String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      const SnackBar(persist: false, 
           content: Text('Prompt copié'),
           duration: Duration(seconds: 2)),
     );

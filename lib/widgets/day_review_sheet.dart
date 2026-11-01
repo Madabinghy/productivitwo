@@ -193,7 +193,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     ));
     if (count != null && mounted) {
       setState(() => _plannedCount = count);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('${_dayName(tomorrow)} est posé — $count blocs'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,

@@ -170,7 +170,7 @@ class _DomainOnboardingScreenState extends State<DomainOnboardingScreen> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a été posé, réessaie.')));
       }
     }

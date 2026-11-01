@@ -93,7 +93,7 @@ Future<void> showConsentLinkDialog(BuildContext context, String url) async {
               await Clipboard.setData(ClipboardData(text: url));
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('🔗 Lien copié')));
+                    const SnackBar(persist: false, content: Text('🔗 Lien copié')));
               }
             } catch (_) {
               // Refus navigateur : le lien reste sélectionnable à la main.
@@ -201,7 +201,7 @@ class _CoachingScreenState extends State<CoachingScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -383,7 +383,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -407,14 +407,14 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     try {
       await coachCall({'action': 'invite', 'id': c['id']});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text(
                 '✅ ${c['email']} autorisé — il peut créer son compte via le magic link.')));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -431,7 +431,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -466,7 +466,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
       if (mounted) {
         setState(() => _busy = false);
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -501,7 +501,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
       final r = await coachCall(
           {'action': 'message', 'id': c['id'], 'text': text});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text(r['ok'] == true
                 ? '✉️ Envoyé — il le verra à sa prochaine ouverture.'
                 : 'Impossible (${r['reason']}).')));
@@ -509,7 +509,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -612,7 +612,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
                       }).then((_) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              const SnackBar(persist: false, 
                                   content: Text('Fiche enregistrée.')));
                         }
                       }),

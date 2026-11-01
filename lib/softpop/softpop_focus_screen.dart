@@ -77,7 +77,7 @@ class _SoftPopFocusScreenState extends State<SoftPopFocusScreen> {
     });
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(persist: false, 
         content: Text('Bravo ! « ${r.name} » ✓  +XP',
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         backgroundColor: SoftPop.teal,

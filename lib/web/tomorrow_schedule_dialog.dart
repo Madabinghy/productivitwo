@@ -134,7 +134,7 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
+          .showSnackBar(const SnackBar(persist: false, content: Text('Impossible d\'ouvrir Claude')));
     }
   }
 

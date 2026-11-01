@@ -289,7 +289,7 @@ class SoftPopLairScreen extends StatelessWidget {
           }
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(SnackBar(
+            ..showSnackBar(SnackBar(persist: false, 
               content: Text(
                   'Énergie trop basse. Fais des routines pour recharger.',
                   style: SoftPop.ui(

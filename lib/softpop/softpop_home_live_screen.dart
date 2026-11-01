@@ -145,7 +145,7 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
     if (delta > 0) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
+        ..showSnackBar(SnackBar(persist: false, 
           content: Text('« ${a.name} » ✓',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           backgroundColor: SoftPop.teal,

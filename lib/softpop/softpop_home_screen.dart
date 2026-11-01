@@ -79,7 +79,7 @@ class _SoftPopHomeScreenState extends State<SoftPopHomeScreen> {
     if (r.done) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
+        ..showSnackBar(SnackBar(persist: false, 
           content: Text('+${r.xp} XP 🎉  ·  ${r.name}',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           duration: const Duration(milliseconds: 1100),

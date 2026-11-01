@@ -64,7 +64,7 @@ class _SoftPopFocusLiveScreenState extends State<SoftPopFocusLiveScreen> {
     setState(() {});
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(persist: false, 
         content: Text('Bravo ! « ${a.name} » ✓',
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         backgroundColor: SoftPop.teal,

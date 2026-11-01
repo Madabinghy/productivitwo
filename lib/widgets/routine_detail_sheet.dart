@@ -248,7 +248,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     widget.onSaved?.call();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Supprimé : $name')));
+                          SnackBar(persist: false, content: Text('Supprimé : $name')));
                       Navigator.pop(context);
                     }
                   },

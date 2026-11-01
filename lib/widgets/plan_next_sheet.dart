@@ -91,7 +91,7 @@ class _PlanNextSheetState extends State<_PlanNextSheet> {
       );
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
           content: Text(
               '${widget.routine.name} posée ${at.day == DateTime.now().day ? 'aujourd\'hui' : 'demain'} à ${_hFr(at)} — elle t\'attendra.'),
           duration: const Duration(seconds: 3),
@@ -101,7 +101,7 @@ class _PlanNextSheetState extends State<_PlanNextSheet> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content: Text('Échec réseau — rien n\'a été posé, réessaie.')));
       }
     }

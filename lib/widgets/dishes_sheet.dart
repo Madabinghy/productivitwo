@@ -177,7 +177,7 @@ class _DishSheetState extends State<DishSheet> {
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Donne un nom au plat.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Donne un nom au plat.')));
       return;
     }
     if (_add.text.trim().isNotEmpty) _addLine(_add.text);

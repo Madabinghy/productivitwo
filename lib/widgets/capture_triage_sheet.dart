@@ -120,7 +120,7 @@ class _TriageSheetState extends State<_TriageSheet> {
     _created++;
     widget.onChanged?.call();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
         content: Text('Action créée · $where'), duration: const Duration(seconds: 2)));
     _next();
   }

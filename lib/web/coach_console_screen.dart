@@ -295,7 +295,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
         'text': lines.join('\n'),
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text(r['ok'] == true
                 ? '✉️ Constat envoyé — il le verra à sa prochaine ouverture, signé de ton nom.'
                 : 'Impossible (${r['reason']}).')));
@@ -309,7 +309,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
     if (mounted) setState(() => _sending = false);
@@ -331,7 +331,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
       await coachCall({'action': 'updateClient', 'id': c.id, 'notes': notes});
       c.fiche['notes'] = notes;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
             content:
                 Text('Gardé dans la fiche — rien n\'est parti chez lui.')));
         setState(() => _motCtrl.clear());
@@ -339,7 +339,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -354,7 +354,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }
@@ -370,7 +370,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
             await Clipboard.setData(
                 ClipboardData(text: c.fiche['email'] as String));
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
                   content: Text(
                       'Email copié — un SMS ou un mail vaut mieux qu\'une notification de plus.')));
             }
@@ -430,7 +430,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
       final r = await coachCall({'action': 'presession', 'id': c.id});
       if (!mounted) return;
       if (r['ok'] != true) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text(switch (r['reason']) {
           'no_scope' => 'Rien de partagé — pas de rapport possible.',
           'no_account' => 'Pas encore de compte coaché.',
@@ -458,7 +458,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
                   await Clipboard.setData(ClipboardData(text: report));
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('Rapport copié')));
+                        const SnackBar(persist: false, content: Text('Rapport copié')));
                   }
                 } catch (_) {}
               },
@@ -474,7 +474,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
       }
     }
   }

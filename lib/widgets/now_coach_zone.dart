@@ -80,14 +80,14 @@ class _NowCoachZoneState extends State<NowCoachZone> {
           if (tgt > 1) {
             final total = await showHabitCountSheet(context, logic: logic, activity: a);
             if (total == null || !context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
               content: Text('${a.name} : $total/$tgt aujourd\'hui'),
               duration: const Duration(seconds: 2),
             ));
             return;
           }
           logic.incHabit(a.id, 1, DateTime(day.year, day.month, day.day));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
             content: Text('Routine validée : ${a.name}'),
             duration: const Duration(seconds: 2),
           ));

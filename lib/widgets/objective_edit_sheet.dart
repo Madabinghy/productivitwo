@@ -229,7 +229,7 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
+          const SnackBar(persist: false, content: Text('Erreur de sauvegarde — réessaie.')));
     }
   }
 
