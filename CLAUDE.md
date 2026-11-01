@@ -1092,6 +1092,19 @@ va dans `unplaced` et est DIT (« … ne tiennent pas dans la semaine »), jamai
 des jours ouvrés) ; RÉPARTIR → « Ta semaine » jour par jour (barre de charge, dates en pointillés, blocs colorés par famille, tap = feuille
 Jour · Durée · Pourquoi ici · Enlever), pied « + n au quotidien gardées libres » et ce qui ne tient pas, interrupteur « Travailler le
 samedi », Recommencer · Valider (blocs posés fond d'abord, puis travail, puis corps).
+**Poser sa semaine : toi qui places** (2026-11-01, maquette validée « toi qui places, l'app qui aide », retour user : « j'ai
+l'impression qu'il veut planifier tout seul pour moi ») : l'écran ne répartit plus rien d'office. Étape 1 « Cette semaine, je
+veux… » (`_weekStakesView`) : le contrat en lignes à cocher, chacune en morceaux « n × durée » (− / +, tap sur la durée = 30 → 2 h,
+appui long = famille ; découpage par défaut `pieceSpecOf`, logique pure `utils/week_place.dart` : travail 1h30, fond un par jour,
+corps ses séances, prépa d'une séance 1 h), « Ajouter une activité » (`showActivityPicker`), SANS BLOC (au fil de la journée,
+déjà dans ta journée — tap = lui donner une famille à blocs), « Placer · n choses ». Étape 2 « Je place » (`_weekSpreadView`) : la
+semaine VIDE sauf les dates, un plateau de cartes en bas (« reste 2 × 45 ») ; tap sur une carte puis sur un jour = un morceau posé
+(`WeekPiece`), les jours où il tient s'allument (« + Courir ici »), les autres grisés ; tap sur un bloc posé = Jour · Durée ·
+Pourquoi ici · Enlever. « 💡 Proposer » (la carte choisie, sinon tout) pose des FANTÔMES en contour (`spreadByFamily` puis
+`ghostsFromSpread`, prépa la veille des séances) : tap = garder, appui long = retirer, « Garder tout » / « Ignorer » ; un fantôme
+ne compte pas (`placedCount`, `dayLoad`, `remainingPieces`). OÙ J'EN SUIS = placé / voulu par activité. « Valider la semaine »
+demande quoi faire des fantômes restants, puis pose chaque morceau gardé en bloc d'activité (`proposeDay`). Le « Répartir par
+familles » ci-dessus ne sert plus qu'aux propositions.
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 
