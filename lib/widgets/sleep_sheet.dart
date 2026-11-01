@@ -197,12 +197,12 @@ class _SleepSheetState extends State<SleepSheet> {
           const SizedBox(height: 6),
           _bedText(cs, stats, planned),
         ],
-        title('CE QUE ÇA CHANGE LE LENDEMAIN', '30 jours'),
+        title('UNE NUIT COURTE CHANGE-T-ELLE TA JOURNÉE ?', '30 jours'),
         _impact(cs, impact),
         title('30 NUITS', 'plus c’est clair, plus c’est long'),
         _Grid30(nights: nights30, target: target, onTap: (n) => _openNight(n, planned, target)),
         const SizedBox(height: 6),
-        Text('Vide = pas de chrono Sommeil cette nuit-là. Tap = la nuit.', style: TextStyle(fontSize: 12, color: mute)),
+        Text('✕ = nuit sans chrono Sommeil. Tap sur une case = la nuit.', style: TextStyle(fontSize: 12, color: mute)),
         title('CE SOIR'),
         _tonight(cs, planned, stats, target, sleep, running),
         const SizedBox(height: 10),
@@ -298,15 +298,30 @@ class _SleepSheetState extends State<SleepSheet> {
   }
 
   Widget _impact(ColorScheme cs, SleepImpact imp) {
+    final mute = TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .6), height: 1.35);
+    // Retour user 2026-11-01 : dire ce qu'on compare avant de dire ce qu'il manque.
+    final intro = Text(
+      'On compare tes journées qui suivent une nuit longue (≥ ${fmtNight(imp.longMin)}) à celles qui suivent une nuit '
+      'courte (< ${fmtNight(imp.shortMin)}) : ton élan, ton temps en Flemme, tes actions faites.',
+      style: mute,
+    );
     if (!imp.enough) {
-      return Text(
-        'Il faut au moins $kSleepImpactMinNights nuits longues (≥ ${fmtNight(imp.longMin)}) et $kSleepImpactMinNights courtes (< ${fmtNight(imp.shortMin)}) '
-        'sur 30 jours pour comparer leurs lendemains. Pour l’instant : ${imp.long.days} longue${imp.long.days > 1 ? 's' : ''}, '
-        '${imp.short.days} courte${imp.short.days > 1 ? 's' : ''}.',
-        style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .6)),
-      );
+      String days(int n) => '$n journée${n > 1 ? 's' : ''}';
+      final fewShort = imp.short.days < kSleepImpactMinNights && imp.long.days >= kSleepImpactMinNights;
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        intro,
+        const SizedBox(height: 8),
+        Text(
+          'Il en faut au moins $kSleepImpactMinNights de chaque sorte sur 30 jours. Pour l’instant : '
+          '${days(imp.long.days)} après une nuit longue, ${days(imp.short.days)} après une nuit courte.'
+          '${fewShort ? ' Peu de nuits courtes : tant mieux, la comparaison attendra.' : ''}',
+          style: mute,
+        ),
+      ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      intro,
+      const SizedBox(height: 10),
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: _side(cs, 'Après ≥ ${fmtNight(imp.longMin)}', imp.long, _kOk)),
         const SizedBox(width: 8),
@@ -618,6 +633,8 @@ class _Grid30 extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 border: i == nights.length - 1 ? Border.all(color: cs.onSurface.withValues(alpha: .8), width: 1.5) : null,
               ),
+              // Nuit sans chrono Sommeil : une croix rouge, pour la voir d'un coup d'œil.
+              child: nights[i] == null ? const Center(child: Icon(Icons.close_rounded, size: 18, color: _kDanger)) : null,
             ),
           ),
       ],
