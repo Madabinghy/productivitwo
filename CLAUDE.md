@@ -1354,6 +1354,19 @@ rythme / à rattraper, EN PAUSE repliée) · PROJETS (vivants du domaine, hors d
 segment Temps / Routines ni d'en-tête chiffré. **Fiche Ma semaine = le contrat seul** : engagements à ce jour + semaines tenues ; la
 répartition, les jauges, le temps 12 semaines, le temps du jour et les retards sont retirés (`weekDetails` supprimé).
 
+## Badges en cartes (2026-11-01, maquette validée « Badges en cartes »)
+
+Retour user : sur l'écusson, le dessin ne se voit pas ; un badge devient une carte à collectionner, rien ne change dans le calcul.
+**Lot 1 livré (carte, rareté, album)** : logique pure `utils/badge_cards.dart` — `rarityOf` (badge simple obtenu = or ; à paliers,
+bronze → argent → or répartis, le dernier palier toujours légendaire : 5 paliers = bronze, bronze, argent, or, légendaire),
+`rarityLadder`, `faceOf` (gagnée · commencée = grisée + jauge · jamais commencée = de dos), `cardHint` (le premier palier en clair),
+`cardFooter`, `cardAlbum` (cartes gagnées / total hors séries de routine, compte par rareté), `albumOrder` ; widget
+`widgets/badge_card.dart` (`BadgeCardView` 5 / 7 : cadre de la rareté — légendaire irisé qui brille —, symbole du gabarit en grand
+via `BadgePainter.paintSymbol` sur le fond de sa famille `familyArtColor` / `familyInkColor`, nom, points des paliers, jauge ambre
+« ce soir ? », dos rayé « ? » + indice, pastille NOUVEAU). Galerie (`badge_gallery_screen.dart`) : en-tête album « k / n cartes ·
+x or · paliers » + barre, trois cartes par rangée par famille (`albumOrder`) ; fiche d'un badge : la carte en tête et « les paliers
+= les cadres » (`_CardLadder`). `BadgeView` (écusson) reste pour les petites tailles (lignes, tuiles).
+
 ## Règles du jeu en place (2026-10-30)
 
 Retour user : « pas une tonne de texte, pas un tuto au fond des paramètres ». Toute fonctionnalité à enjeux porte un petit
