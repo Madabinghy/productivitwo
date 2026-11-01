@@ -1068,6 +1068,10 @@ Pause · +5 min · Passer), TOUCHÉ (temps tiré / visé, ce qui vient de tomber
 maintenant · Souffler 5 min · Passer cette cible), BILAN (k / n touchées, tirées / visées, précision, tombé, badge). Reprenable comme
 Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
+**Un gros bouton, le mode du moment** (2026-11-01, retour user : pas quatre boutons alignés) : sous l'en-tête d'Aujourd'hui, UN gros
+bouton = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge),
+« Reprendre · … » quand une session de ce mode attend (`_modeLauncher`) ; en haut à droite, les petits ronds des deux autres modes
+et Planifier (les trois modes + Planifier en recharge et sur Demain).
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

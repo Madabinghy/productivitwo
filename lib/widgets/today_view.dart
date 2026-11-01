@@ -55,6 +55,7 @@ import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveA
 import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
 import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
+import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
@@ -711,6 +712,7 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 ...[
                 if (!_showTomorrow) ...[
+                  if (_modeLauncher(cs) case final big?) big,
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
@@ -885,16 +887,78 @@ class TodayViewState extends State<TodayView> {
           const SizedBox(height: 8),
         ],
         Row(mainAxisSize: MainAxisSize.min, children: [
-          _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
-          const SizedBox(width: 8),
-          _launcherBtn(cs, kSniperKind, Icons.gps_fixed, 'Sniper · chaque minute, pile où elle compte', kSniperAccent, const Color(0xFF2A6F94)),
-          const SizedBox(width: 8),
-          _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
-          const SizedBox(width: 8),
+          // Le mode du moment a son gros bouton sous l'en-tête (2026-11-01) : ici, les autres.
+          for (final l in _launchers)
+            if (_showTomorrow || l.kind != _modeKind) ...[
+              _launcherBtn(cs, l.kind, l.icon, l.tooltip, l.accent, l.light),
+              const SizedBox(width: 8),
+            ],
           _planBtn(cs),
         ]),
       ]),
     ]);
+  }
+
+  static const _launchers = [
+    (kind: kGuerillaKind, icon: Icons.bolt, tooltip: 'Guérilla · la flemme ou moi', accent: kGuerillaAccent, light: Color(0xFF5E6B2A), name: 'Guérilla', line: 'la flemme ou moi'),
+    (kind: kSniperKind, icon: Icons.gps_fixed, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFF2A6F94), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
+    (kind: kOffensiveKind, icon: Icons.north_east, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFFB4532A), name: 'Offensive', line: 'en forme, à fond'),
+  ];
+
+  /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
+  /// Sniper, En forme → Offensive ; rien en recharge.
+  String? get _modeKind {
+    if (widget.logic.inRecharge) return null;
+    return switch (widget.logic.mode) {
+      DayMode.low => kGuerillaKind,
+      DayMode.normal => kSniperKind,
+      DayMode.high => kOffensiveKind,
+    };
+  }
+
+  /// Un seul gros bouton, celui du mode actuel (retour user 2026-11-01 : pas
+  /// quatre boutons alignés) ; les autres restent en petit en haut à droite.
+  Widget? _modeLauncher(ColorScheme cs) {
+    final kind = _modeKind;
+    if (kind == null) return null;
+    final l = _launchers.firstWhere((x) => x.kind == kind);
+    final dark = cs.brightness == Brightness.dark;
+    final c = dark ? l.accent : l.light;
+    final p = RunSessionStore.current;
+    final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
+    final unit = kind == kSniperKind ? 'cible' : 'coup';
+    final title = pending != null ? 'Reprendre · ${l.name}' : l.name;
+    final sub = pending != null ? '${pending.done} $unit${pending.done > 1 ? 's' : ''} déjà ${kind == kSniperKind ? 'touchée' : 'gagné'}${pending.done > 1 ? 's' : ''}' : l.line;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        color: c.withValues(alpha: dark ? .16 : .12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: c.withValues(alpha: .6), width: 1.5)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => openRun(kind),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                child: Icon(l.icon, size: 22, color: dark ? const Color(0xFF0B130A) : Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .65))),
+                ]),
+              ),
+              Icon(Icons.play_arrow_rounded, size: 30, color: c),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Lance (ou reprend) une Guérilla / une Offensive — boutons de l'en-tête
