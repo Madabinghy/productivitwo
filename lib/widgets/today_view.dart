@@ -1136,7 +1136,8 @@ class TodayViewState extends State<TodayView> {
         onProgram: _openProgramSheet,
         onRoutines: _openRoutinesFiche,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
-        onBadges: bc == null ? null : () => _openBadgesInPlay(board),
+        // La tuile Collection ouvre l'album (ce qui se joue ce soir y est en tête, 2026-11-01).
+        onBadges: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
         onBadgesGallery: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
         onPerfect: bc == null ? null : _openPerfectDaySheet,
         onActions: _openFocusedActionsSheet,
@@ -1582,26 +1583,6 @@ class TodayViewState extends State<TodayView> {
     }
     widget.logic.onChange();
   }
-
-  void _openBadgesInPlay(StakeBoard board) {
-    // Feuille, comme les autres tuiles (retour user 2026-10-30).
-    showFiche<void>(context, builder: (ctx, scroll) {
-      return BadgesInPlayScreen(
-        data: badgesInPlay(board, widget.badges?.deck),
-        sheetScroll: scroll,
-        embers: widget.logic.emberLedgerNow(),
-        names: {for (final a in widget.logic.state.activities) a.id: a.name},
-        onRun: _runStake,
-        onAll: () {
-          Navigator.of(ctx).pop();
-          _openBadgeGallery();
-        },
-      );
-    }).then((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
 
   void _openRoutinesFiche() {
     showFiche<void>(context, builder: (ctx, scroll) {

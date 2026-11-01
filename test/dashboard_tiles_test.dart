@@ -61,9 +61,10 @@ void main() {
       Stake(g2, const [StakeGain(kind: StakeGainKind.seriesTonight, label: 'série 2 j → se perd ce soir', losesTonight: true, weight: 32, sourceId: 'serie-B')]),
     ]);
     final t = badgesTile(deck, board)!;
-    expect(t.value, 'Lecture 3 j');
-    expect(t.sub, 'carte bronze ce soir · 1 série à sauver');
-    expect(t.badge, '0 / 0 cartes');
+    expect(t.label, 'COLLECTION');
+    expect(t.value, '1 carte ce soir');
+    expect(t.sub, startsWith('jusqu’à bronze · 1 série à sauver · 0 pts'));
+    expect(t.badge, isNull);
     expect(t.fan, isEmpty);
     final d = badgesInPlay(board, deck);
     expect(d.losing.length, 1);
