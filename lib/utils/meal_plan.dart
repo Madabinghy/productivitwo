@@ -14,13 +14,18 @@ class PlannedMeal {
   final String title;
   final int portions;
   final bool out; // dehors / libre
-  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false});
+  /// Ce qui a été mangé (feuille Repas) : `ok` équilibré · `other` autre chose.
+  final String? ate;
+  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false, this.ate});
+
+  PlannedMeal withAte(String? v) => PlannedMeal(recipeId: recipeId, title: title, portions: portions, out: out, ate: v);
 
   Map<String, dynamic> toJson() => {
         if (recipeId != null) 'recipeId': recipeId,
         'title': title,
         'portions': portions,
         if (out) 'out': true,
+        if (ate != null) 'ate': ate,
       };
 
   static PlannedMeal? from(Object? raw) {
@@ -30,6 +35,7 @@ class PlannedMeal {
       title: (raw['title'] as String?) ?? '',
       portions: ((raw['portions'] as num?)?.toInt() ?? 1).clamp(1, 12),
       out: raw['out'] == true,
+      ate: raw['ate'] as String?,
     );
   }
 }
