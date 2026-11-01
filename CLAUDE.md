@@ -19,7 +19,8 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 - **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
   (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
-- Onglets mobiles actuels : **Ma vie / Projets / Actions / Aujourd'hui** (4 ; 3 avec `hideProjectsTab` ; depuis le
+- Onglets mobiles actuels : **Ma vie / Projets / Aujourd'hui** (3 depuis le 2026-11-01 : les actions vivent dans Projets ;
+  avec `hideProjectsTab`, l'onglet Actions revient à la place de Projets). Avant : Ma vie / Projets / Actions / Aujourd'hui (depuis le
   2026-11-01 Objectifs et Domaines sont fusionnés dans **Ma vie** — `_Tab.dashboard`, `_Tab.stats` ne s'affiche plus et pointe
   sur Ma vie ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
   **Actions mobile** (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10/README.md`,
@@ -1227,6 +1228,19 @@ l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),
 du matin et des moments (`buildRoutineDay(exclude:)`), reste cochable (section ACQUISES), compte toujours dans le contrat ;
 décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4 sem.). `data/meta.acquired` + `acquireAsked`.
+
+## Projets avec les actions (3 onglets, 2026-11-01, maquette validée « Projets et actions »)
+
+L'onglet Actions disparaît de la barre ; tout passe dans **Projets** (`goals_view.dart`) : bandeau « n captures à trier en actions »
+(`streamCaptures`, `showCaptureTriageSheet`), **POUR AUJOURD'HUI** (logique pure `utils/projects_today.dart`, `todayActions` : la parole
+du jour, les actions au programme (`AppLogic.todayBlocks.actionId`), les visées aujourd'hui, puis UN retard par projet = sa prochaine
+action en retard ; projets et actions propres ; 5 lignes, « + n autres »), **MES PROJETS** (chaque ligne garde ses briques et porte sa
+prochaine action cochable et lançable, `_nextActionRow` — sauf si elle est déjà dans Pour aujourd'hui), **SANS PROJET · n** replié
+(`looseActions` : actions propres ouvertes), puis À venir / En pause / Terminés / En veille, et « Toutes les actions › » = l'ancien
+`ActionsView` complet en page (filtres J'ai · Je suis · Domaine · Pour, vue par urgence ou par projet). Ligne d'action (`_actionLine`) :
+rond = fait (`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnActions`, « Annuler »), tap = page focus
+(`showActionFocusScreen`, chrono = activité liée de l'action, sinon du projet, sinon la porteuse), glisser à droite = fait sans question,
+à gauche = viser demain (annulable). Pastille « en retard » sur l'onglet Projets ; la tuile Actions d'Aujourd'hui y mène.
 
 ## Ma vie (2026-11-01, maquette validée « Onglet Ma vie »)
 
