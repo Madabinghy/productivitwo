@@ -48,6 +48,7 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show supersededMoodMarks;
+import 'package:productivitwo_v1/widgets/sleep_sheet.dart';
 import 'package:productivitwo_v1/widgets/sleep_bars.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
@@ -6561,9 +6562,22 @@ class _AppRootState extends State<AppRoot>
   }
 
   /// Barres de sommeil : la fiche de l'activité de sommeil (nuits sur 14 jours, tendance).
+  /// Barres de sommeil de la barre du haut → feuille « Sommeil » (2026-11-01).
   void _openSleepActivity() {
     final a = logic.state.activeActivities.where((x) => x.type == 'time' && isSleepName(x.name)).firstOrNull;
-    if (a != null) _openActivitySheet(a);
+    showSleepSheet(
+      context,
+      logic: logic,
+      sync: _sync,
+      onOpenActivity: () {
+        if (a != null) _openActivitySheet(a);
+      },
+      onEditSession: (ctx, s) => openEditSessionSheet(ctx, logic, s, sync: _sync),
+      onDeleteSession: (s) {
+        logic.deleteSession(s.id);
+        _sync.deleteSession(s.id);
+      },
+    );
   }
 
   /// Fiche d'une activité-temps (refonte 2026-10, `widgets/activity_fiche_sheet.dart`).
