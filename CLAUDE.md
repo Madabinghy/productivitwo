@@ -1113,6 +1113,18 @@ compté avec les dates) ; Sommeil et besoins de base ne sont plus listés en dat
 un bloc du doc du jour, hors agenda et séances — `_removed`, appliqué à la validation en `status:"deleted"`) ; un jour plein
 accepte quand même un morceau (« + GDS quand même », « dépasse 15 ») et l'écran final dit combien de blocs n'ont pas trouvé de
 créneau (`_weekUnfit`).
+**Une activité à la fois** (2026-11-01, maquette validée « Semaine activité par activité », remplace le plateau de cartes et 💡
+Proposer de « Je place ») : après « Je veux… », « Placer · n activités » (`_startPlacing`, ordre = `_onWants`) enchaîne pour CHAQUE
+activité deux écrans. **Quels jours ?** (`_Step.weekDays`, `_weekDaysView`) : 7 jours à cocher, sous chacun déjà pris / libre sans
+compter l'activité (`_freeFor`) et « × 2 » quand il y a plus de blocs que de jours (`perDay`), « 💡 Suggérer des jours » (règle de
+la famille, `spreadByFamily` sur cette seule activité), « Passer cette activité ». **À quelle heure ?** (`_Step.weekTimes`,
+`_weekTimesView`) : la semaine en colonnes sur la journée active (`_weekGrid` : blocs déjà posés bleu nuit, dates en contour or,
+activités déjà placées dans leur couleur, jours choisis en bleu ; tap sur un jour en tête = `_showDay`) ; les blocs de l'activité
+arrivent à une heure PROPOSÉE (premier créneau libre, `firstFreeStart`, `WeekPiece.start` / `proposed`, « Courir ? » en contour) ;
+tap dans une colonne = y poser / y déplacer le bloc (`_tapGrid`), glisser = changer l'heure (quart d'heure), tap = garder l'heure,
+appui long = enlever ; « Même heure tous les jours » cale les heures encore proposées des autres jours (`_setTime`, si libre).
+**Ta semaine** (`_weekSpreadView`) : la grille complète, OÙ J'EN SUIS (tap = revenir sur l'activité), « Valider la semaine » pose
+chaque bloc À SON HEURE (`PlannedBlock` direct ; sans heure → `proposeDay`, sinon compté dans `_weekUnfit`).
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 

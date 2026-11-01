@@ -49,4 +49,24 @@ void main() {
     expect(g[1].last.reason, 'corps');
     expect(g[0].first.kept().ghost, isFalse);
   });
+
+  test('perDay répartit le surplus sur les premiers jours', () {
+    expect(perDay(10, 4), [3, 3, 2, 2]);
+    expect(perDay(3, 3), [1, 1, 1]);
+    expect(perDay(2, 5), [1, 1, 0, 0, 0]);
+    expect(perDay(4, 0), isEmpty);
+  });
+
+  test('firstFreeStart saute les blocs et arrondit au quart d\'heure', () {
+    final busy = [(480, 540), (545, 600), (720, 780)];
+    expect(firstFreeStart(busy, 480, 1320, 60), 600);
+    expect(firstFreeStart(busy, 480, 1320, 150), 780);
+    expect(firstFreeStart(busy, 610, 1320, 30), 615);
+    expect(firstFreeStart(busy, 1300, 1320, 30), isNull);
+    expect(overlapsAny(busy, 590, 30), isTrue);
+    expect(overlapsAny(busy, 600, 120), isFalse);
+    const p = WeekPiece('a', 45, start: 600, proposed: true);
+    expect(p.end, 645);
+    expect(p.at(660).proposed, isFalse);
+  });
 }

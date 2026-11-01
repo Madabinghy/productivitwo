@@ -21,7 +21,7 @@ import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/reading_due.dart' show readingsDue;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
 import 'package:productivitwo_v1/utils/week_place.dart';
 import 'package:productivitwo_v1/utils/week_spread.dart';
@@ -48,7 +48,7 @@ Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? 
   return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges, startWeek: week)));
 }
 
-enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekSpread, weekDone }
+enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekDays, weekTimes, weekSpread, weekDone }
 
 class PlanScreen extends StatefulWidget {
   final AppLogic logic;
@@ -565,6 +565,8 @@ class _PlanScreenState extends State<PlanScreen> {
                   _Step.parole => _paroleView(),
                   _Step.done => _doneView(),
                   _Step.weekStakes => _weekStakesView(),
+                  _Step.weekDays => _weekDaysView(),
+                  _Step.weekTimes => _weekTimesView(),
                   _Step.weekSpread => _weekSpreadView(),
                   _Step.weekDone => _weekDoneView(),
                 },
@@ -1179,7 +1181,6 @@ class _PlanScreenState extends State<PlanScreen> {
   int _weekUnfit = 0;
   Set<String> _on = {};
   List<List<WeekPiece>> _pieces = [for (var i = 0; i < 7; i++) <WeekPiece>[]];
-  String? _sel;
   final Map<int, List<PlannedBlock>> _weekPosed = {};
   int _weekRoutines = 0;
   // Répartir par familles (2026-11-01, maquette « Répartir la semaine, autrement »).
@@ -1429,7 +1430,6 @@ class _PlanScreenState extends State<PlanScreen> {
     _spec = {for (final w in _wants) w.activityId: _defaultSpec(w)};
     _on = {for (final e in _spec.entries) if (e.value.count > 0) e.key};
     _pieces = [for (var i = 0; i < 7; i++) <WeekPiece>[]];
-    _sel = null;
   }
 
   Future<void> _setFamily(String id, PlanFamily f) async {
@@ -1681,408 +1681,536 @@ class _PlanScreenState extends State<PlanScreen> {
           padding: const EdgeInsets.only(bottom: 6),
           child: Text('${fmtMin(total)} voulues pour ${fmtMin(free)} de libre : tu verras ce qui ne tient pas.', style: const TextStyle(fontSize: 12.5, color: _gold)),
         ),
-      _primary('Placer · ${_on.length} chose${_on.length > 1 ? 's' : ''}', () => setState(() => _step = _Step.weekSpread)),
+      _primary('Placer · ${_on.length} activité${_on.length > 1 ? 's' : ''}', _startPlacing),
     ]);
   }
 
   List<WeekWant> get _onWants => _wants.where((w) => _on.contains(w.activityId) && (_spec[w.activityId]?.count ?? 0) > 0).toList();
 
-  Map<String, int> get _remaining => remainingPieces({for (final w in _onWants) w.activityId: _spec[w.activityId]!}, _pieces);
+  static const _dayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
 
-  int get _ghostCount => _pieces.fold(0, (s, d) => s + d.where((p) => p.ghost).length);
+  // ── Placer une activité à la fois (maquette validée 2026-11-01 « Semaine
+  // activité par activité ») : ses jours, puis ses heures sur la semaine.
+  List<WeekWant> _order = const [];
+  int _actIdx = 0;
+  Set<int> _actDays = {};
+  bool _sameTime = true;
+  static const _kGridH = 420.0;
 
-  void _place(int day) {
-    final id = _sel;
-    if (id == null) return;
+  WeekWant get _act => _order[_actIdx];
+
+  void _startPlacing() {
+    _order = _onWants;
+    if (_order.isEmpty) {
+      setState(() => _step = _Step.weekSpread);
+      return;
+    }
+    _openAct(0);
+  }
+
+  void _openAct(int k) {
+    setState(() {
+      _actIdx = k;
+      final id = _order[k].activityId;
+      _actDays = {for (var d = 0; d < 7; d++) if (_pieces[d].any((p) => p.id == id)) d};
+      _step = _Step.weekDays;
+    });
+  }
+
+  /// Ce qui occupe un jour : blocs déjà posés, puis les morceaux placés
+  /// (sauf [except]).
+  List<(int, int)> _busyOf(int d, {WeekPiece? except}) => [
+        for (final b in _dayBlocks(d))
+          if (b.status == 'pending' || b.status == 'done') (blockStartMin(b), blockEndMin(b)),
+        for (final p in _pieces[d])
+          if (!identical(p, except) && p.start != null) (p.start!, p.end!),
+      ];
+
+  /// Le libre d'un jour sans compter l'activité en cours.
+  int _freeFor(int d, String id) => _freeOf(d) - _pieces[d].where((p) => p.id != id).fold<int>(0, (s, p) => s + p.minutes);
+
+  void _suggestDays() {
+    final w = _act;
+    final s = _spec[w.activityId]!;
+    final free = [for (var d = 0; d < 7; d++) (_freeFor(d, w.activityId) * fillRatio(PlanLoad.normal)).round().clamp(0, 24 * 60).toInt()];
+    var fam = _familyOf(w.activityId);
+    if (fam == PlanFamily.daily || fam == PlanFamily.base) fam = PlanFamily.work;
+    final spread = spreadByFamily([WeekWant(activityId: w.activityId, title: w.title, weeklyMin: s.total, reason: w.reason)], {w.activityId: fam}, free, workSaturday: _workSaturday);
+    final days = {for (var d = 0; d < 7; d++) if ((spread.days[d][w.activityId] ?? 0) > 0) d};
+    setState(() => _actDays = days.isEmpty ? {for (var d = 0; d < 7; d++) if (free[d] >= s.minutes) d}.take(s.count).toSet() : days);
+  }
+
+  /// Passe aux heures : les morceaux de l'activité sur les jours choisis,
+  /// heures déjà réglées gardées, les autres proposées au premier créneau libre.
+  void _toTimes() {
+    final w = _act;
+    final id = w.activityId;
+    var s = _spec[id]!;
+    final days = _actDays.toList()..sort();
+    if (days.length > s.count) {
+      s = PieceSpec(days.length, s.minutes);
+      _spec = {..._spec, id: s};
+    }
+    final counts = perDay(s.count, days.length);
+    for (var d = 0; d < 7; d++) {
+      final k = days.indexOf(d);
+      final want = k < 0 ? 0 : counts[k];
+      final mine = _pieces[d].where((p) => p.id == id).toList();
+      _pieces[d].removeWhere((p) => p.id == id);
+      for (var j = 0; j < want; j++) {
+        if (j < mine.length && mine[j].start != null && mine[j].minutes == s.minutes) {
+          _pieces[d].add(mine[j]);
+          continue;
+        }
+        final st = firstFreeStart(_busyOf(d), _window.startMin, _window.endMin, s.minutes);
+        _pieces[d].add(WeekPiece(id, s.minutes, start: st, proposed: true));
+      }
+    }
+    setState(() => _step = _Step.weekTimes);
+  }
+
+  void _setTime(int d, WeekPiece p, int m) {
+    final st = (m ~/ 15 * 15).clamp(_window.startMin, (_window.endMin - p.minutes).clamp(_window.startMin, 24 * 60)).toInt();
+    final idx = _pieces[d].indexOf(p);
+    if (idx < 0) return;
+    _pieces[d][idx] = p.at(st);
+    if (!_sameTime) return;
+    final rank = _pieces[d].where((x) => x.id == p.id).toList().indexOf(_pieces[d][idx]);
+    for (var o = 0; o < 7; o++) {
+      if (o == d) continue;
+      final mine = _pieces[o].where((x) => x.id == p.id).toList();
+      if (rank >= mine.length || !mine[rank].proposed) continue;
+      final q = mine[rank];
+      if (overlapsAny(_busyOf(o, except: q), st, q.minutes)) continue;
+      _pieces[o][_pieces[o].indexOf(q)] = q.at(st);
+    }
+  }
+
+  void _tapGrid(int d, double y) {
+    final id = _act.activityId;
+    final span = _window.endMin - _window.startMin;
+    final m = _window.startMin + (y / _kGridH * span).round();
     final s = _spec[id]!;
+    final mine = _pieces[d].where((p) => p.id == id).toList();
     setState(() {
-      _pieces[day].add(WeekPiece(id, s.minutes, reason: 'Placé par toi.'));
-      if ((_remaining[id] ?? 0) == 0) _sel = null;
-    });
-  }
-
-  void _keepGhost(int day, int idx) {
-    final p = _pieces[day][idx];
-    setState(() {
-      if ((_remaining[p.id] ?? 0) > 0 && fitsDay(_freeOf(day), _pieces[day], p.minutes)) {
-        _pieces[day][idx] = p.kept();
-      } else {
-        _pieces[day].removeAt(idx);
+      if (mine.isEmpty) {
+        final placed = placedCount(_pieces, id);
+        if (placed >= s.count) _spec = {..._spec, id: PieceSpec(placed + 1, s.minutes)};
+        final p = WeekPiece(id, s.minutes, start: m);
+        _pieces[d].add(p);
+        _actDays.add(d);
+        _setTime(d, p, m - s.minutes ~/ 2);
+        return;
       }
-      if (_sel != null && (_remaining[_sel] ?? 0) == 0) _sel = null;
-    });
-  }
-
-  void _keepAll() {
-    setState(() {
-      for (var d = 0; d < 7; d++) {
-        for (var k = 0; k < _pieces[d].length; k++) {
-          final p = _pieces[d][k];
-          if (!p.ghost) continue;
-          if ((_remaining[p.id] ?? 0) > 0 && fitsDay(_freeOf(d), _pieces[d], p.minutes)) _pieces[d][k] = p.kept();
-        }
-        _pieces[d].removeWhere((p) => p.ghost);
-      }
-      if (_sel != null && (_remaining[_sel] ?? 0) == 0) _sel = null;
-    });
-  }
-
-  void _dropGhosts() => setState(() {
-        for (final d in _pieces) {
-          d.removeWhere((p) => p.ghost);
-        }
+      final target = mine.firstWhere((p) => p.proposed || p.start == null, orElse: () {
+        mine.sort((a, b) => ((a.start ?? 0) - m).abs().compareTo(((b.start ?? 0) - m).abs()));
+        return mine.first;
       });
-
-  /// 💡 Proposer : des fantômes pour ce qui reste (la carte choisie, sinon
-  /// tout), selon la règle de chaque famille. Rien n'est gardé sans geste.
-  void _proposeWeek() {
-    for (final d in _pieces) {
-      d.removeWhere((p) => p.ghost);
-    }
-    final rem = {..._remaining};
-    if (_sel != null) rem.removeWhere((k, _) => k != _sel);
-    if (rem.isEmpty) return;
-    final pre = [for (var i = 0; i < 7; i++) <WeekPiece>[]];
-    for (final (d, id, _) in _prefill) {
-      if ((rem[id] ?? 0) <= 0) continue;
-      final mins = _spec[id]!.minutes;
-      if (!fitsDay(_freeOf(d), [..._pieces[d], ...pre[d]], mins)) continue;
-      pre[d].add(WeekPiece(id, mins, ghost: true, reason: 'La prépa la veille de la séance.'));
-      rem[id] = rem[id]! - 1;
-    }
-    final wants = [
-      for (final w in _onWants)
-        if ((rem[w.activityId] ?? 0) > 0) WeekWant(activityId: w.activityId, title: w.title, weeklyMin: rem[w.activityId]! * _spec[w.activityId]!.minutes, reason: w.reason),
-    ];
-    final fams = {for (final w in wants) w.activityId: _familyOf(w.activityId) == PlanFamily.daily || _familyOf(w.activityId) == PlanFamily.base ? PlanFamily.work : _familyOf(w.activityId)};
-    final free = [
-      for (var i = 0; i < 7; i++) ((_freeOf(i) * fillRatio(PlanLoad.normal)).round() - dayLoad(_pieces[i]) - pre[i].fold<int>(0, (s, p) => s + p.minutes)).clamp(0, 24 * 60).toInt(),
-    ];
-    final spread = spreadByFamily(wants, fams, free, workSaturday: _workSaturday);
-    final ghosts = ghostsFromSpread(spread.days, _spec, rem, reasons: spread.reasons);
-    var n = 0;
-    setState(() {
-      for (var i = 0; i < 7; i++) {
-        _pieces[i].addAll([...pre[i], ...ghosts[i]]);
-        n += pre[i].length + ghosts[i].length;
-      }
+      _setTime(d, target, m - target.minutes ~/ 2);
     });
-    if (n == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plus de place libre pour ça cette semaine.')));
-    }
   }
 
-  Future<void> _editPiece(int day, int idx) async {
-    final p = _pieces[day][idx];
-    var newDay = day, newMin = p.minutes;
-    final res = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: _card,
-      showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-        Widget seg<T>(List<T> values, T sel, String Function(T) label, void Function(T) on) => Row(children: [
-              for (final v in values)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: GestureDetector(
-                      onTap: () => setLocal(() => on(v)),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 9),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(color: v == sel ? kPlanAccent : const Color(0xFF17291F), borderRadius: BorderRadius.circular(10)),
-                        child: Text(label(v), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: v == sel ? _ink : Colors.white)),
-                      ),
+  /// La semaine en colonnes, journée active de haut en bas : blocs déjà posés
+  /// (bleu nuit), dates (contour or), morceaux placés (couleur de famille).
+  /// [current] = l'activité qu'on place (ses blocs se touchent et se glissent).
+  Widget _weekGrid({String? current, Set<int> sel = const {}, double height = _kGridH, void Function(String id)? onPieceTap}) {
+    final days = _weekDays;
+    final span = (_window.endMin - _window.startMin).clamp(60, 24 * 60);
+    double y(int m) => ((m - _window.startMin) / span * height).clamp(0.0, height);
+    Widget box(double top, double h, Widget child, {Color? bg, Border? border}) => Positioned(
+          top: top,
+          left: 1,
+          right: 1,
+          height: h.clamp(6.0, height),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+            clipBehavior: Clip.hardEdge,
+            decoration: BoxDecoration(color: bg, border: border, borderRadius: BorderRadius.circular(4)),
+            child: child,
+          ),
+        );
+    Text tiny(String t, Color c) => Text(t, maxLines: 2, overflow: TextOverflow.clip, style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.w800, color: c));
+    final hours = [for (var h = (_window.startMin + 59) ~/ 60; h * 60 < _window.endMin; h += 2) h];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 6, 6, 8),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+      child: Column(children: [
+        Row(children: [
+          const SizedBox(width: 26),
+          for (var d = 0; d < 7; d++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showDay(d),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text('${_dayShort[d][0]} ${days[d].day}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: sel.contains(d) ? kPlanAccent : _text3, decoration: TextDecoration.underline, decorationColor: _text3.withValues(alpha: .5))),
+                ),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: height,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              width: 26,
+              child: Stack(children: [
+                for (final h in hours) Positioned(top: y(h * 60) - 5, left: 0, child: Text('${h}h', style: const TextStyle(fontSize: 9, color: _text3))),
+              ]),
+            ),
+            for (var d = 0; d < 7; d++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: current == null ? null : (e) => _tapGrid(d, e.localPosition.dy),
+                    child: Container(
+                      decoration: BoxDecoration(color: sel.contains(d) ? const Color(0xFF13213A) : const Color(0xFF0F2219), borderRadius: BorderRadius.circular(5)),
+                      child: Stack(clipBehavior: Clip.hardEdge, children: [
+                        for (final b in _dayBlocks(d))
+                          if (b.status == 'pending' || b.status == 'done')
+                            (b.gcalEventId != null || b.kind == 'session')
+                                ? box(y(blockStartMin(b)), y(blockEndMin(b)) - y(blockStartMin(b)), tiny(b.title, _gold),
+                                    bg: _gold.withValues(alpha: .08), border: Border.all(color: _gold, width: 1.1))
+                                : box(y(blockStartMin(b)), y(blockEndMin(b)) - y(blockStartMin(b)), tiny(b.title, const Color(0xFFC7D6FF)), bg: const Color(0xFF2A3550)),
+                        for (final p in _pieces[d])
+                          if (p.start != null)
+                            Positioned(
+                              top: y(p.start!),
+                              left: 1,
+                              right: 1,
+                              height: (y(p.end!) - y(p.start!)).clamp(8.0, height),
+                              child: _pieceBox(d, p, current: current, onTap: onPieceTap, span: span, height: height),
+                            ),
+                      ]),
                     ),
                   ),
                 ),
-            ]);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('${_activityName(p.id)} · ${_dayLong[day]}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
-              const SizedBox(height: 12),
-              const Text('Jour', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-              const SizedBox(height: 6),
-              seg<int>(List.generate(7, (i) => i), newDay, (i) => _dayShort[i].substring(0, 1), (v) => newDay = v),
-              const SizedBox(height: 12),
-              const Text('Durée', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-              const SizedBox(height: 6),
-              seg<int>(_pieceSizes, newMin, (m) => _short(m), (v) => newMin = v),
-              if (p.reason != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: const Color(0xFF17291F), borderRadius: BorderRadius.circular(12)),
-                  child: Text('Pourquoi ici : ${p.reason}', style: const TextStyle(fontSize: 12.5, color: _text2, height: 1.4)),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, 'remove'),
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), minimumSize: const Size.fromHeight(48)),
-                    child: const Text('Enlever'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(ctx, 'ok'),
-                    style: FilledButton.styleFrom(backgroundColor: kPlanAccent, foregroundColor: _ink, minimumSize: const Size.fromHeight(48)),
-                    child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w800)),
-                  ),
-                ),
-              ]),
-            ]),
-          ),
-        );
-      }),
+              ),
+          ]),
+        ),
+      ]),
     );
-    if (res == null || !mounted) return;
-    setState(() {
-      _pieces[day].removeAt(idx);
-      if (res == 'ok') _pieces[newDay].add(WeekPiece(p.id, newMin, reason: newDay == day ? p.reason : 'Déplacé par toi.'));
-    });
   }
 
-  static const _famOrder = [PlanFamily.fond, PlanFamily.work, PlanFamily.body, PlanFamily.daily, PlanFamily.base];
-  static const _dayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+  Widget _pieceBox(int d, WeekPiece p, {String? current, void Function(String id)? onTap, required int span, required double height}) {
+    final c = _famColors[_familyOf(p.id)]!;
+    final mine = current == p.id;
+    final dim = current != null && !mine;
+    final body = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: p.proposed && mine ? c.withValues(alpha: .14) : c.withValues(alpha: dim ? .55 : 1),
+        borderRadius: BorderRadius.circular(4),
+        border: mine ? Border.all(color: p.proposed ? c : Colors.white, width: p.proposed ? 1.4 : 1.2) : null,
+      ),
+      child: Text(
+        mine && p.proposed ? '${_activityName(p.id)} ?' : _activityName(p.id),
+        maxLines: 2,
+        overflow: TextOverflow.clip,
+        style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.w900, color: p.proposed && mine ? c : const Color(0xFF14100A)),
+      ),
+    );
+    if (!mine) return onTap == null ? body : GestureDetector(onTap: () => onTap(p.id), child: body);
+    return GestureDetector(
+      onTap: () => setState(() {
+        final i = _pieces[d].indexOf(p);
+        if (i >= 0) _pieces[d][i] = p.at(p.start);
+      }),
+      onLongPress: () => setState(() {
+        _pieces[d].remove(p);
+        if (!_pieces[d].any((x) => x.id == p.id)) _actDays.remove(d);
+      }),
+      onVerticalDragUpdate: (e) => setState(() {
+        final i = _pieces[d].indexOf(p);
+        if (i < 0) return;
+        final cur = _pieces[d][i];
+        final dm = (e.delta.dy / height * span);
+        final next = ((cur.start ?? _window.startMin) + dm).round().clamp(_window.startMin, _window.endMin - cur.minutes);
+        _pieces[d][i] = cur.at(next);
+        p = _pieces[d][i];
+      }),
+      onVerticalDragEnd: (_) => setState(() {
+        final i = _pieces[d].indexOf(p);
+        if (i >= 0) _setTime(d, _pieces[d][i], ((_pieces[d][i].start ?? 0) + 7) ~/ 15 * 15);
+      }),
+      child: body,
+    );
+  }
 
-  /// Étape 2 : « Je place » — la semaine vide (sauf les dates), un plateau de
-  /// cartes : une carte, puis un jour. 💡 Proposer pose des fantômes à garder.
-  Widget _weekSpreadView() {
-    final days = _weekDays;
-    final rem = _remaining;
-    final sel = _sel;
-    final selMin = sel == null ? 0 : _spec[sel]!.minutes;
-    Widget pieceChip(int day, int idx) {
-      final p = _pieces[day][idx];
-      final c = _famColors[_familyOf(p.id)]!;
-      final label = Text.rich(TextSpan(style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.ghost ? c : const Color(0xFF14100A)), children: [
-        TextSpan(text: _activityName(p.id)),
-        TextSpan(text: '  ${_short(p.minutes)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-        if (p.ghost) const TextSpan(text: '  ✓ garder'),
-      ]));
-      return GestureDetector(
-        onTap: () => p.ghost ? _keepGhost(day, idx) : _editPiece(day, idx),
-        onLongPress: p.ghost ? () => setState(() => _pieces[day].removeAt(idx)) : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: p.ghost ? c.withValues(alpha: .08) : c,
-            borderRadius: BorderRadius.circular(8),
-            border: p.ghost ? Border.all(color: c.withValues(alpha: .7), width: 1.2) : null,
-          ),
-          child: label,
-        ),
-      );
-    }
-
-    Widget dayCard(int i) {
-      final free = _freeOf(i);
-      final load = dayLoad(_pieces[i]);
-      final left = free - load;
-      final ratio = free <= 0 ? (load > 0 ? 1.0 : 0.0) : (load / free).clamp(0.0, 1.0);
-      final fits = sel != null && left >= selMin;
-      // Plein : on peut poser quand même (retour user 2026-11-01), signalé en ambre.
-      final over = sel != null && !fits;
-      final taken = _dayBlocks(i).length;
-      return Opacity(
-        opacity: over ? .8 : 1,
-        child: GestureDetector(
-          onTap: sel != null ? () => _place(i) : null,
-          child: Container(
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: _card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: fits ? kPlanAccent.withValues(alpha: .7) : Colors.transparent, width: 1.4),
+  Widget _actHeader(String hint) {
+    final w = _act;
+    final s = _spec[w.activityId]!;
+    final c = _famColors[_familyOf(w.activityId)]!;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        for (var k = 0; k < _order.length; k++)
+          Expanded(
+            child: Container(
+              height: 5,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(color: k < _actIdx ? c : (k == _actIdx ? kPlanAccent : const Color(0xFF27382D)), borderRadius: BorderRadius.circular(3)),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                SizedBox(width: 62, child: Text('${_dayShort[i][0]}${_dayShort[i].substring(1).toLowerCase()} ${days[i].day}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.white))),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(value: ratio, minHeight: 6, color: ratio >= .9 ? _gold : kPlanAccent, backgroundColor: const Color(0xFF17291F)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(left < 0 ? 'dépasse ${_short(-left)}' : (left == 0 ? 'plein' : 'libre ${_short(left)}'), style: TextStyle(fontSize: 11.5, color: left < 30 ? _gold : _text3)),
-              ]),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _showDay(i),
+          ),
+      ]),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border(left: BorderSide(color: c, width: 4))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(w.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+          Text('activité ${_actIdx + 1} sur ${_order.length} · ${s.count} × ${_short(s.minutes)}${(_datedMin[w.activityId] ?? 0) > 0 ? ' · + ${fmtMin(_datedMin[w.activityId]!)} de dates' : ''}',
+              style: const TextStyle(fontSize: 12.5, color: _text3)),
+        ]),
+      ),
+      const SizedBox(height: 8),
+      Text(hint, style: const TextStyle(fontSize: 13.5, color: _text2)),
+    ]);
+  }
+
+  /// Étape « Quels jours ? » d'une activité.
+  Widget _weekDaysView() {
+    final w = _act;
+    final id = w.activityId;
+    final s = _spec[id]!;
+    final winLen = (_window.endMin - _window.startMin).clamp(1, 24 * 60);
+    final days = _weekDays;
+    final n = _actDays.length;
+    final counts = perDay(s.count, n == 0 ? 1 : n);
+    final sorted = _actDays.toList()..sort();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('PLACER · ${w.title.toUpperCase()}', 2),
+      _actHeader('Quels jours ? Touche ${s.count > 7 ? 'les jours' : '${s.count} jour${s.count > 1 ? 's' : ''}'}. Sous chaque jour : ce qui est déjà pris et le libre.'),
+      const SizedBox(height: 10),
+      Expanded(
+        child: ListView(children: [
+          Row(children: [
+            for (var d = 0; d < 7; d++)
+              Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: Text(
-                    taken == 0 ? 'rien de posé · voir la journée ›' : 'déjà posé : $taken bloc${taken > 1 ? 's' : ''} · ${_short(_window.endMin - _window.startMin - free)} › voir',
-                    style: const TextStyle(fontSize: 12, color: _text3, decoration: TextDecoration.underline, decorationColor: _text3),
+                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _actDays.contains(d) ? _actDays.remove(d) : _actDays.add(d)),
+                    child: Builder(builder: (_) {
+                      final on = _actDays.contains(d);
+                      final free = _freeFor(d, id);
+                      final k = sorted.indexOf(d);
+                      final per = on && k >= 0 && k < counts.length ? counts[k] : 0;
+                      return Container(
+                        padding: const EdgeInsets.fromLTRB(2, 7, 2, 7),
+                        decoration: BoxDecoration(
+                          color: on ? const Color(0xFF14223A) : _card,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: on ? kPlanAccent : Colors.transparent, width: 1.5),
+                        ),
+                        child: Column(children: [
+                          Text(_dayShort[d], style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: on ? kPlanAccent : _text3)),
+                          Text('${days[d].day}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white)),
+                          const SizedBox(height: 4),
+                          Container(
+                            height: 34,
+                            margin: const EdgeInsets.symmetric(horizontal: 5),
+                            clipBehavior: Clip.antiAlias,
+                            alignment: Alignment.bottomCenter,
+                            decoration: BoxDecoration(color: const Color(0xFF27382D), borderRadius: BorderRadius.circular(4)),
+                            child: FractionallySizedBox(heightFactor: ((winLen - free) / winLen).clamp(0.0, 1.0), widthFactor: 1, child: Container(color: const Color(0xFF2A3550))),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(free <= 0 ? 'plein' : _short(free), style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: free < s.minutes ? _gold : _green)),
+                          Text(per > 1 ? '× $per' : (on ? '✓' : ' '), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: kPlanAccent)),
+                        ]),
+                      );
+                    }),
                   ),
                 ),
               ),
-              if (_weekDated[i].isNotEmpty || _pieces[i].isNotEmpty || sel != null) const SizedBox(height: 7),
-              Wrap(spacing: 5, runSpacing: 5, children: [
-                for (final t in _weekDated[i])
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: _text3.withValues(alpha: .6), width: 1.2)),
-                    child: Text('📅 $t', style: const TextStyle(fontSize: 11.5, color: Colors.white)),
-                  ),
-                for (var k = 0; k < _pieces[i].length; k++) pieceChip(i, k),
-                if (sel != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(color: fits ? kPlanAccent : Colors.transparent, borderRadius: BorderRadius.circular(8), border: fits ? null : Border.all(color: _gold)),
-                    child: Text(fits ? '+ ${_activityName(sel)} ici' : '+ ${_activityName(sel)} quand même', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: fits ? _ink : _gold)),
-                  ),
-              ]),
-            ]),
-          ),
-        ),
-      );
-    }
-
-    Widget trayCard(WeekWant w) {
-      final id = w.activityId;
-      final s = _spec[id]!;
-      final on = sel == id;
-      final c = _famColors[_familyOf(id)]!;
-      return GestureDetector(
-        onTap: () => setState(() => _sel = on ? null : id),
-        child: Container(
-          width: 128,
-          margin: const EdgeInsets.only(right: 8),
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          decoration: BoxDecoration(
-            color: on ? kPlanAccent : _card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border(left: BorderSide(color: c, width: 4)),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: on ? _ink : Colors.white)),
-            Text('reste ${rem[id]} × ${_short(s.minutes)}', maxLines: 1, style: TextStyle(fontSize: 11.5, color: on ? _ink : _text3)),
           ]),
-        ),
-      );
-    }
-
-    final trayWants = _onWants.where((w) => (rem[w.activityId] ?? 0) > 0).toList();
-    final ghosts = _ghostCount;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _top('SEMAINE · JE PLACE', 2),
-      _title('Je place'),
-      Text(
-        sel == null ? 'Touche une carte en bas, puis un jour. Touche un bloc posé pour le régler.' : 'Touche un jour pour y poser ${_activityName(sel)} · ${_short(selMin)}.',
-        style: TextStyle(fontSize: 13.5, color: sel == null ? _text2 : kPlanAccent),
+          const SizedBox(height: 8),
+          const Text('bleu nuit = déjà pris · chiffre = libre · touche « voir » dans la semaine pour le détail', style: TextStyle(fontSize: 11.5, color: _text3)),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _suggestDays,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: kPlanAccent.withValues(alpha: .4))),
+              child: Text.rich(TextSpan(style: const TextStyle(fontSize: 13, color: _text2, height: 1.4), children: [
+                const TextSpan(text: '💡 Suggérer des jours', style: TextStyle(color: kPlanAccent, fontWeight: FontWeight.w800)),
+                TextSpan(text: '\n${kFamilyRules[_familyOf(id)] ?? ''}'),
+              ])),
+            ),
+          ),
+          if (n > 0 && n < s.count)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('${s.count} blocs sur $n jour${n > 1 ? 's' : ''} : plusieurs le même jour.', style: const TextStyle(fontSize: 12.5, color: _gold)),
+            ),
+        ]),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: 10),
+      Row(children: [
+        SizedBox(
+          height: 54,
+          child: OutlinedButton(
+            onPressed: () => _actIdx == 0 ? setState(() => _step = _Step.weekStakes) : _openTimesOf(_actIdx - 1),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            child: const Icon(Icons.chevron_left_rounded),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: _primary(n == 0 ? 'Passer cette activité' : '$n jour${n > 1 ? 's' : ''} · choisir les heures', n == 0 ? _nextAct : _toTimes)),
+      ]),
+    ]);
+  }
+
+  void _openTimesOf(int k) {
+    setState(() {
+      _actIdx = k;
+      final id = _order[k].activityId;
+      _actDays = {for (var d = 0; d < 7; d++) if (_pieces[d].any((p) => p.id == id)) d};
+      _step = _actDays.isEmpty ? _Step.weekDays : _Step.weekTimes;
+    });
+  }
+
+  void _nextAct() {
+    if (_actIdx + 1 < _order.length) {
+      _openAct(_actIdx + 1);
+    } else {
+      setState(() => _step = _Step.weekSpread);
+    }
+  }
+
+  /// Étape « À quelle heure ? » : la semaine entière, ce qui est déjà pris,
+  /// l'activité en cours à placer.
+  Widget _weekTimesView() {
+    final id = _act.activityId;
+    final next = _actIdx + 1 < _order.length ? _order[_actIdx + 1].title : null;
+    final missing = [for (var d = 0; d < 7; d++) for (final p in _pieces[d]) if (p.id == id && p.start == null) d];
+    final proposed = _pieces.fold<int>(0, (s, d) => s + d.where((p) => p.id == id && p.proposed).length);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('PLACER · ${_act.title.toUpperCase()}', 2),
+      _actHeader('À quelle heure ? Touche un créneau dans une colonne bleue, ou glisse le bloc. Appui long = l\'enlever.'),
+      const SizedBox(height: 8),
       Expanded(
         child: ListView(children: [
-          for (var i = 0; i < 7; i++) dayCard(i),
+          _weekGrid(current: id, sel: _actDays),
+          const SizedBox(height: 6),
+          Wrap(spacing: 10, runSpacing: 4, children: [
+            _legend(const Color(0xFF2A3550), 'déjà posé'),
+            _legend(Colors.transparent, 'date fixe', border: _gold),
+            _legend(_famColors[_familyOf(id)]!, 'placé'),
+            _legend(Colors.transparent, 'heure proposée', border: _famColors[_familyOf(id)]!),
+          ]),
+          if (missing.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Pas de créneau libre ${missing.map((d) => _dayLong[d]).toSet().join(', ')} : touche la colonne pour le poser quand même.', style: const TextStyle(fontSize: 12.5, color: _gold)),
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _sameTime,
+            activeThumbColor: kPlanAccent,
+            title: const Text('Même heure tous les jours', style: TextStyle(color: Colors.white, fontSize: 14)),
+            subtitle: const Text('régler un jour cale les heures proposées des autres', style: TextStyle(color: _text3, fontSize: 12)),
+            onChanged: (v) => setState(() => _sameTime = v),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        SizedBox(
+          height: 54,
+          child: OutlinedButton(
+            onPressed: () => setState(() => _step = _Step.weekDays),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            child: const Text('‹ Jours', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _primary(
+            next == null ? (proposed > 0 ? 'Garder ces heures · ta semaine' : 'Voir ta semaine') : (proposed > 0 ? 'Garder ces heures · $next ›' : 'Suivant · $next ›'),
+            _nextAct,
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _legend(Color c, String t, {Color? border}) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 11, height: 11, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3), border: border == null ? null : Border.all(color: border, width: 1.3))),
+        const SizedBox(width: 4),
+        Text(t, style: const TextStyle(fontSize: 11.5, color: _text3)),
+      ]);
+
+  /// La semaine complète : toutes les activités, placé / voulu, puis Valider.
+  Widget _weekSpreadView() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _top('SEMAINE · TA SEMAINE', 3),
+      _title('Ta semaine'),
+      const Text('Touche un bloc ou une activité pour revenir dessus.', style: TextStyle(fontSize: 13.5, color: _text2)),
+      const SizedBox(height: 6),
+      Expanded(
+        child: ListView(children: [
+          _weekGrid(height: 360, onPieceTap: (id) {
+            final k = _order.indexWhere((w) => w.activityId == id);
+            if (k >= 0) _openTimesOf(k);
+          }),
           _section('OÙ J\'EN SUIS'),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
             child: Column(children: [
-              if (_onWants.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Rien de coché à l\'étape d\'avant.', style: TextStyle(color: _text2))),
-              for (final w in _onWants)
+              if (_order.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Rien de coché à la première étape.', style: TextStyle(color: _text2))),
+              for (var k = 0; k < _order.length; k++)
                 Builder(builder: (_) {
+                  final w = _order[k];
                   final s = _spec[w.activityId]!;
                   final done = placedCount(_pieces, w.activityId);
                   final ok = done >= s.count;
                   final dm = _datedMin[w.activityId] ?? 0;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    child: Row(children: [
-                      Expanded(child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white))),
-                      Text('${fmtMin(done * s.minutes + dm)} / ${fmtMin(s.total + dm)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _text3)),
-                      SizedBox(width: 22, child: ok ? const Icon(Icons.check_rounded, size: 16, color: _green) : null),
-                    ]),
+                  return InkWell(
+                    onTap: () => _openTimesOf(k),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(children: [
+                        CircleAvatar(radius: 4, backgroundColor: _famColors[_familyOf(w.activityId)]),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white))),
+                        Text('${fmtMin(done * s.minutes + dm)} / ${fmtMin(s.total + dm)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _gold)),
+                        SizedBox(width: 22, child: ok ? const Icon(Icons.check_rounded, size: 16, color: _green) : const Icon(Icons.chevron_right_rounded, size: 18, color: _text3)),
+                      ]),
+                    ),
                   );
                 }),
             ]),
           ),
-          const SizedBox(height: 4),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            value: _workSaturday,
-            activeThumbColor: kPlanAccent,
-            title: const Text('Travailler le samedi', style: TextStyle(color: Colors.white, fontSize: 14)),
-            subtitle: const Text('pour les propositions 💡', style: TextStyle(color: _text3, fontSize: 12)),
-            onChanged: (v) {
-              SharedPreferences.getInstance().then((p) => p.setBool(_kWorkSatPref, v)).catchError((_) => false);
-              setState(() => _workSaturday = v);
-            },
-          ),
         ]),
       ),
-      if (ghosts > 0)
-        Container(
-          margin: const EdgeInsets.only(top: 6),
-          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-          decoration: BoxDecoration(color: kPlanAccent.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            Expanded(child: Text('$ghosts proposé${ghosts > 1 ? 's' : ''} en contour · touche pour garder', style: const TextStyle(fontSize: 12.5, color: Color(0xFFC7D6FF)))),
-            TextButton(onPressed: _dropGhosts, style: TextButton.styleFrom(foregroundColor: _text2), child: const Text('Ignorer')),
-            TextButton(onPressed: _keepAll, style: TextButton.styleFrom(foregroundColor: kPlanAccent), child: const Text('Garder tout', style: TextStyle(fontWeight: FontWeight.w800))),
-          ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        SizedBox(
+          height: 54,
+          child: OutlinedButton(
+            onPressed: _order.isEmpty ? () => setState(() => _step = _Step.weekStakes) : () => _openTimesOf(_order.length - 1),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withValues(alpha: .16)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            child: const Icon(Icons.chevron_left_rounded),
+          ),
         ),
-      const SizedBox(height: 8),
-      SizedBox(
-        height: 54,
-        child: trayWants.isEmpty
-            ? const Center(child: Text('Tout est placé ✓', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _green)))
-            : ListView(scrollDirection: Axis.horizontal, children: [
-                GestureDetector(
-                  onTap: _proposeWeek,
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: kPlanAccent.withValues(alpha: .6))),
-                    child: Text(sel == null ? '💡 Proposer' : '💡 Proposer ${_activityName(sel)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kPlanAccent)),
-                  ),
-                ),
-                for (final w in trayWants) trayCard(w),
-              ]),
-      ),
-      const SizedBox(height: 8),
-      _primary('Valider la semaine', _confirmSave),
+        const SizedBox(width: 8),
+        Expanded(child: _primary('Valider la semaine', _saveWeek)),
+      ]),
     ]);
   }
 
-  Future<void> _confirmSave() async {
-    final g = _ghostCount;
-    if (g > 0) {
-      final keep = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('$g proposition${g > 1 ? 's' : ''} pas gardée${g > 1 ? 's' : ''}'),
-          content: const Text('Les blocs en contour ne sont posés que si tu les gardes.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Sans elles')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Garder tout')),
-          ],
-        ),
-      );
-      if (keep == null || !mounted) return;
-      if (keep) {
-        _keepAll();
-      } else {
-        _dropGhosts();
-      }
-    }
-    await _saveWeek();
-  }
-
-  /// Pose chaque jour : les morceaux gardés deviennent des blocs d'activité
-  /// dans les créneaux libres (`proposeDay`), ajoutés au programme.
+  /// Pose chaque jour : les morceaux à leur heure choisie ; sans heure, au
+  /// premier créneau libre (`proposeDay`). Les blocs retirés passent `deleted`.
   Future<void> _saveWeek() async {
     setState(() => _loading = true);
     final now = DateTime.now();
@@ -2090,15 +2218,15 @@ class _PlanScreenState extends State<PlanScreen> {
     _weekPosed.clear();
     _weekUnfit = 0;
     for (var i = 0; i < 7; i++) {
-      final kept = _pieces[i].where((p) => !p.ghost).toList()..sort((a, b) => _famOrder.indexOf(_familyOf(a.id)).compareTo(_famOrder.indexOf(_familyOf(b.id))));
-      final wants = [
-        for (final p in kept)
-          PlanWant(activityId: p.id, title: _activityName(p.id), minutes: p.minutes, reason: _wants.where((w) => w.activityId == p.id).map((w) => w.reason).firstOrNull ?? ''),
-      ];
+      PlanWant wantOf(WeekPiece p) =>
+          PlanWant(activityId: p.id, title: _activityName(p.id), minutes: p.minutes, reason: _wants.where((w) => w.activityId == p.id).map((w) => w.reason).firstOrNull ?? '');
+      final timed = [for (final p in _pieces[i]) if (p.start != null) PlannedBlock(wantOf(p), p.start!, p.minutes)];
+      final loose = [for (final p in _pieces[i]) if (p.start == null) wantOf(p)];
       final drop = _weekBlocks[i].where((b) => _removed.contains(b.id) && _removable(b)).map((b) => b.id).toSet();
-      if (wants.isEmpty && drop.isEmpty) continue;
-      final planned = wants.isEmpty ? <PlannedBlock>[] : proposeDay(freeGaps(_dayBlocks(i), _window), wants, wants.fold(0, (s, w) => s + w.minutes));
-      _weekUnfit += wants.length - planned.length;
+      if (timed.isEmpty && loose.isEmpty && drop.isEmpty) continue;
+      final extra = loose.isEmpty ? <PlannedBlock>[] : proposeDay(freeGaps([..._dayBlocks(i), ...timed.map(planBlockOf)], _window), loose, loose.fold(0, (s, w) => s + w.minutes));
+      _weekUnfit += loose.length - extra.length;
+      final planned = [...timed, ...extra]..sort((a, b) => a.startMin.compareTo(b.startMin));
       if (planned.isEmpty && drop.isEmpty) continue;
       final doc = _weekDocs[i] ?? DailySchedule(date: ymdOf(days[i]));
       for (final b in doc.blocks) {
