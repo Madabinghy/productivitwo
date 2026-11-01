@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/catalog/routine_catalog.dart';
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -90,6 +91,7 @@ class _RoutineCatalogScreenState extends State<RoutineCatalogScreen> {
     super.initState();
     widget.sync.fetchRoutineCatalog().then((remote) {
       if (mounted && remote.isNotEmpty) setState(() => _all = catalogOrSeed(remote));
+      CatalogArt.setCatalog(remote);
     });
   }
 
@@ -196,6 +198,7 @@ class _CatalogRoutineSheetState extends State<_CatalogRoutineSheet> {
   }
 
   void _done(String msg) {
+    CatalogArt.setActivities(logic.state.activities);
     final m = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
     m.showClosingSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 3)));

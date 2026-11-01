@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:flutter/foundation.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -70,6 +71,7 @@ class BadgeCenter extends ChangeNotifier {
 
   BadgeDeck _recompute() {
     final st = logic.state;
+    CatalogArt.setActivities(st.activities);
     final d = computeBadges(
       activities: st.activities,
       habitHits: st.habitHits,

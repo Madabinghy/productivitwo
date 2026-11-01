@@ -1438,7 +1438,10 @@ admin seulement (`firestore.rules` — ⚠️ `firebase deploy --only firestore:
 anciennes suggestions de domaines et d'activités restent en lien en bas) : rubriques en puces, cartes `CatalogCardView` (SVG via
 `flutter_svg`, pastille ACTIVÉE), fiche (carte, texte, RÉGLÉE POUR TOI, domaine proposé) → « Activer la routine » ou, si la
 personne a déjà une routine du même nom, « C'est ma routine « … » · lier la carte » (pose `catalogId`, réglages inchangés).
-**Lot 2 à venir** : la carte de série au dessin du catalogue (album, retournement, récolte). **Lot 3** : composer le catalogue sur le web.
+**Lot 2 livré** : la carte de série d'une routine du catalogue porte son dessin et son fond au lieu de la flamme (`BadgeCardView`, gris
+quand elle est commencée), donc partout où une carte s'affiche (album, retournement, récolte, tuile, en jeu) ; registre
+`catalog/catalog_art.dart` (`CatalogArt.forActivity(activityId)`, posé à chaque recalcul du deck par `BadgeCenter` et au chargement du
+catalogue serveur dans `_bindDayStart`). **Lot 3 à venir** : composer le catalogue sur le web.
 
 ## Règles du jeu en place (2026-10-30)
 

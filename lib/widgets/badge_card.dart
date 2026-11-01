@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
@@ -175,7 +177,9 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
 
   Widget _front(BadgeState b, double w, CardFace face, CardRarity r, bool small) {
     final won = face == CardFace.won;
-    final art = familyArtColor(b.def.family);
+    // Routine du catalogue : son dessin et son fond au lieu de la flamme.
+    final cat = b.def.family == BadgeFamily.routines ? CatalogArt.forActivity(b.def.subjectId) : null;
+    final art = cat == null ? familyArtColor(b.def.family) : Color(cat.bg);
     final ink = won ? familyInkColor(b.def.family) : const Color(0xFF8FA69A);
     // Nom en petit, sur deux lignes, pour qu'il s'affiche en entier (retour user 2026-11-01).
     final nameSize = (w * .078).clamp(7.5, 16).toDouble();
@@ -192,7 +196,14 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
             ),
             Padding(
               padding: EdgeInsets.all(w * .1),
-              child: Opacity(opacity: won ? 1 : .4, child: CustomPaint(painter: _SymbolPainter(b.def.symbol, ink))),
+              child: Opacity(
+                opacity: won ? 1 : .4,
+                child: cat == null
+                    ? CustomPaint(painter: _SymbolPainter(b.def.symbol, ink))
+                    : (won
+                        ? SvgPicture.string(cat.svg)
+                        : ColorFiltered(colorFilter: const ColorFilter.matrix(_kGrey), child: SvgPicture.string(cat.svg))),
+              ),
             ),
             if (_shine != null)
               AnimatedBuilder(
@@ -341,3 +352,11 @@ class _DashedPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DashedPainter old) => old.radius != radius;
 }
+
+/// Matrice de niveaux de gris (carte commencée d'une routine du catalogue).
+const _kGrey = <double>[
+  .2126, .7152, .0722, 0, 0,
+  .2126, .7152, .0722, 0, 0,
+  .2126, .7152, .0722, 0, 0,
+  0, 0, 0, 1, 0,
+];

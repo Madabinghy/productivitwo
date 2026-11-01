@@ -125,6 +125,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/widgets/routine_catalog_screen.dart' show showRoutineCatalog;
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
@@ -1799,6 +1800,11 @@ class _AppRootState extends State<AppRoot>
   /// les bornes des moments (`momentWindows`) : posés sur AppLogic, les vues
   /// se recalculent via onChange.
   void _bindDayStart() {
+    // Catalogue de routines : les dessins des cartes de série (serveur, sinon le lot embarqué).
+    _sync.fetchRoutineCatalog().then((r) {
+      CatalogArt.setCatalog(r);
+      CatalogArt.setActivities(logic.state.activities);
+    });
     _dayStartSub?.cancel();
     _dayStartSub = _sync.streamMetaDoc().listen((m) {
       final start = parseDayStartMin(m['dayStartMin']);

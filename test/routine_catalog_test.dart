@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/catalog/routine_catalog.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/routine_catalog_screen.dart';
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/widgets/badge_card.dart';
 
 void main() {
   test('le premier lot : ids uniques, rubriques connues, triés', () {
@@ -56,5 +59,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SvgPicture), findsNWidgets(kRoutineCatalogSeed.length));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('la carte de série d’une routine du catalogue porte son dessin', (tester) async {
+    final a = Activity(domainId: 'd', name: 'Pompes', type: 'habit', catalogId: 'pompes');
+    final hand = Activity(domainId: 'd', name: 'Ranger le garage', type: 'habit');
+    CatalogArt.setActivities([a, hand]);
+    expect(CatalogArt.forActivity(a.id)?.id, 'pompes');
+    expect(CatalogArt.forActivity(hand.id), isNull);
+    BadgeState serie(Activity x) => BadgeState(
+        def: BadgeDef(id: 'serie-${x.id}', family: BadgeFamily.routines, name: x.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', subjectId: x.id),
+        level: 2,
+        value: 8);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Row(children: [BadgeCardView(state: serie(a), width: 110), BadgeCardView(state: serie(hand), width: 110)]))));
+    await tester.pumpAndSettle();
+    expect(find.byType(SvgPicture), findsOneWidget);
   });
 }
