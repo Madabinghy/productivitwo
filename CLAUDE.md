@@ -1383,6 +1383,27 @@ Pastille NOUVEAU dans l'album tant qu'une carte n'est pas retournée. Remplace `
 fiche d'un badge gagné : « Partager la carte » (PNG de la carte, `RepaintBoundary` → `shareImage`, `utils/image_share.dart` :
 feuille de partage sur mobile, téléchargement sur le web). **Les 3 lots sont livrés.**
 
+## Badges de collection (2026-11-01, maquettes validées « Badges de collection » + « Badges en écusson »)
+
+Les cartes se récoltent, les badges se méritent. Chaque carte rapporte des points selon son cadre (`cardPoints` : bronze 1 · argent
+2 · or 3 · légendaire 5 ; une carte qui monte de cadre rapporte la différence ; séries de routine comprises). **Lot 1 livré** : logique
+pure `utils/collection_badges.dart` — `collectionPoints`, `collectionBadges(deck)` → `CollectionBadge` (Collectionneur
+`kCollectorTiers` 10 · 25 · 50 · 80 · 120 pts, symbole `cards` ; Écrin d'or `kGoldCaseTiers` 5 · 15 · 30 cartes or ou mieux, `chest` ;
+Légende `kLegendTiers` 1 · 3 · 10 légendaires, `crown` ; une « Famille au complet » par famille hors séries de routine, `crest`, nom
+de la famille sur le ruban : toutes gagnées = argent, toutes en or = or, `missing` = cartes qui manquent ou pas encore en or) ;
+métal = le palier comme une carte (`rarityOf`), `palier`, `figure`, `nextLine`, `shelfOrder`, `nextCollectionBadge`, `roman`. Rien
+de stocké. Dessin : l'écusson d'origine (`BadgePainter`) avec `metal: BadgeMetal` (bronze · argent · or · légendaire : dégradé,
+liseré, encre, ruban) et quatre symboles (`cards`, `crest`, `chest`, `crown`) ; texte du ruban dès 64 px pour un écusson de métal.
+Widgets `widgets/collection_badge_view.dart` : `CollectionShield`, `CollectionPlaque` (l'écusson monté sur sa plaque gravée : fond
+sombre teinté du métal, liseré et vis, nom · palier · chiffre ; pas encore = silhouette + jauge), `showCollectionBadgeSheet` (écusson
+150, jauge, ce qu'il manque, la règle). Album : « n pts » et « Prochain badge : … » dans l'en-tête, étagère MES BADGES (deux plaques
+par rangée) avant les familles de cartes. **Lot 2 livré** : au retournement, chaque carte dit ce qu'elle rapporte (« +1 pt · bronze →
+argent ») et où en est Collectionneur après elle (`showCardReveal(points:)`) ; paliers vus des badges de collection sur l'appareil
+(`CardSeenStore.pendingCollection` / `markCollectionSeen`, SharedPreferences `collection_badges_seen`, premier passage = vus) ; après
+les cartes, écran « Un badge tombe » (`showCollectionDrop` / `CollectionDropScreen` : écusson en grand, rayons qui tournent au
+métal, « Collectionneur III », chiffre et prochain palier, Badge suivant / Sur l'étagère · Voir l'album) ; un badge en attente sans
+carte (app quittée entre les deux) : « Un badge à poser sur l'étagère » en tête d'Aujourd'hui.
+
 ## Règles du jeu en place (2026-10-30)
 
 Retour user : « pas une tonne de texte, pas un tuto au fond des paramètres ». Toute fonctionnalité à enjeux porte un petit

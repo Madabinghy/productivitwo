@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
+import 'package:productivitwo_v1/utils/collection_badges.dart';
+import 'package:productivitwo_v1/widgets/collection_badge_view.dart';
 
 /// Une carte tombe (badges en cartes, lot 2) : les cartes gagnées ou montées
 /// de rareté depuis la dernière fois arrivent de dos et se retournent au tap,
@@ -35,7 +37,17 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
   Future<void> _reveal(List<NewCard> cards) async {
     if (_open) return;
     _open = true;
-    final album = await showCardReveal(context, cards);
+    final deck = widget.badges?.deck;
+    var album = false;
+    if (cards.isNotEmpty) album = await showCardReveal(context, cards, points: deck == null ? null : collectionPoints(deck));
+    // Puis les badges de collection qui viennent de tomber (badges de collection, lot 2).
+    if (mounted && deck != null) {
+      final drops = CardSeenStore.pendingCollection(deck);
+      if (drops.isNotEmpty) {
+        final a = await showCollectionDrop(context, drops);
+        album = album || a;
+      }
+    }
     _open = false;
     if (!mounted) return;
     setState(() {});
@@ -52,14 +64,15 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
         final deck = bc.deck;
         if (deck == null || !CardSeenStore.ready) return const SizedBox.shrink();
         final cards = CardSeenStore.pending(deck);
-        if (cards.isEmpty) return const SizedBox.shrink();
+        final drops = CardSeenStore.pendingCollection(deck);
+        if (cards.isEmpty && drops.isEmpty) return const SizedBox.shrink();
         if (!_autoOpened) {
           _autoOpened = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _reveal(cards);
           });
         }
-        final best = cards.last.after;
+        final best = cards.isEmpty ? drops.last.metal : cards.last.after;
         final c = rarityInk(best);
         return Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -76,6 +89,7 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
                     width: 58,
                     height: 52,
                     child: Stack(children: [
+                      if (cards.isEmpty) CollectionShield(badge: drops.last, size: 52),
                       for (var i = 0; i < math.min(3, cards.length); i++)
                         Positioned(
                           left: i * 9.0,
@@ -89,9 +103,9 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${cards.length} carte${cards.length > 1 ? 's' : ''} à retourner',
+                      Text(cards.isEmpty ? 'Un badge à poser sur l’étagère' : '${cards.length} carte${cards.length > 1 ? 's' : ''} à retourner',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
-                      Text(best == CardRarity.legend ? 'dont une légendaire' : 'touche pour les découvrir',
+                      Text(cards.isEmpty ? drops.last.name : (best == CardRarity.legend ? 'dont une légendaire' : 'touche pour les découvrir'),
                           style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .65))),
                     ]),
                   ),
@@ -108,11 +122,13 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
 
 /// L'écran de révélation ; renvoie vrai si « Voir l'album » a été choisi.
 /// Toutes les cartes montrées passent vues à la fermeture.
-Future<bool> showCardReveal(BuildContext context, List<NewCard> cards) async {
+/// [points] = points de collection actuels (toutes les cartes comprises) :
+/// chaque carte montre ce qu'elle rapporte et où en est Collectionneur.
+Future<bool> showCardReveal(BuildContext context, List<NewCard> cards, {int? points}) async {
   final r = await Navigator.of(context).push<bool>(PageRouteBuilder(
     opaque: false,
     barrierColor: Colors.black87,
-    pageBuilder: (_, __, ___) => CardRevealScreen(cards: cards),
+    pageBuilder: (_, __, ___) => CardRevealScreen(cards: cards, points: points),
     transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
   ));
   CardSeenStore.markSeen(cards.map((c) => c.badge));
@@ -121,7 +137,8 @@ Future<bool> showCardReveal(BuildContext context, List<NewCard> cards) async {
 
 class CardRevealScreen extends StatefulWidget {
   final List<NewCard> cards;
-  const CardRevealScreen({super.key, required this.cards});
+  final int? points;
+  const CardRevealScreen({super.key, required this.cards, this.points});
 
   @override
   State<CardRevealScreen> createState() => _CardRevealScreenState();
@@ -135,6 +152,19 @@ class _CardRevealScreenState extends State<CardRevealScreen> with SingleTickerPr
   void dispose() {
     _flip.dispose();
     super.dispose();
+  }
+
+  int _gain(NewCard c) => cardPoints(c.after) - cardPoints(c.before);
+
+  /// « Collectionneur III · 43 / 50 pts » après cette carte (les suivantes pas encore comptées).
+  String? _collectorLine() {
+    final total = widget.points;
+    if (total == null) return null;
+    final later = widget.cards.skip(_i + 1).fold<int>(0, (s, c) => s + _gain(c));
+    final now = total - later;
+    final level = kCollectorTiers.where((t) => now >= t).length;
+    if (level >= kCollectorTiers.length) return 'Collectionneur · $now pts · tous les paliers';
+    return 'Collectionneur ${roman(level + 1)} · $now / ${kCollectorTiers[level]} pts';
   }
 
   void _next() {
@@ -217,6 +247,19 @@ class _CardRevealScreenState extends State<CardRevealScreen> with SingleTickerPr
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: ink),
                 ),
+                if (_gain(c) > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(color: ink.withValues(alpha: .14), borderRadius: BorderRadius.circular(99), border: Border.all(color: ink.withValues(alpha: .5))),
+                    child: Text('+${_gain(c)} pt${_gain(c) > 1 ? 's' : ''}${c.upgrade ? ' · ${rarityLabel(c.before).toLowerCase()} → ${rarityLabel(c.after).toLowerCase()}' : ''}',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: ink)),
+                  ),
+                  if (_collectorLine() case final line?) ...[
+                    const SizedBox(height: 6),
+                    Text(line, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                  ],
+                ],
               ]),
             ),
             const SizedBox(height: 18),

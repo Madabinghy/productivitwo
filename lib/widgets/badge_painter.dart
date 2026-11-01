@@ -77,6 +77,18 @@ class BadgeView extends StatelessWidget {
   }
 }
 
+/// Métal d'un écusson de collection (badges de collection, 2026-11-01) : il
+/// remplace l'olive du gabarit. [top] → [bottom] = dégradé, [rim] = liseré,
+/// [ink] = dessin, [ribbon] = ruban.
+class BadgeMetal {
+  final Color top, bottom, rim, ink, ribbon;
+  const BadgeMetal(this.top, this.bottom, this.rim, this.ink, this.ribbon);
+  static const bronze = BadgeMetal(Color(0xFFE3A46A), Color(0xFF8A5226), Color(0xFFF0C08A), Color(0xFF3B1E08), Color(0xFFE8D9A8));
+  static const argent = BadgeMetal(Color(0xFFEEF3F6), Color(0xFF7D8B96), Color(0xFFFFFFFF), Color(0xFF1F262C), Color(0xFFE8D9A8));
+  static const or = BadgeMetal(Color(0xFFFFE7A0), Color(0xFFB8862B), Color(0xFFFFF3C4), Color(0xFF3D2A05), Color(0xFFE8D9A8));
+  static const legend = BadgeMetal(Color(0xFFD9C2FF), Color(0xFF5A3FA0), Color(0xFFFFFFFF), Color(0xFF1A0F38), Color(0xFFEFE4FF));
+}
+
 class BadgePainter extends CustomPainter {
   final String symbol;
   final bool acquired;
@@ -88,7 +100,10 @@ class BadgePainter extends CustomPainter {
   /// jaune (0..1, de [progress] à [provisional]) quand la journée tient.
   final double? tick;
   final double? provisional;
+  /// Écusson de collection : le métal remplace l'olive (null = gabarit d'origine).
+  final BadgeMetal? metal;
   const BadgePainter({
+    this.metal,
     required this.symbol,
     required this.acquired,
     this.levels = 1,
@@ -175,7 +190,14 @@ class BadgePainter extends CustomPainter {
 
     // Couche 1 : écusson.
     final shieldFill = Paint()..style = PaintingStyle.fill;
-    if (acquired) {
+    final m = acquired ? metal : null;
+    if (m != null) {
+      shieldFill.shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [m.top, m.bottom],
+      ).createShader(const Rect.fromLTWH(16, 10, 68, 82));
+    } else if (acquired) {
       shieldFill.shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -191,21 +213,22 @@ class BadgePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3
           ..strokeJoin = StrokeJoin.round
-          ..color = acquired ? kBadgeKhaki : kBadgeLockedRim);
+          ..color = m?.rim ?? (acquired ? kBadgeKhaki : kBadgeLockedRim));
     if (acquired) {
       canvas.drawPath(
           _shieldInner,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4
-            ..color = kBadgeBrass.withValues(alpha: .85));
+            ..color = (m?.rim ?? kBadgeBrass).withValues(alpha: .85));
     }
 
-    // Couche 2 : symbole.
-    paintSymbol(canvas, symbol, acquired ? kBadgeBrass : kBadgeLockedSymbol, acquired ? kBadgeOlive300 : kBadgeLockedShield);
+    // Couche 2 : symbole (sur un disque assombri pour un écusson de métal).
+    if (m != null) canvas.drawCircle(const Offset(50, 42), 22, Paint()..color = m.bottom.withValues(alpha: .35));
+    paintSymbol(canvas, symbol, m?.ink ?? (acquired ? kBadgeBrass : kBadgeLockedSymbol), m?.bottom ?? (acquired ? kBadgeOlive300 : kBadgeLockedShield));
 
     // Couche 3 : ruban.
-    canvas.drawPath(_ribbon, Paint()..color = acquired ? kBadgeKhaki : kBadgeLockedBand);
+    canvas.drawPath(_ribbon, Paint()..color = m?.ribbon ?? (acquired ? kBadgeKhaki : kBadgeLockedBand));
     canvas.drawPath(
         _ribbon,
         Paint()
@@ -241,7 +264,7 @@ class BadgePainter extends CustomPainter {
                 ..color = acquired ? todoStroke : kBadgeLockedSymbol);
         }
       }
-    } else if (acquired && label.isNotEmpty && px >= 96) {
+    } else if (acquired && label.isNotEmpty && px >= (metal != null ? 64 : 96)) {
       final tp = TextPainter(
         text: TextSpan(
           text: label.toUpperCase(),
@@ -262,7 +285,7 @@ class BadgePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(BadgePainter old) =>
-      old.symbol != symbol || old.acquired != acquired || old.levels != levels || old.level != level || old.progress != progress || old.label != label || old.tick != tick || old.provisional != provisional;
+      old.metal != metal || old.symbol != symbol || old.acquired != acquired || old.levels != levels || old.level != level || old.progress != progress || old.label != label || old.tick != tick || old.provisional != provisional;
 
   /// Les symboles, en unités de grille, dans le cercle r 22 centré (50, 42).
   /// Trait 6 u (anneaux 5 u), bouts ronds, rien sous 4 u ; `ink` = encre,
@@ -436,6 +459,47 @@ class BadgePainter extends CustomPainter {
         line(60, 34, 60, 40, 5);
         c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(33, 39, 34, 25), const Radius.circular(5)), stroke(5));
         polyline([42, 51, 48, 57, 58, 46], 4.5);
+      case 'cards':
+        // Collectionneur : trois cartes en éventail.
+        for (final (dx, a, full) in const [(-8.0, -.26, false), (0.0, 0.0, false), (8.0, .26, true)]) {
+          c.save();
+          c.translate(50 + dx, 44);
+          c.rotate(a);
+          final r = RRect.fromRectAndRadius(const Rect.fromLTWH(-10, -14, 20, 28), const Radius.circular(3));
+          if (full) {
+            c.drawRRect(r, fill);
+            c.drawCircle(Offset.zero, 4, Paint()..color = cut);
+          } else {
+            c.drawRRect(r, Paint()..color = cut);
+            c.drawRRect(r, stroke(3.5));
+          }
+          c.restore();
+        }
+      case 'crest':
+        // Famille au complet : un blason coché.
+        final crest = Path()
+          ..moveTo(50, 21)
+          ..lineTo(68, 28)
+          ..lineTo(68, 40)
+          ..cubicTo(68, 51, 60, 57, 50, 61)
+          ..cubicTo(40, 57, 32, 51, 32, 40)
+          ..lineTo(32, 28)
+          ..close();
+        c.drawPath(crest, stroke(4));
+        polyline([41, 41, 47, 47, 59, 35], 5);
+      case 'chest':
+        // Écrin d'or : un coffret.
+        c.drawRect(const Rect.fromLTWH(30, 38, 40, 20), fill);
+        c.drawArc(const Rect.fromLTWH(30, 25, 40, 26), math.pi, math.pi, false, stroke(4));
+        c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(45, 42, 10, 9), const Radius.circular(2)), Paint()..color = cut);
+        line(38, 24, 35, 19, 3);
+        line(50, 21, 50, 15, 3);
+        line(62, 24, 65, 19, 3);
+      case 'crown':
+        // Légende : une couronne.
+        c.drawPath(_poly([30, 52, 27, 30, 39, 39, 50, 23, 61, 39, 73, 30, 70, 52]), fill);
+        c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(30, 55, 40, 6), const Radius.circular(2)), fill);
+        c.drawCircle(const Offset(50, 44), 4, Paint()..color = cut);
       case 'crosshair':
         // Sniper : un viseur.
         c.drawCircle(const Offset(50, 42), 17, stroke(5));

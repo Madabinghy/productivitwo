@@ -14,6 +14,8 @@ import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/card_seen_store.dart';
+import 'package:productivitwo_v1/utils/collection_badges.dart';
+import 'package:productivitwo_v1/widgets/collection_badge_view.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
 import 'package:productivitwo_v1/widgets/watch_pace_view.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
@@ -144,6 +146,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             )
           else ...[
             _deckHeader(deck),
+            _shelf(deck),
             if (_facts case final f?) _todaySection(deck, f),
             _huntsSection(deck),
             for (final f in BadgeFamily.values) _family(deck, f),
@@ -206,7 +209,9 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     final album = cardAlbum(deck);
     final gold = album.byRarity[CardRarity.or] ?? 0;
     final legend = album.byRarity[CardRarity.legend] ?? 0;
+    final next = nextCollectionBadge(collectionBadges(deck));
     final parts = [
+      '${collectionPoints(deck)} pts',
       if (gold > 0) '$gold or',
       if (legend > 0) '$legend légendaire${legend > 1 ? 's' : ''}',
       '${deck.acquired} / ${deck.total} paliers',
@@ -230,12 +235,45 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             borderRadius: BorderRadius.circular(5),
             child: LinearProgressIndicator(value: album.ratio, minHeight: 8, backgroundColor: kBadgeGaugeTrack, color: kBadgeBrass),
           ),
+          if (next != null && next.next != null) ...[
+            const SizedBox(height: 8),
+            Text('Prochain badge : ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} · ${next.value} / ${next.next} ${next.unit}',
+                style: const TextStyle(fontSize: 12.5, color: kBText2)),
+          ],
           if (deck.series.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(_seriesLine(deck).replaceAll('\n', ' · '), style: const TextStyle(fontSize: 12, height: 1.3, color: kBText4)),
           ],
         ]),
       ),
+    );
+  }
+
+  /// « MES BADGES » : les badges de collection, écusson sur plaque, deux par rangée.
+  Widget _shelf(BadgeDeck deck) {
+    final all = shelfOrder(collectionBadges(deck));
+    final got = all.where((b) => b.acquired).length;
+    final w = (MediaQuery.sizeOf(context).width - 32 - 10) / 2;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          child: Row(children: [
+            const Text('MES BADGES', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBadgeBrass)),
+            const Spacer(),
+            Text('$got / ${all.length}', style: const TextStyle(fontSize: 13, color: kBText4)),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          for (final b in all) CollectionPlaque(badge: b, width: w, onTap: () => showCollectionBadgeSheet(context, b)),
+        ]),
+        const SizedBox(height: 6),
+        const Text('Les cartes se récoltent, les badges se méritent : chaque carte rapporte des points selon son cadre.',
+            style: TextStyle(fontSize: 12, color: kBText4)),
+      ]),
     );
   }
 
