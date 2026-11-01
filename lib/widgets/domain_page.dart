@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/utils/sport_stats.dart' show resolveSportPick;
+import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -258,11 +260,26 @@ class _DomainPageState extends State<_DomainPage> {
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
       children: [
         _header(now),
+        if (d != null && _hasSport(d))
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => showSportSheet(context, logic: widget.logic, sync: widget.sync),
+              icon: const Icon(Icons.directions_run_rounded, size: 18, color: kSportAccent),
+              label: const Text('Voir le suivi du sport'),
+            ),
+          ),
         if (d != null) ..._objectiveBody(now, d),
         if (habitsFirst) ...[..._habitBody(now, d), ..._timeBody(now, d)] else ...[..._timeBody(now, d), ..._habitBody(now, d)],
         if (d != null) ..._projectBody(now, d),
       ],
     );
+  }
+
+  bool _hasSport(Domain d) {
+    final st = widget.logic.state;
+    final pick = resolveSportPick(st.activities, st.domains, widget.logic.sportOverrides);
+    return pick.kinds.keys.any((id) => pick.byId[id]?.domainId == d.id);
   }
 
   Widget _header(DateTime now) {

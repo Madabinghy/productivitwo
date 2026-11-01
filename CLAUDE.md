@@ -860,7 +860,19 @@ repos (les répétitions seules n'en font pas une). `sportSummary` (semaine en c
 plus long repos sur 30 j), `sportWeeks` / `sportDecline` (« baisse depuis 4 semaines » : 4 semaines closes < moitié des 4 d'avant
 ≥ 30 min), `repsStats` (semaine, cible × 7, record d'un jour, 8 semaines), `sportCommitments` (engagements des objectifs actifs
 sur les activités suivies), `sportObjective` (objectif chiffré qui engage le sport : le poids), `sportLaunchOrder` (plus en retard
-d'abord), `sportImpact` (lendemains d'une séance contre d'un jour sans : part de Flemme et nuit qui suit, ≥ 5 de chaque côté).
+d'abord), `sportImpact` (lendemains d'une séance contre d'un jour sans : part de Flemme et nuit qui suit, ≥ 5 de chaque côté). **Lot 2 livré (écrans)** : `widgets/sport_sheet.dart` (`showSportSheet`, accent
+`kSportAccent`, ⓘ `kRuleSport`) — chip « n séances cette semaine », CETTE SEMAINE (temps actif, une colonne par jour empilée par
+activité, points = routines de répétitions faites, jour courant cerclé, routines de séance en retard en ambre), trois chiffres,
+TES ENGAGEMENTS (objectifs actifs), RÉPÉTITIONS (semaine / cible, record, mini-barres 8 semaines), « Lancer une séance » (feuille :
+plus en retard d'abord, ▶ = `logic.start`), « Mes activités de sport › » (`_SportPicker` : interrupteurs par rôle, « Voir toutes
+les activités »), 8 SEMAINES (barres empilées, pointillés = engagement, phrase de baisse), TON POIDS (métrique de
+`sportObjective` : droite attendue, relevés, écart du jour, Noter un relevé · Fiche de l'objectif), LE LENDEMAIN D'UNE SÉANCE
+(phrase de ce qu'on compare, deux colonnes ou ce qu'il manque), 8 SEMAINES EN CASES. Sessions relues sur 66 j
+(`fetchRecentSessions`) fusionnées aux locales. Entrées : ligne « Sport · n séances » en tête des domaines (onglet Domaines,
+`_sportLine` de `week_stats_view.dart`) et « Voir le suivi du sport » dans la page d'un domaine qui porte une activité suivie.
+**+1 automatique** : après `kSportSessionMin` min de chrono sur une activité, la routine de séance suivie qui la lie
+(`linkedActivityId`, Footing → Courir) prend son +1 du jour si elle n'en a pas (`AppLogic._checkSportRoutine`, tick minute, une
+fois par session ; SnackBar « Footing +1 · séance comptée » via `onSportRoutineCounted`).
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 

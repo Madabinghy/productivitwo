@@ -35,7 +35,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
-import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
+import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides, kSportSessionMin, resolveSportPick;
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -1182,6 +1182,29 @@ class AppLogic implements HuntStore {
     }
   }
 
+  /// Séance de sport (2026-11-01) : après [kSportSessionMin] min de chrono sur
+  /// une activité de sport, la routine de séance liée (Footing → Courir) prend
+  /// son +1 du jour si elle n'en a pas encore — une fois par session.
+  final Set<String> _sportCounted = {};
+  void Function(Activity routine)? onSportRoutineCounted;
+
+  void _checkSportRoutine() {
+    final now = DateTime.now();
+    final open = [for (final s in state.sessions) if (!s.deleted && s.endAt == null && !_sportCounted.contains(s.id) && now.difference(s.startAt).inMinutes >= kSportSessionMin) s];
+    if (open.isEmpty) return;
+    final pick = resolveSportPick(state.activities, state.domains, sportOverrides);
+    final start = livedDayStart(now, dayStartMin);
+    for (final s in open) {
+      _sportCounted.add(s.id);
+      for (final r in pick.sessionRoutines) {
+        if (r.linkedActivityId != s.activityId) continue;
+        if (state.habitHits.any((h) => h.habitId == r.id && !h.ts.isBefore(start))) continue;
+        incHabit(r.id, 1, livedDate(now, dayStartMin));
+        onSportRoutineCounted?.call(r);
+      }
+    }
+  }
+
   void tickBlockTransition() {
     // Bascule de journée vécue (ou premier tick) → règlement de la veille.
     final ymd = livedYmdNow;
@@ -1191,6 +1214,7 @@ class AppLogic implements HuntStore {
       unawaited(freezeTodayParole());
     }
     _checkFlemmeChrono();
+    _checkSportRoutine();
     if (!askBlockOnChrono) return;
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;

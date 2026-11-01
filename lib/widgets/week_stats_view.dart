@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/utils/sport_stats.dart';
+import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
@@ -10,6 +12,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart';
@@ -102,6 +105,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
                 now: now,
                 dayStartMin: widget.logic.dayStartMin,
                 frozenOf: (a) => widget.logic.frozenOf(a.id))),
+        _sportLine(cs, now),
         ListSectionTitle('${days == 14 ? 'SUR 14 JOURS' : 'CETTE SEMAINE'} · ${rows.length}'),
         for (final r in rows) _domainRow(cs, r, perDay[r.domain.id], todayIdx, days),
         if (rows.isEmpty)
@@ -110,6 +114,54 @@ class _WeekStatsViewState extends State<WeekStatsView> {
             child: Text('Aucun domaine : crée-en un avec « Gérer ».', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
           ),
       ]),
+    );
+  }
+
+  /// Ligne « Sport » (2026-11-01) : séances de la semaine, tap = feuille Sport.
+  Widget _sportLine(ColorScheme cs, DateTime now) {
+    final logic = widget.logic;
+    final st = logic.state;
+    final pick = resolveSportPick(st.activities, st.domains, logic.sportOverrides);
+    if (pick.isEmpty) return const SizedBox.shrink();
+    final today = ymdOf(livedDate(now, logic.dayStartMin));
+    final days = sportDays(pick: pick, sessions: st.sessions, hits: st.habitHits, fromYmd: mondayOf(today), toYmd: today, now: now, dayStartMin: logic.dayStartMin);
+    final n = days.fold(0, (s, d) => s + d.sessions);
+    final min = days.fold(0, (s, d) => s + d.activeMin);
+    final muted = cs.onSurface.withValues(alpha: .55);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: .35),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => showSportSheet(context, logic: logic, sync: widget.sync),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(children: [
+              const Icon(Icons.directions_run_rounded, color: kSportAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Sport · $n séance${n > 1 ? 's' : ''}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text('${min == 0 ? 'rien encore' : '${fmtMin(min)} actives'} cette semaine', style: TextStyle(fontSize: 12.5, color: muted)),
+                ]),
+              ),
+              Row(children: [
+                for (final d in days) ...[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                    decoration: BoxDecoration(color: d.isRest ? cs.onSurface.withValues(alpha: .12) : kSportAccent, shape: BoxShape.circle),
+                  ),
+                ],
+              ]),
+              Icon(Icons.chevron_right_rounded, color: muted),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
