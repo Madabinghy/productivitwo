@@ -718,17 +718,24 @@ class _SniperScreenState extends State<SniperScreen> {
 
   Widget _stepper(SniperTarget t) {
     final down = stepAmount(t, up: false), up = stepAmount(t, up: true);
-    return Container(
-      decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _stepBtn(Icons.remove, 'Moins', down == null ? null : () => _step(t, up: false)),
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 44),
-          child: Text(t.durLabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: kSniperAccent, fontFeatures: [FontFeature.tabularFigures()])),
-        ),
-        _stepBtn(Icons.add, 'Plus', up == null ? null : () => _step(t, up: true)),
-      ]),
-    );
+    // Un tap sur le réglage (bouton grisé, valeur) ne doit jamais tomber sur
+    // la ligne, qui écarte la cible.
+    return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        onLongPress: () {},
+        child: Container(
+          decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _stepBtn(Icons.remove, 'Moins', down == null ? null : () => _step(t, up: false)),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 44),
+              child:
+                  Text(t.durLabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: kSniperAccent, fontFeatures: [FontFeature.tabularFigures()])),
+            ),
+            _stepBtn(Icons.add, 'Plus', up == null ? null : () => _step(t, up: true)),
+          ]),
+        ));
   }
 
   Widget _aim() {
