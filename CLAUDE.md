@@ -1404,6 +1404,26 @@ les cartes, écran « Un badge tombe » (`showCollectionDrop` / `CollectionDropS
 métal, « Collectionneur III », chiffre et prochain palier, Badge suivant / Sur l'étagère · Voir l'album) ; un badge en attente sans
 carte (app quittée entre les deux) : « Un badge à poser sur l'étagère » en tête d'Aujourd'hui.
 
+## Récolter des cartes (2026-11-01, maquette validée « Récolter des cartes »)
+
+Retour user : pas de lien visible badges ↔ cartes, pas de sensation de ramasser (au premier lancement, les cartes déjà gagnées
+étaient marquées vues sans jamais être retournées). **Lot 1 livré** : **Ouvre ta collection** (une fois) — `CardSeenStore.packPending`
+(toutes les cartes gagnées tant que `collection_opened` n'est pas posé) → carte dorée « Ouvre ta collection · n cartes déjà gagnées,
+jamais ouvertes » en tête d'Aujourd'hui (`CardRevealPrompt._packPrompt`, pas d'ouverture automatique) → `showCardReveal(pack: true)`
+(« TA COLLECTION · k / n », Collectionneur qui monte carte après carte, « Tout retourner » = grille de toutes les cartes + « Ranger
+dans l'album ») puis `markOpened`. **Album en pochettes** : chaque famille (hors séries) commence par son badge « au complet »
+(écusson, « k / n », « remplis les n pochettes → écusson argent » / « toutes en or → écusson or », jauge ; tap = fiche du badge),
+puis les cartes numérotées (`albumOrder`), une carte jamais commencée = pochette vide en pointillés (`BadgeCardView(pocket:)` :
+numéro, nom, indice). **Elle compte pour** dans la fiche d'une carte (`cardFeeds(card, deck)` : Collectionneur « +3 pts » /
+« bronze = +1 pt », Famille « 1 des 12 » / « il la faut pour le compléter », Écrin d'or, Légende ; tap = fiche du badge ;
+`showBadgeSheet(deck:)`). **Lot 2 livré (la récolte du matin)** : instantané de la mesure et du palier de chaque carte sur l'appareil
+(`CardSeenStore` `harvest_snapshot` {ymd, values, levels}) ; une fois par jour vécu, `harvestPending` compare le deck à l'instantané
+(`harvestOf` → `HarvestItem` : paliers d'abord, puis le plus gros gain relatif ; `harvestLabel` « +1 j » / « OR » / « palier ») →
+carte « Ta récolte d'hier » en tête d'Aujourd'hui (`_harvestPrompt` : « +n pts », « k cartes ont avancé · j nouvelles », 4 lignes
+mini carte · mesure · gain) ; « Ranger dans l'album » retourne les cartes passées d'un palier puis les badges de collection
+(`_collect`), et pose l'instantané (`markHarvested`). Rien de neuf, ou premier passage = instantané posé en silence ; après
+l'ouverture de la collection seulement.
+
 ## Règles du jeu en place (2026-10-30)
 
 Retour user : « pas une tonne de texte, pas un tuto au fond des paramètres ». Toute fonctionnalité à enjeux porte un petit

@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/widgets/collection_badge_view.dart';
 import 'package:productivitwo_v1/widgets/card_reveal.dart';
+import 'package:productivitwo_v1/widgets/badge_card.dart';
 
 BadgeState st(String id, BadgeFamily f, List<int> tiers, int level) =>
     BadgeState(def: BadgeDef(id: id, family: f, name: id, symbol: 'sun', tiers: tiers), level: level, value: level == 0 ? 0 : tiers[level - 1]);
@@ -85,5 +86,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('+1 pt · bronze → argent'), findsOneWidget);
     expect(find.text('Collectionneur III · 43 / 50 pts'), findsOneWidget);
+  });
+
+  test('elle compte pour : collectionneur, famille, écrin, légende', () {
+    final card = st('a', BadgeFamily.discipline, const [1, 5, 15], 3);
+    final deck = BadgeDeck([card, st('b', BadgeFamily.discipline, const [1, 5], 0)]);
+    final feeds = cardFeeds(card, deck);
+    expect(feeds.map((f) => f.$1.id).toList(), ['collector', 'family-discipline', 'gold-case', 'legend']);
+    expect(feeds.first.$2, '+5 pts');
+    expect(feeds[1].$2, '1 des 2');
+    final todo = cardFeeds(deck.badges[1], deck);
+    expect(todo.map((f) => f.$2).toList(), ['bronze = +1 pt', 'il la faut pour le compléter']);
+  });
+
+  testWidgets('une pochette vide : numéro et nom', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: BadgeCardView(state: st('Plein jour', BadgeFamily.days, const [1], 0), width: 110, pocket: 9))));
+    expect(find.text('9'), findsOneWidget);
+    expect(find.text('Plein jour'), findsOneWidget);
+  });
+
+  testWidgets('ouvrir sa collection : tout retourner montre la grille', (tester) async {
+    tester.view.physicalSize = const Size(780, 1600);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final cards = [for (var i = 0; i < 5; i++) NewCard(st('c$i', BadgeFamily.days, const [1], 1), CardRarity.none)];
+    await tester.pumpWidget(MaterialApp(home: CardRevealScreen(cards: cards, points: 15, pack: true)));
+    expect(find.text('TA COLLECTION · 1 / 5'), findsOneWidget);
+    await tester.tap(find.text('Tout retourner'));
+    await tester.pumpAndSettle();
+    expect(find.text('5 cartes · 15 pts'), findsOneWidget);
+    expect(find.text('Ranger dans l’album'), findsOneWidget);
   });
 }

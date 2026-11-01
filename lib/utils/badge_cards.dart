@@ -149,3 +149,45 @@ String newCardLine(NewCard c) {
   final t = b.def.tiers[(b.level - 1).clamp(0, b.def.tiers.length - 1)];
   return 'Palier ${fmtInt(t)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}';
 }
+
+/// Une carte qui a avancé depuis la dernière récolte (récolte du matin).
+class HarvestItem {
+  final BadgeState badge;
+  final num before;
+  final int levelBefore;
+  const HarvestItem(this.badge, this.before, this.levelBefore);
+  num get gain => badge.value - before;
+  bool get tierUp => badge.level > levelBefore;
+  CardRarity get rarityBefore => levelBefore <= 0
+      ? CardRarity.none
+      : rarityOf(BadgeState(def: badge.def, level: levelBefore, value: badge.def.tiers[(levelBefore - 1).clamp(0, badge.def.tiers.length - 1)]));
+}
+
+/// La récolte : les cartes dont la mesure ou le palier a monté depuis
+/// l'instantané ([values] / [levels] par badge). Paliers d'abord, puis le
+/// plus gros gain relatif.
+List<HarvestItem> harvestOf(BadgeDeck deck, Map<String, num> values, Map<String, int> levels) {
+  final out = <HarvestItem>[];
+  for (final b in deck.badges) {
+    final v = values[b.def.id];
+    if (v == null) continue;
+    final l = levels[b.def.id] ?? 0;
+    if (b.value > v || b.level > l) out.add(HarvestItem(b, v, l));
+  }
+  out.sort((a, b) {
+    if (a.tierUp != b.tierUp) return a.tierUp ? -1 : 1;
+    double rel(HarvestItem x) => x.badge.nextTarget == null || x.badge.nextTarget == 0 ? 1 : x.gain / x.badge.nextTarget!;
+    return rel(b).compareTo(rel(a));
+  });
+  return out;
+}
+
+/// « +1 j », « +3 », « passe en or ».
+String harvestLabel(HarvestItem h) {
+  final b = h.badge;
+  if (h.tierUp && rarityOf(b) != h.rarityBefore) return rarityLabel(rarityOf(b)).toUpperCase();
+  if (h.tierUp) return 'palier';
+  final g = h.gain;
+  final txt = g == g.roundToDouble() ? fmtInt(g) : g.toStringAsFixed(1).replaceAll('.', ',');
+  return '+$txt${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}';
+}
