@@ -7,6 +7,9 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+import 'package:productivitwo_v1/widgets/badge_card.dart';
+import 'package:productivitwo_v1/utils/badge_cards.dart';
+import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
 import 'package:productivitwo_v1/widgets/watch_pace_view.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
@@ -196,43 +199,38 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       );
 
   Widget _deckHeader(BadgeDeck deck) {
-    final last = deck.lastObtained;
+    final album = cardAlbum(deck);
+    final gold = album.byRarity[CardRarity.or] ?? 0;
+    final legend = album.byRarity[CardRarity.legend] ?? 0;
+    final parts = [
+      if (gold > 0) '$gold or',
+      if (legend > 0) '$legend légendaire${legend > 1 ? 's' : ''}',
+      '${deck.acquired} / ${deck.total} paliers',
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text.rich(TextSpan(children: [
-                TextSpan(text: '${deck.acquired}', style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kBadgeBrass, height: 1)),
-                TextSpan(text: ' sur ${deck.total}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: kBText3)),
-              ])),
-              if (deck.series.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(_seriesLine(deck), maxLines: 2, style: const TextStyle(fontSize: 12, height: 1.3, color: kBText3)),
-                ),
-            ]),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(14), border: Border.all(color: kBLine)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text.rich(TextSpan(children: [
+              TextSpan(text: '${album.won}', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: kBadgeBrass, height: 1)),
+              TextSpan(text: ' / ${album.total} cartes', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText3)),
+            ])),
+          ]),
+          const SizedBox(height: 4),
+          Text(parts.join(' · '), style: const TextStyle(fontSize: 12.5, color: kBText3)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: LinearProgressIndicator(value: album.ratio, minHeight: 8, backgroundColor: kBadgeGaugeTrack, color: kBadgeBrass),
           ),
-          const SizedBox(width: 10),
-          if (last != null)
-            Container(
-              padding: const EdgeInsets.fromLTRB(6, 6, 10, 6),
-              decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBadgeBrassDark.withValues(alpha: .6))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                BadgeView(state: last, size: 40),
-                const SizedBox(width: 8),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('DERNIER OBTENU', style: TextStyle(fontSize: 10, letterSpacing: .6, color: kBText3)),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text('${last.def.name} · ${_shortDate(last.obtained!)}', maxLines: 2, style: const TextStyle(fontSize: 13, color: kBText2)),
-                  ),
-                ]),
-              ]),
-            ),
-        ],
+          if (deck.series.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(_seriesLine(deck).replaceAll('\n', ' · '), style: const TextStyle(fontSize: 12, height: 1.3, color: kBText4)),
+          ],
+        ]),
       ),
     );
   }
@@ -431,48 +429,28 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         ),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 8,
+          spacing: 10,
           runSpacing: 12,
-          children: [for (final b in badges) _card(b)],
+          children: [for (final b in albumOrder(badges)) _card(b)],
         ),
       ]),
     );
   }
 
   Widget _card(BadgeState b) {
-    final width = (MediaQuery.sizeOf(context).width - 32 - 3 * 8) / 4;
-    return SizedBox(
-      width: width,
-      child: GestureDetector(
-        onTap: () => _showFacts(b),
-        child: Column(children: [
-          Opacity(
-            opacity: b.acquired ? 1 : .55,
-            child: _facts == null
-                ? BadgeView(state: b, size: 72)
-                : Builder(builder: (_) {
-                    final t = badgeToday(b, _facts!);
-                    return BadgeView(state: b, size: 72, todayGain: t.gain, todaySecured: t.gainSecured, todayRatio: t.dayRatio);
-                  }),
-          ),
-          const SizedBox(height: 4),
-          Text(b.def.name,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, height: 1.25, fontWeight: b.acquired ? FontWeight.w600 : FontWeight.w400, color: b.acquired ? kBText : kBText3)),
-          Text(_sub(b), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: kBText3)),
-        ]),
+    final width = (MediaQuery.sizeOf(context).width - 32 - 2 * 10) / 3;
+    final t = _facts == null ? null : badgeToday(b, _facts!);
+    final tonight = t != null && (t.gain > 0 || t.stake == TodayStake.reachable || t.stake == TodayStake.atRisk);
+    return GestureDetector(
+      onTap: () => _showFacts(b),
+      child: BadgeCardView(
+        state: b,
+        width: width,
+        tonight: tonight && !b.acquired,
+        isNew: CardSeenStore.isNew(b),
+        footer: tonight && !b.acquired && !b.showGauge ? 'ce soir ?' : cardFooter(b, date: _shortDate),
       ),
     );
-  }
-
-  String _sub(BadgeState b) {
-    if (!b.def.measured) return 'bientôt';
-    if (b.complete) return '${fmtInt(b.def.tiers.last)} ${b.def.unit} · complet';
-    if (b.showGauge) return '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unit}';
-    if (b.acquired && b.obtained != null) return 'le ${_shortDate(b.obtained!)}';
-    return 'pas encore';
   }
 
   String _num(num v) => _numOf(v);
@@ -530,7 +508,11 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        Center(child: BadgeView(state: b, size: 150, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false, todayRatio: today?.dayRatio)),
+        Center(child: BadgeCardView(state: b, width: 170, footer: cardFooter(b, date: _shortDateOf))),
+        if (b.def.tiers.length >= 2) ...[
+          const SizedBox(height: 12),
+          _CardLadder(state: b),
+        ],
         const SizedBox(height: 12),
         Text(badgeFamilyLabel(b.def.family).toUpperCase(),
             textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
@@ -898,4 +880,37 @@ Future<({int tier, DateTime? date})?> _pickHunt(BuildContext ctx, BadgeState b) 
       );
     }),
   );
+}
+
+
+/// « Les paliers = les cadres » : chaque palier et la rareté qu'il donne.
+class _CardLadder extends StatelessWidget {
+  final BadgeState state;
+  const _CardLadder({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = state.def;
+    final ladder = rarityLadder(d);
+    final unit = d.unit.isEmpty ? '' : ' ${d.unit}';
+    return Row(children: [
+      for (var i = 0; i < ladder.length; i++) ...[
+        if (i > 0) const SizedBox(width: 5),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            decoration: BoxDecoration(
+              color: i < state.level ? rarityFrame(ladder[i])[1].withValues(alpha: .55) : kBadgeGaugeTrack,
+              borderRadius: BorderRadius.circular(8),
+              border: i == state.level - 1 ? Border.all(color: rarityInk(ladder[i]), width: 2) : null,
+            ),
+            child: Column(children: [
+              Text('${fmtInt(d.tiers[i])}$unit', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i < state.level ? Colors.white : kBText3)),
+              Text(rarityLabel(ladder[i]).toLowerCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: i < state.level ? rarityInk(ladder[i]) : kBText4)),
+            ]),
+          ),
+        ),
+      ],
+    ]);
+  }
 }

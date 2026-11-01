@@ -13,7 +13,6 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
-import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/widgets/objectives_day_view.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/widgets/focused_action_create.dart';
@@ -54,6 +53,7 @@ import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
+import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
@@ -717,6 +717,8 @@ class TodayViewState extends State<TodayView> {
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
                   PendingRunCard(logic: widget.logic, badges: widget.badges),
+                  // Badges en cartes (2026-11-01) : les cartes gagnées se retournent.
+                  CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
                   ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
@@ -802,24 +804,6 @@ class TodayViewState extends State<TodayView> {
                               onOpenSource: widget.onOpenSource,
                             ),
                   ),
-                  if (_badgeSignals.isNotEmpty)
-                    UnlockSignalCard(
-                      badges: _badgeSignals,
-                      hunted: widget.logic.caughtHuntBadgeIds,
-                      onView: () {
-                        setState(() => _badgeSignals = const []);
-                        final bc = widget.badges;
-                        if (bc != null) {
-                          Navigator.of(context).push(MaterialPageRoute<void>(
-                              builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: bc.sync, center: bc, showSamples: false)));
-                        }
-                      },
-                      onClose: () => setState(() => _badgeSignals = const []),
-                      surface: kBSurface,
-                      text: kBText,
-                      text3: kBText3,
-                      accent: kBPrimary,
-                    ),
                   NowCoachZone(
                     logic: widget.logic,
                     schedule: _schedule,
