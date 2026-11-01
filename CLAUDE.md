@@ -1075,7 +1075,7 @@ de même clé) ; `adjustPlan(amounts:)` garde l'ordre des cibles entières ; mon
 dont au moins 3 EN ENTIER (`ChainRun.fullCount`, `sniperSessionCounts` ; une session d'avant n'a pas `fullCount` = toutes pleines) ;
 le bilan dit « dont 3 pleines · session comptée » / « il faut 3 cibles pleines » ; ⓘ `kRuleSniper` : cartes « Ajuster le tir » et « Le badge ». **Réordonner** (2026-11-01) : appui long + glisser dans CIBLES
 (`ReorderableListView`, `_order`) = l'ordre des tirs (`adjustPlan(order:)` ; une cible ajoutée va en fin), lien « Ordre conseillé »
-pour revenir au calcul ; l'ordre des tirs est déjà celui persisté (`aimed`). Entrées : lanceur ◎ entre ⚡ et ↗ en haut
+pour revenir au calcul ; l'ordre des tirs est déjà celui persisté (`aimed`). Le réglage − / + absorbe ses taps (bouton grisé compris) : il n'écarte jamais la cible (bug 2026-11-01). Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
 **Un gros bouton, le mode du moment** (2026-11-01, retour user : pas quatre boutons alignés) : sous l'en-tête d'Aujourd'hui, UN gros
 bouton = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge),
