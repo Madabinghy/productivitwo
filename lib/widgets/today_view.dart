@@ -1156,6 +1156,8 @@ class TodayViewState extends State<TodayView> {
   String? _intentionHidden;
   bool _reviewPrefsLoaded = false;
 
+  bool _reviewPrefsReady = false;
+
   List<Widget> _weekReviewCards() {
     if (!_reviewPrefsLoaded) {
       _reviewPrefsLoaded = true;
@@ -1164,10 +1166,14 @@ class TodayViewState extends State<TodayView> {
         setState(() {
           _reviewHidden = p.getString('week_review_later');
           _intentionHidden = p.getString('week_intention_hidden');
+          _reviewPrefsReady = true;
         });
       }).catchError((_) {});
     }
     final logic = widget.logic;
+    // Rien tant que les revues faites (doc meta) et « Plus tard » ne sont pas
+    // lus : sinon la carte apparaît au démarrage puis disparaît (bug 2026-11-01).
+    if (!_reviewPrefsReady || !logic.metaLoaded) return const [];
     final now = DateTime.now();
     final out = <Widget>[];
     final monday = reviewedMonday(now, logic.dayStartMin);

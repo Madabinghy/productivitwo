@@ -1836,7 +1836,13 @@ class _AppRootState extends State<AppRoot>
           seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
           acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
           asked.length == logic.acquireAsked.length && asked.containsAll(logic.acquireAsked);
-      if (same) return;
+      if (same && logic.metaLoaded) return;
+      final firstMeta = !logic.metaLoaded;
+      logic.metaLoaded = true;
+      if (same && firstMeta) {
+        logic.onChange();
+        return;
+      }
       logic.dayStartMin = start;
       logic.momentWindows = windows;
       logic.badgeHunts = hunts;
