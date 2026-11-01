@@ -39,8 +39,8 @@ const _gold = Color(0xFFFFD27A);
 const _ember = Color(0xFFFFB27A);
 const _green = Color(0xFF7FD3A0);
 
-Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges}) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges)));
+Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, bool week = false}) {
+  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges, startWeek: week)));
 }
 
 enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekSpread, weekDone }
@@ -48,7 +48,9 @@ enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekSpread, wee
 class PlanScreen extends StatefulWidget {
   final AppLogic logic;
   final BadgeCenter? badges;
-  const PlanScreen({super.key, required this.logic, this.badges});
+  /// Ouvre directement « La semaine » sur CE QUI SE JOUE (depuis la revue du dimanche).
+  final bool startWeek;
+  const PlanScreen({super.key, required this.logic, this.badges, this.startWeek = false});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -93,9 +95,16 @@ class _PlanScreenState extends State<PlanScreen> {
     _tomorrow = logic.livedNowMinNow >= 12 * 60;
     // Chrono : activé d'office si une activité « Planification » existe ; ensuite le dernier choix.
     _chrono = _planningActivity() != null;
+    if (widget.startWeek) {
+      _week = true;
+      _chrono = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _begin();
+      });
+    }
     SharedPreferences.getInstance().then((p) {
       final v = p.getBool(_kChronoPref);
-      if (v != null && mounted) setState(() => _chrono = v);
+      if (v != null && mounted && !widget.startWeek) setState(() => _chrono = v);
       final t = p.getBool(_kTimeModePref);
       if (t != null && mounted) setState(() => _timeMode = t);
     }).catchError((_) {});

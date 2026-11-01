@@ -879,7 +879,17 @@ decisions}` (`data/meta.weekReviews.<lundi>`, `FirestoreSync.setWeekReview`, flu
 `AppLogic.saveWeekReview`, dans `kBackupMetaKeys`), `weekIntention` (phrase posée le dimanche d'avant, rappelée la semaine
 suivante), `projectWeeks` (actions cochées et tâches finies par projet vivant), `stalledProjects` (vivants, pas en pause, une
 action ouverte, rien coché depuis 10 j), `minutesByDomainOf`, `ReviewDecision`. `coachSignals(days:)` accepte les jours de la
-semaine revue (jeux par jour, sommeil).
+semaine revue (jeux par jour, sommeil). **Lot 2 livré (écran)** : `widgets/week_review_screen.dart`
+(`showWeekReviewScreen`, plein écran, accent violet `kReviewAccent`, 4 étapes et une barre) — CE QUI A TENU (contrat de la semaine
+d'après `BadgeDeck.weeks`, jeux une case par jour : Métronome · Montre suisse · Parole tenue · Posé la veille, journées parfaites,
+sommeil, temps dit par mode) · CE QUI A AVANCÉ (actions / tâches, `projectWeeks` — 0 en ambre —, temps par domaine, paliers de la
+semaine) · CE QUI A COÛTÉ (au plus 3 cartes : activité qui coûte la Montre suisse `watchBlockers` → Baisser à n / Pas de minimum /
+Garder ; projet endormi → Viser lundi (`focusDate` de `nextAction`) / Mettre en pause / Garder ; nuits courtes ≥ 3 → « Me coucher à
+HH:MM cette semaine » (texte de décision seulement) ; lien « Mise au clair » = l'ancienne `showWeeklyReviewSheet`) · LE CAP (phrase,
+décisions, « Poser la semaine → » = `showPlanScreen(week: true)` qui ouvre directement la Planification de la semaine). Entrées :
+`WeekReviewCard` en tête d'Aujourd'hui pendant `reviewWindowOpen` tant que la semaine n'est pas revue (« Plus tard » =
+`week_review_later` en SharedPreferences), `WeekIntentionCard` « Ton cap de la semaine » la semaine suivante (✕ =
+`week_intention_hidden`), « Revue de la semaine » dans le choix de la tuile RECUL et le menu ⋯.
 
 ## Minimum des activités (calibration, 2026-10-30)
 

@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
@@ -103,7 +104,6 @@ import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
-import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
@@ -4611,7 +4611,7 @@ class _AppRootState extends State<AppRoot>
               } else if (v == 'orion') {
                 OrionScreen.show(context, _sync);
               } else if (v == 'weekly_review') {
-                showWeeklyReviewSheet(context, _sync);
+                showWeekReviewScreen(context, logic, badges: _badges);
               } else if (v == 'filters') {
                 _openFiltersSheet(context);
               } else if (v == 'changelog') {
