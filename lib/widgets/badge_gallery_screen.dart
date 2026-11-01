@@ -313,7 +313,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 7),
           child: Row(children: [
-            BadgeView(state: b, size: 40, todayGain: t.gain, todaySecured: t.gainSecured, todayRatio: t.dayRatio),
+            BadgeCardView(state: b, width: 40, tonight: !b.acquired),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -429,7 +429,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(children: [
-                BadgeView(state: v.badge, size: 48),
+                BadgeCardView(state: v.badge, width: 44),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
