@@ -22,7 +22,6 @@ import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show parseMeals;
-import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
@@ -4674,10 +4673,6 @@ class _AppRootState extends State<AppRoot>
                 showProposalsSheet(context, _sync);
               } else if (v == 'orion') {
                 OrionScreen.show(context, _sync);
-              } else if (v == 'dishes') {
-                showMealSheet(context, logic: logic, sync: _sync);
-              } else if (v == 'weekly_review') {
-                showWeekReviewScreen(context, logic, badges: _badges);
               } else if (v == 'filters') {
                 _openFiltersSheet(context);
               } else if (v == 'changelog') {
@@ -4745,22 +4740,6 @@ class _AppRootState extends State<AppRoot>
                   Icon(Icons.smart_toy_outlined, size: 18),
                   SizedBox(width: 12),
                   Text('Orion Stratège'),
-                ]),
-              ),
-              const PopupMenuItem(
-                value: 'dishes',
-                child: Row(children: [
-                  Icon(Icons.restaurant_menu_rounded, size: 18),
-                  SizedBox(width: 12),
-                  Text('Repas'),
-                ]),
-              ),
-              const PopupMenuItem(
-                value: 'weekly_review',
-                child: Row(children: [
-                  Icon(Icons.cleaning_services_outlined, size: 18),
-                  SizedBox(width: 12),
-                  Text('Revue de la semaine'),
                 ]),
               ),
               PopupMenuItem(

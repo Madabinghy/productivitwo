@@ -68,7 +68,7 @@ attente (`streamProposals`), validables sur place (`ProposalCard` partagée avec
 Refuser) ; une idée « proposée » dont la proposition est affichée n'est plus listée en double ; « TRAITÉ PAR ORION · n » replié
 par défaut, 20 plus récents. **Propositions disparues** (2026-10-30) : une idée restée `proposed` sans proposition `pending` (traitée, expirée ou supprimée côté ORION) n'ouvrait rien au tap ; section « PROPOSITIONS DISPARUES · n » (seulement une fois les propositions chargées, `_propsLoaded`), tap = Remettre dans les idées (`pending`) · Marquer traitée (`processed`) · Supprimer (`_decideOrphan`). Cause corrigée : une proposition ORION qui regroupe plusieurs idées ne retenait que la première (`sourceCaptureId`), les autres restaient `proposed` à vie ; elle porte désormais `sourceCaptureIds` (`executeProposeChange`, `orion_inbox.ts`) et l'app les consomme toutes à l'acceptation / au refus (`OrionProposal.captureIds`) — ⚠️ `firebase deploy --only functions`.
   **App bar mobile** (2026-10-30) : titre = pilule 24 h (`MiniHourBars24h`, 192 px de large depuis le 2026-10-30, 156 px depuis le 2026-11-01 pour faire place au bouton Sport ; depuis le 2026-10-31 chaque barre EMPILE ses domaines, `segments`, dans l'ordre des domaines, `hourSegments` (`utils/hour_segments.dart`) sur `AppLogic.domainMinutesByHourLast24` ; dans la pilule une tranche < 10 min se fond dans le domaine majoritaire de l'heure, la feuille 24 h montre tout) + **barres de sommeil** (`SleepBars`, `widgets/sleep_bars.dart`, depuis le 2026-10-30 : une barre par nuit sur 7 nuits, hauteur = durée sur 9 h, dernière nuit en clair ; logique pure `sleepNights` / `sleepRunning`, `utils/sleep_nights.dart` : chronos d'une activité de sommeil commencés de 10 h avant à 7 h après la bascule ; tap = fiche de l'activité de sommeil, `_openSleepActivity`) puis un petit rond **Sport** (2026-11-01, icône course `kSportAccent`, tap = `showSportSheet`) et un rond **Repas** (🍽 `kMealAccent`, tap = `showMealSheet`) dans un `FittedBox` (jamais de débordement). **Feuille « Dernières 24 h »** (tap sur la pilule, refonte 2026-10-31, `widgets/last24h_sheet.dart`, `showLast24hSheet` sur `showFiche`) : chip « n chronométrées », 24 barres horaires à la couleur du domaine (dernière = l'heure en cours), RÉPARTITION par domaine (barre empilée + légende durée · %), CHRONOS en cartes (icône de l'activité, domaine · début → fin, durée ou « en cours » ; tap = `openEditSessionSheet`, glisser = supprimer). **La `ModePill` est passée dans l'en-tête d'Aujourd'hui, centrée au-dessus des deux lanceurs Guérilla / Offensive** (`_header`, `today_view.dart`, retour user : la place de la barre va au sommeil) ; `actions`
-= Inbox (point ambre si captures) + menu ⋯ (Propositions à valider, Orion, Revue, Filtres, Nouveautés, Catalogue, Paramètres).
+= Inbox (point ambre si captures) + menu ⋯ (Propositions à valider, Orion, Filtres, Nouveautés, Catalogue, Paramètres ; Revue et Repas en sont sortis le 2026-11-01 : ils vivent dans Recul, Ma vie et la barre du haut).
 Ne rien rajouter d'autre dans le titre.
 **Question d'état retirée** (2026-10-30) : la carte « ORION · ÉTAT » (À fond · Correct · À plat, `EnergyQuestionCard`) n'est plus
 posée par `now_coach_zone.dart` (fichier `energy_cards.dart` supprimé) : le mode Flemme / Normal / En forme la remplace.
@@ -905,7 +905,7 @@ de la semaine, heures moyennes du déjeuner et du dîner d'après Manger). Écra
 `kRuleMeals`) : chip « k / n équilibrés », CE MIDI / CE SOIR (plat prévu ou restes, portions, temps ; ▶ Cuisiner = chrono Cuisiner ·
 « ✓ Mangé, équilibré » = `ate:ok` + `routinePlus` de la routine + `recordMealCooked` · « Autre chose »), CETTE SEMAINE (grille midi /
 soir), trois chiffres, TES HEURES DE REPAS, « Les repas de la semaine », Mes plats ›, Liste de courses · n. Entrées : rond 🍽
-(`kMealAccent`) dans la barre du haut après Sport, ligne « Repas · k / n équilibrés » dans Domaines (`_mealLine`), menu ⋯ « Repas ».
+(`kMealAccent`) dans la barre du haut après Sport, ligne « Repas · k / n équilibrés » dans Domaines (`_mealLine`) ; tuile Repas de Ma vie.
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
@@ -949,7 +949,7 @@ HH:MM cette semaine » (texte de décision seulement) ; lien « Mise au clair »
 décisions, « Poser la semaine → » = `showPlanScreen(week: true)` qui ouvre directement la Planification de la semaine). Entrées :
 `WeekReviewCard` en tête d'Aujourd'hui pendant `reviewWindowOpen` tant que la semaine n'est pas revue (« Plus tard » =
 `week_review_later` en SharedPreferences), `WeekIntentionCard` « Ton cap de la semaine » la semaine suivante (✕ =
-`week_intention_hidden`), « Revue de la semaine » dans le choix de la tuile RECUL et le menu ⋯.
+`week_intention_hidden`), « Revue de la semaine » dans le choix de la tuile RECUL et les modes de Ma vie (plus dans le menu ⋯ depuis le 2026-11-01).
 
 ## Minimum des activités (calibration, 2026-10-30)
 
