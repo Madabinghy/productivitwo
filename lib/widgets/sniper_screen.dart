@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, spentByAction;
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 
@@ -58,6 +59,10 @@ class _SniperScreenState extends State<SniperScreen> {
   double _factor = 1;
   int _endMin = 22 * 60;
   final _excluded = <String>{};
+  /// Cibles hors de portée ajoutées à la main.
+  final _added = <String>{};
+  /// Le plan calculé une fois ; les écarts et ajouts s'appliquent dessus.
+  SniperPlan _base = const SniperPlan(budgetMin: 0);
   SniperPlan _plan = const SniperPlan(budgetMin: 0);
   ({int minutes, int untilMin, ScheduleBlock? until}) _budget = (minutes: 0, untilMin: 0, until: null);
   bool _loading = true;
@@ -139,14 +144,30 @@ class _SniperScreenState extends State<SniperScreen> {
   }
 
   void _replan() {
-    _plan = planSniper(
+    _base = planSniper(
       stakes: _stakes,
       budgetMin: _budget.minutes,
       untilMin: _budget.untilMin,
       routineLeft: _routineLeft,
       factor: _factor,
-      excluded: _excluded,
     );
+    _adjust();
+  }
+
+  /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
+  /// de portée ne rentre sans qu'on le choisisse.
+  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added);
+
+  void _include(SniperTarget t, {required bool fromOut}) {
+    if (!fitsPlan(_plan, t)) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('« ${t.title} » ne tient plus dans ton temps libre : écarte une autre cible d’abord.')));
+      return;
+    }
+    setState(() {
+      _excluded.remove(t.key);
+      if (fromOut) _added.add(t.key);
+      _adjust();
+    });
   }
 
   /// Les cibles écartées à la main (pour les remettre).
@@ -680,24 +701,22 @@ class _SniperScreenState extends State<SniperScreen> {
               for (final t in _plan.aimed)
                 _targetRow(t, on: true, onTap: () => setState(() {
                       _excluded.add(t.key);
-                      _replan();
+                      _added.remove(t.key);
+                      _adjust();
                     })),
             ])),
           if (excluded.isNotEmpty) ...[
             _label('ÉCARTÉES · TOUCHE POUR REMETTRE'),
             _box(Column(children: [
               for (final t in excluded)
-                _targetRow(t, on: false, onTap: () => setState(() {
-                      _excluded.remove(t.key);
-                      _replan();
-                    })),
+                _targetRow(t, on: false, onTap: () => _include(t, fromOut: !_base.aimed.any((x) => x.key == t.key))),
             ])),
           ],
           if (_plan.outOfReach.isNotEmpty) ...[
-            _label('HORS DE PORTÉE'),
+            _label('HORS DE PORTÉE · TOUCHE POUR AJOUTER'),
             Opacity(
               opacity: .7,
-              child: _box(Column(children: [for (final m in _plan.outOfReach) _targetRow(m.target, on: false, reason: m.reason)])),
+              child: _box(Column(children: [for (final m in _plan.outOfReach) _targetRow(m.target, on: false, reason: m.reason, onTap: () => _include(m.target, fromOut: true))])),
             ),
           ],
           if (_runningBefore case final r?) ...[

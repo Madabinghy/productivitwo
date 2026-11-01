@@ -1054,7 +1054,7 @@ décision entre deux (« Lecture 37 min » = pile ce qui couvre la Montre suisse
 estimé × facteur réel / estimé arrondi à 5, routine = `+n` coches restantes (`routineLeft`, minuteur s'il est réglé), relevé = geste
 immédiat ; jamais un bloc ni une routine sans autre enjeu), `compareSniper` (se perd ce soir → palier ce soir → poids / minute),
 `planSniper` (glouton dans le budget, pauses `kSniperPauseMin` 2 min comprises, au plus `kSniperMaxTargets` 8, une cible > 60 min =
-« pour l'Offensive » ; le reste `outOfReach` avec sa raison « ne tient plus avant HH:MM »), `sniperBudget` (temps libre jusqu'au
+« pour l'Offensive » ; le reste `outOfReach` avec sa raison « ne tient plus avant HH:MM »), `adjustPlan` / `fitsPlan` (2026-11-01, bug user : écarter une cible faisait entrer la suivante hors de portée, le temps visé ne bougeait pas — le plan est calculé une fois, écarter le retire vraiment, une cible hors de portée n'entre que touchée à la main et si elle tient), `sniperBudget` (temps libre jusqu'au
 prochain bloc À FAIRE hors blocs de temps, sinon fin de journée active), `sniperPrecision`. Session = `ChainRun` `kind:"sniper"`
 (`doneCount` = cibles touchées, `total` = visées) ; badge **Sniper** (`sniper`, Discipline, symbole `crosshair`, 1 / 5 / 15) : une
 session compte quand toutes les cibles visées tombent, au moins 3 (`sniperCounts`). Jamais compté pour Enchaîneur.

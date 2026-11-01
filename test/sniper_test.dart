@@ -79,4 +79,20 @@ void main() {
     expect(sniperCounts(run(4, 5)), isFalse);
     expect(sniperCounts(run(2, 2)), isFalse);
   });
+
+  test('écarter retire vraiment la cible ; un hors de portée n’entre que si on l’ajoute', () {
+    final stakes = [timed(lecture, 30, w: 30), timed(Activity(id: 'b', domainId: 'd', name: 'B', goalMin: 10), 30, w: 20), timed(Activity(id: 'c', domainId: 'd', name: 'C', goalMin: 10), 30, w: 10)];
+    final base = planSniper(stakes: stakes, budgetMin: 64);
+    expect(base.aimed.map((t) => t.title), ['Lecture', 'B']);
+    expect(base.totalMin, 62);
+    final ex = adjustPlan(base, excluded: {'activity:lec'});
+    expect(ex.aimed.map((t) => t.title), ['B']);
+    expect(ex.totalMin, 30);
+    final c = base.outOfReach.single.target;
+    expect(fitsPlan(ex, c), isTrue);
+    final added = adjustPlan(base, excluded: {'activity:lec'}, added: {c.key});
+    expect(added.aimed.map((t) => t.title), ['B', 'C']);
+    expect(added.outOfReach, isEmpty);
+    expect(fitsPlan(base, c), isFalse);
+  });
 }
