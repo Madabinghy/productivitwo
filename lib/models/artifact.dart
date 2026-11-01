@@ -82,6 +82,10 @@ class Recipe {
   List<ShoppingItem> ingredients;
   int timesCooked;
   DateTime? lastCookedAt;
+  /// Portions que donnent les ingrédients (2026-11-01, Mes plats) : un plat ×3
+  /// remplit les midis suivants avec les restes.
+  int portions;
+  int? minutes; // temps de préparation
   bool deleted;
 
   Recipe({
@@ -90,6 +94,8 @@ class Recipe {
     List<ShoppingItem>? ingredients,
     this.timesCooked = 0,
     this.lastCookedAt,
+    this.portions = 2,
+    this.minutes,
     this.deleted = false,
   })  : id = id ?? _uuid.v4(),
         ingredients = ingredients ?? [];
@@ -100,6 +106,8 @@ class Recipe {
         'ingredients': ingredients.map((i) => i.toJson()).toList(),
         'timesCooked': timesCooked,
         'lastCookedAt': lastCookedAt?.toIso8601String(),
+        'portions': portions,
+        if (minutes != null) 'minutes': minutes,
         'deleted': deleted,
       };
 
@@ -113,6 +121,8 @@ class Recipe {
         lastCookedAt: j['lastCookedAt'] != null
             ? DateTime.tryParse(j['lastCookedAt'])
             : null,
+        portions: ((j['portions'] as num?)?.toInt() ?? 2).clamp(1, 12),
+        minutes: (j['minutes'] as num?)?.toInt(),
         deleted: j['deleted'] == true,
       );
 }

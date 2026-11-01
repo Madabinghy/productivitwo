@@ -874,6 +874,20 @@ les activités »), 8 SEMAINES (barres empilées, pointillés = engagement, phra
 (`linkedActivityId`, Footing → Courir) prend son +1 du jour si elle n'en a pas (`AppLogic._checkSportRoutine`, tick minute, une
 fois par session ; SnackBar « Footing +1 · séance comptée » via `onSportRoutineCounted`).
 
+## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
+
+Une feuille « Repas » comme Sommeil et Sport ; le plat est la seule chose à saisir, une fois (nom, portions, temps, ingrédients
+avec quantités) ; la semaine pose les plats (un plat ×3 remplit les midis suivants avec les restes) ; la liste de courses fait la
+somme des ingrédients (« Pâtes 1 kg · pour Bolognaise, Pâtes au thon »). Reprend l'ancienne bibliothèque `recipes` et la liste de
+l'artefact `weekly_menu` (lisible par `get_shopping_list`). Les repas restent des besoins de base : seuls « Cuisiner en avance » et
+« Courses » peuvent devenir des blocs. **Lot 1 livré (Mes plats)** : `Recipe.portions` (défaut 2) et `Recipe.minutes` ; logique pure
+`utils/meals.dart` (`parseIngredientLine` / `parseIngredients` : « 2 oignons », « 1 kg pâtes », « Bœuf haché 500 g », plusieurs par
+ligne séparés par des virgules ; `ingredientSuggestions` = ingrédients des autres plats, du plus fréquent ; `sortDishes` = les plus
+faits · pas faits depuis `kStaleDishDays` (14) j · pas encore cuisinés ; `sinceLabel`) ; écrans `widgets/dishes_sheet.dart` —
+`showDishesSheet` (recherche plat ou ingrédient, sections, « Nouveau ») et `showDishSheet` (nom, portions − / +, temps, ingrédients
+avec quantité touchable, ✕, ligne d'ajout, suggestions, Créer / Enregistrer, « Retirer ce plat » = `deleted`). Entrée provisoire :
+menu ⋯ « Mes plats » (la feuille Repas du lot 3 la remplacera).
+
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
 Le coach voit ce que l'app mesure en plus des engagements : sommeil, parole tenue, Montre suisse, Métronome, journée posée la

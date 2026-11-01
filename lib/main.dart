@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show showDishesSheet;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'dart:convert';
 import 'dart:io';
@@ -4644,6 +4645,8 @@ class _AppRootState extends State<AppRoot>
                 showProposalsSheet(context, _sync);
               } else if (v == 'orion') {
                 OrionScreen.show(context, _sync);
+              } else if (v == 'dishes') {
+                showDishesSheet(context, sync: _sync);
               } else if (v == 'weekly_review') {
                 showWeekReviewScreen(context, logic, badges: _badges);
               } else if (v == 'filters') {
@@ -4713,6 +4716,14 @@ class _AppRootState extends State<AppRoot>
                   Icon(Icons.smart_toy_outlined, size: 18),
                   SizedBox(width: 12),
                   Text('Orion Stratège'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'dishes',
+                child: Row(children: [
+                  Icon(Icons.restaurant_menu_rounded, size: 18),
+                  SizedBox(width: 12),
+                  Text('Mes plats'),
                 ]),
               ),
               const PopupMenuItem(
