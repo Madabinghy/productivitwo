@@ -128,8 +128,15 @@ Future<void> showCollectionBadgeSheet(BuildContext context, CollectionBadge b,
     backgroundColor: kBSurface,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
+    // Feuille glissante (bug 2026-11-01) : avec beaucoup de cartes, le contenu
+    // dépassait l'écran et le glisser vers le bas ne fermait plus rien.
+    builder: (ctx) => DraggableScrollableSheet(
+      initialChildSize: .85,
+      minChildSize: .4,
+      maxChildSize: .95,
+      expand: false,
+      builder: (ctx, scroll) => SingleChildScrollView(
+        controller: scroll,
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
         child: Column(children: [
           CollectionShield(badge: b, size: 150),
