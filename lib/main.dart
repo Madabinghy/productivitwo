@@ -38,7 +38,7 @@ import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, overdueActionCount, stopTargetCandidates;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, overdueActionCount, stopTargetCandidates, stopTaskCandidates;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show countsForBadges;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/claude_link.dart';
@@ -3235,8 +3235,9 @@ class _AppRootState extends State<AppRoot>
     if (act == null || act.isHabit) return;
     final planned = {for (final b in logic.todayBlocks) if (b.actionId != null) b.actionId!};
     final cands = stopTargetCandidates(_dashboardProjects, logic.state.activeActivities, s.activityId,
-        today: DateTime.now(), plannedIds: planned);
-    if (cands.isEmpty) return;
+        today: DateTime.now(), plannedIds: planned, limit: 5);
+    final tasks = stopTaskCandidates(_dashboardProjects, s.activityId, today: DateTime.now());
+    if (cands.isEmpty && tasks.isEmpty) return;
     String fmt(int m) => m >= 60 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min';
     Future<void>.delayed(const Duration(milliseconds: 350), () async {
       if (!mounted) return;
@@ -3246,13 +3247,13 @@ class _AppRootState extends State<AppRoot>
         builder: (ctx) {
           final cs = Theme.of(ctx).colorScheme;
           return SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text('Ces ${fmt(min)}, c\'était pour quoi ?',
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 2),
-                Text('Actions liées à « ${act.name} », les plus probables d\'abord',
+                Text('Liées à « ${act.name} », les plus probables d\'abord',
                     style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
                 const SizedBox(height: 10),
                 for (var i = 0; i < cands.length; i++)
@@ -3292,21 +3293,66 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   ),
+                if (tasks.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 6),
+                    child: Text('TÂCHES SANS ACTION',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: cs.onSurface.withOpacity(.5))),
+                  ),
+                  for (var j = 0; j < tasks.length; j++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: cs.surfaceContainerHighest.withOpacity(.4),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.pop(ctx, cands.length + j),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(children: [
+                              Icon(Icons.radio_button_unchecked, size: 18, color: cs.primary),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text(tasks[j].task.title,
+                                      maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                  Text(tasks[j].project.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
+                                ]),
+                              ),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Rien de précis')),
               ]),
-            ),
+            )),
           );
         },
       );
       if (picked == null || !mounted) return;
-      final c = cands[picked];
-      s.taskId = c.task?.id;
-      s.actionId = c.action.id;
+      final String label;
+      if (picked < cands.length) {
+        final c = cands[picked];
+        s.taskId = c.task?.id;
+        s.actionId = c.action.id;
+        label = c.action.title;
+      } else {
+        final t = tasks[picked - cands.length];
+        s.taskId = t.task.id;
+        s.actionId = null;
+        label = t.task.title;
+      }
       logic.onChange();
       await _sync.saveSession(s);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
-        content: Text('${fmt(min)} rattachées à « ${c.action.title} »'),
+        content: Text('${fmt(min)} rattachées à « $label »'),
         duration: const Duration(seconds: 3),
       ));
     });

@@ -552,6 +552,28 @@ List<({TaskAction action, Project? project, ProjectTask? task, Activity? activit
   return all.take(limit).toList();
 }
 
+/// Tâches ouvertes SANS action ouverte des projets liés à [activityId]
+/// (2026-11-01, retour user : « Ces n min, c'était pour quoi ? » ne
+/// proposait que les actions, une tâche encore vide n'était jamais un choix).
+/// Tâches à venir exclues, ordre Gantt.
+List<({Project project, ProjectTask task})> stopTaskCandidates(
+  List<Project> projects,
+  String activityId, {
+  required DateTime today,
+  int limit = 3,
+}) {
+  final out = <({Project project, ProjectTask task})>[];
+  for (final p in projects) {
+    if (p.status != 'active' || p.paused || p.linkedActivityId != activityId) continue;
+    for (final t in ganttOrder(p)) {
+      if (t.status == 'done' || t.status == 'skipped' || isUpcomingTask(t, today)) continue;
+      if (t.actions.any((a) => !a.done)) continue;
+      out.add((project: p, task: t));
+    }
+  }
+  return out.take(limit).toList();
+}
+
 /// Actions simples ouvertes (`Activity.ownActions`), par activité.
 List<({Activity activity, List<TaskAction> actions})> ownActionGroups(
   List<Activity> activities, {
