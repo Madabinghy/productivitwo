@@ -1900,6 +1900,9 @@ class AppLogic implements HuntStore {
 
   /// Revues du dimanche par lundi (`data/meta.weekReviews`, `utils/week_review.dart`).
   Map<String, WeekReview> weekReviews = const {};
+  /// Le doc meta a été lu au moins une fois (revues, réglages) : les cartes
+  /// qui en dépendent attendent ce premier passage pour ne pas clignoter.
+  bool metaLoaded = false;
 
   /// Enregistre la revue de la semaine qui commence à [monday].
   Future<void> saveWeekReview(String monday, WeekReview r) async {

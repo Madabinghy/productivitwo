@@ -951,7 +951,7 @@ HH:MM cette semaine » (texte de décision seulement) ; lien « Mise au clair »
 décisions, « Poser la semaine → » = `showPlanScreen(week: true)` qui ouvre directement la Planification de la semaine). Entrées :
 `WeekReviewCard` en tête d'Aujourd'hui pendant `reviewWindowOpen` tant que la semaine n'est pas revue (« Plus tard » =
 `week_review_later` en SharedPreferences), `WeekIntentionCard` « Ton cap de la semaine » la semaine suivante (✕ =
-`week_intention_hidden`), « Revue de la semaine » dans le choix de la tuile RECUL et les modes de Ma vie (plus dans le menu ⋯ depuis le 2026-11-01).
+`week_intention_hidden`) — les deux attendent la première lecture du doc meta (`AppLogic.metaLoaded`, posé par le flux meta de main.dart) et des préférences (bug 2026-11-01 : la carte apparaissait au démarrage puis disparaissait), « Revue de la semaine » dans le choix de la tuile RECUL et les modes de Ma vie (plus dans le menu ⋯ depuis le 2026-11-01).
 
 ## Minimum des activités (calibration, 2026-10-30)
 
