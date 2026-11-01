@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/fiche_cache.dart' show FicheCache;
-import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf;
+import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf, linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask;
 import 'package:productivitwo_v1/utils/parole.dart';
@@ -1174,6 +1174,9 @@ class _PlanScreenState extends State<PlanScreen> {
   final List<WeekWant> _wants = [];
   final List<(int, String, int)> _prefill = []; // jour, activité, minutes (prépa la veille d'une séance)
   Map<String, PieceSpec> _spec = const {};
+  Map<String, int> _datedMin = const {};
+  final Set<String> _removed = {};
+  int _weekUnfit = 0;
   Set<String> _on = {};
   List<List<WeekPiece>> _pieces = [for (var i = 0; i < 7; i++) <WeekPiece>[]];
   String? _sel;
@@ -1246,9 +1249,22 @@ class _PlanScreenState extends State<PlanScreen> {
   void _buildWeek(List<StrategicObjective> objectives) {
     final days = _weekDays;
     final dated = [for (final _ in days) <String>[]];
+    // Le temps des dates déjà prises, par activité : une séance d'Interventions
+    // compte pour Interventions (retour user 2026-11-01 : pas de double emploi).
+    final datedMin = <String, int>{};
+    final countedTasks = <String>{};
+    final projById = {for (final p in logic.currentProjects) p.id: p};
     for (var i = 0; i < 7; i++) {
-      for (final b in _weekBlocks[i].where((b) => b.status == 'pending')) {
-        if (b.gcalEventId != null || b.kind == 'session') dated[i].add('${b.title} · ${b.startTime}');
+      // Sur des copies : l'appariement miroir ↔ séance ne s'écrit jamais.
+      final copies = [for (final b in _weekBlocks[i]) ScheduleBlock.from(b.toJson())];
+      linkMirrorsToSessions(copies, logic.currentProjects, days[i]);
+      for (final b in copies.where((b) => b.status == 'pending')) {
+        if (b.gcalEventId == null && b.kind != 'session') continue;
+        if (isBasicNeedName(b.title)) continue;
+        dated[i].add('${b.title} · ${b.startTime}');
+        final act = b.activityId ?? projById[b.projectId]?.linkedActivityId;
+        if (act != null) datedMin[act] = (datedMin[act] ?? 0) + b.durationMin;
+        if (b.taskId != null) countedTasks.add(b.taskId!);
       }
     }
     _wants.clear();
@@ -1271,6 +1287,15 @@ class _PlanScreenState extends State<PlanScreen> {
         if (i < 0 || i > 6) continue;
         final t = it.milestone.title;
         if (!dated[i].any((d) => d.startsWith(t))) dated[i].add(t);
+        if (p.linkedActivityId != null && countedTasks.add(it.milestone.id)) {
+          final n = it.native;
+          int toMin(String hm) {
+            final x = hm.split(':');
+            return x.length == 2 ? (int.tryParse(x[0]) ?? 0) * 60 + (int.tryParse(x[1]) ?? 0) : 0;
+          }
+          final len = n == null ? 0 : toMin(n.endTime) - toMin(n.startTime);
+          datedMin[p.linkedActivityId!] = (datedMin[p.linkedActivityId!] ?? 0) + (len > 0 ? len : 60);
+        }
         if (it.prep != null && it.prep!.status != 'done' && p.linkedActivityId != null) {
           _prefill.add((i > 0 ? i - 1 : 0, p.linkedActivityId!, 60));
           if (!_wants.any((w) => w.activityId == p.linkedActivityId)) {
@@ -1280,6 +1305,7 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     }
     _weekDated = dated;
+    _datedMin = datedMin;
     // Le contrat : minimums (Montre suisse), engagements des objectifs, plans en retard.
     for (final a in logic.state.activeActivities) {
       if (a.isHabit || a.goalMin <= 0 || isBasicNeedName(a.name) || logic.isActivitySnoozed(a.id, days.first) || logic.isDomainResting(a.domainId)) continue;
@@ -1302,7 +1328,79 @@ class _PlanScreenState extends State<PlanScreen> {
         .length;
   }
 
-  int _freeOf(int i) => freeMinutes(freeGaps(_weekBlocks[i], _window));
+  int _freeOf(int i) => freeMinutes(freeGaps(_dayBlocks(i), _window));
+
+  /// Les blocs déjà posés du jour, moins ceux qu'on retire ici.
+  List<ScheduleBlock> _dayBlocks(int i) => _weekBlocks[i].where((b) => !_removed.contains(b.id)).toList();
+
+  bool _removable(ScheduleBlock b) => b.docDate == null && b.gcalEventId == null && b.kind != 'session' && b.status == 'pending';
+
+  /// « Ce qui prend ta journée » : les blocs déjà posés, la journée active ;
+  /// retirer un bloc rend son temps (appliqué à la validation).
+  Future<void> _showDay(int i) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _card,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        final blocks = [..._weekBlocks[i]]..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+        String hm(int m) => '${(m ~/ 60 % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+        final winLen = _window.endMin - _window.startMin;
+        final free = _freeOf(i);
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .8),
+            child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
+              Text('${_dayLong[i][0].toUpperCase()}${_dayLong[i].substring(1)} ${_weekDays[i].day} · ta journée', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 4),
+              Text('Journée active ${hm(_window.startMin)} → ${hm(_window.endMin)} (${_short(winLen)}) · déjà pris ${_short(winLen - free)} · libre ${_short(free)}',
+                  style: const TextStyle(fontSize: 12.5, color: _text3)),
+              const SizedBox(height: 10),
+              if (blocks.isEmpty) const Text('Rien de posé ce jour-là.', style: TextStyle(color: _text2)),
+              for (final b in blocks)
+                Builder(builder: (_) {
+                  final gone = _removed.contains(b.id);
+                  final st = blockStartMin(b);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(children: [
+                      SizedBox(width: 96, child: Text('${hm(st)} → ${hm(st + b.durationMin)}', style: const TextStyle(fontSize: 12.5, color: _text3))),
+                      Expanded(
+                        child: Text(
+                          '${b.gcalEventId != null ? '📅 ' : ''}${b.title.isEmpty ? 'Bloc' : b.title}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 14, color: gone ? _text3 : Colors.white, decoration: gone ? TextDecoration.lineThrough : null),
+                        ),
+                      ),
+                      Text(_short(b.durationMin), style: const TextStyle(fontSize: 12, color: _text3)),
+                      SizedBox(
+                        width: 40,
+                        child: _removable(b)
+                            ? IconButton(
+                                tooltip: gone ? 'Garder' : 'Retirer',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () {
+                                  setLocal(() => gone ? _removed.remove(b.id) : _removed.add(b.id));
+                                  setState(() {});
+                                },
+                                icon: Icon(gone ? Icons.undo_rounded : Icons.close_rounded, size: 18, color: _text3),
+                              )
+                            : null,
+                      ),
+                    ]),
+                  );
+                }),
+              const SizedBox(height: 10),
+              const Text('« Libre » = la journée active moins ce qui est déjà posé. Les blocs retirés ici ne le sont qu\'à la validation.',
+                  style: TextStyle(fontSize: 12, color: _text3, height: 1.4)),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
 
   void _classify() {
     final st = logic.state;
@@ -1321,7 +1419,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
   /// Le découpage par défaut d'une envie (famille), la prépa des séances en plus.
   PieceSpec _defaultSpec(WeekWant w) {
-    final spec = pieceSpecOf(_familyOf(w.activityId), w.weeklyMin);
+    final spec = pieceSpecOf(_familyOf(w.activityId), (w.weeklyMin - (_datedMin[w.activityId] ?? 0)).clamp(0, 1 << 20).toInt());
     final prep = _prefill.where((p) => p.$2 == w.activityId).length;
     if (spec.count == 0 && prep > 0 && _familyOf(w.activityId) != PlanFamily.base) return PieceSpec(prep, 60);
     return spec;
@@ -1407,6 +1505,9 @@ class _PlanScreenState extends State<PlanScreen> {
     final placeable = _wants.where((w) => (_spec[w.activityId]?.count ?? 0) > 0 || w.reason == 'ajouté').toList();
     final daily = _wants.where((w) => w.weeklyMin > 0 && _familyOf(w.activityId) == PlanFamily.daily).toList();
     final base = _wants.where((w) => w.weeklyMin > 0 && _familyOf(w.activityId) == PlanFamily.base).toList();
+    final covered = _wants
+        .where((w) => w.weeklyMin > 0 && (_datedMin[w.activityId] ?? 0) > 0 && (_spec[w.activityId]?.count ?? 0) == 0 && _familyOf(w.activityId) != PlanFamily.base && _familyOf(w.activityId) != PlanFamily.daily)
+        .toList();
     Widget noBlock(String label, List<WeekWant> ws) => Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -1454,7 +1555,11 @@ class _PlanScreenState extends State<PlanScreen> {
                   const SizedBox(width: 5),
                   Flexible(
                     child: Text(
-                      [if (w.weeklyMin > 0) fmtMin(w.weeklyMin), w.reason].join(' · '),
+                      [
+                        if (w.weeklyMin > 0) fmtMin(w.weeklyMin),
+                        if ((_datedMin[id] ?? 0) > 0) 'dont ${fmtMin(_datedMin[id]!)} déjà dans l\'agenda',
+                        w.reason,
+                      ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12, color: _text3),
@@ -1550,13 +1655,14 @@ class _PlanScreenState extends State<PlanScreen> {
           ),
           const SizedBox(height: 6),
           const Text('Touche « 2 × 45 » pour changer la durée · appui long = la façon de la placer.', style: TextStyle(fontSize: 12, color: _text3)),
-          if (daily.isNotEmpty || base.isNotEmpty || _weekRoutines > 0)
+          if (covered.isNotEmpty || daily.isNotEmpty || base.isNotEmpty || _weekRoutines > 0)
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('SANS BLOC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: _text3)),
+                if (covered.isNotEmpty) noBlock('Couvert par tes dates :', covered),
                 if (daily.isNotEmpty) noBlock('Au fil de la journée :', daily),
                 if (base.isNotEmpty) noBlock('Déjà dans ta journée :', base),
                 const SizedBox(height: 6),
@@ -1589,7 +1695,6 @@ class _PlanScreenState extends State<PlanScreen> {
     final id = _sel;
     if (id == null) return;
     final s = _spec[id]!;
-    if (!fitsDay(_freeOf(day), _pieces[day], s.minutes)) return;
     setState(() {
       _pieces[day].add(WeekPiece(id, s.minutes, reason: 'Placé par toi.'));
       if ((_remaining[id] ?? 0) == 0) _sel = null;
@@ -1782,11 +1887,13 @@ class _PlanScreenState extends State<PlanScreen> {
       final left = free - load;
       final ratio = free <= 0 ? (load > 0 ? 1.0 : 0.0) : (load / free).clamp(0.0, 1.0);
       final fits = sel != null && left >= selMin;
-      final dim = sel != null && !fits;
+      // Plein : on peut poser quand même (retour user 2026-11-01), signalé en ambre.
+      final over = sel != null && !fits;
+      final taken = _dayBlocks(i).length;
       return Opacity(
-        opacity: dim ? .45 : 1,
+        opacity: over ? .8 : 1,
         child: GestureDetector(
-          onTap: fits ? () => _place(i) : null,
+          onTap: sel != null ? () => _place(i) : null,
           child: Container(
             margin: const EdgeInsets.only(top: 8),
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1805,9 +1912,20 @@ class _PlanScreenState extends State<PlanScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(left <= 0 ? 'plein' : 'libre ${_short(left)}', style: TextStyle(fontSize: 11.5, color: left < 30 ? _gold : _text3)),
+                Text(left < 0 ? 'dépasse ${_short(-left)}' : (left == 0 ? 'plein' : 'libre ${_short(left)}'), style: TextStyle(fontSize: 11.5, color: left < 30 ? _gold : _text3)),
               ]),
-              if (_weekDated[i].isNotEmpty || _pieces[i].isNotEmpty || fits) const SizedBox(height: 7),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showDay(i),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(
+                    taken == 0 ? 'rien de posé · voir la journée ›' : 'déjà posé : $taken bloc${taken > 1 ? 's' : ''} · ${_short(_window.endMin - _window.startMin - free)} › voir',
+                    style: const TextStyle(fontSize: 12, color: _text3, decoration: TextDecoration.underline, decorationColor: _text3),
+                  ),
+                ),
+              ),
+              if (_weekDated[i].isNotEmpty || _pieces[i].isNotEmpty || sel != null) const SizedBox(height: 7),
               Wrap(spacing: 5, runSpacing: 5, children: [
                 for (final t in _weekDated[i])
                   Container(
@@ -1816,11 +1934,11 @@ class _PlanScreenState extends State<PlanScreen> {
                     child: Text('📅 $t', style: const TextStyle(fontSize: 11.5, color: Colors.white)),
                   ),
                 for (var k = 0; k < _pieces[i].length; k++) pieceChip(i, k),
-                if (fits)
+                if (sel != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(color: kPlanAccent, borderRadius: BorderRadius.circular(8)),
-                    child: Text('+ ${_activityName(sel)} ici', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _ink)),
+                    decoration: BoxDecoration(color: fits ? kPlanAccent : Colors.transparent, borderRadius: BorderRadius.circular(8), border: fits ? null : Border.all(color: _gold)),
+                    child: Text(fits ? '+ ${_activityName(sel)} ici' : '+ ${_activityName(sel)} quand même', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: fits ? _ink : _gold)),
                   ),
               ]),
             ]),
@@ -1877,11 +1995,12 @@ class _PlanScreenState extends State<PlanScreen> {
                   final s = _spec[w.activityId]!;
                   final done = placedCount(_pieces, w.activityId);
                   final ok = done >= s.count;
+                  final dm = _datedMin[w.activityId] ?? 0;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     child: Row(children: [
                       Expanded(child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white))),
-                      Text('${fmtMin(done * s.minutes)} / ${fmtMin(s.total)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _text3)),
+                      Text('${fmtMin(done * s.minutes + dm)} / ${fmtMin(s.total + dm)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _text3)),
                       SizedBox(width: 22, child: ok ? const Icon(Icons.check_rounded, size: 16, color: _green) : null),
                     ]),
                   );
@@ -1969,16 +2088,22 @@ class _PlanScreenState extends State<PlanScreen> {
     final now = DateTime.now();
     final days = _weekDays;
     _weekPosed.clear();
+    _weekUnfit = 0;
     for (var i = 0; i < 7; i++) {
       final kept = _pieces[i].where((p) => !p.ghost).toList()..sort((a, b) => _famOrder.indexOf(_familyOf(a.id)).compareTo(_famOrder.indexOf(_familyOf(b.id))));
       final wants = [
         for (final p in kept)
           PlanWant(activityId: p.id, title: _activityName(p.id), minutes: p.minutes, reason: _wants.where((w) => w.activityId == p.id).map((w) => w.reason).firstOrNull ?? ''),
       ];
-      if (wants.isEmpty) continue;
-      final planned = proposeDay(freeGaps(_weekBlocks[i], _window), wants, wants.fold(0, (s, w) => s + w.minutes));
-      if (planned.isEmpty) continue;
+      final drop = _weekBlocks[i].where((b) => _removed.contains(b.id) && _removable(b)).map((b) => b.id).toSet();
+      if (wants.isEmpty && drop.isEmpty) continue;
+      final planned = wants.isEmpty ? <PlannedBlock>[] : proposeDay(freeGaps(_dayBlocks(i), _window), wants, wants.fold(0, (s, w) => s + w.minutes));
+      _weekUnfit += wants.length - planned.length;
+      if (planned.isEmpty && drop.isEmpty) continue;
       final doc = _weekDocs[i] ?? DailySchedule(date: ymdOf(days[i]));
+      for (final b in doc.blocks) {
+        if (drop.contains(b.id)) b.status = 'deleted';
+      }
       doc.blocks.addAll(planned.map(planBlockOf));
       doc
         ..generatedBy = 'plan'
@@ -2004,6 +2129,11 @@ class _PlanScreenState extends State<PlanScreen> {
       _top('LA SEMAINE EST POSÉE', 3),
       _title('${fmtMin(total)} réparties · $dated date${dated > 1 ? 's' : ''} tenue${dated > 1 ? 's' : ''}'),
       Text('Planifiée en ${spent < 1 ? 'moins d\'une' : spent} min${_chrono ? ' · chrono sur Planification' : ''}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+      if (_weekUnfit > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('$_weekUnfit bloc${_weekUnfit > 1 ? 's' : ''} sans créneau libre dans la journée active : pas posé${_weekUnfit > 1 ? 's' : ''}.', style: const TextStyle(fontSize: 13, color: _gold)),
+        ),
       const SizedBox(height: 10),
       Expanded(
         child: ListView(children: [
