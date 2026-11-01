@@ -117,4 +117,16 @@ void main() {
     expect(find.text('5 cartes · 15 pts'), findsOneWidget);
     expect(find.text('Ranger dans l’album'), findsOneWidget);
   });
+
+  test('feuille d’un badge : les cartes qu’il concerne', () {
+    final deck = BadgeDeck([
+      st('a', BadgeFamily.discipline, const [1, 5, 15], 3),
+      st('b', BadgeFamily.discipline, const [1, 5], 0),
+      st('c', BadgeFamily.days, const [1, 5], 1),
+    ]);
+    final all = {for (final b in collectionBadges(deck)) b.id: b};
+    expect(cardsOfCollection(all['family-discipline']!, deck).map((c) => c.def.id), ['a', 'b']);
+    expect(cardsOfCollection(all['collector']!, deck).map((c) => c.def.id), ['a', 'c']);
+    expect(cardsOfCollection(all['legend']!, deck).map((c) => c.def.id), ['a']);
+  });
 }

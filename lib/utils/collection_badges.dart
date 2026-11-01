@@ -175,3 +175,27 @@ List<(CollectionBadge, String)> cardFeeds(BadgeState card, BadgeDeck deck) {
   }
   return out;
 }
+
+/// Les cartes que montre la feuille d'un badge de collection (2026-11-01,
+/// retour user) : une famille = toutes ses cartes, dans l'ordre de l'album ;
+/// Collectionneur = les cartes gagnées ; Écrin d'or = or et mieux ; Légende =
+/// les légendaires. Les plus belles d'abord.
+List<BadgeState> cardsOfCollection(CollectionBadge b, BadgeDeck deck) {
+  int byRarity(BadgeState x, BadgeState y) {
+    final r = rarityOf(y).index.compareTo(rarityOf(x).index);
+    return r != 0 ? r : x.def.name.compareTo(y.def.name);
+  }
+
+  if (b.id.startsWith('family-')) {
+    final f = BadgeFamily.values.where((x) => x.name == b.id.substring(7)).firstOrNull;
+    if (f == null) return const [];
+    return albumOrder(deck.ofFamily(f).where((x) => x.def.measured).toList());
+  }
+  final List<BadgeState> picked = switch (b.id) {
+    'collector' => deck.badges.where((x) => x.acquired).toList(),
+    'gold-case' => deck.badges.where((x) => rarityOf(x).index >= CardRarity.or.index).toList(),
+    'legend' => deck.badges.where((x) => rarityOf(x) == CardRarity.legend).toList(),
+    _ => <BadgeState>[],
+  };
+  return picked..sort(byRarity);
+}

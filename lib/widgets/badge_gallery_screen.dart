@@ -268,7 +268,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         ),
         const SizedBox(height: 12),
         Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final b in all) CollectionPlaque(badge: b, width: w, onTap: () => showCollectionBadgeSheet(context, b)),
+          for (final b in all) CollectionPlaque(badge: b, width: w, onTap: () => _openCollection(deck, b)),
         ]),
         const SizedBox(height: 6),
         const Text('Les cartes se récoltent, les badges se méritent : chaque carte rapporte des points selon son cadre.',
@@ -497,7 +497,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       };
       head = InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showCollectionBadgeSheet(context, fam),
+        onTap: () => _openCollection(deck, fam),
         child: Container(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
           decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
@@ -558,6 +558,9 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   String _num(num v) => _numOf(v);
 
   String _shortDate(DateTime d) => _shortDateOf(d);
+
+  void _openCollection(BadgeDeck deck, CollectionBadge b) =>
+      showCollectionBadgeSheet(context, b, cards: cardsOfCollection(b, deck), onCard: _showFacts);
 
   void _showFacts(BadgeState b) => showBadgeSheet(
         context,
@@ -647,7 +650,8 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           const SizedBox(height: 4),
           for (final (cb, note) in cardFeeds(b, deck))
             InkWell(
-              onTap: () => showCollectionBadgeSheet(context, cb),
+              onTap: () => showCollectionBadgeSheet(context, cb,
+                  cards: cardsOfCollection(cb, deck), onCard: (c) => showBadgeSheet(context, c, logic: logic, facts: facts, actions: actions, deck: deck)),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(children: [

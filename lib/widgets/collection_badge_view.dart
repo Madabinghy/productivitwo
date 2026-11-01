@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart' show BadgeState;
+import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
@@ -111,7 +113,10 @@ class _Screw extends StatelessWidget {
 
 /// La fiche d'un badge de collection : l'écusson en grand, où on en est, la
 /// règle, ce qu'il manque.
-Future<void> showCollectionBadgeSheet(BuildContext context, CollectionBadge b) {
+/// [cards] = les cartes du badge (`cardsOfCollection`), en grille sous la
+/// jauge ; tap = [onCard] (fiche de la carte).
+Future<void> showCollectionBadgeSheet(BuildContext context, CollectionBadge b,
+    {List<BadgeState> cards = const [], void Function(BadgeState card)? onCard}) {
   final rule = switch (b.id) {
     'collector' => 'Chaque carte rapporte des points selon son cadre : bronze 1 · argent 2 · or 3 · légendaire 5. Une carte qui monte de cadre rapporte la différence. Paliers : ${kCollectorTiers.join(' · ')} pts.',
     'gold-case' => 'Les cartes en or ou légendaires. Paliers : ${kGoldCaseTiers.join(' · ')}.',
@@ -151,6 +156,28 @@ Future<void> showCollectionBadgeSheet(BuildContext context, CollectionBadge b) {
             ),
             const SizedBox(height: 6),
             Align(alignment: Alignment.centerLeft, child: Text(b.missing.join(' · '), style: const TextStyle(fontSize: 14, height: 1.4, color: kBText))),
+          ],
+          if (cards.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                  b.id.startsWith('family-')
+                      ? 'LES CARTES · ${cards.where((c) => c.acquired).length} / ${cards.length}'
+                      : 'LES CARTES · ${cards.length}',
+                  style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700, color: kBText3)),
+            ),
+            const SizedBox(height: 8),
+            LayoutBuilder(builder: (ctx, c) {
+              final w = ((c.maxWidth - 2 * 10) / 3).floorToDouble();
+              return Wrap(spacing: 10, runSpacing: 10, children: [
+                for (final card in cards)
+                  GestureDetector(
+                    onTap: onCard == null ? null : () => onCard(card),
+                    child: BadgeCardView(state: card, width: w),
+                  ),
+              ]);
+            }),
           ],
           const SizedBox(height: 16),
           Container(
