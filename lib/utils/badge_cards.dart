@@ -104,3 +104,48 @@ List<BadgeState> albumOrder(List<BadgeState> badges) {
       return a.def.name.compareTo(b.def.name);
     });
 }
+
+/// Une carte à retourner : gagnée ou montée de rareté depuis la dernière fois.
+class NewCard {
+  final BadgeState badge;
+  /// Rareté d'avant (none = nouvelle carte).
+  final CardRarity before;
+  const NewCard(this.badge, this.before);
+  CardRarity get after => rarityOf(badge);
+  bool get upgrade => before != CardRarity.none;
+}
+
+/// Les cartes à retourner : palier atteint au-delà de celui déjà vu
+/// ([seen] = badge → palier vu). Un palier qui ne change pas la rareté se
+/// retourne aussi (le cadre ne bouge pas, les points si). Ordre : la moins
+/// rare d'abord, pour finir sur la plus belle.
+List<NewCard> newCards(BadgeDeck deck, Map<String, int> seen) {
+  final out = <NewCard>[];
+  for (final b in deck.badges) {
+    if (!b.acquired) continue;
+    final was = seen[b.def.id] ?? 0;
+    if (b.level <= was) continue;
+    final before = was <= 0 ? CardRarity.none : rarityOf(BadgeState(def: b.def, level: was, value: b.def.tiers[(was - 1).clamp(0, b.def.tiers.length - 1)]));
+    out.add(NewCard(b, before));
+  }
+  out.sort((a, c) {
+    final r = a.after.index.compareTo(c.after.index);
+    return r != 0 ? r : a.badge.def.name.compareTo(c.badge.def.name);
+  });
+  return out;
+}
+
+/// Ce qui est vu une fois les cartes retournées.
+Map<String, int> seenOf(BadgeDeck deck) => {
+      for (final b in deck.badges)
+        if (b.acquired) b.def.id: b.level,
+    };
+
+/// « Nouvelle carte » / « Passe en or » / « Palier 7 j ».
+String newCardLine(NewCard c) {
+  final b = c.badge;
+  if (!c.upgrade) return 'Nouvelle carte';
+  if (c.after != c.before) return 'Passe en ${rarityLabel(c.after).toLowerCase()}';
+  final t = b.def.tiers[(b.level - 1).clamp(0, b.def.tiers.length - 1)];
+  return 'Palier ${fmtInt(t)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}';
+}

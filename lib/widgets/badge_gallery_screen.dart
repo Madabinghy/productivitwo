@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
+import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
 import 'package:productivitwo_v1/widgets/watch_pace_view.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
@@ -446,6 +447,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         state: b,
         width: width,
         tonight: tonight && !b.acquired,
+        isNew: CardSeenStore.isNew(b),
         footer: tonight && !b.acquired && !b.showGauge ? 'ce soir ?' : cardFooter(b, date: _shortDate),
       ),
     );

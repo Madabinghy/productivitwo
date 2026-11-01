@@ -1366,6 +1366,13 @@ via `BadgePainter.paintSymbol` sur le fond de sa famille `familyArtColor` / `fam
 « ce soir ? », dos rayé « ? » + indice, pastille NOUVEAU). Galerie (`badge_gallery_screen.dart`) : en-tête album « k / n cartes ·
 x or · paliers » + barre, trois cartes par rangée par famille (`albumOrder`) ; fiche d'un badge : la carte en tête et « les paliers
 = les cadres » (`_CardLadder`). `BadgeView` (écusson) reste pour les petites tailles (lignes, tuiles).
+**Lot 2 livré (une carte tombe)** : `newCards(deck, seen)` / `seenOf` / `newCardLine` (« Nouvelle carte » · « Passe en argent » ·
+« Palier 7 j ») ; paliers vus par badge sur l'appareil (`lib/card_seen_store.dart`, `CardSeenStore`, SharedPreferences
+`badge_cards_seen` ; premier passage = tout ce qui est gagné compte vu, pas d'avalanche). `widgets/card_reveal.dart` :
+`CardRevealPrompt` en tête d'Aujourd'hui (sous `PendingRunCard`, « n cartes à retourner », rouverte d'elle-même une fois par
+lancement) → `showCardReveal` / `CardRevealScreen` (une carte à la fois, de dos, « Retourner » ou tap = rotation 3D + halo de la
+rareté, « Carte or · Sniper », prochain palier, Carte suivante / Fermer · Voir l'album ; tout ce qui a été montré passe vu).
+Pastille NOUVEAU dans l'album tant qu'une carte n'est pas retournée. Remplace `UnlockSignalCard` (plus affichée).
 
 ## Règles du jeu en place (2026-10-30)
 
