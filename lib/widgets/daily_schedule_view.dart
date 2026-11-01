@@ -338,7 +338,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// faire hors agenda passe par « Pourquoi ? » — déplacer, lâcher (compte
   /// comme non fait), empêché (ne compte pas), posé par erreur (effacé).
   Future<void> _removeBlock(ScheduleBlock block) async {
-    if (block.gcalEventId != null || block.status != 'pending' || block.isPrep) {
+    if (block.status != 'pending' || block.isPrep) {
       await _deleteBlock(block);
       return;
     }

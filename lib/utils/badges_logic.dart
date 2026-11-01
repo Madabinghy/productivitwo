@@ -399,8 +399,10 @@ class DayScore {
 /// Bloc qui compte pour les journées (parfaite, solide) : bloc normal ou deep
 /// work, hors miroir d'agenda, fait ou à faire. Partagé avec `badge_today.dart`.
 /// Un bloc LÂCHÉ (`skipped` + [kSkipLetGo]) compte aussi : comme non fait.
+/// Un rendez-vous d'agenda lâché compte aussi (retour user 2026-11-01 : c'était un engagement).
 bool countsForBadges(ScheduleBlock b) =>
-    (b.kind == 'normal' || b.kind == 'deepwork') && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending' || isLetGoBlock(b));
+    (b.kind == 'normal' || b.kind == 'deepwork') &&
+    (isLetGoBlock(b) || (b.gcalEventId == null && (b.status == 'done' || b.status == 'pending')));
 
 /// Score d'un jour vécu : routines quotidiennes dues (créées avant ce jour,
 /// non supprimées) et blocs du programme (hors miroirs d'agenda, sautés,

@@ -154,7 +154,7 @@ bool capHeld(DailySchedule s) {
   if (at == null || p.length != 3) return false;
   final day = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
   if (!at.isBefore(day)) return false;
-  final counted = s.blocks.where((b) => b.gcalEventId == null && (b.status == 'pending' || b.status == 'done' || isLetGoBlock(b))).toList();
+  final counted = s.blocks.where((b) => isLetGoBlock(b) || (b.gcalEventId == null && (b.status == 'pending' || b.status == 'done'))).toList();
   if (counted.isEmpty) return false;
   return counted.where((b) => b.status == 'done').length / counted.length >= kCapHeldRatio;
 }

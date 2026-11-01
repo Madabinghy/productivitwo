@@ -14,6 +14,9 @@ const _kMoveColor = Color(0xFF9DB8FF);
 
 Future<RemoveBlockChoice?> showRemoveBlockSheet(BuildContext context, ScheduleBlock block, {bool flemme = false}) {
   final cs = Theme.of(context).colorScheme;
+  // Rendez-vous de Google Agenda : il se déplace dans l'agenda ; lâché ou
+  // empêché, le rendez-vous y reste (seule la trace change ici).
+  final mirror = block.gcalEventId != null;
   Widget option(RemoveBlockChoice c, String icon, Color color, String title, String text, String cons) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Material(
@@ -83,13 +86,19 @@ Future<RemoveBlockChoice?> showRemoveBlockSheet(BuildContext context, ScheduleBl
                 ),
               ]),
             ),
-          option(RemoveBlockChoice.move, '↪', _kMoveColor, 'Je le déplace', 'Plus tard aujourd’hui ou demain.', 'rien n’est perdu'),
+          if (!mirror) option(RemoveBlockChoice.move, '↪', _kMoveColor, 'Je le déplace', 'Plus tard aujourd’hui ou demain.', 'rien n’est perdu'),
+          if (mirror)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text('Rendez-vous de ton agenda : pour le déplacer, fais-le dans Google Agenda. Lâché ou empêché, il y reste.',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6), height: 1.35)),
+            ),
           option(RemoveBlockChoice.letGo, '✋', kLetGoColor, 'Je lâche ce bloc', 'J’aurais pu. Je choisis de ne pas le faire.', 'compte comme non fait'),
           option(RemoveBlockChoice.prevented, '⛔', _kPreventedColor, 'J’ai été empêché', 'Hors de mon contrôle : malade, imprévu, annulé.',
               'ne compte pas'),
           TextButton(
             onPressed: () => Navigator.pop(ctx, RemoveBlockChoice.mistake),
-            child: Text('Posé par erreur · l’effacer', style: TextStyle(color: cs.onSurface.withValues(alpha: .55), decoration: TextDecoration.underline)),
+            child: Text(mirror ? 'Posé par erreur · le masquer ou le supprimer de l’agenda' : 'Posé par erreur · l’effacer', style: TextStyle(color: cs.onSurface.withValues(alpha: .55), decoration: TextDecoration.underline)),
           ),
         ]),
       ),
