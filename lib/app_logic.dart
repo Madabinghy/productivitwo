@@ -35,6 +35,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -1880,6 +1881,15 @@ class AppLogic implements HuntStore {
     weekReviews = {...weekReviews, monday: r};
     onChange();
     await sync?.setWeekReview(monday, r.toJson());
+  }
+
+  /// « Mes activités de sport » (`data/meta.sportPick`, `utils/sport_stats.dart`).
+  SportOverrides sportOverrides = const SportOverrides();
+
+  Future<void> saveSportOverrides(SportOverrides o) async {
+    sportOverrides = o;
+    onChange();
+    await sync?.setSportPick(o.toJson());
   }
   String? _paroleFrozenYmd;
 

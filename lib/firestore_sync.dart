@@ -3173,6 +3173,12 @@ class FirestoreSync {
 
   /// Parole d'un jour (`data/meta.paroles.<ymd>`, Parole tenue 2026-10-31) :
   /// fusion par jour, les autres jours ne bougent pas.
+  /// « Mes activités de sport » (`data/meta.sportPick {add, remove}`).
+  Future<void> setSportPick(Map<String, dynamic> pick) async {
+    if (uid == null) return;
+    await _meta().set({'sportPick': pick}, SetOptions(merge: true));
+  }
+
   /// Revue du dimanche (`data/meta.weekReviews.<lundi>`, fusion par semaine).
   Future<void> setWeekReview(String monday, Map<String, dynamic> review) async {
     if (uid == null) return;
