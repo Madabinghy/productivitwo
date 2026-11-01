@@ -84,6 +84,7 @@ ChainRun? expiredRunOf(PendingRun p) {
     completed: false,
     kind: p.kind,
     bodyBefore: p.intOf('bodyBefore'),
+    fullCount: p.intOf('full'),
   );
 }
 

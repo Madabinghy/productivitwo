@@ -21,6 +21,7 @@ class ChainRun {
   String? kind; // null = Enchaîner · "guerilla"
   int? bodyBefore; // guérilla : le corps avant, 1 → 5
   int? bodyAfter; // guérilla : le corps après
+  int? fullCount; // sniper : cibles touchées EN ENTIER (sans les mini-tirs)
 
   ChainRun({
     String? id,
@@ -37,6 +38,7 @@ class ChainRun {
     this.kind,
     this.bodyBefore,
     this.bodyAfter,
+    this.fullCount,
   }) : id = id ?? _uuid.v4();
 
   /// Un Enchaîner du premier au dernier bloc du programme, mené au bout.
@@ -63,6 +65,7 @@ class ChainRun {
         if (kind != null) 'kind': kind,
         if (bodyBefore != null) 'bodyBefore': bodyBefore,
         if (bodyAfter != null) 'bodyAfter': bodyAfter,
+        if (fullCount != null) 'fullCount': fullCount,
       };
 
   static ChainRun from(Map j) => ChainRun(
@@ -80,5 +83,6 @@ class ChainRun {
         kind: j['kind'] as String?,
         bodyBefore: (j['bodyBefore'] as num?)?.toInt(),
         bodyAfter: (j['bodyAfter'] as num?)?.toInt(),
+        fullCount: (j['fullCount'] as num?)?.toInt(),
       );
 }
