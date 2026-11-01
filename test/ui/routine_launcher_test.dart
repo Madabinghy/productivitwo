@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -8,6 +9,7 @@ import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 /// Lanceur de routines (FAB) : Focus = à faire par domaine, Tout = les faites aussi,
 /// l'anneau « + » compte une occurrence, la ligne ouvre le compteur.
 void main() {
+  setUp(LauncherTabStore.resetForTest);
   testWidgets('RoutineLauncher : Focus sans les faites, anneau = +1, ligne = compteur', (tester) async {
     Activity r(String id, String dom, {int target = 1}) => Activity(
         id: id, domainId: dom, name: id, role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: target, createdAt: DateTime(2026, 1, 1));

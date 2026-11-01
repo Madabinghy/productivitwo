@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 
 /// Lanceur d'activités : chrono en cours en tête, ▶ lance, dormantes repliées.
 void main() {
+  setUp(LauncherTabStore.resetForTest);
   testWidgets('ActivityLauncher : focus par défaut, en cours, ▶ lance, peu utilisées repliées', (tester) async {
     final now = DateTime.now();
     final prod = Activity(id: 'prod', domainId: 'b', name: 'Productivitwo', goalMin: 10);
