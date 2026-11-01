@@ -33,8 +33,14 @@ class SniperTarget {
   final int? _need;
   const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need}) : _need = need;
 
-  /// Ce qu'on vise : coches pour une routine, minutes sinon.
-  int get amount => kind == SniperKind.routine ? delta : minutes;
+  /// Routine à minuteur (Louanges 15 min) : on règle la durée, la coche
+  /// tombe au bout quel que soit le temps choisi.
+  bool get timedRoutine => kind == SniperKind.routine && minutes > 0;
+  bool get _countsReps => kind == SniperKind.routine && !timedRoutine;
+
+  /// Ce qu'on vise : coches pour une routine, minutes sinon (et pour une
+  /// routine à minuteur).
+  int get amount => _countsReps ? delta : minutes;
 
   /// Ce qui manque à la journée (la cible proposée au départ).
   int get need => _need ?? amount;
@@ -44,12 +50,12 @@ class SniperTarget {
 
   /// Mini-tir : moins que ce qui manque, l'enjeu ne tombe pas encore (une
   /// action tombe à « Action faite », quel que soit le temps visé).
-  bool get isMini => (kind == SniperKind.routine || kind == SniperKind.timed) && amount < need;
+  bool get isMini => (_countsReps || kind == SniperKind.timed) && amount < need;
 
   /// Ce qui restera à faire après ce tir.
   int get leftAfter => need > amount ? need - amount : 0;
 
-  SniperTarget withAmount(int a) => kind == SniperKind.routine ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need) : SniperTarget(stake, kind, minutes: a, delta: delta, need: need);
+  SniperTarget withAmount(int a) => _countsReps ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need) : SniperTarget(stake, kind, minutes: a, delta: delta, need: need);
 
   String get key => stake.gesture.key;
   String get title => stake.gesture.title;
@@ -259,7 +265,7 @@ bool fitsPlan(SniperPlan plan, SniperTarget t) =>
 
 /// Le pas d'ajustement : 5 coches pour une routine à 10 ou plus, 1 sinon ;
 /// 5 min pour un temps.
-int sniperStep(SniperTarget t) => t.kind == SniperKind.routine ? (t.need >= 10 ? 5 : 1) : 5;
+int sniperStep(SniperTarget t) => t.kind == SniperKind.routine && !t.timedRoutine ? (t.need >= 10 ? 5 : 1) : 5;
 
 /// Le tir suivant en montant ou en descendant, null quand il est au bout :
 /// une routine de 1 à ce qui manque (au-delà, rien ne compte de plus) ; un
@@ -269,7 +275,7 @@ int? stepAmount(SniperTarget t, {required bool up}) {
   if (!t.adjustable) return null;
   final step = sniperStep(t);
   final a = t.amount;
-  if (t.kind == SniperKind.routine) {
+  if (t.kind == SniperKind.routine && !t.timedRoutine) {
     final n = up ? ((a ~/ step) + 1) * step : ((a - 1) ~/ step) * step;
     final c = n < 1 ? 1 : (n > t.need ? t.need : n);
     return c == a ? null : c;
