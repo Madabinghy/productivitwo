@@ -827,6 +827,17 @@ pause exclues. **Focus · Tout** (2026-10-31, retour user) : bascule sous la rec
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+## Suivi du sommeil (2026-11-01, maquette validée « Suivi du sommeil »)
+
+Tap sur les barres de sommeil de la barre du haut = une feuille « Sommeil » dédiée (plus la fiche d'activité générique). Rien à
+saisir : chronos Sommeil, bloc Sommeil du programme, élan. **Lot 1 livré (logique pure)** `utils/sleep_stats.dart` :
+`sleepNightList` (même fenêtre que `sleepNights`, une `SleepNight` par nuit = ses chronos fusionnés, `minutes` sans les réveils,
+`awakeMin`, `bed` / `wake`, `nextYmd` = lendemain vécu), `sleepTargetMin` (minimum de l'activité Sommeil s'il fait ≥ 4 h, sinon
+7 h 30), `sleepStats` (moyenne, dette = manque nuit par nuit, coucher moyen autour de minuit `bedClockMin` / `clockOf`, régularité =
+écart moyen du coucher, lever moyen), `plannedSleep` / `sleepBlockOf` (bloc Sommeil le plus récent), `sleepImpact` (lendemains
+`SleepNextDay` des nuits ≥ cible − 30 min contre < cible − 60 min : élan, part en Flemme, actions, journées parfaites ; ≥
+`kSleepImpactMinNights` (5) de chaque côté, `sentence`).
+
 ## Minimum des activités (calibration, 2026-10-30)
 
 `AppLogic.autoAdjustStandardsRealtime` (au lancement mobile) cale `goalMin` des activités-temps sur la moyenne 30 j (monte ≥ 120 %,
