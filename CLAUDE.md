@@ -1046,6 +1046,19 @@ Bilan : coups · durée · chrono, par projet touché la rangée de briques, « 
 `arrow`, 1 / 5 / 15) dès 3 coups (`offensiveCounts`). Le deep work 90 min reste à part (un seul gros bloc). ⓘ `kRuleOffensive`.
 Logique pure `utils/offensive.dart`. **Depuis un projet** (2026-10-31, retour user) : `showOffensiveScreen(projectId:, firstActionId:)` — front présélectionné (en tête de la liste) ; bouton « ↗ Offensive sur ce projet · n actions prêtes » dans la fiche projet (`_offensiveButton`, au-dessus de CETTE SEMAINE, si des actions sont prêtes) ; 4ᵉ option « Offensive » du « Mode d'exécution » de la page focus d'une action de projet (la page laisse place à l'offensive, qui commence par cette action). Même bouton dans le projet déplié (`showProjectSheet`, sous « Activité liée », `_offensiveButton`). Page focus d'une action de projet : icône ↗ orange dans la barre du haut, à côté du ⏱ (avant le chrono, `_openOffensive`).
 
+## Sniper (2026-11-01, maquette validée « Mode Sniper »)
+
+Entre la Guérilla et l'Offensive : l'app calcule le temps EXACT qui fait tomber chaque enjeu du jour et enchaîne les tirs sans
+décision entre deux (« Lecture 37 min » = pile ce qui couvre la Montre suisse). **Lot 1 livré (logique + badge)** : logique pure
+`utils/sniper.dart` — `sniperTargetOf(Stake)` (cibles = gestes de `buildStakeBoard` ; activité = `costMin` = le manque, action =
+estimé × facteur réel / estimé arrondi à 5, routine = `+n` coches restantes (`routineLeft`, minuteur s'il est réglé), relevé = geste
+immédiat ; jamais un bloc ni une routine sans autre enjeu), `compareSniper` (se perd ce soir → palier ce soir → poids / minute),
+`planSniper` (glouton dans le budget, pauses `kSniperPauseMin` 2 min comprises, au plus `kSniperMaxTargets` 8, une cible > 60 min =
+« pour l'Offensive » ; le reste `outOfReach` avec sa raison « ne tient plus avant HH:MM »), `sniperBudget` (temps libre jusqu'au
+prochain bloc À FAIRE hors blocs de temps, sinon fin de journée active), `sniperPrecision`. Session = `ChainRun` `kind:"sniper"`
+(`doneCount` = cibles touchées, `total` = visées) ; badge **Sniper** (`sniper`, Discipline, symbole `crosshair`, 1 / 5 / 15) : une
+session compte quand toutes les cibles visées tombent, au moins 3 (`sniperCounts`). Jamais compté pour Enchaîneur.
+
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 
 Poser demain en dix minutes le soir, la semaine le dimanche, à partir de ce qui se joue. **Lot 1 (logique pure)** :
