@@ -1232,7 +1232,9 @@ décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4
 
 Retour user : « une page avec des widgets de ce que je gère dans ma vie », comme Aujourd'hui pour ce que je fais maintenant.
 L'onglet **Ma vie** (`widgets/life_view.dart`, `LifeView`, construit par `_buildObjectivesBody` de main.dart) remplace Objectifs et
-Domaines : titre + « Gérer » (domaines), MES MODES (lanceurs Guérilla · Offensive — reprise d'une session en attente, point —,
+Domaines : titre + « Gérer » (domaines), **Ta semaine en une phrase** (`lifeSentence`, `utils/life_natures.dart` : contrat k / n
+au rythme, nuits courtes / bien dormi, séances de sport, repas à surveiller, domaines à < 70 % de l'attendu — hors nuit et repas),
+MES MODES (lanceurs Guérilla · Offensive — reprise d'une session en attente, point —,
 Planifier, Revue du dimanche), CETTE SEMAINE (`WeekStatsView(onlyWeekLine: true)` : la ligne MA SEMAINE seule, tap = fiche Ma
 semaine), MES DOMAINES = une tuile par domaine (deux colonnes) selon sa **nature** (logique pure `utils/life_natures.dart` :
 `DomainNature` nuit · séances · repas · travail · pratique · suivi · entretien, `guessNature` par le nom puis le contenu — routine

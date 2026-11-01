@@ -20,7 +20,7 @@ import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sleep_stats.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart';
-import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek;
+import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek, weekSummary;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
@@ -243,6 +243,10 @@ class _LifeViewState extends State<LifeView> {
           Expanded(child: Text('Ma vie', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
           TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
         ]),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(_sentence(now, weeks), style: TextStyle(fontSize: 15.5, height: 1.35, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .85))),
+        ),
         _section(mute, 'MES MODES'),
         Row(children: [
           launcher('Guérilla', Icons.bolt_rounded, kGuerillaAccent, () => _run(kGuerillaKind), dot: live(kGuerillaKind)),
@@ -278,6 +282,32 @@ class _LifeViewState extends State<LifeView> {
         ]),
       ]),
     );
+  }
+
+  String _sentence(DateTime now, Map<String, DomainWeek> weeks) {
+    final st = logic.state;
+    final w = weekSummary(activities: st.activeActivities, hits: st.habitHits, sessions: st.sessions, objectives: _objectives.where((o) => o.status == 'active'), now: now);
+    final natures = {for (final d in st.activeDomains) d.id: _natureOf(d)};
+    int? sleepAvg;
+    var target = 450;
+    if (natures.values.contains(DomainNature.night)) {
+      final nights = sleepNightList(sessions: st.sessions, activities: st.activities, now: now, dayStartMin: logic.dayStartMin, nights: 7);
+      target = sleepTargetMin(sleepActivityOf(st.activities));
+      sleepAvg = sleepStats(nights, target).avgMin;
+    }
+    int? sport;
+    if (natures.values.contains(DomainNature.sessions)) {
+      final pick = resolveSportPick(st.activities, st.domains, logic.sportOverrides);
+      final today = ymdOf(livedDate(now, logic.dayStartMin));
+      sport = sportDays(pick: pick, sessions: st.sessions, hits: st.habitHits, fromYmd: mondayOf(today), toYmd: today, now: now, dayStartMin: logic.dayStartMin)
+          .fold<int>(0, (s, x) => s + x.sessions);
+    }
+    final behind = [
+      for (final d in st.activeDomains)
+        if (weeks[d.id] case final r? when r.hasGoal && !r.resting && r.expectedMin > 0 && r.doneMin < r.expectedMin * .7 && !{DomainNature.night, DomainNature.meals}.contains(natures[d.id]))
+          d.name,
+    ];
+    return lifeSentence(kept: w.kept, engagements: w.engagements.length, sleepAvgMin: sleepAvg, sleepTargetMin: target, sportSessions: sport, behindDomains: behind);
   }
 
   Widget _section(Color mute, String t, {String? right}) => Padding(

@@ -64,3 +64,31 @@ Map<String, DomainNature> parseNatures(Map<String, dynamic>? raw) {
 
 /// Ordre des tuiles : le corps (nuit, séances, repas), puis le travail, puis le reste.
 int natureOrder(DomainNature n) => DomainNature.values.indexOf(n);
+
+/// « Ta semaine en une phrase » (en tête de Ma vie) : où tu en es, en
+/// quelques mots, du plus important au moins — le contrat, le corps, puis
+/// ce qui traîne. [behindDomains] = domaines en retard sur leur minimum.
+String lifeSentence({
+  required int kept,
+  required int engagements,
+  int? sleepAvgMin,
+  int sleepTargetMin = 450,
+  int? sportSessions,
+  int? mealsBalanced,
+  int? mealsCounted,
+  List<String> behindDomains = const [],
+}) {
+  final parts = <String>[];
+  if (engagements > 0) {
+    parts.add(kept >= engagements ? 'Semaine au rythme' : (kept * 2 >= engagements ? '$kept / $engagements engagements au rythme' : 'Semaine en retard ($kept / $engagements)'));
+  }
+  if (sleepAvgMin != null) parts.add(sleepAvgMin < sleepTargetMin - 30 ? 'nuits courtes' : 'bien dormi');
+  if (sportSessions != null) parts.add(sportSessions == 0 ? 'pas encore de sport' : '$sportSessions séance${sportSessions > 1 ? 's' : ''} de sport');
+  if (mealsCounted != null && mealsCounted >= 3 && mealsBalanced != null && mealsBalanced * 2 < mealsCounted) parts.add('repas à surveiller');
+  if (behindDomains.isNotEmpty) {
+    parts.add(behindDomains.length == 1 ? '${behindDomains.first} en retard' : '${behindDomains.take(2).join(' et ')} en retard');
+  }
+  if (parts.isEmpty) return 'Rien à mesurer encore cette semaine.';
+  final s = parts.join(' · ');
+  return s[0].toUpperCase() + s.substring(1);
+}

@@ -15,4 +15,11 @@ void main() {
     expect(guessNature(d('sp', 'Spiritualité'), const []), DomainNature.practice);
     expect(parseNatures({'x': 'meals', 'y': 'zzz'}), {'x': DomainNature.meals});
   });
+
+  test('ta semaine en une phrase', () {
+    expect(lifeSentence(kept: 5, engagements: 7, sleepAvgMin: 380, sportSessions: 3, behindDomains: ['Business']),
+        '5 / 7 engagements au rythme · nuits courtes · 3 séances de sport · Business en retard');
+    expect(lifeSentence(kept: 7, engagements: 7), 'Semaine au rythme');
+    expect(lifeSentence(kept: 0, engagements: 0), 'Rien à mesurer encore cette semaine.');
+  });
 }
