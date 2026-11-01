@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
-import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
+import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
+import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'dart:convert';
 import 'dart:io';
@@ -4611,6 +4612,25 @@ class _AppRootState extends State<AppRoot>
                           ),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      // Bouton Repas (2026-11-01) : la feuille Repas en un tap.
+                      Tooltip(
+                        message: 'Repas',
+                        child: InkResponse(
+                          onTap: () => showMealSheet(context, logic: logic, sync: _sync),
+                          radius: 20,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: kMealAccent.withValues(alpha: .16),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: kMealAccent.withValues(alpha: .45)),
+                            ),
+                            child: const Icon(Icons.restaurant_rounded, size: 16, color: kMealAccent),
+                          ),
+                        ),
+                      ),
                     ]),
                   ),
                 ),
@@ -4655,7 +4675,7 @@ class _AppRootState extends State<AppRoot>
               } else if (v == 'orion') {
                 OrionScreen.show(context, _sync);
               } else if (v == 'dishes') {
-                showMealWeekSheet(context, logic: logic, sync: _sync);
+                showMealSheet(context, logic: logic, sync: _sync);
               } else if (v == 'weekly_review') {
                 showWeekReviewScreen(context, logic, badges: _badges);
               } else if (v == 'filters') {
@@ -4732,7 +4752,7 @@ class _AppRootState extends State<AppRoot>
                 child: Row(children: [
                   Icon(Icons.restaurant_menu_rounded, size: 18),
                   SizedBox(width: 12),
-                  Text('Repas de la semaine'),
+                  Text('Repas'),
                 ]),
               ),
               const PopupMenuItem(

@@ -1,3 +1,6 @@
+import 'package:productivitwo_v1/utils/meal_day.dart';
+import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
+import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/utils/sport_stats.dart';
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'package:flutter/material.dart';
@@ -106,6 +109,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
                 dayStartMin: widget.logic.dayStartMin,
                 frozenOf: (a) => widget.logic.frozenOf(a.id))),
         _sportLine(cs, now),
+        _mealLine(cs, now),
         ListSectionTitle('${days == 14 ? 'SUR 14 JOURS' : 'CETTE SEMAINE'} · ${rows.length}'),
         for (final r in rows) _domainRow(cs, r, perDay[r.domain.id], todayIdx, days),
         if (rows.isEmpty)
@@ -114,6 +118,44 @@ class _WeekStatsViewState extends State<WeekStatsView> {
             child: Text('Aucun domaine : crée-en un avec « Gérer ».', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
           ),
       ]),
+    );
+  }
+
+  /// Ligne « Repas » (2026-11-01) : repas équilibrés de la semaine, tap = feuille Repas.
+  Widget _mealLine(ColorScheme cs, DateTime now) {
+    final logic = widget.logic;
+    final st = logic.state;
+    final hasMeals = st.activities.any((a) => isBalancedMealRoutine(a) || isCookActivity(a) || isEatActivity(a)) || logic.meals.isNotEmpty;
+    if (!hasMeals) return const SizedBox.shrink();
+    final t = logic.livedToday;
+    final monday = DateTime(t.year, t.month, t.day - (t.weekday - 1));
+    final days = [for (var i = 0; i < 7; i++) ymdOf(DateTime(monday.year, monday.month, monday.day + i))];
+    final v = mealWeekView(days: days, week: logic.mealWeek(days.first), activities: st.activities, hits: st.habitHits, sessions: st.sessions, now: now, dayStartMin: logic.dayStartMin);
+    final muted = cs.onSurface.withValues(alpha: .55);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: .35),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => showMealSheet(context, logic: logic, sync: widget.sync),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(children: [
+              const Icon(Icons.restaurant_rounded, color: kMealAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(v.counted == 0 ? 'Repas' : 'Repas · ${v.balanced} / ${v.counted} équilibrés', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(v.cookMin > 0 ? '${fmtMin(v.cookMin)} cuisinées cette semaine' : 'menu, plats, courses', style: TextStyle(fontSize: 12.5, color: muted)),
+                ]),
+              ),
+              Icon(Icons.chevron_right_rounded, color: muted),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
