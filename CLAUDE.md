@@ -19,8 +19,9 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 - **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
   (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
-- Onglets mobiles actuels : **Objectifs / Domaines (ex-Stats) / Projets / Actions / Aujourd'hui** (5 ; 4 avec
-  `hideProjectsTab` ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
+- Onglets mobiles actuels : **Ma vie / Projets / Actions / Aujourd'hui** (4 ; 3 avec `hideProjectsTab` ; depuis le
+  2026-11-01 Objectifs et Domaines sont fusionnés dans **Ma vie** — `_Tab.dashboard`, `_Tab.stats` ne s'affiche plus et pointe
+  sur Ma vie ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
   **Actions mobile** (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10/README.md`,
   `lib/widgets/actions_view.dart`) : jamais vide, groupée par urgence (Maintenant · Aujourd'hui · En retard · Cette
   semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
@@ -1226,6 +1227,24 @@ l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),
 du matin et des moments (`buildRoutineDay(exclude:)`), reste cochable (section ACQUISES), compte toujours dans le contrat ;
 décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4 sem.). `data/meta.acquired` + `acquireAsked`.
+
+## Ma vie (2026-11-01, maquette validée « Onglet Ma vie »)
+
+Retour user : « une page avec des widgets de ce que je gère dans ma vie », comme Aujourd'hui pour ce que je fais maintenant.
+L'onglet **Ma vie** (`widgets/life_view.dart`, `LifeView`, construit par `_buildObjectivesBody` de main.dart) remplace Objectifs et
+Domaines : titre + « Gérer » (domaines), **Ta semaine en une phrase** (`lifeSentence`, `utils/life_natures.dart` : contrat k / n
+au rythme, nuits courtes / bien dormi, séances de sport, repas à surveiller, domaines à < 70 % de l'attendu — hors nuit et repas),
+MES MODES (lanceurs Guérilla · Offensive — reprise d'une session en attente, point —,
+Planifier, Revue du dimanche), CETTE SEMAINE (`WeekStatsView(onlyWeekLine: true)` : la ligne MA SEMAINE seule, tap = fiche Ma
+semaine), MES DOMAINES = une tuile par domaine (deux colonnes) selon sa **nature** (logique pure `utils/life_natures.dart` :
+`DomainNature` nuit · séances · repas · travail · pratique · suivi · entretien, `guessNature` par le nom puis le contenu — routine
+Repas / Cuisiner / Manger → repas —, réglage par appui long sur une tuile, `life_natures` en SharedPreferences) : Nuit = feuille
+Sommeil (moyenne, dette, 7 barres), Séances = feuille Sport (séances de la semaine, une case par jour), Repas = feuille Repas
+(équilibrés, repas qui vient) — une seule tuile par nature à feuille —, les autres = page du domaine (temps de la semaine sur
+l'attendu ou routines au rythme, ambre en retard, en veille). Chaque tuile porte l'objectif actif de son domaine le plus en
+retard (`computeObjectiveProgress`, % du rythme, tap = fiche trajectoire) et « + n objectifs ». OBJECTIFS SANS DOMAINE en lignes.
+En bas : Saison, Badges, OBJECTIFS (« n actifs › » = feuille avec `ObjectivesCard` complète : rushs, veille, archivés, création).
+L'ancien `ObjectivesHomeView` et le corps Domaines (`_buildDashboardBody`) ne sont plus affichés.
 
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 

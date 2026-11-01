@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/widgets/life_view.dart' show LifeView;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
@@ -62,9 +63,7 @@ import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_page.dart';
 import 'package:productivitwo_v1/widgets/activity_fiche_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
-import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
-import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
@@ -3538,8 +3537,9 @@ class _AppRootState extends State<AppRoot>
   // Ordre de la barre (demande user 2026-10) : Actions AVANT Aujourd'hui,
   // l'onglet d'arrivée reste tout à droite.
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
-      ? const [_Tab.dashboard, _Tab.stats, _Tab.actions, _Tab.aujourdhui]
-      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.actions, _Tab.aujourdhui];
+      // « Ma vie » (2026-11-01) : Objectifs + Domaines fusionnés en un onglet.
+      ? const [_Tab.dashboard, _Tab.actions, _Tab.aujourdhui]
+      : const [_Tab.dashboard, _Tab.projets, _Tab.actions, _Tab.aujourdhui];
 
   int _tabIndex(_Tab t) {
     switch (t) {
@@ -3547,7 +3547,7 @@ class _AppRootState extends State<AppRoot>
       case _Tab.projets:     return 1;
       case _Tab.aujourdhui:  return 2;
       case _Tab.actions:     return 3;
-      case _Tab.stats:       return 4;
+      case _Tab.stats:       return 0; // fusionné dans Ma vie
     }
   }
 
@@ -3723,7 +3723,7 @@ class _AppRootState extends State<AppRoot>
           ActionsView(logic: logic),
           // Onglet « Stats » (index 4) : l'ancien Accueil (tableau de bord),
           // promu onglet principal — jauges, temps, domaines, retards.
-          _buildDashboardBody(context),
+          const SizedBox.shrink(), // Domaines : fusionné dans Ma vie (2026-11-01)
         ],
       ),
     );
@@ -4888,9 +4888,9 @@ class _AppRootState extends State<AppRoot>
           for (final t in _visibleTabs)
             switch (t) {
               _Tab.dashboard => const BottomNavigationBarItem(
-                  icon: Icon(Icons.track_changes_outlined),
-                  activeIcon: Icon(Icons.track_changes),
-                  label: 'Objectifs'),
+                  icon: Icon(Icons.spa_outlined),
+                  activeIcon: Icon(Icons.spa),
+                  label: 'Ma vie'),
               _Tab.stats => const BottomNavigationBarItem(
                   icon: Icon(Icons.donut_small_outlined),
                   activeIcon: Icon(Icons.donut_small),
@@ -5913,82 +5913,20 @@ class _AppRootState extends State<AppRoot>
   /// Le tableau de bord est maintenant l'onglet « Stats » — l'icône en
   /// haut d'Objectifs y bascule (plus d'écran poussé).
   Widget _buildObjectivesBody(BuildContext context) {
-    return ObjectivesHomeView(
+    return LifeView(
       logic: logic,
       sync: _sync,
       badges: _badges,
       projects: _dashboardProjects,
-      onOpenDashboard: () {
-        _tabFadeController.forward(from: 0);
-        setState(() => _tab = _Tab.stats);
+      onOpenDomain: (d) async {
+        final (startCal, endCal, days) = _rangeForScope(DateTime.now());
+        final goNow = await _showDomainDetail(d, startCal, endCal, days);
+        if (!mounted) return goNow;
+        if (goNow == true) setState(() => _tab = _goNowTab());
+        return goNow;
       },
-      onOpenNow: () {
-        _tabFadeController.forward(from: 0);
-        setState(() => _tab = _goNowTab());
-      },
-    );
-  }
-
-  // Cache anti-jank de l'onglet Stats : la page est chère à construire
-  // (stats par domaine sur TOUTES les sessions) et chaque setState global
-  // (streams Firestore, heartbeat…) la reconstruisait entière — pendant un
-  // scroll, ça lague et fait sauter la liste. Les enfants ne sont refaits
-  // que quand la minute ou les données changent réellement.
-  String? _statsCacheKey;
-  List<Widget>? _statsCacheChildren;
-
-  Widget _buildDashboardBody(BuildContext context) {
-    // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
-    final now = DateTime.now();
-
-    // Scope calendaire (détails domaine)
-    final (startCal, endCal, days) = _rangeForScope(now);
-
-    // Helpers habits calendaire (tu peux les laisser ici)
-
-    // ⚠️ IMPORTANT :
-    // Les valeurs “live” (temps today jusqu'à now, halo, label, etc.)
-    // seront calculées dans ValueListenableBuilder via _compute... (voir plus bas)
-
-    return ValueListenableBuilder<int>(
-      valueListenable: _tick,
-      builder: (context, tickValue, __) {
-        final stx = _state!;
-        // Empreinte volontairement bon marché : tick minute + proxys de
-        // volume. Une édition purement cosmétique (renommage…) peut mettre
-        // jusqu'à une minute à se refléter ici — compromis assumé.
-        final cacheKey = [
-          tickValue,
-          scope,
-          stx.sessions.length,
-          stx.habitHits.length,
-          stx.habitProgress.fold<int>(0, (a, hp) => a + hp.value),
-          stx.activities.length,
-          stx.domains.length,
-          _dashboardProjects.length,
-          stx.hideProjectsTab,
-        ].join('|');
-        if (cacheKey == _statsCacheKey && _statsCacheChildren != null) {
-          return ListView(children: _statsCacheChildren!);
-        }
-        _statsCacheKey = cacheKey;
-
-        _statsCacheChildren = [
-          WeekStatsView(
-            logic: logic,
-            sync: _sync,
-            badges: _badges,
-            onOpenDomain: (d, {focus = 'time'}) async {
-              final goNow = await _showDomainDetail(d, startCal, endCal, days, focus: focus);
-              if (!mounted) return goNow;
-              if (goNow == true) setState(() => _tab = _goNowTab());
-              return goNow;
-            },
-            onManageDomains: () => _showDomainsSheet(context),
-          ),
-        ];
-        return ListView(children: _statsCacheChildren!);
-      },
+      onOpenSleep: _openSleepActivity,
+      onManageDomains: () => _showDomainsSheet(context),
     );
   }
 
