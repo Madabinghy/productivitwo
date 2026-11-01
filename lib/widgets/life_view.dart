@@ -28,6 +28,8 @@ import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
+import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
+import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show kPlanAccent, showPlanScreen;
 import 'package:productivitwo_v1/widgets/season_view.dart' show SeasonTile;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet;
@@ -142,6 +144,8 @@ class _LifeViewState extends State<LifeView> {
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), logic.livedTodayYmd) ? p : null;
     if (kind == kGuerillaKind) {
       await showGuerillaScreen(context, logic, resume: pending);
+    } else if (kind == kSniperKind) {
+      await showSniperScreen(context, logic, badges: widget.badges, resume: pending);
     } else {
       await showOffensiveScreen(context, logic, resume: pending);
     }
@@ -250,6 +254,7 @@ class _LifeViewState extends State<LifeView> {
         _section(mute, 'MES MODES'),
         Row(children: [
           launcher('Guérilla', Icons.bolt_rounded, kGuerillaAccent, () => _run(kGuerillaKind), dot: live(kGuerillaKind)),
+          launcher('Sniper', Icons.gps_fixed, kSniperAccent, () => _run(kSniperKind), dot: live(kSniperKind)),
           launcher('Offensive', Icons.north_east_rounded, kOffensiveAccent, () => _run(kOffensiveKind), dot: live(kOffensiveKind)),
           launcher('Planifier', Icons.explore_outlined, kPlanAccent, () => showPlanScreen(context, logic, badges: widget.badges)),
           launcher('Revue', Icons.event_repeat_rounded, kReviewAccent, () => showWeekReviewScreen(context, logic, badges: widget.badges)),

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/run_session.dart';
+import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
+import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 
@@ -13,7 +16,8 @@ import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveA
 /// session expirée (autre journée, 45 min sans rien) est close en silence.
 class PendingRunCard extends StatefulWidget {
   final AppLogic logic;
-  const PendingRunCard({super.key, required this.logic});
+  final BadgeCenter? badges;
+  const PendingRunCard({super.key, required this.logic, this.badges});
 
   @override
   State<PendingRunCard> createState() => _PendingRunCardState();
@@ -41,6 +45,8 @@ class _PendingRunCardState extends State<PendingRunCard> {
   Future<void> _resume(PendingRun p) async {
     if (p.kind == kGuerillaKind) {
       await showGuerillaScreen(context, widget.logic, resume: p);
+    } else if (p.kind == kSniperKind) {
+      await showSniperScreen(context, widget.logic, badges: widget.badges, resume: p);
     } else {
       await showOffensiveScreen(context, widget.logic, resume: p);
     }
@@ -57,7 +63,8 @@ class _PendingRunCardState extends State<PendingRunCard> {
     final p = RunSessionStore.current;
     if (p == null || !p.isLive(DateTime.now(), widget.logic.livedTodayYmd)) return const SizedBox.shrink();
     final guerilla = p.kind == kGuerillaKind;
-    final accent = guerilla ? kGuerillaAccent : kOffensiveAccent;
+    final sniper = p.kind == kSniperKind;
+    final accent = guerilla ? kGuerillaAccent : (sniper ? kSniperAccent : kOffensiveAccent);
     final cs = Theme.of(context).colorScheme;
     final at = '${p.lastActiveAt.hour.toString().padLeft(2, '0')}:${p.lastActiveAt.minute.toString().padLeft(2, '0')}';
     return Container(
@@ -70,15 +77,15 @@ class _PendingRunCardState extends State<PendingRunCard> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(guerilla ? Icons.bolt : Icons.north_east, size: 18, color: cs.brightness == Brightness.dark ? accent : cs.primary),
+          Icon(guerilla ? Icons.bolt : (sniper ? Icons.gps_fixed : Icons.north_east), size: 18, color: cs.brightness == Brightness.dark ? accent : cs.primary),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(pendingRunLabel(p, name: guerilla ? 'Guérilla' : 'Offensive').toUpperCase(),
+            child: Text((sniper ? 'Sniper en cours · ${p.done} cible${p.done > 1 ? 's' : ''}' : pendingRunLabel(p, name: guerilla ? 'Guérilla' : 'Offensive')).toUpperCase(),
                 style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .7))),
           ),
         ]),
         const SizedBox(height: 4),
-        Text('Quittée à $at. Elle reprend au coup suivant.', style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
+        Text(sniper ? 'Quitté à $at. Il reprend au tir suivant.' : 'Quittée à $at. Elle reprend au coup suivant.', style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(

@@ -105,6 +105,13 @@ const kRuleOffensive = GameRule('L’offensive', [
   RuleCard('🏅', 'Le badge', 'Une offensive compte dès 3 coups gagnés. Le deep work 90 min reste à part : un seul gros bloc.'),
 ]);
 
+const kRuleSniper = GameRule('Le Sniper', [
+  RuleCard('◎', 'Le temps exact', 'L’app calcule ce qui fait tomber chaque enjeu du jour : 37 min de Lecture si c’est pile ce qui couvre la Montre suisse, +1 pour la dernière routine du Métronome.'),
+  RuleCard('🎯', 'L’ordre', 'Ce qui se perd ce soir d’abord, puis les paliers de ce soir, puis ce qui rapporte le plus par minute. Seulement ce qui tient avant ton prochain rendez-vous.'),
+  RuleCard('🌊', 'Sans décision', 'Un tir à la fois, minuteur pile et alarme. Touché : deux minutes de pause, puis le tir suivant part tout seul. Dépasser ne sert à rien.'),
+  RuleCard('🏅', 'Le badge', 'Une session compte quand toutes les cibles visées tombent, au moins 3. Écarte une cible au départ plutôt que de la passer en route.'),
+]);
+
 const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
   RuleCard('🔢', 'Le chiffre du jour', 'Ce que tes objectifs demandent aujourd’hui : temps du jour, routines, blocs, relevés. Le trait = l’heure qu’il est.'),
   RuleCard('🧭', 'Où j’en suis', 'Une ligne par objectif : son rythme de la semaine et ce qui reste aujourd’hui. Touche-la pour la fiche.'),

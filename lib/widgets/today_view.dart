@@ -53,6 +53,8 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
+import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
+import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
@@ -712,7 +714,7 @@ class TodayViewState extends State<TodayView> {
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
-                  PendingRunCard(logic: widget.logic),
+                  PendingRunCard(logic: widget.logic, badges: widget.badges),
                   ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
@@ -901,6 +903,8 @@ class TodayViewState extends State<TodayView> {
         Row(mainAxisSize: MainAxisSize.min, children: [
           _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
           const SizedBox(width: 8),
+          _launcherBtn(cs, kSniperKind, Icons.gps_fixed, 'Sniper · chaque minute, pile où elle compte', kSniperAccent, const Color(0xFF2A6F94)),
+          const SizedBox(width: 8),
           _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
           const SizedBox(width: 8),
           _planBtn(cs),
@@ -916,6 +920,8 @@ class TodayViewState extends State<TodayView> {
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     if (kind == kGuerillaKind) {
       await showGuerillaScreen(context, widget.logic, resume: pending);
+    } else if (kind == kSniperKind) {
+      await showSniperScreen(context, widget.logic, badges: widget.badges, resume: pending);
     } else {
       await showOffensiveScreen(context, widget.logic, resume: pending);
     }
@@ -938,7 +944,7 @@ class TodayViewState extends State<TodayView> {
           child: InkWell(
             onTap: open,
             customBorder: const CircleBorder(),
-            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} coup${pending.done > 1 ? 's' : ''}' : tooltip, child: Icon(icon, size: 20, color: c)),
+            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} ${kind == kSniperKind ? 'cible' : 'coup'}${pending.done > 1 ? 's' : ''}' : tooltip, child: Icon(icon, size: 20, color: c)),
           ),
         ),
       ),
