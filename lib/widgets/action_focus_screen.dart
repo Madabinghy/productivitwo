@@ -305,6 +305,71 @@ class _FocusScreenState extends State<_FocusScreen> {
     logic.onChange();
   }
 
+  /// Une action de tâche ou une action propre d'activité se supprime d'ici
+  /// (retour user 2026-11-01 : on ne trouvait pas comment).
+  bool get _canDelete => (_project != null && _task != null) || (_project == null && _owner != null);
+
+  Future<void> _deleteAction() async {
+    final action = a;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Supprimer l’action ?'),
+        content: Text('« ${action.title} » disparaît, avec ses étapes.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(d).colorScheme.error),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    if (_running != null) logic.stopActive();
+    final p = _project;
+    final t = _task;
+    final owner = _owner;
+    final sync = widget.sync;
+    final messenger = ScaffoldMessenger.of(context);
+    Future<void> save() async {
+      try {
+        if (p != null && t != null) {
+          await sync.saveProjectTasks(p.id, p.tasks);
+        } else if (owner != null) {
+          await sync.updateOwnActions(owner.id, owner.ownActions);
+        }
+      } catch (_) {}
+      logic.onChange();
+    }
+
+    int index;
+    if (p != null && t != null) {
+      index = t.actions.indexOf(action);
+      t.actions.remove(action);
+    } else {
+      index = owner!.ownActions.indexOf(action);
+      owner.ownActions.remove(action);
+    }
+    await save();
+    if (mounted) Navigator.of(context).maybePop();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showClosingSnackBar(SnackBar(
+        content: Text('Action supprimée : ${action.title}'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () {
+            final list = (p != null && t != null) ? t.actions : owner!.ownActions;
+            list.insert(index.clamp(0, list.length), action);
+            save();
+          },
+        ),
+      ));
+  }
+
   Future<void> _mutate(void Function() f) async {
     setState(f);
     await _persist();
@@ -468,11 +533,15 @@ class _FocusScreenState extends State<_FocusScreen> {
               icon: const Icon(Icons.north_east_rounded, color: Color(0xFFFF8A4C)),
               onPressed: _openOffensive,
             ),
-          if (widget.moreActions.isNotEmpty)
+          if (_canDelete || widget.moreActions.isNotEmpty)
             IconButton(
               tooltip: 'Autres gestes',
               icon: const Icon(Icons.more_horiz_rounded),
-              onPressed: () => showMomentActions(context, title: a.title, actions: widget.moreActions).then((_) {
+              onPressed: () => showMomentActions(context, title: a.title, actions: [
+                ...widget.moreActions,
+                if (_canDelete)
+                  MomentAction('Supprimer l’action', icon: Icons.delete_outline, destructive: true, onTap: _deleteAction),
+              ]).then((_) {
                 if (mounted) setState(() {});
               }),
             ),
