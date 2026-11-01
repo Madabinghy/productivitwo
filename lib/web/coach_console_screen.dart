@@ -29,7 +29,7 @@ Color _tierColor(int pct) => palierColor(pct);
 /// Machine à états du bandeau central : une même carte, plusieurs rendus.
 /// Adaptée aux données réellement disponibles aujourd'hui (le boost « coup
 /// de main » et le refus d'ajustement viendront avec leurs chantiers).
-enum _CState { silence, retard, rien, attente, revoque, bien, suivi }
+enum _CState { silence, retard, surveiller, rien, attente, revoque, bien, suivi }
 
 class _Coachee {
   final Map<String, dynamic> fiche;
@@ -53,6 +53,7 @@ class _Coachee {
   bool get gamesShared => (fiche['sharing'] as Map?)?['games'] == true || dash?['gamesShared'] == true;
   bool get sleepShared => (fiche['sharing'] as Map?)?['sleep'] == true || dash?['sleepShared'] == true;
   Map<String, dynamic>? get signals => dash?['signals'] is Map ? Map<String, dynamic>.from(dash!['signals'] as Map) : null;
+  String? get watchFlag => dash?['watchFlag'] is String ? dash!['watchFlag'] as String : null;
   List<String> get talkingPoints => ((dash?['talkingPoints'] as List?) ?? const []).map((e) => '$e').toList();
 
   List<Map<String, dynamic>> get engagements =>
@@ -83,6 +84,9 @@ class _Coachee {
       return _CState.silence;
     }
     if (total > 0 && weekPct < 60) return _CState.retard;
+    // Les engagements tiennent, mais un signal de fond se dégrade (nuits
+    // courtes, parole fragile) : à regarder, sans notification.
+    if (watchFlag != null) return _CState.surveiller;
     if (weeks.length >= 3 &&
         weeks
             .skip(weeks.length - 3)
@@ -97,11 +101,12 @@ class _Coachee {
   int get attention => switch (state) {
         _CState.silence => 0,
         _CState.retard => 1,
-        _CState.rien => 2,
-        _CState.attente => 3,
-        _CState.revoque => 4,
-        _CState.suivi => 5,
-        _CState.bien => 6,
+        _CState.surveiller => 2,
+        _CState.rien => 3,
+        _CState.attente => 4,
+        _CState.revoque => 5,
+        _CState.suivi => 6,
+        _CState.bien => 7,
       };
 
   bool get needsAction =>
@@ -127,6 +132,11 @@ class _Coachee {
         pill: 'EN RETARD',
         title:
             '7 derniers jours difficiles : ${c.kept} engagement(s) tenu(s) sur ${c.total}.',
+      ),
+    _CState.surveiller => (
+        color: _kAmber,
+        pill: 'À SURVEILLER',
+        title: 'Les engagements tiennent (${c.kept} / ${c.total}), mais un signal de fond se dégrade : ${c.watchFlag}.',
       ),
     _CState.rien => (
         color: _kFaint,
@@ -370,6 +380,16 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
         return (
           'Écrire un mot (sans morale)',
           () async => _focusMot(),
+        );
+      case _CState.surveiller:
+        return (
+          'En parler en séance',
+          () async {
+            _motCtrl.text = c.watchFlag == 'nuits courtes'
+                ? 'Je vois que tes nuits sont courtes en ce moment. On en parle à la prochaine séance ?'
+                : 'On regarde ensemble ta parole de la semaine à la prochaine séance ?';
+            _focusMot();
+          }
         );
       case _CState.rien:
         return (
