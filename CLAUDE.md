@@ -865,7 +865,10 @@ jamais d'IA ; croise parole manquée et nuit courte via `sleep.nightsBefore`), `
 SA SEMAINE EN SIGNAUX (`_signalsRow`, cinq tuiles, une case par jour ; « privé » quand le sommeil n'est pas partagé) et À ABORDER
 EN SÉANCE. Coaché, « Mon coach » (`coach_space_sheet.dart`) : interrupteurs MES JEUX DE LA JOURNÉE et MON SOMMEIL dans l'éditeur
 de partage, puis CE QUE … VOIT / CE QU'IL NE VOIT PAS (`_sharedList` : engagements, temps et programme, badges, état, jeux,
-sommeil — et toujours : domaines non partagés, texte des idées et notes, aucun export), ⓘ `kRuleCoachSharing`.
+sommeil — et toujours : domaines non partagés, texte des idées et notes, aucun export), ⓘ `kRuleCoachSharing`. **Lot 3 livré** : pastille
+« À SURVEILLER » dans la console (`_CState.surveiller`, après EN RETARD, avant RIEN DE PARTAGÉ) quand les engagements tiennent mais
+que `watchFlag` signale un fond qui se dégrade (5 nuits courtes sur 5+ mesurées, ou parole tenue < 50 % sur 4+ jours donnés) ;
+bandeau « … un signal de fond se dégrade : nuits courtes », action « En parler en séance » (mot pré-rempli) ; aucune notification.
 
 ## Minimum des activités (calibration, 2026-10-30)
 
