@@ -9,6 +9,12 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Catalogue de routines (2026-11-01) : lu par tout utilisateur connecté,
+    // écrit seulement côté serveur (admin).
+    match /routine_catalog/{id} {
+      allow read: if request.auth != null;
+    }
+
     // ── Couche sociale/jeu supprimée (pivot productivité) ────────────────────
     // Les règles des collections publiques du jeu (profiles, pseudos,
     // leaderboard_entries, challenge_library, challenge_submissions,

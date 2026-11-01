@@ -124,6 +124,8 @@ import 'package:productivitwo_v1/utils/hour_segments.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
+import 'package:productivitwo_v1/widgets/routine_catalog_screen.dart' show showRoutineCatalog;
+import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
@@ -1798,6 +1800,11 @@ class _AppRootState extends State<AppRoot>
   /// les bornes des moments (`momentWindows`) : posés sur AppLogic, les vues
   /// se recalculent via onChange.
   void _bindDayStart() {
+    // Catalogue de routines : les dessins des cartes de série (serveur, sinon le lot embarqué).
+    _sync.fetchRoutineCatalog().then((r) {
+      CatalogArt.setCatalog(r);
+      CatalogArt.setActivities(logic.state.activities);
+    });
     _dayStartSub?.cancel();
     _dayStartSub = _sync.streamMetaDoc().listen((m) {
       final start = parseDayStartMin(m['dayStartMin']);
@@ -4689,7 +4696,9 @@ class _AppRootState extends State<AppRoot>
               } else if (v == 'changelog') {
                 showChangelogSheet(context);
               } else if (v == 'catalogue') {
-                await showModalBottomSheet(
+                // Catalogue de routines illustrées (2026-11-01) ; les anciennes
+                // suggestions de domaines et d'activités restent en lien dedans.
+                await showRoutineCatalog(context, logic: logic, sync: _sync, onSuggestions: () => showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
                   showDragHandle: true,
@@ -4703,7 +4712,8 @@ class _AppRootState extends State<AppRoot>
                       onChanged: () => setState(() {}),
                     ),
                   ),
-                );
+                ));
+                if (mounted) setState(() {});
               } else if (v == 'settings') {
                 _showSettingsSheet(context);
               }

@@ -96,6 +96,10 @@ class Activity {
   /// finir X @maison — Y l'est aussi »).
   List<String> contexts;
 
+  /// Routine activée depuis le catalogue (2026-11-01, `catalog/routine_catalog.dart`) :
+  /// sa carte porte le dessin du catalogue. Null = routine créée à la main.
+  String? catalogId;
+
   Activity({
     String? id,
     required this.domainId,
@@ -124,6 +128,7 @@ class Activity {
     List<String>? splitMoments,
     List<TaskAction>? ownActions,
     List<String>? contexts,
+    this.catalogId,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
         ownActions = ownActions ?? <TaskAction>[],
@@ -169,6 +174,7 @@ class Activity {
         'splitMoments': splitMoments,
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
         'contexts': contexts,
+        if (catalogId != null) 'catalogId': catalogId,
       };
 
   /// Migration douce :
@@ -224,6 +230,7 @@ class Activity {
           ?.map((e) => TaskAction.from(e as Map))
           .toList(),
       contexts: (j['contexts'] as List?)?.cast<String>(),
+      catalogId: j['catalogId'] as String?,
     );
   }
 
@@ -259,6 +266,7 @@ class Activity {
       createdAt: createdAt ?? this.createdAt,
       lastTuneAt: lastTuneAt ?? this.lastTuneAt,
       linkedActivityId: linkedActivityId ?? null,
+      catalogId: catalogId,
     );
   }
 

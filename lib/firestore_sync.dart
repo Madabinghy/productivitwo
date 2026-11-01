@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:productivitwo_v1/catalog/routine_catalog.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
@@ -998,6 +999,18 @@ class FirestoreSync {
         .map((d) => Domain.from(d.data() as Map))
         .where((d) => !d.deleted)
         .toList());
+  }
+
+  /// Catalogue de routines (collection racine `routine_catalog`, lecture
+  /// seule, composée par l'administrateur). Vide hors connexion ou sans règle :
+  /// l'app sert alors le premier lot embarqué (`catalogOrSeed`).
+  Future<List<CatalogRoutine>> fetchRoutineCatalog() async {
+    try {
+      final snap = await _db.collection('routine_catalog').get().timeout(const Duration(seconds: 6));
+      return [for (final d in snap.docs) if (CatalogRoutine.from({'id': d.id, ...d.data()}) case final c?) c];
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> saveActivity(Activity activity) async {
