@@ -1245,7 +1245,7 @@ jours glissants** (maquette validée 2026-10-30 « Montre suisse glissante » ; 
 d'avant la création ne réclament rien ; `ActivityPace.pastMin` / `todayMin` / `aheadMin` / `leavingMin` / `tomorrowNeedMin`) — plus de
 mur le lundi, indépendant de la fenêtre de budget des Domaines. Fiche du badge : `WatchPaceView` (`widgets/watch_pace_view.dart`,
 « k / n couvertes », une barre par activité : gris = 6 jours passés, vert = aujourd'hui, « reste n min » / « ✓ couverte · n d'avance »,
-Chrono), ⓘ `kRuleWatch` ; `badgeToday` annonce « Demain : … » (jour qui sort de la fenêtre). **Donner la main sur les minimums** (maquette validée 2026-10-30) :
+Chrono), ⓘ `kRuleWatch` (carte 1 : « on additionne les 7 derniers jours… AU TOTAL, un jour léger se rattrape », retour user 2026-11-01 : la phrase laissait croire à un minimum chaque jour) ; `badgeToday` annonce « Demain : … » (jour qui sort de la fenêtre). **Donner la main sur les minimums** (maquette validée 2026-10-30) :
 logique pure `utils/watch_minimums.dart` (`watchBlockers` : activité à minimum en retard un soir de montre perdue ≥ `kBlockerLostDays` (3)
 fois sur `kBlockerWindowDays` (30) jours clos, `avgMin`, `suggestedMin` = ce que tu fais vraiment) ; `widgets/watch_minimums_sheet.dart` :
 `WatchBlockerCard` sous la barre de l'activité dans la fiche du badge (« Courses te coûte souvent la Montre suisse » · Pas de minimum ·

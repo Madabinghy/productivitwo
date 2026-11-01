@@ -76,7 +76,7 @@ const kRuleActivityPace = GameRule('Lire une activité · vue Tout', [
 
 const kRuleWatch = GameRule('Montre suisse', [
   RuleCard('⌚', 'Sept jours glissants',
-      'Chaque soir, chaque activité à minimum doit avoir fait 7 fois son minimum sur les 7 derniers jours.'),
+      'Chaque soir, on additionne les 7 derniers jours : chaque activité à minimum doit avoir fait 7 fois son minimum AU TOTAL. Un jour léger se rattrape les autres jours.'),
   RuleCard('📏', 'La barre', 'Gris : les 6 jours passés. Vert : aujourd’hui. Le bout de la barre : 7 × le minimum.'),
   RuleCard('🗓', 'Pas de mur le lundi', 'Le week-end compte encore le lundi, et une grosse séance couvre les jours d’après.'),
   RuleCard('🌅', 'Demain', 'Ce soir, le jour le plus ancien sort de la fenêtre : la fiche annonce ce qu’il faudra demain.'),
