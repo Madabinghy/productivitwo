@@ -1104,7 +1104,11 @@ Pourquoi ici · Enlever. « 💡 Proposer » (la carte choisie, sinon tout) pose
 `ghostsFromSpread`, prépa la veille des séances) : tap = garder, appui long = retirer, « Garder tout » / « Ignorer » ; un fantôme
 ne compte pas (`placedCount`, `dayLoad`, `remainingPieces`). OÙ J'EN SUIS = placé / voulu par activité. « Valider la semaine »
 demande quoi faire des fantômes restants, puis pose chaque morceau gardé en bloc d'activité (`proposeDay`). Le « Répartir par
-familles » ci-dessus ne sert plus qu'aux propositions.
+familles » ci-dessus ne sert plus qu'aux propositions. **Dates qui comptent** (retour user 2026-11-01 : « mes cours sont
+déjà mon activité Interventions ») : le temps des dates de la semaine compte pour leur activité (`_datedMin` : bloc avec activité ou
+projet lié, miroir agenda apparié à une séance par `linkMirrorsToSessions` sur des COPIES, séance native sans bloc = son créneau,
+sinon 1 h) et se retire de ce qu'il reste à placer (« 21h · dont 6h déjà dans l'agenda », « Couvert par tes dates », Où j'en suis
+compté avec les dates) ; Sommeil et besoins de base ne sont plus listés en dates.
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 

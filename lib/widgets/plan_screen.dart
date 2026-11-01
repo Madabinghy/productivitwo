@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/fiche_cache.dart' show FicheCache;
-import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf;
+import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf, linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask;
 import 'package:productivitwo_v1/utils/parole.dart';
@@ -1174,6 +1174,7 @@ class _PlanScreenState extends State<PlanScreen> {
   final List<WeekWant> _wants = [];
   final List<(int, String, int)> _prefill = []; // jour, activité, minutes (prépa la veille d'une séance)
   Map<String, PieceSpec> _spec = const {};
+  Map<String, int> _datedMin = const {};
   Set<String> _on = {};
   List<List<WeekPiece>> _pieces = [for (var i = 0; i < 7; i++) <WeekPiece>[]];
   String? _sel;
@@ -1246,9 +1247,22 @@ class _PlanScreenState extends State<PlanScreen> {
   void _buildWeek(List<StrategicObjective> objectives) {
     final days = _weekDays;
     final dated = [for (final _ in days) <String>[]];
+    // Le temps des dates déjà prises, par activité : une séance d'Interventions
+    // compte pour Interventions (retour user 2026-11-01 : pas de double emploi).
+    final datedMin = <String, int>{};
+    final countedTasks = <String>{};
+    final projById = {for (final p in logic.currentProjects) p.id: p};
     for (var i = 0; i < 7; i++) {
-      for (final b in _weekBlocks[i].where((b) => b.status == 'pending')) {
-        if (b.gcalEventId != null || b.kind == 'session') dated[i].add('${b.title} · ${b.startTime}');
+      // Sur des copies : l'appariement miroir ↔ séance ne s'écrit jamais.
+      final copies = [for (final b in _weekBlocks[i]) ScheduleBlock.from(b.toJson())];
+      linkMirrorsToSessions(copies, logic.currentProjects, days[i]);
+      for (final b in copies.where((b) => b.status == 'pending')) {
+        if (b.gcalEventId == null && b.kind != 'session') continue;
+        if (isBasicNeedName(b.title)) continue;
+        dated[i].add('${b.title} · ${b.startTime}');
+        final act = b.activityId ?? projById[b.projectId]?.linkedActivityId;
+        if (act != null) datedMin[act] = (datedMin[act] ?? 0) + b.durationMin;
+        if (b.taskId != null) countedTasks.add(b.taskId!);
       }
     }
     _wants.clear();
@@ -1271,6 +1285,15 @@ class _PlanScreenState extends State<PlanScreen> {
         if (i < 0 || i > 6) continue;
         final t = it.milestone.title;
         if (!dated[i].any((d) => d.startsWith(t))) dated[i].add(t);
+        if (p.linkedActivityId != null && countedTasks.add(it.milestone.id)) {
+          final n = it.native;
+          int toMin(String hm) {
+            final x = hm.split(':');
+            return x.length == 2 ? (int.tryParse(x[0]) ?? 0) * 60 + (int.tryParse(x[1]) ?? 0) : 0;
+          }
+          final len = n == null ? 0 : toMin(n.endTime) - toMin(n.startTime);
+          datedMin[p.linkedActivityId!] = (datedMin[p.linkedActivityId!] ?? 0) + (len > 0 ? len : 60);
+        }
         if (it.prep != null && it.prep!.status != 'done' && p.linkedActivityId != null) {
           _prefill.add((i > 0 ? i - 1 : 0, p.linkedActivityId!, 60));
           if (!_wants.any((w) => w.activityId == p.linkedActivityId)) {
@@ -1280,6 +1303,7 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     }
     _weekDated = dated;
+    _datedMin = datedMin;
     // Le contrat : minimums (Montre suisse), engagements des objectifs, plans en retard.
     for (final a in logic.state.activeActivities) {
       if (a.isHabit || a.goalMin <= 0 || isBasicNeedName(a.name) || logic.isActivitySnoozed(a.id, days.first) || logic.isDomainResting(a.domainId)) continue;
@@ -1321,7 +1345,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
   /// Le découpage par défaut d'une envie (famille), la prépa des séances en plus.
   PieceSpec _defaultSpec(WeekWant w) {
-    final spec = pieceSpecOf(_familyOf(w.activityId), w.weeklyMin);
+    final spec = pieceSpecOf(_familyOf(w.activityId), (w.weeklyMin - (_datedMin[w.activityId] ?? 0)).clamp(0, 1 << 20).toInt());
     final prep = _prefill.where((p) => p.$2 == w.activityId).length;
     if (spec.count == 0 && prep > 0 && _familyOf(w.activityId) != PlanFamily.base) return PieceSpec(prep, 60);
     return spec;
@@ -1407,6 +1431,9 @@ class _PlanScreenState extends State<PlanScreen> {
     final placeable = _wants.where((w) => (_spec[w.activityId]?.count ?? 0) > 0 || w.reason == 'ajouté').toList();
     final daily = _wants.where((w) => w.weeklyMin > 0 && _familyOf(w.activityId) == PlanFamily.daily).toList();
     final base = _wants.where((w) => w.weeklyMin > 0 && _familyOf(w.activityId) == PlanFamily.base).toList();
+    final covered = _wants
+        .where((w) => w.weeklyMin > 0 && (_datedMin[w.activityId] ?? 0) > 0 && (_spec[w.activityId]?.count ?? 0) == 0 && _familyOf(w.activityId) != PlanFamily.base && _familyOf(w.activityId) != PlanFamily.daily)
+        .toList();
     Widget noBlock(String label, List<WeekWant> ws) => Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -1454,7 +1481,11 @@ class _PlanScreenState extends State<PlanScreen> {
                   const SizedBox(width: 5),
                   Flexible(
                     child: Text(
-                      [if (w.weeklyMin > 0) fmtMin(w.weeklyMin), w.reason].join(' · '),
+                      [
+                        if (w.weeklyMin > 0) fmtMin(w.weeklyMin),
+                        if ((_datedMin[id] ?? 0) > 0) 'dont ${fmtMin(_datedMin[id]!)} déjà dans l\'agenda',
+                        w.reason,
+                      ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12, color: _text3),
@@ -1550,13 +1581,14 @@ class _PlanScreenState extends State<PlanScreen> {
           ),
           const SizedBox(height: 6),
           const Text('Touche « 2 × 45 » pour changer la durée · appui long = la façon de la placer.', style: TextStyle(fontSize: 12, color: _text3)),
-          if (daily.isNotEmpty || base.isNotEmpty || _weekRoutines > 0)
+          if (covered.isNotEmpty || daily.isNotEmpty || base.isNotEmpty || _weekRoutines > 0)
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('SANS BLOC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: _text3)),
+                if (covered.isNotEmpty) noBlock('Couvert par tes dates :', covered),
                 if (daily.isNotEmpty) noBlock('Au fil de la journée :', daily),
                 if (base.isNotEmpty) noBlock('Déjà dans ta journée :', base),
                 const SizedBox(height: 6),
@@ -1877,11 +1909,12 @@ class _PlanScreenState extends State<PlanScreen> {
                   final s = _spec[w.activityId]!;
                   final done = placedCount(_pieces, w.activityId);
                   final ok = done >= s.count;
+                  final dm = _datedMin[w.activityId] ?? 0;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     child: Row(children: [
                       Expanded(child: Text(w.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white))),
-                      Text('${fmtMin(done * s.minutes)} / ${fmtMin(s.total)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _text3)),
+                      Text('${fmtMin(done * s.minutes + dm)} / ${fmtMin(s.total + dm)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ok ? _green : _text3)),
                       SizedBox(width: 22, child: ok ? const Icon(Icons.check_rounded, size: 16, color: _green) : null),
                     ]),
                   );
