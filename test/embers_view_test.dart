@@ -11,19 +11,20 @@ Widget _wrap(Widget w) => MaterialApp(home: Scaffold(body: SingleChildScrollView
 
 void main() {
   testWidgets('ligne « Perdu hier » : rallumable, en attente, indisponible', (t) async {
-    var rekindled = false, plus = false;
+    var rekindled = false, cancelled = false;
     await t.pumpWidget(_wrap(Column(children: [
       LostSeriesRow(lost: const LostSeries(activityId: 'p', name: 'Pompes', length: 4, nextTier: 7), onRekindle: () => rekindled = true),
-      LostSeriesRow(lost: const LostSeries(activityId: 'l', name: 'Lecture', length: 2, pending: true), todayCount: 0, target: 1, onPlus: () => plus = true, onCancel: () {}),
+      LostSeriesRow(lost: const LostSeries(activityId: 'l', name: 'Lecture', length: 2, pending: true), todayCount: 0, target: 1, onCancel: () => cancelled = true),
       const LostSeriesRow(lost: LostSeries(activityId: 't', name: 'Tractions', length: 2, blocked: 'déjà rallumée le 17 oct. · une fois par mois')),
     ])));
     expect(find.text('Pompes · série de 4 j cassée'), findsOneWidget);
     expect(find.text('palier 7 j dans 3 j · rattrapable jusqu’à ce soir'), findsOneWidget);
     await t.tap(find.text('Rallumer · 🔥1'));
     expect(rekindled, isTrue);
-    expect(find.text('rallumée · braise en attente · 0 / 1 aujourd’hui'), findsOneWidget);
-    await t.tap(find.text('+1'));
-    expect(plus, isTrue);
+    expect(find.text('rallumée · fais Lecture aujourd’hui (0 / 1) pour garder la série'), findsOneWidget);
+    expect(find.text('+1'), findsNothing);
+    await t.tap(find.byTooltip('Annuler le rallumage'));
+    expect(cancelled, isTrue);
     expect(find.text('Indisponible'), findsOneWidget);
     expect(find.text('déjà rallumée le 17 oct. · une fois par mois'), findsOneWidget);
   });

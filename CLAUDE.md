@@ -684,7 +684,7 @@ les routines du jour et le web (`WebHuntStore.emberSpends` → `WebDeckSource.de
 {stock, rekindled[{name, ymd, domainId}]}` (30 j), filtré par domaine partagé (`badgesForCoach`), résumé `badgesSummary.embers`, ligne
 « Braises » du rapport de pré-séance (⚠️ `firebase deploy --only functions`). **Lot 2 livré (écrans, `widgets/embers_view.dart`)** :
 `LostYesterdaySection` sous « Ta journée » (page : séries rallumables ou en attente seulement ; feuille des enjeux : toutes, indisponibles
-comprises) — `LostSeriesRow` « Pompes · série de 4 j cassée » + « Rallumer · 🔥1 » / en attente « +1 » + ✕ annuler / « Indisponible » +
+comprises) — `LostSeriesRow` « Pompes · série de 4 j cassée » + « Rallumer · 🔥1 » / en attente « rallumée · fais Pompes aujourd’hui (0 / 1) pour garder la série » + ✕ seul (confirmation « Annuler le rallumage ? » ; plus de bouton +1 depuis le 2026-11-01, retour user : la routine se fait par le geste habituel, la ligne disparaît alors d’elle-même) / « Indisponible » +
 raison, puis `EmberDots` (réserve) ; `showRekindleSheet` (six derniers jours, hier en braise, Prix · Condition · Résultat · Trace, « Rallumer
 avec une braise ») ; `_onEmbersChanged` recharge le deck. « Badges en jeu » (mobile et web) : `EmberLedgerPanel` en tête (réserve, 5
 derniers événements). Bilan du soir : « Journée parfaite · une braise » (`isPerfectSoFar(TodayFacts)`, `buildEveningLedger(perfectToday:,
