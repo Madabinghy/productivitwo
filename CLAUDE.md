@@ -1058,6 +1058,16 @@ immédiat ; jamais un bloc ni une routine sans autre enjeu), `compareSniper` (se
 prochain bloc À FAIRE hors blocs de temps, sinon fin de journée active), `sniperPrecision`. Session = `ChainRun` `kind:"sniper"`
 (`doneCount` = cibles touchées, `total` = visées) ; badge **Sniper** (`sniper`, Discipline, symbole `crosshair`, 1 / 5 / 15) : une
 session compte quand toutes les cibles visées tombent, au moins 3 (`sniperCounts`). Jamais compté pour Enchaîneur.
+**Lot 2 livré (écran + entrées)** : `widgets/sniper_screen.dart` (`showSniperScreen(logic, badges:, resume:)`, accent bleu ciel
+`kSniperAccent`, ⓘ `kRuleSniper`) — VISEUR (« Libre jusqu'à HH:MM · bloc », barre temps visé / libre, cibles avec durée exacte et
+puces de gains, tap = écarter / remettre, HORS DE PORTÉE avec raison ; enjeux = `buildStakeBoard` sans coupe, facteur
+`estimateFactor`, journée active `fetchDayWindow`), TIR (minuteur pile + `CoupAlarm`, chrono sur l'activité — action : liée, sinon
+projet, sinon porteuse ; routine : activité liée ; une activité tombe seule au bout du minuteur, une action attend « Action faite »
+(`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnActions`), routine = `incHabit(+n)`, relevé = `noteReadingQuick` ;
+Pause · +5 min · Passer), TOUCHÉ (temps tiré / visé, ce qui vient de tomber, tir suivant après `kSniperPauseMin` min — Tirer
+maintenant · Souffler 5 min · Passer cette cible), BILAN (k / n touchées, tirées / visées, précision, tombé, badge). Reprenable comme
+Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). Entrées : lanceur ◎ entre ⚡ et ↗ en haut
+d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 
