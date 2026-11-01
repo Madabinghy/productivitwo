@@ -73,4 +73,19 @@ void main() {
     expect(find.text('Carte bronze · Sniper'), findsOneWidget);
     expect(find.text('Fermer'), findsOneWidget);
   });
+
+  test('récolte : les cartes qui ont avancé, paliers d’abord', () {
+    const def = BadgeDef(id: 'serie', family: BadgeFamily.routines, name: 'Pompes', symbol: 'flame', tiers: [3, 7, 21], unit: 'j');
+    const watch = BadgeDef(id: 'watch', family: BadgeFamily.days, name: 'Montre', symbol: 'watch', tiers: [5, 20]);
+    const still = BadgeDef(id: 'still', family: BadgeFamily.days, name: 'Rien', symbol: 'sun', tiers: [5]);
+    final deck = BadgeDeck([
+      const BadgeState(def: def, level: 2, value: 8),
+      const BadgeState(def: watch, level: 1, value: 9),
+      const BadgeState(def: still, level: 0, value: 2),
+    ]);
+    final items = harvestOf(deck, {'serie': 7, 'watch': 6, 'still': 2}, {'serie': 2, 'watch': 0, 'still': 0});
+    expect(items.map((h) => h.badge.def.id).toList(), ['watch', 'serie']);
+    expect(harvestLabel(items.first), 'BRONZE');
+    expect(harvestLabel(items.last), '+1 j');
+  });
 }

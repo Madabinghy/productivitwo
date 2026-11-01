@@ -47,6 +47,20 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
     if (album) widget.onOpenAlbum?.call();
   }
 
+  /// « Ranger dans l'album » : les cartes qui ont passé un palier se
+  /// retournent, puis les badges de collection ; la récolte est faite.
+  Future<void> _collect() async {
+    final bc = widget.badges;
+    final deck = bc?.deck;
+    if (bc == null || deck == null) return;
+    final cards = CardSeenStore.pending(deck);
+    if (cards.isNotEmpty || CardSeenStore.pendingCollection(deck).isNotEmpty) {
+      await _reveal(cards);
+    }
+    CardSeenStore.markHarvested(deck, bc.logic.livedTodayYmd);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _reveal(List<NewCard> cards) async {
     if (_open) return;
     _open = true;
@@ -78,6 +92,8 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
         if (deck == null || !CardSeenStore.ready) return const SizedBox.shrink();
         final pack = CardSeenStore.packPending(deck);
         if (pack.isNotEmpty) return _packPrompt(context, pack);
+        final harvest = CardSeenStore.harvestPending(deck, bc.logic.livedTodayYmd);
+        if (harvest.isNotEmpty) return _harvestPrompt(context, harvest);
         final cards = CardSeenStore.pending(deck);
         final drops = CardSeenStore.pendingCollection(deck);
         if (cards.isEmpty && drops.isEmpty) return const SizedBox.shrink();
@@ -135,8 +151,69 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
   }
 }
 
-/// La carte « Ouvre ta collection » (paquet scellé, éventail, compte).
+/// La carte « Ouvre ta collection » (paquet scellé, éventail, compte) et
+/// « Ta récolte d'hier ».
 extension on _CardRevealPromptState {
+  Widget _harvestPrompt(BuildContext context, List<HarvestItem> items) {
+    const gold = Color(0xFFFFD36A);
+    final cs = Theme.of(context).colorScheme;
+    final pts = items.fold<int>(0, (s, h) => s + cardPoints(rarityOf(h.badge)) - cardPoints(h.rarityBefore));
+    final fresh = items.where((h) => h.levelBefore == 0 && h.badge.acquired).length;
+    String measure(BadgeState b) {
+      if (b.complete) return 'complète';
+      if (b.showGauge) return '${fmtInt(b.value.round())} / ${fmtInt(b.nextTarget!)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}';
+      return b.acquired ? rarityLabel(rarityOf(b)).toLowerCase() : 'pas encore';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(color: gold.withValues(alpha: .08), borderRadius: BorderRadius.circular(16), border: Border.all(color: gold.withValues(alpha: .6))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text('Ta récolte d’hier', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: cs.onSurface))),
+            if (pts > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(color: gold.withValues(alpha: .16), borderRadius: BorderRadius.circular(99), border: Border.all(color: gold.withValues(alpha: .5))),
+                child: Text('+$pts pt${pts > 1 ? 's' : ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: gold)),
+              ),
+          ]),
+          Text('${items.length} carte${items.length > 1 ? 's ont' : ' a'} avancé${fresh > 0 ? ' · $fresh nouvelle${fresh > 1 ? 's' : ''}' : ''}',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .65))),
+          const SizedBox(height: 8),
+          for (final h in items.take(4))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                BadgeCardView(state: h.badge, width: 30),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(h.badge.def.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                    Text(measure(h.badge), style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
+                  ]),
+                ),
+                Text(harvestLabel(h), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: h.tierUp ? gold : const Color(0xFF3DDC84))),
+              ]),
+            ),
+          if (items.length > 4)
+            Text('+ ${items.length - 4} autre${items.length - 4 > 1 ? 's' : ''}', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 46,
+            child: FilledButton(
+              onPressed: _collect,
+              style: FilledButton.styleFrom(backgroundColor: gold, foregroundColor: const Color(0xFF2A2312), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Text(items.any((h) => h.tierUp) ? 'Ranger dans l’album · retourner' : 'Ranger dans l’album', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _packPrompt(BuildContext context, List<NewCard> pack) {
     const gold = Color(0xFFFFD36A);
     final cs = Theme.of(context).colorScheme;

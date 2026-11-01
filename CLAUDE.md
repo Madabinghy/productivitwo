@@ -1416,7 +1416,13 @@ dans l'album ») puis `markOpened`. **Album en pochettes** : chaque famille (hor
 puis les cartes numérotées (`albumOrder`), une carte jamais commencée = pochette vide en pointillés (`BadgeCardView(pocket:)` :
 numéro, nom, indice). **Elle compte pour** dans la fiche d'une carte (`cardFeeds(card, deck)` : Collectionneur « +3 pts » /
 « bronze = +1 pt », Famille « 1 des 12 » / « il la faut pour le compléter », Écrin d'or, Légende ; tap = fiche du badge ;
-`showBadgeSheet(deck:)`). **Lot 2 à venir** : la récolte du matin.
+`showBadgeSheet(deck:)`). **Lot 2 livré (la récolte du matin)** : instantané de la mesure et du palier de chaque carte sur l'appareil
+(`CardSeenStore` `harvest_snapshot` {ymd, values, levels}) ; une fois par jour vécu, `harvestPending` compare le deck à l'instantané
+(`harvestOf` → `HarvestItem` : paliers d'abord, puis le plus gros gain relatif ; `harvestLabel` « +1 j » / « OR » / « palier ») →
+carte « Ta récolte d'hier » en tête d'Aujourd'hui (`_harvestPrompt` : « +n pts », « k cartes ont avancé · j nouvelles », 4 lignes
+mini carte · mesure · gain) ; « Ranger dans l'album » retourne les cartes passées d'un palier puis les badges de collection
+(`_collect`), et pose l'instantané (`markHarvested`). Rien de neuf, ou premier passage = instantané posé en silence ; après
+l'ouverture de la collection seulement.
 
 ## Règles du jeu en place (2026-10-30)
 

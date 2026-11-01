@@ -14,6 +14,13 @@ class CardSeenStore {
   /// La collection a été ouverte une fois (récolte, 2026-11-01) : les cartes
   /// gagnées avant les cartes n'avaient jamais été retournées.
   static bool _opened = false;
+  static const _harvestKey = 'harvest_snapshot';
+  /// Récolte du matin : la mesure et le palier de chaque carte à la dernière
+  /// récolte, et le jour vécu de cette récolte.
+  static String? _harvestYmd;
+  static Map<String, num> _harvestValues = const {};
+  static Map<String, int> _harvestLevels = const {};
+  static bool _harvestLoaded = false;
   static Map<String, int>? _seen;
   /// Paliers vus des badges de collection (même règle : premier passage = vus).
   static Map<String, int>? _coll;
@@ -26,6 +33,17 @@ class CardSeenStore {
     try {
       final p = await SharedPreferences.getInstance();
       _opened = p.getBool(_openedKey) ?? false;
+      final h = p.getString(_harvestKey);
+      if (h != null) {
+        final j = jsonDecode(h);
+        if (j is Map) {
+          _harvestYmd = j['ymd']?.toString();
+          final v = j['values'], l = j['levels'];
+          if (v is Map) _harvestValues = {for (final e in v.entries) e.key.toString(): e.value as num};
+          if (l is Map) _harvestLevels = {for (final e in l.entries) e.key.toString(): (e.value as num).toInt()};
+          _harvestLoaded = true;
+        }
+      }
       final coll = p.getString(_collKey);
       if (coll != null) {
         final c = jsonDecode(coll);
@@ -53,6 +71,30 @@ class CardSeenStore {
     _seen = {...?_seen, ...seenOf(deck)};
     _save();
     SharedPreferences.getInstance().then((p) => p.setBool(_openedKey, true)).catchError((_) => false);
+  }
+
+  /// La récolte du matin : une fois par jour vécu, les cartes qui ont avancé
+  /// depuis la dernière récolte. Premier passage ou rien de neuf = instantané
+  /// posé en silence.
+  static List<HarvestItem> harvestPending(BadgeDeck deck, String livedYmd) {
+    if (!_ready || !_opened) return const [];
+    if (_harvestYmd == livedYmd) return const [];
+    if (!_harvestLoaded) {
+      markHarvested(deck, livedYmd);
+      return const [];
+    }
+    final items = harvestOf(deck, _harvestValues, _harvestLevels);
+    if (items.isEmpty) markHarvested(deck, livedYmd);
+    return items;
+  }
+
+  static void markHarvested(BadgeDeck deck, String livedYmd) {
+    _harvestYmd = livedYmd;
+    _harvestValues = {for (final b in deck.badges) b.def.id: b.value};
+    _harvestLevels = {for (final b in deck.badges) b.def.id: b.level};
+    _harvestLoaded = true;
+    final j = jsonEncode({'ymd': livedYmd, 'values': _harvestValues, 'levels': _harvestLevels});
+    SharedPreferences.getInstance().then((p) => p.setString(_harvestKey, j)).catchError((_) => false);
   }
 
   /// Les cartes à retourner ; premier passage = tout est vu, rien à retourner.
