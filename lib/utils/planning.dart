@@ -1,6 +1,6 @@
 import 'dart:ui' show Color;
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin, isLetGoBlock;
 import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
 
 /// Mode Planification (maquette validée 2026-10-31) : poser demain en dix
@@ -154,7 +154,7 @@ bool capHeld(DailySchedule s) {
   if (at == null || p.length != 3) return false;
   final day = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
   if (!at.isBefore(day)) return false;
-  final counted = s.blocks.where((b) => b.gcalEventId == null && (b.status == 'pending' || b.status == 'done')).toList();
+  final counted = s.blocks.where((b) => b.gcalEventId == null && (b.status == 'pending' || b.status == 'done' || isLetGoBlock(b))).toList();
   if (counted.isEmpty) return false;
   return counted.where((b) => b.status == 'done').length / counted.length >= kCapHeldRatio;
 }

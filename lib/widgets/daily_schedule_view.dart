@@ -7,6 +7,9 @@ import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/widgets/remove_block_sheet.dart';
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show showGuerillaScreen;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show countsForBadges;
@@ -329,6 +332,65 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         duration: const Duration(seconds: 2),
       ));
     }
+  }
+
+  /// Retirer un bloc (2026-11-01, maquette « Lâcher un bloc ») : un bloc à
+  /// faire hors agenda passe par « Pourquoi ? » — déplacer, lâcher (compte
+  /// comme non fait), empêché (ne compte pas), posé par erreur (effacé).
+  Future<void> _removeBlock(ScheduleBlock block) async {
+    if (block.gcalEventId != null || block.status != 'pending' || block.isPrep) {
+      await _deleteBlock(block);
+      return;
+    }
+    final choice = await showRemoveBlockSheet(context, block,
+        flemme: widget.logic.mode == DayMode.low && widget.onLaunchTimed != null);
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case RemoveBlockChoice.tenMin:
+        widget.onLaunchTimed?.call(block, 10);
+      case RemoveBlockChoice.move:
+        await showMoveBlockSheet(context, logic: widget.logic, block: block, date: _docOf(block));
+      case RemoveBlockChoice.prevented:
+        await _cancelBlock(block);
+      case RemoveBlockChoice.mistake:
+        await _deleteBlock(block);
+      case RemoveBlockChoice.letGo:
+        await _letGo(block);
+    }
+  }
+
+  Future<void> _letGo(ScheduleBlock block) async {
+    await _sync.setBlockLetGo(_docOf(block), block.id, true);
+    if (block.challenge) await cancelChallengeNotifications(block);
+    if (!mounted) return;
+    final now = widget.logic.livedNowMinNow;
+    final all = _schedule?.blocks ?? const <ScheduleBlock>[];
+    final next = all
+        .where((b) => b.id != block.id && b.status == 'pending' && b.gcalEventId == null && blockStartMin(b) + b.durationMin > now)
+        .toList()
+      ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+    var routinesLeft = 0;
+    for (final a in widget.logic.state.activeActivities) {
+      if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
+      if (routineTodayCount(widget.logic, a) < (a.habitTarget ?? 1).clamp(1, 999)) routinesLeft++;
+    }
+    String? capLine;
+    final sch = _schedule;
+    if (sch != null && sch.generatedBy == 'plan' && !sch.plannedSameDay) {
+      final counted = all.where((b) => b.gcalEventId == null && (b.status == 'pending' || b.status == 'done' || b.id == block.id)).toList();
+      final doneN = counted.where((b) => b.status == 'done').length;
+      final need = (counted.length * 0.7).ceil();
+      final open = counted.where((b) => b.status == 'pending' && b.id != block.id).length;
+      capLine = doneN + open >= need ? '$doneN sur ${counted.length} faits · encore jouable' : 'hors de portée aujourd’hui';
+    }
+    await showLetGoDoneSheet(
+      context,
+      block: block,
+      next: next,
+      routinesLeft: routinesLeft,
+      capLine: capLine,
+      onGuerilla: () => showGuerillaScreen(context, widget.logic),
+    );
   }
 
   Future<void> _deleteBlock(ScheduleBlock block) async {
@@ -804,7 +866,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               child: Text('Hors du programme',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             ),
-            for (final b in [...a.moved, ...a.cancelled, ...a.skipped]
+            for (final b in [...a.moved, ...a.cancelled, ...a.letGo, ...a.skipped]
               ..sort((x, y) => blockStartMin(x).compareTo(blockStartMin(y))))
               ListTile(
                 dense: true,
@@ -813,15 +875,21 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                         ? Icons.redo_rounded
                         : isCancelledBlock(b)
                             ? Icons.event_busy_rounded
-                            : Icons.skip_next_rounded,
+                            : isLetGoBlock(b)
+                                ? Icons.pan_tool_outlined
+                                : Icons.skip_next_rounded,
                     color: cs.onSurface.withOpacity(.5)),
                 title: Text('${b.startTime} · ${b.title}', maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Text(asideDetail(b)),
-                trailing: isCancelledBlock(b)
+                trailing: isCancelledBlock(b) || isLetGoBlock(b)
                     ? TextButton(
                         onPressed: () async {
                           Navigator.of(context).pop();
-                          await _sync.setBlockCancelled(_docOf(b), b.id, false);
+                          if (isLetGoBlock(b)) {
+                            await _sync.setBlockLetGo(_docOf(b), b.id, false);
+                          } else {
+                            await _sync.setBlockCancelled(_docOf(b), b.id, false);
+                          }
                         },
                         child: const Text('Rétablir'),
                       )
@@ -988,7 +1056,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         ),
         child: Icon(Icons.delete_outline, color: cs.onErrorContainer, size: 20),
       ),
-      onDismissed: (_) => _deleteBlock(block),
+      confirmDismiss: (_) async {
+        await _removeBlock(block);
+        return false;
+      },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 2),
         // « Une liste, un seul bloc ouvert » (2026-10) : tap = le bloc s'ouvre à
@@ -1132,9 +1203,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         MomentAction('Modifier le bloc', icon: Icons.edit_outlined, onTap: () => _showEditSheet(context, cs, block)),
         if (block.status == 'pending' && !block.isPrep)
           MomentAction('Ajuster l\'heure ou la durée', icon: Icons.schedule_rounded, onTap: () => _showAdjustSheet(context, block)),
-        if (block.status == 'pending' && canCancelBlock(block))
-          MomentAction('Pas disponible', icon: Icons.block_rounded, hint: 'annuler sans report', onTap: () => _cancelBlock(block)),
-        MomentAction('Supprimer', icon: Icons.delete_outline, destructive: true, onTap: () => _deleteBlock(block)),
+        MomentAction('Retirer', icon: Icons.remove_circle_outline, hint: 'déplacer, lâcher ou empêché', destructive: true, onTap: () => _removeBlock(block)),
       ],
     );
   }
@@ -1447,7 +1516,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         ),
         child: Icon(Icons.delete_outline, color: cs.onErrorContainer, size: 20),
       ),
-      onDismissed: (_) => _deleteBlock(block),
+      confirmDismiss: (_) async {
+        await _removeBlock(block);
+        return false;
+      },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
@@ -1616,10 +1688,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               _askDuration(context, block);
             }),
             if (canCancelBlock(block))
-              row(Icons.event_busy_rounded, 'Annuler le bloc',
-                  'pas disponible — il sort du programme, sans report', () async {
+              row(Icons.remove_circle_outline, 'Retirer le bloc',
+                  'le déplacer, le lâcher, ou empêché', () async {
                 Navigator.pop(sctx);
-                await _cancelBlock(block);
+                await _removeBlock(block);
               }, color: cs.error),
             row(Icons.redo_rounded, 'Reporter au lendemain',
                 'le bloc est posé demain, à la même heure si elle est libre',
@@ -1655,7 +1727,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showClosingSnackBar(SnackBar(
-        content: Text('« ${block.title} » annulé'),
+        content: Text('« ${block.title} » empêché · ne compte pas'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(

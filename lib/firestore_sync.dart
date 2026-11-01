@@ -24,7 +24,7 @@ import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/today_logic.dart'
-    show blockStartMin, kSkipUnavailable, mirrorKey, settleBlocksByWork;
+    show blockStartMin, kSkipLetGo, kSkipUnavailable, mirrorKey, settleBlocksByWork;
 import 'package:productivitwo_v1/utils/week_planner.dart' show carrySlot, minToClock;
 import 'package:productivitwo_v1/utils/project_patch.dart';
 import 'package:productivitwo_v1/utils/project_merge.dart';
@@ -3458,6 +3458,24 @@ class FirestoreSync {
     if (i == -1) return;
     blocks[i]['status'] = cancelled ? 'skipped' : 'pending';
     blocks[i]['skipReason'] = cancelled ? kSkipUnavailable : null;
+    await ref.update({'blocks': blocks});
+  }
+
+  /// Lâche un bloc (« j'aurais pu, je choisis de ne pas le faire ») ou le
+  /// rétablit : lâché = `skipped` + skipReason [kSkipLetGo] (compte comme non
+  /// fait) ; rétabli = de nouveau à faire.
+  Future<void> setBlockLetGo(String date, String blockId, bool letGo) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)?.map((b) => Map<String, dynamic>.from(b as Map)).toList() ?? [];
+    final i = blocks.indexWhere((b) => b['id'] == blockId);
+    if (i == -1) return;
+    blocks[i]['status'] = letGo ? 'skipped' : 'pending';
+    blocks[i]['skipReason'] = letGo ? kSkipLetGo : null;
+    if (letGo) blocks[i]['letGoAt'] = DateTime.now().toIso8601String();
     await ref.update({'blocks': blocks});
   }
 

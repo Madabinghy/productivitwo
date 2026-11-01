@@ -1375,6 +1375,21 @@ rien). Restent : minuteur de fin (id 30 / alarme `alarm` 42) et messages ORION /
 n'est PAS poussé (il s'affiche ce jour-là dans l'app) ; `pushAllowed` : interrupteur « Messages ORION / coach » de Paramètres ›
 Notifications = `orion_config/main.pushEnabled` (absent = activé ; `FirestoreSync.fetchOrionPushEnabled` / `setOrionPushEnabled`).
 
+## Lâcher un bloc (2026-11-01, maquette validée « Lâcher un bloc »)
+
+Retour user : « je ne veux pas supprimer le bloc, ce serait tricher », puis la culpabilité paralyse. Avant, un bloc supprimé ou
+sauté sortait des comptes (pas de conséquence) ; maintenant retirer un bloc À FAIRE hors agenda (glisser, « Retirer » des gestes,
+« Retirer le bloc » de l'ajustement) ouvre « Pourquoi ? » (`widgets/remove_block_sheet.dart`, `showRemoveBlockSheet` →
+`RemoveBlockChoice`, ⓘ `kRuleLetGo`) : **↪ Je le déplace** (`showMoveBlockSheet`, rien n'est perdu) · **✋ Je lâche ce bloc**
+(`skipped` + `skipReason: kSkipLetGo` = `"lache"`, `letGoAt` ; `FirestoreSync.setBlockLetGo`) — COMPTE comme non fait :
+`countsForBadges` et `capHeld` l'incluent, la tuile Journée parfaite dit « Pas aujourd'hui · … lâché · le reste compte toujours » ;
+Montre suisse, Métronome et séries ne bougent pas · **⛔ J'ai été empêché** (= l'ancien « Pas disponible », `kSkipUnavailable`, ne
+compte pas) · « Posé par erreur » (effacé, `deleted`). En Flemme, une ligne propose d'abord « 10 min » (`onLaunchTimed`). Après
+« Je lâche » : `showLetGoDoneSheet` (« C'est décidé. Le reste de ta journée est intact », prochains blocs, routines à atteindre,
+Guérilla, ce que ça change dont Cap tenu). « Hors du programme » : `asideBlocks().letGo`, « ✋ lâché » / « ⛔ empêché », Rétablir
+pour les deux. Miroirs d'agenda et blocs faits : suppression comme avant. Reste possible : ligne du bilan du soir, compte lâchés /
+empêchés côté coach.
+
 ## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
 
 Une `SnackBar` avec une `action` (« Annuler ») peut rester affichée indéfiniment (Flutter récent : `persist` vrai par défaut ;

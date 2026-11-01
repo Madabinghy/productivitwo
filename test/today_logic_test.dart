@@ -128,9 +128,13 @@ void main() {
     ]);
     expect(a.cancelled.map((x) => x.id).toList(), ['an']);
     expect(a.skipped.map((x) => x.id).toList(), ['sk']);
-    expect(asideLabel(a), '1 bloc déplacé · 1 annulé · 1 sauté');
-    expect(asideLabel(asideBlocks([b('an', 'skipped', reason: kSkipUnavailable)])), '1 bloc annulé');
-    expect(asideDetail(a.cancelled[0]), 'annulé · pas disponible');
+    expect(asideLabel(a), '1 bloc déplacé · 1 empêché · 1 sauté');
+    expect(asideLabel(asideBlocks([b('an', 'skipped', reason: kSkipUnavailable)])), '1 bloc empêché');
+    expect(asideDetail(a.cancelled[0]), '⛔ empêché · ne compte pas');
+    final l = asideBlocks([b('l', 'skipped', reason: kSkipLetGo), b('an', 'skipped', reason: kSkipUnavailable)]);
+    expect(l.letGo.map((x) => x.id).toList(), ['l']);
+    expect(asideLabel(l), '1 bloc lâché · 1 empêché');
+    expect(asideDetail(l.letGo[0]), '✋ lâché · compte comme non fait');
     expect(canCancelBlock(b('p', 'pending')), isTrue);
     expect(canCancelBlock(b('d', 'done')), isFalse);
     expect(canCancelBlock(b('m', 'pending', gcal: 'evt')), isFalse);

@@ -34,6 +34,15 @@ const kRulePerfectDay = GameRule('Journée parfaite', [
       'Chaque journée parfaite met une braise de côté, trois au plus.'),
 ]);
 
+const kRuleLetGo = GameRule('Retirer un bloc', [
+  RuleCard('✋', 'Lâcher n’est pas tricher', 'Tu avais décidé, tu changes d’avis. Tu le dis, et le bloc compte comme non fait. Honnête, et terminé.'),
+  RuleCard('⛔', 'Empêché ne compte pas',
+      'Malade, imprévu, annulé : comme si le bloc n’avait jamais été prévu. À toi d’être honnête.'),
+  RuleCard('📊', 'Ce que ça change',
+      'Un bloc lâché fait perdre la journée parfaite et pèse sur Cap tenu. Montre suisse, Métronome et séries ne bougent pas.'),
+  RuleCard('➡️', 'Une case perdue, pas la journée', 'Ce qui suit compte autant qu’avant. C’est maintenant que ça se joue.'),
+]);
+
 const kRuleEmbers = GameRule('Braises', [
   RuleCard('🔥', 'Gagner une braise', 'Une journée parfaite forge une braise. Ta réserve en garde trois.'),
   RuleCard('🕯️', 'Rallumer une série',
