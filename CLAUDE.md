@@ -1271,6 +1271,9 @@ aujourd'hui) ; lien « Plutôt un projet ou une action sans jour » = `showCreat
 **Fiches préchargées** (2026-10-30, `utils/fiche_cache.dart`, `FicheCache`) : objectifs et déroulés relus en arrière-plan ; `showDomainPage` attend les objectifs (cache, sinon lecture bornée à 700 ms) avant de s'ouvrir et précharge les déroulés de ses activités ; la page domaine et la fiche d'activité partent du cache et ne se redessinent que si la relecture diffère (`sameObjectives`, `sameTemplates`). Domaines et Objectifs remplissent le cache.
 **Page domaine = le domaine vu par toute l'app** (maquette validée 2026-10-30, `domain_page.dart`) : en-tête = nom + chip, intention
 en italique, puces minimum vital · fait / total, ⚙ = intention et minimum (Orion) · veille · nom / couleur (`onManageDomains`) ; puis
+**CETTE SEMAINE** (grammaire des feuilles, 2026-11-01, `_weekBlock`) : `ExpectedBar` fait / attendu, une barre par jour de la fenêtre
+(`dailyMinutesByDomain`, jour courant cerclé) et UN bouton plein à la couleur du domaine = l'activité la plus en retard (« Kingdom ·
+reste 25 min », `_start`, absent si un chrono du domaine tourne) ; puis
 OBJECTIFS (actifs du domaine, « n % du rythme », tap = fiche trajectoire) · ROUTINES (à faire puis atteintes) · ACTIVITÉS (chip au
 rythme / à rattraper, EN PAUSE repliée) · PROJETS (vivants du domaine, hors dossiers ; tap = projet déplié, appui long = fiche). Plus de
 segment Temps / Routines ni d'en-tête chiffré. **Fiche Ma semaine = le contrat seul** : engagements à ce jour + semaines tenues ; la

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:productivitwo_v1/utils/sport_stats.dart' show resolveSportPick;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
 import 'package:flutter/material.dart';
@@ -351,7 +352,62 @@ class _DomainPageState extends State<_DomainPage> {
               ),
           ]),
         ),
+      ..._weekBlock(now, d, r, color),
     ]);
+  }
+
+  /// CETTE SEMAINE (grammaire des feuilles, 2026-11-01) : barre fait / attendu,
+  /// une barre par jour, puis UN bouton — lancer l'activité la plus en retard.
+  List<Widget> _weekBlock(DateTime now, Domain d, DomainWeek r, Color color) {
+    final cs = Theme.of(context).colorScheme;
+    final mute = cs.onSurface.withValues(alpha: .55);
+    final days = r.windowDays;
+    final start = budgetWindowStart(now, days);
+    final perDay = dailyMinutesByDomain(logic.state.sessions, logic.state.activeActivities, start, days, now: now)[d.id] ?? List.filled(days, 0);
+    final today = budgetDayIndex(now, days) - 1;
+    final maxDay = perDay.fold<int>(math.max(1, r.goalMinDay), (m, v) => v > m ? v : m);
+    final running = logic.runningActivity();
+    final runningHere = running != null && running.domainId == d.id;
+    final late = _timeRows(now).where((t) => !t.paused && t.goalMinDay > 0 && t.doneMin < t.expectedMin).toList()
+      ..sort((a, b) => (b.expectedMin - b.doneMin).compareTo(a.expectedMin - a.doneMin));
+    if (!r.hasGoal && r.doneMin == 0 && late.isEmpty) return const [];
+    return [
+      const SizedBox(height: 14),
+      Row(children: [
+        Expanded(child: Text(days == 14 ? 'SUR 14 JOURS' : 'CETTE SEMAINE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute))),
+        if (r.hasGoal) Text('attendu ${fmtMin(r.expectedMin)}', style: TextStyle(fontSize: 11.5, color: mute)),
+      ]),
+      const SizedBox(height: 6),
+      if (r.hasGoal) ExpectedBar(done: r.doneMin, total: r.weekMin, expected: r.expectedMin, color: color),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 34,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (var i = 0; i < perDay.length; i++) ...[
+            if (i > 0) const SizedBox(width: 3),
+            Expanded(
+              child: Container(
+                height: i > today ? 3 : (3 + 31 * perDay[i] / maxDay).clamp(3.0, 34.0),
+                decoration: BoxDecoration(
+                  color: i > today ? cs.onSurface.withValues(alpha: .06) : color.withValues(alpha: i == today ? .55 : 1),
+                  borderRadius: BorderRadius.circular(2),
+                  border: i == today ? Border.all(color: color) : null,
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ),
+      if (!runningHere && late.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: color.computeLuminance() > .45 ? Colors.black : Colors.white, minimumSize: const Size.fromHeight(46)),
+          onPressed: () => _start(late.first.a),
+          icon: const Icon(Icons.play_arrow_rounded),
+          label: Text('${late.first.a.name} · reste ${fmtMin(late.first.expectedMin - late.first.doneMin)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    ];
   }
 
   /// ⚙ : intention et minimum vital (session Orion), veille, puis la gestion
