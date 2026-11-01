@@ -149,3 +149,29 @@ CollectionBadge? nextCollectionBadge(List<CollectionBadge> all) {
   final open = all.where((b) => !b.complete).toList()..sort((a, b) => b.progress.compareTo(a.progress));
   return open.firstOrNull;
 }
+
+/// « Elle compte pour » (récolte, 2026-11-01) : les badges de collection
+/// qu'une carte nourrit, avec ce qu'elle y apporte.
+List<(CollectionBadge, String)> cardFeeds(BadgeState card, BadgeDeck deck) {
+  final all = {for (final b in collectionBadges(deck)) b.id: b};
+  final r = rarityOf(card);
+  final out = <(CollectionBadge, String)>[];
+  final collector = all['collector'];
+  if (collector != null) {
+    out.add((collector, r == CardRarity.none ? 'bronze = +1 pt' : '+${cardPoints(r)} pt${cardPoints(r) > 1 ? 's' : ''}'));
+  }
+  final fam = all['family-${card.def.family.name}'];
+  if (fam != null) {
+    final n = fam.tiers.first;
+    out.add((fam, card.acquired ? '1 des $n' : 'il la faut pour le compléter'));
+  }
+  if (r.index >= CardRarity.or.index && all['gold-case'] != null) {
+    final g = all['gold-case']!;
+    out.add((g, '1 des ${g.value}'));
+  }
+  if (r == CardRarity.legend && all['legend'] != null) {
+    final l = all['legend']!;
+    out.add((l, '1 des ${l.value}'));
+  }
+  return out;
+}

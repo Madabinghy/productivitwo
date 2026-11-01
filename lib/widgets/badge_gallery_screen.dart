@@ -450,36 +450,77 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     );
   }
 
+  /// Une famille de cartes, rangée en pochettes (récolte, 2026-11-01) : en
+  /// tête, son badge « au complet » (l'écusson et ce qu'il faut remplir), puis
+  /// les cartes numérotées, les pochettes vides en pointillés.
   Widget _family(BadgeDeck deck, BadgeFamily f) {
     final badges = deck.ofFamily(f);
     if (badges.isEmpty) return const SizedBox.shrink();
-    final got = badges.fold(0, (s, b) => s + b.paliersDone);
-    final all = badges.fold(0, (s, b) => s + b.paliersTotal);
-    final count = f == BadgeFamily.routines ? '${deck.seriesRunning} en cours' : '$got / $all';
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+    final ordered = albumOrder(badges);
+    final fam = f == BadgeFamily.routines ? null : collectionBadges(deck).where((b) => b.id == 'family-${f.name}').firstOrNull;
+    final won = badges.where((b) => b.acquired).length;
+    Widget head;
+    if (fam == null) {
+      head = Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+        child: Row(children: [
+          Text(badgeFamilyLabel(f).toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
+          const Spacer(),
+          Text('${deck.seriesRunning} en cours', style: const TextStyle(fontSize: 13, color: kBText4)),
+        ]),
+      );
+    } else {
+      final n = fam.tiers.first;
+      final goal = switch (fam.level) {
+        0 => 'remplis les $n pochettes → écusson argent',
+        1 => 'toutes en or → écusson or',
+        _ => 'au complet, tout en or',
+      };
+      head = InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showCollectionBadgeSheet(context, fam),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+          decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
           child: Row(children: [
-            Text(badgeFamilyLabel(f).toUpperCase(),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
-            const Spacer(),
-            Text(count, style: const TextStyle(fontSize: 13, color: kBText4)),
+            CollectionShield(badge: fam, size: 46),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(fam.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: kBText))),
+                  Text('$won / $n', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kBText2)),
+                ]),
+                Text(goal, style: const TextStyle(fontSize: 12, color: kBText3)),
+                if (!fam.complete) ...[
+                  const SizedBox(height: 5),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(value: fam.progress, minHeight: 5, backgroundColor: kBadgeGaugeTrack, color: kBadgeBrass),
+                  ),
+                ],
+              ]),
+            ),
           ]),
         ),
-        const SizedBox(height: 12),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        head,
+        const SizedBox(height: 10),
         Wrap(
           spacing: 10,
           runSpacing: 12,
-          children: [for (final b in albumOrder(badges)) _card(b)],
+          children: [for (final (i, b) in ordered.indexed) _card(b, pocket: i + 1)],
         ),
       ]),
     );
   }
 
-  Widget _card(BadgeState b) {
+  Widget _card(BadgeState b, {int? pocket}) {
     final width = (MediaQuery.sizeOf(context).width - 32 - 2 * 10) / 3;
     final t = _facts == null ? null : badgeToday(b, _facts!);
     final tonight = t != null && (t.gain > 0 || t.stake == TodayStake.reachable || t.stake == TodayStake.atRisk);
@@ -490,6 +531,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         width: width,
         tonight: tonight && !b.acquired,
         isNew: CardSeenStore.isNew(b),
+        pocket: pocket,
         footer: tonight && !b.acquired && !b.showGauge ? 'ce soir ?' : cardFooter(b, date: _shortDate),
       ),
     );
@@ -502,6 +544,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   void _showFacts(BadgeState b) => showBadgeSheet(
         context,
         b,
+        deck: _deck,
         logic: widget.logic,
         facts: widget.center?.todayFacts(),
         actions: BadgeTodayActions(
@@ -549,7 +592,7 @@ Future<void> _shareCard(BuildContext context, GlobalKey key, BadgeState b) async
   } catch (_) {}
 }
 
-Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic, TodayFacts? facts, BadgeTodayActions? actions}) {
+Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic, TodayFacts? facts, BadgeTodayActions? actions, BadgeDeck? deck}) {
   final cardKey = GlobalKey();
   return showModalBottomSheet<void>(
     context: context,
@@ -579,6 +622,24 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
         if (b.def.tiers.length >= 2) ...[
           const SizedBox(height: 12),
           _CardLadder(state: b),
+        ],
+        if (deck != null && cardFeeds(b, deck).isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const Text('ELLE COMPTE POUR', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700, color: kBText3)),
+          const SizedBox(height: 4),
+          for (final (cb, note) in cardFeeds(b, deck))
+            InkWell(
+              onTap: () => showCollectionBadgeSheet(context, cb),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  CollectionShield(badge: cb, size: 34),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(cb.ribbon == null && cb.acquired ? '${cb.name} ${roman(cb.level)}' : cb.name, style: const TextStyle(fontSize: 14, color: kBText))),
+                  Text(note, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: note.startsWith('+') ? kBadgeBrass : kBText3)),
+                ]),
+              ),
+            ),
         ],
         const SizedBox(height: 12),
         Text(badgeFamilyLabel(b.def.family).toUpperCase(),

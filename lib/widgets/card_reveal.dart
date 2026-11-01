@@ -34,6 +34,19 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
     });
   }
 
+  /// « Ouvre ta collection » : les cartes gagnées avant les cartes, une fois.
+  Future<void> _openPack(List<NewCard> pack) async {
+    if (_open) return;
+    _open = true;
+    final deck = widget.badges?.deck;
+    final album = await showCardReveal(context, pack, points: deck == null ? null : collectionPoints(deck), pack: true);
+    if (deck != null) CardSeenStore.markOpened(deck);
+    _open = false;
+    if (!mounted) return;
+    setState(() {});
+    if (album) widget.onOpenAlbum?.call();
+  }
+
   Future<void> _reveal(List<NewCard> cards) async {
     if (_open) return;
     _open = true;
@@ -63,6 +76,8 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
       builder: (context, _) {
         final deck = bc.deck;
         if (deck == null || !CardSeenStore.ready) return const SizedBox.shrink();
+        final pack = CardSeenStore.packPending(deck);
+        if (pack.isNotEmpty) return _packPrompt(context, pack);
         final cards = CardSeenStore.pending(deck);
         final drops = CardSeenStore.pendingCollection(deck);
         if (cards.isEmpty && drops.isEmpty) return const SizedBox.shrink();
@@ -120,15 +135,59 @@ class _CardRevealPromptState extends State<CardRevealPrompt> {
   }
 }
 
+/// La carte « Ouvre ta collection » (paquet scellé, éventail, compte).
+extension on _CardRevealPromptState {
+  Widget _packPrompt(BuildContext context, List<NewCard> pack) {
+    const gold = Color(0xFFFFD36A);
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        color: gold.withValues(alpha: .10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: gold, width: 1.5)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _openPack(pack),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Row(children: [
+              SizedBox(
+                width: 76,
+                height: 58,
+                child: Stack(children: [
+                  for (var i = 0; i < math.min(4, pack.length); i++)
+                    Positioned(
+                      left: i * 11.0,
+                      child: Transform.rotate(angle: (i - 1.5) * .12, child: BadgeCardView(state: pack[pack.length - 1 - i].badge, width: 38)),
+                    ),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Ouvre ta collection', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                  Text('${pack.length} carte${pack.length > 1 ? 's' : ''} déjà gagnée${pack.length > 1 ? 's' : ''}, jamais ouvertes',
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .65))),
+                ]),
+              ),
+              const Icon(Icons.inventory_2_outlined, color: gold),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// L'écran de révélation ; renvoie vrai si « Voir l'album » a été choisi.
 /// Toutes les cartes montrées passent vues à la fermeture.
 /// [points] = points de collection actuels (toutes les cartes comprises) :
 /// chaque carte montre ce qu'elle rapporte et où en est Collectionneur.
-Future<bool> showCardReveal(BuildContext context, List<NewCard> cards, {int? points}) async {
+Future<bool> showCardReveal(BuildContext context, List<NewCard> cards, {int? points, bool pack = false}) async {
   final r = await Navigator.of(context).push<bool>(PageRouteBuilder(
     opaque: false,
     barrierColor: Colors.black87,
-    pageBuilder: (_, __, ___) => CardRevealScreen(cards: cards, points: points),
+    pageBuilder: (_, __, ___) => CardRevealScreen(cards: cards, points: points, pack: pack),
     transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
   ));
   CardSeenStore.markSeen(cards.map((c) => c.badge));
@@ -138,7 +197,9 @@ Future<bool> showCardReveal(BuildContext context, List<NewCard> cards, {int? poi
 class CardRevealScreen extends StatefulWidget {
   final List<NewCard> cards;
   final int? points;
-  const CardRevealScreen({super.key, required this.cards, this.points});
+  /// Ouverture de la collection : « Tout retourner » et un récapitulatif en grille.
+  final bool pack;
+  const CardRevealScreen({super.key, required this.cards, this.points, this.pack = false});
 
   @override
   State<CardRevealScreen> createState() => _CardRevealScreenState();
@@ -147,6 +208,7 @@ class CardRevealScreen extends StatefulWidget {
 class _CardRevealScreenState extends State<CardRevealScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _flip = AnimationController(vsync: this, duration: const Duration(milliseconds: 850));
   int _i = 0;
+  bool _all = false;
 
   @override
   void dispose() {
@@ -176,8 +238,48 @@ class _CardRevealScreenState extends State<CardRevealScreen> with SingleTickerPr
     _flip.value = 0;
   }
 
+  /// Toutes les cartes d'un coup (ouverture de la collection).
+  Widget _allView() {
+    final w = (MediaQuery.sizeOf(context).width - 40 - 3 * 8) / 4;
+    final pts = widget.points;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const Text('TA COLLECTION', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.white70)),
+              const Spacer(),
+              IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.of(context).pop(false)),
+            ]),
+            Text('${widget.cards.length} cartes${pts == null ? '' : ' · $pts pts'}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 14),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final c in widget.cards.reversed) BadgeCardView(state: c.badge, width: w),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 54,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFFD36A), foregroundColor: const Color(0xFF2A2312), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                child: const Text('Ranger dans l’album', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_all) return _allView();
     final c = widget.cards[_i];
     final b = c.badge;
     final r = c.after;
@@ -193,9 +295,12 @@ class _CardRevealScreenState extends State<CardRevealScreen> with SingleTickerPr
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(children: [
             Row(children: [
-              Text(widget.cards.length > 1 ? 'CARTE ${_i + 1} / ${widget.cards.length}' : 'UNE CARTE TOMBE',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.white70)),
-              const Spacer(),
+              Expanded(
+                child: Text(widget.pack ? 'TA COLLECTION · ${_i + 1} / ${widget.cards.length}' : (widget.cards.length > 1 ? 'CARTE ${_i + 1} / ${widget.cards.length}' : 'UNE CARTE TOMBE'),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.white70)),
+              ),
+              if (widget.cards.length > 3 && _i + 1 < widget.cards.length)
+                TextButton(onPressed: () => setState(() => _all = true), child: const Text('Tout retourner', style: TextStyle(color: Colors.white70))),
               IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.of(context).pop(false)),
             ]),
             Expanded(

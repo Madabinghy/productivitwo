@@ -10,6 +10,10 @@ import 'package:productivitwo_v1/utils/collection_badges.dart';
 class CardSeenStore {
   static const _key = 'badge_cards_seen';
   static const _collKey = 'collection_badges_seen';
+  static const _openedKey = 'collection_opened';
+  /// La collection a été ouverte une fois (récolte, 2026-11-01) : les cartes
+  /// gagnées avant les cartes n'avaient jamais été retournées.
+  static bool _opened = false;
   static Map<String, int>? _seen;
   /// Paliers vus des badges de collection (même règle : premier passage = vus).
   static Map<String, int>? _coll;
@@ -21,6 +25,7 @@ class CardSeenStore {
     if (_ready) return;
     try {
       final p = await SharedPreferences.getInstance();
+      _opened = p.getBool(_openedKey) ?? false;
       final coll = p.getString(_collKey);
       if (coll != null) {
         final c = jsonDecode(coll);
@@ -34,6 +39,20 @@ class CardSeenStore {
     } finally {
       _ready = true;
     }
+  }
+
+  /// « Ouvre ta collection » : toutes les cartes déjà gagnées, une seule fois.
+  static List<NewCard> packPending(BadgeDeck deck) {
+    if (!_ready || _opened) return const [];
+    return newCards(deck, const {});
+  }
+
+  /// Collection ouverte : tout ce qui est gagné passe vu, une fois pour toutes.
+  static void markOpened(BadgeDeck deck) {
+    _opened = true;
+    _seen = {...?_seen, ...seenOf(deck)};
+    _save();
+    SharedPreferences.getInstance().then((p) => p.setBool(_openedKey, true)).catchError((_) => false);
   }
 
   /// Les cartes à retourner ; premier passage = tout est vu, rien à retourner.

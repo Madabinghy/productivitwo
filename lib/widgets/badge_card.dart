@@ -18,7 +18,10 @@ class BadgeCardView extends StatefulWidget {
   final bool tonight;
   /// Pastille « NOUVEAU » en haut à gauche.
   final bool isNew;
-  const BadgeCardView({super.key, required this.state, this.width = 110, this.footer, this.tonight = false, this.isNew = false});
+  /// Album en pochettes : une carte jamais commencée devient une pochette vide
+  /// numérotée (pointillés, numéro, nom) au lieu d'une carte de dos.
+  final int? pocket;
+  const BadgeCardView({super.key, required this.state, this.width = 110, this.footer, this.tonight = false, this.isNew = false, this.pocket});
 
   @override
   State<BadgeCardView> createState() => _BadgeCardViewState();
@@ -102,6 +105,7 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
     final w = widget.width;
     final face = faceOf(b);
     final r = rarityOf(b);
+    if (face == CardFace.hidden && widget.pocket != null) return _pocket(b, w);
     final pad = w * .045;
     final radius = w * .12;
     final small = w < 90;
@@ -129,6 +133,29 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
       ),
     );
   }
+
+  Widget _pocket(BadgeState b, double w) => Semantics(
+        label: '${b.def.name}, pochette vide',
+        child: CustomPaint(
+          painter: _DashedPainter(radius: w * .12),
+          child: SizedBox(
+            width: w,
+            height: w * 7 / 5,
+            child: Padding(
+              padding: EdgeInsets.all(w * .07),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('${widget.pocket}', style: TextStyle(fontSize: w * .22, height: 1, fontWeight: FontWeight.w900, color: const Color(0xFF2F4A3E))),
+                SizedBox(height: w * .04),
+                Text(b.def.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: (w * .085).clamp(8, 13).toDouble(), height: 1.15, fontWeight: FontWeight.w700, color: const Color(0xFF5E7D6E))),
+                SizedBox(height: w * .03),
+                Text(cardHint(b), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: (w * .07).clamp(7, 11).toDouble(), height: 1.15, color: const Color(0xFF4A6558))),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   Widget _back(BadgeState b, double w, bool small) => CustomPaint(
         painter: _StripesPainter(),
@@ -286,4 +313,31 @@ class _StripesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StripesPainter old) => false;
+}
+
+
+/// Bord en pointillés d'une pochette vide.
+class _DashedPainter extends CustomPainter {
+  final double radius;
+  const _DashedPainter({required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rr = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)).deflate(1);
+    final path = Path()..addRRect(rr);
+    final p = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = const Color(0xFF2F4A3E);
+    for (final m in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < m.length) {
+        canvas.drawPath(m.extractPath(d, math.min(d + 5, m.length)), p);
+        d += 9;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedPainter old) => old.radius != radius;
 }
