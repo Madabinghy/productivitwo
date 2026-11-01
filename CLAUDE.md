@@ -1066,7 +1066,12 @@ projet, sinon porteuse ; routine : activité liée ; une activité tombe seule a
 (`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnActions`), routine = `incHabit(+n)`, relevé = `noteReadingQuick` ;
 Pause · +5 min · Passer), TOUCHÉ (temps tiré / visé, ce qui vient de tomber, tir suivant après `kSniperPauseMin` min — Tirer
 maintenant · Souffler 5 min · Passer cette cible), BILAN (k / n touchées, tirées / visées, précision, tombé, badge). Reprenable comme
-Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). Entrées : lanceur ◎ entre ⚡ et ↗ en haut
+Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). **Ajuster le tir** (2026-11-01, retour user : 20 pompes
+d'un coup, 6 verres d'eau ; Cuisiner proposé à 15 min) : dans le viseur, chaque cible visée porte − valeur + (`stepAmount`,
+`sniperStep` : routine par 1, par 5 dès 10 à faire, de 1 à ce qui manque ; temps par 5 min, de 5 à `kSniperMaxMin`) ; la cible
+proposée reste ce qui manque (`SniperTarget.need`), un tir plus petit est un **mini-tir** (`isMini`, `leftAfter` : « mini-tir ·
+il en restera 10 », gains grisés, rien ne « tombe » au bilan) ; agrandir vérifie le temps libre (`fitsPlan` remplace la cible
+de même clé) ; `adjustPlan(amounts:)` garde l'ordre des cibles entières ; montants persistés dans `PendingRun.extra.amounts`. Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
 **Un gros bouton, le mode du moment** (2026-11-01, retour user : pas quatre boutons alignés) : sous l'en-tête d'Aujourd'hui, UN gros
 bouton = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge),

@@ -95,4 +95,38 @@ void main() {
     expect(added.outOfReach, isEmpty);
     expect(fitsPlan(base, c), isFalse);
   });
+
+  test('ajuster le tir : mini-tirs de routine, minutes d’une activité, ordre stable', () {
+    final r = sniperTargetOf(routine(pompes), routineLeft: {'pom': 20})!;
+    expect(sniperStep(r), 5);
+    expect(stepAmount(r, up: true), isNull);
+    expect(stepAmount(r, up: false), 15);
+    final mini = r.withAmount(10);
+    expect(mini.isMini, isTrue);
+    expect(mini.leftAfter, 10);
+    expect(mini.durLabel, '+10');
+    expect(stepAmount(mini, up: true), 15);
+    final eau = sniperTargetOf(routine(Activity(id: 'eau', domainId: 'd', name: 'Eau', goalMin: 0)), routineLeft: {'eau': 6})!;
+    expect(sniperStep(eau), 1);
+    expect(stepAmount(eau.withAmount(1), up: false), isNull);
+    final cuisiner = sniperTargetOf(timed(lecture, 37))!;
+    expect(stepAmount(cuisiner, up: false), 35);
+    expect(stepAmount(cuisiner, up: true), 40);
+    expect(cuisiner.withAmount(40).isMini, isFalse);
+    expect(cuisiner.withAmount(20).isMini, isTrue);
+    expect(stepAmount(cuisiner.withAmount(60), up: true), isNull);
+    expect(stepAmount(sniperTargetOf(action('a', 12))!.withAmount(5), up: false), isNull);
+    expect(sniperTargetOf(action('a', 12))!.withAmount(5).isMini, isFalse);
+
+    final base = planSniper(stakes: [timed(lecture, 30, w: 30), routine(pompes, w: 22)], budgetMin: 60, routineLeft: {'pom': 20});
+    final order = base.aimed.map((t) => t.key).toList();
+    final adj = adjustPlan(base, amounts: {'activity:lec': 10, 'routine:pom': 5});
+    expect(adj.aimed.map((t) => t.key).toList(), order);
+    expect(adj.aimed.firstWhere((t) => t.key == 'activity:lec').minutes, 10);
+    expect(adj.aimed.firstWhere((t) => t.key == 'routine:pom').delta, 5);
+    expect(adj.totalMin, 10 + 1 + kSniperPauseMin);
+    final big = adj.aimed.firstWhere((t) => t.key == 'activity:lec').withAmount(60);
+    expect(fitsPlan(adj, big), isFalse);
+    expect(fitsPlan(adj, big.withAmount(55)), isTrue);
+  });
 }

@@ -59,8 +59,13 @@ class _SniperScreenState extends State<SniperScreen> {
   double _factor = 1;
   int _endMin = 22 * 60;
   final _excluded = <String>{};
+
   /// Cibles hors de portée ajoutées à la main.
   final _added = <String>{};
+
+  /// Tirs ajustés à la main : coches ou minutes par cible.
+  final _amounts = <String, int>{};
+
   /// Le plan calculé une fois ; les écarts et ajouts s'appliquent dessus.
   SniperPlan _base = const SniperPlan(budgetMin: 0);
   SniperPlan _plan = const SniperPlan(budgetMin: 0);
@@ -156,7 +161,25 @@ class _SniperScreenState extends State<SniperScreen> {
 
   /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
   /// de portée ne rentre sans qu'on le choisisse.
-  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added);
+  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts);
+
+  void _step(SniperTarget t, {required bool up}) {
+    final a = stepAmount(t, up: up);
+    if (a == null) return;
+    final next = t.withAmount(a);
+    if (up && !fitsPlan(_plan, next)) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Plus de temps libre pour agrandir « ${t.title} » : réduis ou écarte une autre cible.')));
+      return;
+    }
+    setState(() {
+      if (a == t.need) {
+        _amounts.remove(t.key);
+      } else {
+        _amounts[t.key] = a;
+      }
+      _adjust();
+    });
+  }
 
   void _include(SniperTarget t, {required bool fromOut}) {
     if (!fitsPlan(_plan, t)) {
@@ -178,6 +201,7 @@ class _SniperScreenState extends State<SniperScreen> {
 
   void _restore(PendingRun r) {
     final keys = r.strings('aimed');
+    final amounts = r.extra['amounts'] is Map ? r.extra['amounts'] as Map : const {};
     final byKey = {
       for (final s in _stakes)
         if (sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor) case final t?) t.key: t,
@@ -194,8 +218,9 @@ class _SniperScreenState extends State<SniperScreen> {
     final aimed = <SniperTarget>[];
     for (final k in keys) {
       final t = byKey[k];
+      final a = amounts[k];
       if (t != null) {
-        aimed.add(t);
+        aimed.add(a is num && a > 0 && t.adjustable ? t.withAmount(a.toInt()) : t);
       } else if (known && !_hit.contains(k) && !_skipped.contains(k)) {
         _hit.add(k);
       }
@@ -237,6 +262,10 @@ class _SniperScreenState extends State<SniperScreen> {
       done: _hit.length,
       extra: {
         'aimed': [for (final t in _aimed) t.key],
+        'amounts': {
+          for (final t in _aimed)
+            if (t.amount != t.need) t.key: t.amount
+        },
         'hit': _hit,
         'skipped': _skipped.toList(),
         'fired': _fired,
@@ -612,7 +641,7 @@ class _SniperScreenState extends State<SniperScreen> {
       SniperKind.action => t.stake.gesture.action?.estimatedMin == null
           ? 'estimation par défaut'
           : 'estimé ${fmtMin(t.stake.gesture.action!.estimatedMin!)}${_factor > 1.05 ? ' · d’habitude ${_factor.toStringAsFixed(1).replaceAll('.', ',')}×' : ''}',
-      SniperKind.timed => 'il manque pile ${fmtMin(t.minutes)}',
+      SniperKind.timed => t.minutes > t.need ? 'il manque ${fmtMin(t.need)} · tu en fais plus' : 'il manque pile ${fmtMin(t.need)}',
       SniperKind.routine => t.stake.gesture.progress == null ? null : '${t.stake.gesture.progress} aujourd’hui',
       SniperKind.reading => 'une valeur à noter',
     };
@@ -636,17 +665,48 @@ class _SniperScreenState extends State<SniperScreen> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(t.title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: reason == null ? Colors.white : _text3)),
-              if (reason != null)
-                Text(reason, style: const TextStyle(fontSize: 12.5, color: _text3))
-              else if (sub != null)
-                Text(sub, style: const TextStyle(fontSize: 12.5, color: _text3)),
-              if (reason == null) ...[const SizedBox(height: 5), _chips(t.gains)],
+              if (reason != null) Text(reason, style: const TextStyle(fontSize: 12.5, color: _text3)) else if (sub != null) Text(sub, style: const TextStyle(fontSize: 12.5, color: _text3)),
+              if (on && t.isMini) Text(_miniLine(t), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kSniperAccent)),
+              if (reason == null) ...[const SizedBox(height: 5), Opacity(opacity: on && t.isMini ? .4 : 1, child: _chips(t.gains))],
             ]),
           ),
           const SizedBox(width: 8),
-          Text(t.durLabel, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: reason == null ? kSniperAccent : _text3, fontFeatures: const [FontFeature.tabularFigures()])),
+          if (on && t.adjustable)
+            _stepper(t)
+          else
+            Text(t.durLabel, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: reason == null ? kSniperAccent : _text3, fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       ),
+    );
+  }
+
+  /// « mini-tir · il en restera 10 », « mini-tir · il restera 20 min ».
+  String _miniLine(SniperTarget t) => t.kind == SniperKind.routine ? 'mini-tir · il en restera ${t.leftAfter}' : 'mini-tir · il restera ${fmtMin(t.leftAfter)}';
+
+  Widget _stepBtn(IconData icon, String tip, VoidCallback? onTap) => IconButton(
+        tooltip: tip,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        padding: EdgeInsets.zero,
+        iconSize: 18,
+        color: kSniperAccent,
+        disabledColor: _line,
+        icon: Icon(icon),
+        onPressed: onTap,
+      );
+
+  Widget _stepper(SniperTarget t) {
+    final down = stepAmount(t, up: false), up = stepAmount(t, up: true);
+    return Container(
+      decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(10)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _stepBtn(Icons.remove, 'Moins', down == null ? null : () => _step(t, up: false)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44),
+          child: Text(t.durLabel, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: kSniperAccent, fontFeatures: [FontFeature.tabularFigures()])),
+        ),
+        _stepBtn(Icons.add, 'Plus', up == null ? null : () => _step(t, up: true)),
+      ]),
     );
   }
 
@@ -662,8 +722,7 @@ class _SniperScreenState extends State<SniperScreen> {
         child: ListView(children: [
           const Text('Chaque minute, pile où elle compte', style: TextStyle(fontSize: 26, height: 1.15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          const Text('L’app a calculé le temps exact qui fait tomber chaque enjeu du jour. Tu enchaînes, sans décider entre deux.',
-              style: TextStyle(fontSize: 14, height: 1.4, color: _text2)),
+          const Text('L’app a calculé le temps exact qui fait tomber chaque enjeu du jour. Tu enchaînes, sans décider entre deux.', style: TextStyle(fontSize: 14, height: 1.4, color: _text2)),
           const SizedBox(height: 14),
           _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
@@ -686,7 +745,9 @@ class _SniperScreenState extends State<SniperScreen> {
               Text(fmtMin(total), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kSniperAccent)),
               const SizedBox(width: 8),
               if (b.minutes > total)
-                Expanded(child: Text('reste ${fmtMin(b.minutes - total)} d’air', textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: _text3))),
+                Expanded(
+                    child: Text('reste ${fmtMin(b.minutes - total)} d’air',
+                        textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: _text3))),
             ]),
           ])),
           _label('CIBLES · CE QUI SE PERD CE SOIR D’ABORD'),
@@ -699,17 +760,18 @@ class _SniperScreenState extends State<SniperScreen> {
           else
             _box(Column(children: [
               for (final t in _plan.aimed)
-                _targetRow(t, on: true, onTap: () => setState(() {
-                      _excluded.add(t.key);
-                      _added.remove(t.key);
-                      _adjust();
-                    })),
+                _targetRow(t,
+                    on: true,
+                    onTap: () => setState(() {
+                          _excluded.add(t.key);
+                          _added.remove(t.key);
+                          _adjust();
+                        })),
             ])),
           if (excluded.isNotEmpty) ...[
             _label('ÉCARTÉES · TOUCHE POUR REMETTRE'),
             _box(Column(children: [
-              for (final t in excluded)
-                _targetRow(t, on: false, onTap: () => _include(t, fromOut: !_base.aimed.any((x) => x.key == t.key))),
+              for (final t in excluded) _targetRow(t, on: false, onTap: () => _include(t, fromOut: !_base.aimed.any((x) => x.key == t.key))),
             ])),
           ],
           if (_plan.outOfReach.isNotEmpty) ...[
@@ -827,7 +889,9 @@ class _SniperScreenState extends State<SniperScreen> {
           const SizedBox(height: 4),
           Text(
             switch (t.kind) {
+              SniperKind.timed when t.isMini => '${chrono != null ? 'chrono sur $chrono · ' : ''}${_miniLine(t)}',
               SniperKind.timed => chrono != null ? 'chrono sur $chrono · alarme à la fin' : 'alarme à la fin',
+              SniperKind.routine when t.isMini => _miniLine(t),
               SniperKind.action => chrono != null ? 'chrono sur $chrono · l’action tombe quand elle est faite' : 'l’action tombe quand elle est faite',
               SniperKind.routine => t.delta > 1 ? '${t.delta} coches pour l’atteindre' : 'une coche pour l’atteindre',
               SniperKind.reading => 'note la valeur du jour',
@@ -835,8 +899,8 @@ class _SniperScreenState extends State<SniperScreen> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13.5, color: _text2),
           ),
-          _label('CE TIR FAIT TOMBER'),
-          _box(Align(alignment: Alignment.centerLeft, child: _chips(t.gains))),
+          _label(t.isMini ? 'CE QUI TOMBERA AU BOUT' : 'CE TIR FAIT TOMBER'),
+          _box(Align(alignment: Alignment.centerLeft, child: Opacity(opacity: t.isMini ? .5 : 1, child: _chips(t.gains)))),
           _nextLine(),
         ]),
       ),
@@ -880,17 +944,22 @@ class _SniperScreenState extends State<SniperScreen> {
           if (t.minutes > 0)
             Text(gap == 0 ? '${fmtMin(fired)} pile · écart 0' : '${fmtMin(fired)} pour ${fmtMin(t.cost)} visées · ${gap > 0 ? '+' : '−'}${gap.abs()} min',
                 textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _text2)),
-          _label('CE QUI VIENT DE TOMBER'),
+          _label(t.isMini ? 'MINI-TIR' : 'CE QUI VIENT DE TOMBER'),
           _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (final g in t.gains)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  const Icon(Icons.check, size: 16, color: _green),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(g.label, style: const TextStyle(fontSize: 14))),
-                ]),
-              ),
+            if (t.isMini)
+              Text(
+                  '${t.kind == SniperKind.routine ? '+${t.amount} de fait' : '${fmtMin(t.amount)} de fait'} · ${t.kind == SniperKind.routine ? 'il en reste ${t.leftAfter}' : 'il reste ${fmtMin(t.leftAfter)}'} pour que ça tombe ce soir.',
+                  style: const TextStyle(fontSize: 14, height: 1.4, color: _text2))
+            else
+              for (final g in t.gains)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    const Icon(Icons.check, size: 16, color: _green),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(g.label, style: const TextStyle(fontSize: 14))),
+                  ]),
+                ),
           ])),
           if (next != null) ...[
             _label('PROCHAIN TIR DANS'),
@@ -931,7 +1000,7 @@ class _SniperScreenState extends State<SniperScreen> {
           Text('${fmtMin(_firedTotal)} tirées pour ${fmtMin(aimedHitMin)} visées · ${sniperCountLine(hitN, _totalAimed)}', style: const TextStyle(fontSize: 13.5, color: _text2)),
           const SizedBox(height: 14),
           Row(children: [
-            for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[
+            for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.where((t) => !t.isMini).fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -957,7 +1026,7 @@ class _SniperScreenState extends State<SniperScreen> {
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(t.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                        Text(t.gains.map((g) => g.label).join(' · '), style: const TextStyle(fontSize: 12.5, color: _text3)),
+                        Text(t.isMini ? _miniLine(t) : t.gains.map((g) => g.label).join(' · '), style: const TextStyle(fontSize: 12.5, color: _text3)),
                       ]),
                     ),
                   ]),
@@ -978,8 +1047,7 @@ class _SniperScreenState extends State<SniperScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Sniper', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kSniperAccent)),
-                  Text(counted >= kSniperTiers.last ? '$counted sessions · tous les paliers' : '$counted / $nextTier sessions · palier $nextTier',
-                      style: const TextStyle(fontSize: 13, color: _text2)),
+                  Text(counted >= kSniperTiers.last ? '$counted sessions · tous les paliers' : '$counted / $nextTier sessions · palier $nextTier', style: const TextStyle(fontSize: 13, color: _text2)),
                   const SizedBox(height: 6),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),

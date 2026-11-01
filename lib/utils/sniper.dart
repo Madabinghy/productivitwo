@@ -24,11 +24,32 @@ enum SniperKind { routine, timed, action, reading }
 class SniperTarget {
   final Stake stake;
   final SniperKind kind;
+
   /// Durée du minuteur (0 = un geste immédiat : +1, relevé).
   final int minutes;
+
   /// Routine : nombre de +1 pour l'atteindre.
   final int delta;
-  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1});
+  final int? _need;
+  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need}) : _need = need;
+
+  /// Ce qu'on vise : coches pour une routine, minutes sinon.
+  int get amount => kind == SniperKind.routine ? delta : minutes;
+
+  /// Ce qui manque à la journée (la cible proposée au départ).
+  int get need => _need ?? amount;
+
+  /// Un relevé est un geste, il ne s'ajuste pas.
+  bool get adjustable => kind != SniperKind.reading;
+
+  /// Mini-tir : moins que ce qui manque, l'enjeu ne tombe pas encore (une
+  /// action tombe à « Action faite », quel que soit le temps visé).
+  bool get isMini => (kind == SniperKind.routine || kind == SniperKind.timed) && amount < need;
+
+  /// Ce qui restera à faire après ce tir.
+  int get leftAfter => need > amount ? need - amount : 0;
+
+  SniperTarget withAmount(int a) => kind == SniperKind.routine ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need) : SniperTarget(stake, kind, minutes: a, delta: delta, need: need);
 
   String get key => stake.gesture.key;
   String get title => stake.gesture.title;
@@ -189,16 +210,58 @@ String sniperCountLine(int hit, int aimed) {
 /// pas) : on part du plan calculé une fois ([base]), on retire les cibles
 /// écartées et on ajoute celles que la personne a choisies parmi les hors
 /// de portée. Rien ne rentre tout seul.
-SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<String> added = const {}}) {
-  final aimed = [
+///
+/// [amounts] = tirs ajustés à la main (2026-11-01, retour user : 20 pompes
+/// d'un coup, 6 verres d'eau) : coches ou minutes par cible. L'ordre reste
+/// celui des cibles entières, il ne bouge pas pendant qu'on ajuste.
+SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<String> added = const {}, Map<String, int> amounts = const {}}) {
+  final sorted = [
     for (final t in base.aimed)
       if (!excluded.contains(t.key)) t,
     for (final m in base.outOfReach)
       if (added.contains(m.target.key) && !excluded.contains(m.target.key)) m.target,
   ]..sort(compareSniper);
-  final out = [for (final m in base.outOfReach) if (!added.contains(m.target.key)) m];
+  final aimed = [
+    for (final t in sorted)
+      if (amounts[t.key] case final a? when t.adjustable && a > 0) t.withAmount(a) else t,
+  ];
+  final out = [
+    for (final m in base.outOfReach)
+      if (!added.contains(m.target.key)) m
+  ];
   return SniperPlan(aimed: aimed, outOfReach: out, budgetMin: base.budgetMin, pauseMin: base.pauseMin);
 }
 
 /// La cible tient-elle encore dans le temps libre, en plus de [aimed] ?
-bool fitsPlan(SniperPlan plan, SniperTarget t) => SniperPlan.totalOf([...plan.aimed, t], plan.pauseMin) <= plan.budgetMin;
+/// Une cible déjà visée (même clé) est remplacée : sert aussi à vérifier
+/// qu'un tir agrandi tient.
+bool fitsPlan(SniperPlan plan, SniperTarget t) =>
+    SniperPlan.totalOf([
+      for (final x in plan.aimed)
+        if (x.key != t.key) x,
+      t
+    ], plan.pauseMin) <=
+    plan.budgetMin;
+
+/// Le pas d'ajustement : 5 coches pour une routine à 10 ou plus, 1 sinon ;
+/// 5 min pour un temps.
+int sniperStep(SniperTarget t) => t.kind == SniperKind.routine ? (t.need >= 10 ? 5 : 1) : 5;
+
+/// Le tir suivant en montant ou en descendant, null quand il est au bout :
+/// une routine de 1 à ce qui manque (au-delà, rien ne compte de plus) ; un
+/// temps de 5 min (ou moins si ce qui manque est plus court) à
+/// [kSniperMaxMin], calé sur les multiples de 5.
+int? stepAmount(SniperTarget t, {required bool up}) {
+  if (!t.adjustable) return null;
+  final step = sniperStep(t);
+  final a = t.amount;
+  if (t.kind == SniperKind.routine) {
+    final n = up ? ((a ~/ step) + 1) * step : ((a - 1) ~/ step) * step;
+    final c = n < 1 ? 1 : (n > t.need ? t.need : n);
+    return c == a ? null : c;
+  }
+  final lo = t.need < 5 ? t.need : 5;
+  final n = up ? ((a ~/ step) + 1) * step : ((a - 1) ~/ step) * step;
+  final c = n < lo ? lo : (n > kSniperMaxMin ? kSniperMaxMin : n);
+  return c == a ? null : c;
+}
