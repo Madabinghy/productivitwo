@@ -183,3 +183,22 @@ String sniperCountLine(int hit, int aimed) {
   if (hit < kSniperCountedMin) return 'une session compte dès $kSniperCountedMin cibles, toutes touchées';
   return 'une session compte quand toutes les cibles visées tombent';
 }
+
+/// Le plan ajusté à la main (2026-11-01, retour user : écarter une cible
+/// faisait entrer la suivante hors de portée, le temps visé ne bougeait
+/// pas) : on part du plan calculé une fois ([base]), on retire les cibles
+/// écartées et on ajoute celles que la personne a choisies parmi les hors
+/// de portée. Rien ne rentre tout seul.
+SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<String> added = const {}}) {
+  final aimed = [
+    for (final t in base.aimed)
+      if (!excluded.contains(t.key)) t,
+    for (final m in base.outOfReach)
+      if (added.contains(m.target.key) && !excluded.contains(m.target.key)) m.target,
+  ]..sort(compareSniper);
+  final out = [for (final m in base.outOfReach) if (!added.contains(m.target.key)) m];
+  return SniperPlan(aimed: aimed, outOfReach: out, budgetMin: base.budgetMin, pauseMin: base.pauseMin);
+}
+
+/// La cible tient-elle encore dans le temps libre, en plus de [aimed] ?
+bool fitsPlan(SniperPlan plan, SniperTarget t) => SniperPlan.totalOf([...plan.aimed, t], plan.pauseMin) <= plan.budgetMin;
