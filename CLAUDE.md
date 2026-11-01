@@ -107,7 +107,7 @@ Croisement vide sur le marché francophone.
 Espace Coach peuvent démarrer sans attendre le 17/08) :
 1. Finaliser la **V1** (échéance 17/08/2026).
 2. **Export / import des données** (lot « Coffre », `docs/specs/export-import-donnees/README.md`) :
-   lot 1 = export .json, lot 2 = restauration Fusionner/Remplacer.
+   lot 1 = export .json, lot 2 = restauration Fusionner/Remplacer — **livrés** (mis à jour le 2026-11-01).
 3. **Espace Coach V1.1** (`docs/specs/espace-coach-v1.1.md`) : invitation/consentement →
    cockpit multi-coachés → rapport de pré-séance → message coach via ORION → alerte décrochage.
    Design hifi (thème sombre) : `docs/specs/espace-coach-design/README.md` — cible = console
@@ -1539,4 +1539,9 @@ actions: [
   dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
   restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
   implémenter). Specs de tâches 4 lignes incluses (lot 1 = export seul, lot 2 = restauration).
-  Calendrier : gel V1 levé le 2026-07-24 → **en cours d'implémentation**, avant l'Espace Coach V1.1.
+  Calendrier : gel V1 levé le 2026-07-24. **Livré** (lots 1 et 2 : `utils/backup.dart`, `widgets/data_settings_sheet.dart`).
+  **Mise à jour 2026-11-01** : le Coffre embarque aussi `mood_marks`, `chain_runs`, `weekly_reports` (`kBackupCollections` ;
+  `dumpCollection` garde l'id du doc quand ses données ne le portent pas) et restaure les réglages / historiques du doc meta
+  listés dans `kBackupMetaKeys` (journée vécue, moments, journée active, veilles, acquises, saisons, chasses, braises,
+  paroles, miroirs, modèles d'intervention… ; jamais l'or ni la couche jeu) via `metaFieldsToRestore` (Fusionner = seulement
+  les champs absents, Remplacer = tous) et `FirestoreSync.restoreMetaFields`. Tout nouveau champ meta à garder → l'ajouter là.

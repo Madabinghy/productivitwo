@@ -3018,9 +3018,13 @@ class FirestoreSync {
     if (uid == null) return [];
     try {
       final snap = await _col(col).get();
-      return snap.docs
-          .map((d) => Map<String, dynamic>.from(d.data() as Map))
-          .toList();
+      // L'id du doc est gardé quand les données ne le portent pas (élan,
+      // sessions de guérilla…) : sans lui la restauration sauterait le doc.
+      return snap.docs.map((d) {
+        final m = Map<String, dynamic>.from(d.data() as Map);
+        if (!m.containsKey('id') && !m.containsKey('date')) m['id'] = d.id;
+        return m;
+      }).toList();
     } catch (_) {
       return [];
     }
@@ -3035,6 +3039,12 @@ class FirestoreSync {
     } catch (_) {
       return {};
     }
+  }
+
+  /// Réécrit des champs du doc meta (restauration du Coffre, `kBackupMetaKeys`).
+  Future<void> restoreMetaFields(Map<String, dynamic> fields) async {
+    if (uid == null || fields.isEmpty) return;
+    await _meta().set(fields, SetOptions(merge: true));
   }
 
   /// IDs existants d'une collection — restauration en mode Fusionner
