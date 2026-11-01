@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, sho
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
+import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberLedger, kEmberCap;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -106,47 +107,50 @@ DashTile? objectivesTile(List<(String title, double? weekPercent)> objectives, {
   );
 }
 
-/// BADGES : obtenus / total, ce qui tombe ce soir (palier, sinon série à
-/// sauver), puis le badge le plus proche de son palier.
+/// BADGES → la collection (2026-11-01, retour user : la tuile ne visait
+/// qu'une routine) : combien de cartes peuvent tomber ou monter ce soir,
+/// sinon les séries à sauver, sinon le compte de cartes ; dessous, les points
+/// et le prochain badge de collection ; les plus belles cartes en éventail.
 DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
   if (deck == null) return null;
-  final tonight = <String>[];
-  CardRarity? tonightCard;
+  final tonight = <String>{};
+  CardRarity? best;
   for (final s in [...board.top, ...board.rest]) {
     for (final g in s.gains) {
       if (g.kind != StakeGainKind.tierTonight) continue;
-      tonight.add('${s.gesture.title} ${g.label.replaceFirst(' ce soir', '').replaceFirst('palier ', '')}');
-      tonightCard ??= g.sourceId == null ? null : tonightRarity(deck.byId(g.sourceId!));
+      tonight.add(g.sourceId ?? s.gesture.key);
+      final r = g.sourceId == null ? null : tonightRarity(deck.byId(g.sourceId!));
+      if (r != null && (best == null || r.index > best.index)) best = r;
     }
   }
-  final losing = [
+  final losing = {
     for (final s in [...board.top, ...board.rest])
-      if (s.gains.any((g) => g.kind == StakeGainKind.seriesTonight)) s.gesture.title,
-  ];
-  final near = nearBadges(deck).take(2).toList();
-  final String value;
-  final String sub;
-  if (tonight.isNotEmpty) {
-    value = tonight.first;
-    sub = '${tonightCard == null ? 'palier' : 'carte ${rarityLabel(tonightCard).toLowerCase()}'} ce soir${losing.isEmpty ? '' : ' · ${losing.length} série${losing.length > 1 ? 's' : ''} à sauver'}';
-  } else if (losing.isNotEmpty) {
-    value = '${losing.length} série${losing.length > 1 ? 's' : ''} ce soir';
-    sub = 'à sauver : ${losing.take(2).join(', ')}${losing.length > 2 ? '…' : ''}';
-  } else if (near.isNotEmpty) {
-    value = near.first.def.name;
-    sub = 'le plus proche · ${near.first.value.toInt()} / ${near.first.nextTarget}';
-  } else {
-    value = '${deck.acquired} paliers';
-    sub = 'rien ne se joue ce soir';
-  }
+      for (final g in s.gains)
+        if (g.kind == StakeGainKind.seriesTonight) g.sourceId ?? s.gesture.key,
+  };
   final album = cardAlbum(deck);
+  final pts = collectionPoints(deck);
+  final next = nextCollectionBadge(collectionBadges(deck));
+  final String value;
+  final parts = <String>[];
+  if (tonight.isNotEmpty) {
+    value = '${tonight.length} carte${tonight.length > 1 ? 's' : ''} ce soir';
+    if (best != null) parts.add('jusqu’à ${rarityLabel(best).toLowerCase()}');
+    if (losing.isNotEmpty) parts.add('${losing.length} série${losing.length > 1 ? 's' : ''} à sauver');
+  } else if (losing.isNotEmpty) {
+    value = '${losing.length} série${losing.length > 1 ? 's' : ''} à sauver';
+  } else {
+    value = '${album.won} carte${album.won > 1 ? 's' : ''}';
+  }
+  parts.add(next == null || next.next == null
+      ? '$pts pts'
+      : '$pts pts · ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} ${next.value} / ${next.next}');
   return DashTile(
-    label: 'BADGES',
-    badge: '${album.won} / ${album.total} cartes',
-    fan: bestCards(deck),
+    label: 'COLLECTION',
     value: value,
+    fan: bestCards(deck),
     mini: [for (var i = 0; i < (tonight.length + losing.length).clamp(0, 8); i++) i < tonight.length ? TileMark.on : TileMark.warn],
-    sub: sub,
+    sub: parts.join(' · '),
   );
 }
 

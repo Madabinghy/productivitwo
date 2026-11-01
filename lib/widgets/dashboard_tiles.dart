@@ -162,12 +162,12 @@ class _Tile extends StatelessWidget {
                 Flexible(child: Text(t.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kBText4, fontWeight: FontWeight.w600))),
             ]),
             const SizedBox(height: 6),
-            if (t is! ProgramTile && t.fan.isNotEmpty)
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: Text(t.value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBText, height: 1.15))),
-                const SizedBox(width: 6),
-                CardFan(cards: t.fan),
-              ])
+            if (t is! ProgramTile && t.fan.isNotEmpty) ...[
+              // Collection : l'éventail en grand, qui donne envie d'ouvrir l'album.
+              Center(child: CardFan(cards: t.fan, width: 44)),
+              const SizedBox(height: 8),
+              Text(t.value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBText, height: 1.15)),
+            ]
             else if (t is! ProgramTile)
               Text(t.value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBText, height: 1.15)),
             if (t is ProgramTile) ...[
@@ -372,20 +372,22 @@ class _BadgeLine extends StatelessWidget {
 /// Trois cartes en éventail (tuile Badges).
 class CardFan extends StatelessWidget {
   final List<BadgeState> cards;
-  const CardFan({super.key, required this.cards});
+  final double width;
+  const CardFan({super.key, required this.cards, this.width = 30});
 
   @override
   Widget build(BuildContext context) {
     final n = cards.length.clamp(0, 3);
+    final step = width * .55;
     return SizedBox(
-      width: 30.0 + (n - 1) * 14,
-      height: 46,
+      width: width + (n - 1) * step,
+      height: width * 7 / 5 + 6,
       child: Stack(clipBehavior: Clip.none, children: [
         for (var i = n - 1; i >= 0; i--)
           Positioned(
-            left: (n - 1 - i) * 14.0,
-            top: 2,
-            child: Transform.rotate(angle: (i - (n - 1) / 2) * -.14, child: BadgeCardView(state: cards[i], width: 30)),
+            left: (n - 1 - i) * step,
+            top: 3,
+            child: Transform.rotate(angle: (i - (n - 1) / 2) * -.14, child: BadgeCardView(state: cards[i], width: width)),
           ),
       ]),
     );
