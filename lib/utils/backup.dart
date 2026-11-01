@@ -28,7 +28,40 @@ const List<String> kBackupCollections = [
   'captures',
   'session_templates',
   'assistant_messages',
+  // Ajoutées 2026-11-01 : élan, guérillas / offensives / enchaînements, revues.
+  'mood_marks',
+  'chain_runs',
+  'weekly_reports',
 ];
+
+/// Réglages et historiques du doc meta restaurés tels quels (2026-11-01).
+/// Hors liste : l'or et la couche jeu (autoritatifs serveur, abandonnés), les
+/// champs miroirs de AppState (déjà réécrits par `pushAll`).
+const List<String> kBackupMetaKeys = [
+  'dayStartMin',
+  'momentWindows',
+  'dayWindow',
+  'autoPlan',
+  'budgetWindowDays',
+  'restDomains',
+  'restPeriods',
+  'acquired',
+  'acquireAsked',
+  'seasons',
+  'badgeHunts',
+  'emberSpends',
+  'paroles',
+  'mirrorActivities',
+  'interventionTemplates',
+  'ganttVisible',
+];
+
+/// Champs meta à réécrire : en Fusionner, seulement ceux que le compte n'a
+/// pas encore (le courant gagne) ; en Remplacer, tous ceux du fichier.
+Map<String, dynamic> metaFieldsToRestore(Map<String, dynamic> fromFile, Map<String, dynamic> current, {required bool replace}) => {
+      for (final k in kBackupMetaKeys)
+        if (fromFile.containsKey(k) && fromFile[k] != null && (replace || !current.containsKey(k))) k: fromFile[k],
+    };
 
 /// Collection optionnelle (« Inclure les documents et livrables »).
 const String kBackupDocumentsCollection = 'documents';
@@ -327,6 +360,11 @@ Future<({AppState state, RestoreReport report})> applyRestore({
   // Capacité hebdo (doc meta) : réglage simple, le fichier fait foi s'il en a une.
   final cap = backup.meta['weekCapacityMin'];
   if (cap is Map) await sync.saveWeekCapacity(parseWeekCapacity(cap));
+  // Réglages de journée et historiques récents (moments, paroles, braises,
+  // saisons, veilles…), restaurés champ par champ.
+  final fields = metaFieldsToRestore(backup.meta, mode == RestoreMode.merge ? await sync.fetchMetaDocRaw() : const {},
+      replace: mode == RestoreMode.replace);
+  if (fields.isNotEmpty) await sync.restoreMetaFields(fields);
 
   return (state: next, report: report);
 }
