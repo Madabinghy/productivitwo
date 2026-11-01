@@ -509,13 +509,8 @@ class _NightsPainter extends CustomPainter {
     if (nowM != null) {
       final ny = y(nowM);
       canvas.drawLine(Offset(left, ny), Offset(size.width, ny), Paint()
-        ..color = _kDanger
-        ..strokeWidth = 2);
-      final tp = TextPainter(
-          text: TextSpan(text: 'maintenant ${clockOf(nowClock)}', style: const TextStyle(fontSize: 10, color: _kDanger, fontWeight: FontWeight.w700)),
-          textDirection: TextDirection.ltr)
-        ..layout();
-      tp.paint(canvas, Offset(size.width - tp.width, ny < top + 14 ? ny + 2 : ny - 13));
+        ..color = _kDanger.withValues(alpha: .5)
+        ..strokeWidth = 1);
     }
     final colW = (size.width - left) / nights.length;
     final barW = (colW * .62).clamp(6.0, 18.0);
@@ -615,11 +610,9 @@ class _BedPainter extends CustomPainter {
     }
     if (nowClock != null) {
       final nx = x(nowClock!);
-      canvas.drawLine(Offset(nx, 12), Offset(nx, axisY), Paint()
+      canvas.drawLine(Offset(nx, axisY - (axisY - 12) / 2), Offset(nx, axisY), Paint()
         ..color = _kDanger
         ..strokeWidth = 2);
-      final right = nx < size.width - 60;
-      _text(canvas, 'maintenant ${clockOf(nowClock!)}', Offset(right ? nx + 4 : nx - 92, axisY - 14), _kDanger, center: false);
     }
     final ax = x(avgBed);
     canvas.drawLine(Offset(ax, 14), Offset(ax, axisY), Paint()
