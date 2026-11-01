@@ -427,12 +427,21 @@ String? sessionTargetLabel(
 typedef AsideBlocks = ({
   List<ScheduleBlock> moved,
   List<ScheduleBlock> cancelled,
+  List<ScheduleBlock> letGo,
   List<ScheduleBlock> skipped,
 });
 
 /// Cause d'un bloc ANNULÉ par l'utilisateur (« pas disponible ») : il sort du
 /// programme sans report ni déplacement, et se rétablit d'un tap.
 const kSkipUnavailable = 'indisponible';
+
+/// Cause d'un bloc LÂCHÉ (2026-11-01, maquette « Lâcher un bloc ») : « j'aurais
+/// pu, je choisis de ne pas le faire ». Il sort de la journée mais COMPTE comme
+/// non fait (journée parfaite, Cap tenu) — à l'inverse d'« empêché »
+/// ([kSkipUnavailable]), qui ne compte pas.
+const kSkipLetGo = 'lache';
+
+bool isLetGoBlock(ScheduleBlock b) => b.status == 'skipped' && b.skipReason == kSkipLetGo && b.movedTo == null;
 
 bool isCancelledBlock(ScheduleBlock b) =>
     b.status == 'skipped' && b.skipReason == kSkipUnavailable && b.movedTo == null;
@@ -444,6 +453,7 @@ bool canCancelBlock(ScheduleBlock b) => b.status == 'pending' && b.gcalEventId =
 AsideBlocks asideBlocks(Iterable<ScheduleBlock> blocks) {
   final moved = <ScheduleBlock>[];
   final cancelled = <ScheduleBlock>[];
+  final letGo = <ScheduleBlock>[];
   final skipped = <ScheduleBlock>[];
   for (final b in blocks) {
     if (b.status != 'skipped') continue;
@@ -451,11 +461,13 @@ AsideBlocks asideBlocks(Iterable<ScheduleBlock> blocks) {
       moved.add(b);
     } else if (isCancelledBlock(b)) {
       cancelled.add(b);
+    } else if (isLetGoBlock(b)) {
+      letGo.add(b);
     } else {
       skipped.add(b);
     }
   }
-  return (moved: moved, cancelled: cancelled, skipped: skipped);
+  return (moved: moved, cancelled: cancelled, letGo: letGo, skipped: skipped);
 }
 
 /// Libellé du compteur de pied ; null s'il n'y a rien à tracer.
@@ -463,7 +475,8 @@ String? asideLabel(AsideBlocks a) {
   final parts = <String>[];
   for (final (c, w) in [
     (a.moved.length, 'déplacé'),
-    (a.cancelled.length, 'annulé'),
+    (a.letGo.length, 'lâché'),
+    (a.cancelled.length, 'empêché'),
     (a.skipped.length, 'sauté'),
   ]) {
     if (c == 0) continue;
@@ -484,7 +497,9 @@ String asideDetail(ScheduleBlock b) {
     case 'replanifie':
       return 'retiré à la replanification';
     case kSkipUnavailable:
-      return 'annulé · pas disponible';
+      return '⛔ empêché · ne compte pas';
+    case kSkipLetGo:
+      return '✋ lâché · compte comme non fait';
     case null:
     case '':
       return 'sauté';

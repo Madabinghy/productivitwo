@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show isLetGoBlock;
 
 /// Badges (lot 1, 2026-10) : catalogue et calcul des paliers depuis les
 /// données d'exécution. Logique pure, aucune écriture : un badge est un FAIT
@@ -397,8 +398,9 @@ class DayScore {
 
 /// Bloc qui compte pour les journées (parfaite, solide) : bloc normal ou deep
 /// work, hors miroir d'agenda, fait ou à faire. Partagé avec `badge_today.dart`.
+/// Un bloc LÂCHÉ (`skipped` + [kSkipLetGo]) compte aussi : comme non fait.
 bool countsForBadges(ScheduleBlock b) =>
-    (b.kind == 'normal' || b.kind == 'deepwork') && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending');
+    (b.kind == 'normal' || b.kind == 'deepwork') && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending' || isLetGoBlock(b));
 
 /// Score d'un jour vécu : routines quotidiennes dues (créées avant ce jour,
 /// non supprimées) et blocs du programme (hors miroirs d'agenda, sautés,

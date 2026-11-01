@@ -6,7 +6,7 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberLedger, kEmberCap;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/stakes.dart';
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, isLetGoBlock;
 
 /// « Aujourd'hui en enjeux », lot 3 : les tuiles du tableau de bord. Chaque
 /// tuile donne son état en une ligne et ouvre sa vue complète.
@@ -307,6 +307,17 @@ DashTile? perfectDayTile(TodayFacts? facts, EmberLedger ledger) {
   final filled = (done * cells / total).floor();
   final mini = [for (var i = 0; i < cells; i++) i < filled ? TileMark.on : TileMark.off];
   final missing = missingRoutines.length + pending;
+  // Un bloc lâché : la journée parfaite est perdue, sans le cacher (2026-11-01).
+  final letGo = blocks.where(isLetGoBlock).toList();
+  if (letGo.isNotEmpty) {
+    return DashTile(
+      label: 'JOURNÉE PARFAITE',
+      badge: embers,
+      value: 'Pas aujourd\'hui',
+      sub: '${letGo.first.title} lâché · le reste compte toujours',
+      mini: mini,
+    );
+  }
   if (missing == 0) {
     return DashTile(
       label: 'JOURNÉE PARFAITE',
