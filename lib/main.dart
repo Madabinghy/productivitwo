@@ -3537,8 +3537,10 @@ class _AppRootState extends State<AppRoot>
   // l'onglet d'arrivée reste tout à droite.
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
       // « Ma vie » (2026-11-01) : Objectifs + Domaines fusionnés en un onglet.
+      // 3 onglets (2026-11-01) : les actions vivent dans Projets ; sans
+      // l'onglet Projets, l'onglet Actions revient.
       ? const [_Tab.dashboard, _Tab.actions, _Tab.aujourdhui]
-      : const [_Tab.dashboard, _Tab.projets, _Tab.actions, _Tab.aujourdhui];
+      : const [_Tab.dashboard, _Tab.projets, _Tab.aujourdhui];
 
   int _tabIndex(_Tab t) {
     switch (t) {
@@ -3684,7 +3686,7 @@ class _AppRootState extends State<AppRoot>
             },
             onOpenRoutines: () => _showRoutinesSheet(context),
             onOpenActivities: () => _showLaunchActivitySheet(context),
-            onOpenActions: () => setState(() => _tab = _Tab.actions),
+            onOpenActions: () => setState(() => _tab = _visibleTabs.contains(_Tab.projets) ? _Tab.projets : _Tab.actions),
             onOpenProjects: _state?.hideProjectsTab == true ? null : () => setState(() => _tab = _Tab.projets),
             onOpenTask: (project, task) => showProjectSheet(
               context,
@@ -4874,9 +4876,9 @@ class _AppRootState extends State<AppRoot>
                   icon: Icon(Icons.donut_small_outlined),
                   activeIcon: Icon(Icons.donut_small),
                   label: 'Domaines'),
-              _Tab.projets => const BottomNavigationBarItem(
-                  icon: Icon(Icons.account_tree_outlined),
-                  activeIcon: Icon(Icons.account_tree),
+              _Tab.projets => BottomNavigationBarItem(
+                  icon: _overdueBadge(const Icon(Icons.account_tree_outlined)),
+                  activeIcon: _overdueBadge(const Icon(Icons.account_tree)),
                   label: 'Projets'),
               _Tab.aujourdhui => const BottomNavigationBarItem(
                   icon: Icon(Icons.wb_sunny_outlined),
