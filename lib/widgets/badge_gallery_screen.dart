@@ -147,8 +147,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           else ...[
             _deckHeader(deck),
             _shelf(deck),
-            if (_facts case final f?) _todaySection(deck, f),
-            _huntsSection(deck),
+            // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
+            if (_facts case final f?) _inPlayButton(deck, f),
             for (final f in BadgeFamily.values) _family(deck, f),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
@@ -285,6 +285,70 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   /// « EN JEU AUJOURD'HUI » (2026-10) : les suites en cours qui se perdent si
   /// la journée n'est pas tenue, puis « À PORTÉE » : ce qui peut tomber
   /// aujourd'hui. Pastille = ce qu'il manque ; tap = la fiche et ses gestes.
+  /// Le bouton « En jeu aujourd'hui » : mini cartes, compte, ce qui manque ;
+  /// tap = la feuille EN JEU AUJOURD'HUI + À PORTÉE.
+  Widget _inPlayButton(BadgeDeck deck, TodayFacts facts) {
+    final inPlay = badgesInPlay(deck, facts);
+    final reachable = [
+      for (final b in deck.badges)
+        if (b.def.family != BadgeFamily.routines && !b.complete && badgeToday(b, facts).stake == TodayStake.reachable && badgeToday(b, facts).items.isNotEmpty) b,
+    ];
+    if (inPlay.isEmpty && reachable.isEmpty) return const SizedBox.shrink();
+    final missing = inPlay.fold(0, (s, e) => s + e.$2.missing);
+    final cards = [...inPlay.map((e) => e.$1), ...reachable].take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        color: kBSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: kBAttention.withValues(alpha: .45))),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: kBSurface,
+            showDragHandle: true,
+            builder: (ctx) => DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: .8,
+              maxChildSize: .95,
+              builder: (ctx, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [_todaySection(deck, facts)]),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            child: Row(children: [
+              SizedBox(
+                width: 30.0 + (cards.length - 1) * 14,
+                height: 46,
+                child: Stack(clipBehavior: Clip.none, children: [
+                  for (var i = cards.length - 1; i >= 0; i--)
+                    Positioned(left: i * 14.0, top: 2, child: Transform.rotate(angle: (i - (cards.length - 1) / 2) * .14, child: BadgeCardView(state: cards[i], width: 30))),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('EN JEU AUJOURD’HUI · ${inPlay.length + reachable.length}',
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: kBAttention)),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (inPlay.isNotEmpty) '${inPlay.length} à tenir${missing > 0 ? ' · il manque ${missing == 1 ? '1 chose' : '$missing choses'}' : ''}',
+                      if (reachable.isNotEmpty) '${reachable.length} à portée',
+                    ].join(' · '),
+                    style: const TextStyle(fontSize: 13, color: kBText2),
+                  ),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: kBText3),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _todaySection(BadgeDeck deck, TodayFacts facts) {
     final inPlay = badgesInPlay(deck, facts);
     final reachable = <(BadgeState, BadgeToday)>[];
@@ -402,52 +466,6 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       if (blocks > 0) '$blocks bloc${blocks > 1 ? 's' : ''}',
     ];
     return parts.isEmpty ? t.chip : parts.join(', ');
-  }
-
-  /// « EN CHASSE · n » : les badges visés, leur palier et le rythme.
-  Widget _huntsSection(BadgeDeck deck) {
-    final views = huntViews(widget.logic.badgeHunts, deck).where((v) => !v.caught).toList();
-    if (views.isEmpty) return const SizedBox.shrink();
-    final now = DateTime.now();
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
-          child: Row(children: [
-            const Icon(Icons.gps_fixed, size: 14, color: kBadgeBrass),
-            const SizedBox(width: 6),
-            const Text('EN CHASSE', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBadgeBrass)),
-            const Spacer(),
-            Text('${views.length} / $kMaxBadgeHunts', style: const TextStyle(fontSize: 13, color: kBText4)),
-          ]),
-        ),
-        for (final v in views)
-          InkWell(
-            onTap: () => _showFacts(v.badge),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(children: [
-                BadgeCardView(state: v.badge, width: 44),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${v.badge.def.name} · palier ${fmtInt(v.tierValue)}${v.badge.def.unit.isEmpty ? '' : ' ${v.badge.def.unit}'}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
-                    Text(v.paceLabel(now), softWrap: true, style: const TextStyle(fontSize: 12.5, color: kBText3)),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(value: v.progress, minHeight: 6, backgroundColor: kBadgeGaugeTrack, valueColor: const AlwaysStoppedAnimation<Color>(kBadgeGaugeFill)),
-                    ),
-                  ]),
-                ),
-                const Icon(Icons.chevron_right, color: kBText4),
-              ]),
-            ),
-          ),
-      ]),
-    );
   }
 
   /// Une famille de cartes, rangée en pochettes (récolte, 2026-11-01) : en
