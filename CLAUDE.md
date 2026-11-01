@@ -1366,7 +1366,7 @@ bronze → argent → or répartis, le dernier palier toujours légendaire : 5 p
 `rarityLadder`, `faceOf` (gagnée · commencée = grisée + jauge · jamais commencée = de dos), `cardHint` (le premier palier en clair),
 `cardFooter`, `cardAlbum` (cartes gagnées / total hors séries de routine, compte par rareté), `albumOrder` ; widget
 `widgets/badge_card.dart` (`BadgeCardView` 5 / 7 : cadre de la rareté — légendaire irisé qui brille —, symbole du gabarit en grand
-via `BadgePainter.paintSymbol` sur le fond de sa famille `familyArtColor` / `familyInkColor`, nom, points des paliers, jauge ambre
+via `BadgePainter.paintSymbol` sur le fond de sa famille `familyArtColor` / `familyInkColor`, nom en petit sur deux lignes (en entier), points des paliers, jauge ambre
 « ce soir ? », dos rayé « ? » + indice, pastille NOUVEAU). Galerie (`badge_gallery_screen.dart`) : en-tête album « k / n cartes ·
 x or · paliers » + barre, trois cartes par rangée par famille (`albumOrder`) ; fiche d'un badge : la carte en tête et « les paliers
 = les cadres » (`_CardLadder`). `BadgeView` (écusson) reste pour les petites tailles (lignes, tuiles).

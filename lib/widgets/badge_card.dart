@@ -150,7 +150,8 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
     final won = face == CardFace.won;
     final art = familyArtColor(b.def.family);
     final ink = won ? familyInkColor(b.def.family) : const Color(0xFF8FA69A);
-    final nameSize = (w * .115).clamp(9, 22).toDouble();
+    // Nom en petit, sur deux lignes, pour qu'il s'affiche en entier (retour user 2026-11-01).
+    final nameSize = (w * .078).clamp(7.5, 16).toDouble();
     final footSize = (w * .085).clamp(8, 13).toDouble();
     return Container(
       color: const Color(0xFF101A15),
@@ -193,7 +194,7 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
         if (!small)
           Padding(
             padding: EdgeInsets.fromLTRB(w * .06, w * .035, w * .06, 0),
-            child: Text(b.def.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: nameSize, fontWeight: FontWeight.w800, color: won ? Colors.white : const Color(0xFFB4C8BE))),
+            child: Text(b.def.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: nameSize, height: 1.15, fontWeight: FontWeight.w800, color: won ? Colors.white : const Color(0xFFB4C8BE))),
           ),
         if (!won && b.showGauge)
           Padding(
