@@ -71,6 +71,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('ACTIVITÉ DU MOMENT'), findsNothing); // carte retirée (2026-10-30)
+    expect(find.text('CETTE SEMAINE'), findsOneWidget); // grammaire des feuilles (2026-11-01)
     expect(find.textContaining('ROUTINES ·'), findsOneWidget);
     expect(find.text('Café'), findsOneWidget);
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));
