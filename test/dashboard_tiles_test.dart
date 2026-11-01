@@ -62,10 +62,13 @@ void main() {
     ]);
     final t = badgesTile(deck, board)!;
     expect(t.value, 'Lecture 3 j');
-    expect(t.sub, 'palier ce soir · 1 série à sauver');
+    expect(t.sub, 'carte bronze ce soir · 1 série à sauver');
+    expect(t.badge, '0 / 0 cartes');
+    expect(t.fan, isEmpty);
     final d = badgesInPlay(board, deck);
     expect(d.losing.length, 1);
     expect(d.tiers.length, 1);
+    expect(d.tierCards['serie-L']?.level, 1);
     expect(d.near.map((b) => b.def.id), ['actions']); // Lecture est déjà en jeu
   });
 
