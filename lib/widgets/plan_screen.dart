@@ -26,6 +26,7 @@ import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
 import 'package:productivitwo_v1/utils/week_place.dart';
 import 'package:productivitwo_v1/utils/week_spread.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show showActivityPicker;
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart' show gcalSyncDay;
 import 'package:productivitwo_v1/utils/sport_stats.dart' show resolveSportPick, SportKind;
 import 'dart:convert' show jsonDecode, jsonEncode;
 
@@ -1218,6 +1219,11 @@ class _PlanScreenState extends State<PlanScreen> {
     setState(() => _loading = true);
     final days = _weekDays;
     final window = await sync.fetchDayWindow();
+    // L'agenda Google de la semaine, recopié dans le programme (même ⟳ que
+    // l'onglet Aujourd'hui, un jour à la fois) : les rendez-vous sont posés
+    // dans la grille avant qu'on place quoi que ce soit (retour user 2026-11-01).
+    final synced = await Future.wait([for (final d in days) gcalSyncDay(sync, ymdOf(d))]);
+    _gcalState = synced.any((r) => r?['ok'] == true) ? 'ok' : (synced.any((r) => r?['reason'] == 'not_connected') ? 'off' : 'unknown');
     List<DailySchedule> docs = const [];
     try {
       docs = await sync.fetchDailySchedulesRange(ymdOf(days.first), ymdOf(_plus(days.last, 1)));
@@ -1696,6 +1702,10 @@ class _PlanScreenState extends State<PlanScreen> {
   Set<int> _actDays = {};
   bool _sameTime = true;
   static const _kGridH = 420.0;
+  static const _zooms = [1.0, 1.5, 2.0, 3.0];
+  int _zoomIdx = 0;
+  String _gcalState = 'unknown';
+  double get _gridH => _kGridH * _zooms[_zoomIdx];
 
   WeekWant get _act => _order[_actIdx];
 
@@ -1789,7 +1799,7 @@ class _PlanScreenState extends State<PlanScreen> {
   void _tapGrid(int d, double y) {
     final id = _act.activityId;
     final span = _window.endMin - _window.startMin;
-    final m = _window.startMin + (y / _kGridH * span).round();
+    final m = _window.startMin + (y / _gridH * span).round();
     final s = _spec[id]!;
     final mine = _pieces[d].where((p) => p.id == id).toList();
     setState(() {
@@ -1813,7 +1823,8 @@ class _PlanScreenState extends State<PlanScreen> {
   /// La semaine en colonnes, journée active de haut en bas : blocs déjà posés
   /// (bleu nuit), dates (contour or), morceaux placés (couleur de famille).
   /// [current] = l'activité qu'on place (ses blocs se touchent et se glissent).
-  Widget _weekGrid({String? current, Set<int> sel = const {}, double height = _kGridH, void Function(String id)? onPieceTap}) {
+  Widget _weekGrid({String? current, Set<int> sel = const {}, double? gridHeight, void Function(String id)? onPieceTap}) {
+    final height = gridHeight ?? _gridH;
     final days = _weekDays;
     final span = (_window.endMin - _window.startMin).clamp(60, 24 * 60);
     double y(int m) => ((m - _window.startMin) / span * height).clamp(0.0, height);
@@ -1830,7 +1841,7 @@ class _PlanScreenState extends State<PlanScreen> {
           ),
         );
     Text tiny(String t, Color c) => Text(t, maxLines: 2, overflow: TextOverflow.clip, style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.w800, color: c));
-    final hours = [for (var h = (_window.startMin + 59) ~/ 60; h * 60 < _window.endMin; h += 2) h];
+    final hours = [for (var h = (_window.startMin + 59) ~/ 60; h * 60 < _window.endMin; h += height >= 700 ? 1 : 2) h];
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 6, 6, 8),
       decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
@@ -1897,35 +1908,82 @@ class _PlanScreenState extends State<PlanScreen> {
     );
   }
 
+  void _removePiece(int d, WeekPiece p) => setState(() {
+        _pieces[d].remove(p);
+        if (!_pieces[d].any((x) => x.id == p.id)) _actDays.remove(d);
+      });
+
+  Widget _zoomBar() => Row(children: [
+        Expanded(
+          child: Text(
+            switch (_gcalState) {
+              'ok' => '📅 agenda Google à jour',
+              'off' => 'agenda Google non connecté (Paramètres)',
+              _ => '',
+            },
+            style: const TextStyle(fontSize: 11.5, color: _text3),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Dézoomer',
+          visualDensity: VisualDensity.compact,
+          onPressed: _zoomIdx == 0 ? null : () => setState(() => _zoomIdx--),
+          icon: const Icon(Icons.zoom_out_rounded, color: Colors.white, size: 22),
+        ),
+        Text('×${_zooms[_zoomIdx].toString().replaceAll('.0', '').replaceAll('.', ',')}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _text2)),
+        IconButton(
+          tooltip: 'Zoomer',
+          visualDensity: VisualDensity.compact,
+          onPressed: _zoomIdx == _zooms.length - 1 ? null : () => setState(() => _zoomIdx++),
+          icon: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 22),
+        ),
+      ]);
+
   Widget _pieceBox(int d, WeekPiece p, {String? current, void Function(String id)? onTap, required int span, required double height}) {
     final c = _famColors[_familyOf(p.id)]!;
     final mine = current == p.id;
     final dim = current != null && !mine;
-    final body = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+    final px = p.minutes / span * height;
+    final ink = p.proposed && mine ? c : const Color(0xFF14100A);
+    final label = Container(
+      padding: EdgeInsets.fromLTRB(2, 1, mine && px >= 18 ? 14 : 2, 1),
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: p.proposed && mine ? c.withValues(alpha: .14) : c.withValues(alpha: dim ? .55 : 1),
         borderRadius: BorderRadius.circular(4),
         border: mine ? Border.all(color: p.proposed ? c : Colors.white, width: p.proposed ? 1.4 : 1.2) : null,
       ),
-      child: Text(
-        mine && p.proposed ? '${_activityName(p.id)} ?' : _activityName(p.id),
-        maxLines: 2,
+      child: Text.rich(
+        TextSpan(children: [
+          if (px >= 34 && p.start != null) TextSpan(text: '${hmOf(p.start!)}\n', style: const TextStyle(fontWeight: FontWeight.w700)),
+          TextSpan(text: mine && p.proposed ? '${_activityName(p.id)} ?' : _activityName(p.id)),
+        ]),
+        maxLines: px >= 34 ? 3 : 2,
         overflow: TextOverflow.clip,
-        style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.w900, color: p.proposed && mine ? c : const Color(0xFF14100A)),
+        style: TextStyle(fontSize: 8.5, height: 1.1, fontWeight: FontWeight.w900, color: ink),
       ),
     );
+    final body = !mine || px < 18
+        ? label
+        : Stack(fit: StackFit.expand, children: [
+            label,
+            Positioned(
+              top: 0,
+              right: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _removePiece(d, p),
+                child: Padding(padding: const EdgeInsets.all(2), child: Icon(Icons.close_rounded, size: 12, color: ink)),
+              ),
+            ),
+          ]);
     if (!mine) return onTap == null ? body : GestureDetector(onTap: () => onTap(p.id), child: body);
     return GestureDetector(
       onTap: () => setState(() {
         final i = _pieces[d].indexOf(p);
         if (i >= 0) _pieces[d][i] = p.at(p.start);
       }),
-      onLongPress: () => setState(() {
-        _pieces[d].remove(p);
-        if (!_pieces[d].any((x) => x.id == p.id)) _actDays.remove(d);
-      }),
+      onLongPress: () => _removePiece(d, p),
       onVerticalDragUpdate: (e) => setState(() {
         final i = _pieces[d].indexOf(p);
         if (i < 0) return;
@@ -2094,10 +2152,11 @@ class _PlanScreenState extends State<PlanScreen> {
     final proposed = _pieces.fold<int>(0, (s, d) => s + d.where((p) => p.id == id && p.proposed).length);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _top('PLACER · ${_act.title.toUpperCase()}', 2),
-      _actHeader('À quelle heure ? Touche un créneau dans une colonne bleue, ou glisse le bloc. Appui long = l\'enlever.'),
+      _actHeader('À quelle heure ? Touche un créneau dans une colonne bleue, ou glisse le bloc. ✕ = l\'enlever.'),
       const SizedBox(height: 8),
       Expanded(
         child: ListView(children: [
+          _zoomBar(),
           _weekGrid(current: id, sel: _actDays),
           const SizedBox(height: 6),
           Wrap(spacing: 10, runSpacing: 4, children: [
@@ -2158,7 +2217,8 @@ class _PlanScreenState extends State<PlanScreen> {
       const SizedBox(height: 6),
       Expanded(
         child: ListView(children: [
-          _weekGrid(height: 360, onPieceTap: (id) {
+          _zoomBar(),
+          _weekGrid(gridHeight: 360 * _zooms[_zoomIdx], onPieceTap: (id) {
             final k = _order.indexWhere((w) => w.activityId == id);
             if (k >= 0) _openTimesOf(k);
           }),
