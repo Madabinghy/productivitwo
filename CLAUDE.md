@@ -1042,6 +1042,21 @@ charge ok / plein / repos, « LE CONTRAT · RÉPARTI » fait / dû ; « Réparti
 avec activité liée) puis `spreadWeek` (`utils/planning.dart` : morceaux de 45 min, jour le plus libre d'abord, une fois par jour
 d'abord) sur 80 % du libre) → LA SEMAINE EST POSÉE (une ligne par jour). « Valider » ajoute à chaque jour ses blocs d'activité via
 `proposeDay` dans ses créneaux libres, `generatedBy:"plan"`, `plannedAt` (chaque jour compte pour Cap tenu).
+**Répartir par familles** (2026-11-01, maquette validée « Répartir la semaine, autrement », retour user : « Manger 45 min un jour sur
+deux, pas naturel ») : logique pure `utils/week_spread.dart` remplace `spreadWeek` dans l'écran. `classifyWants` trie le contrat —
+réglage de l'utilisateur d'abord (`plan_families` en SharedPreferences, tap sur une activité du contrat = feuille de famille),
+puis **Déjà dans ta journée** (`isBasicNeedName` : jamais posé, même engagé dans un objectif), **Le corps** (activités-temps de sport
+suivies, `resolveSportPick`), **Au quotidien** (< `kDailyMaxMin` 30 min / j : aucun bloc, temps gardé libre chaque jour =
+`dailyReserve`), **Le fond** (≤ `kFondMaxMin` 60 min / j : un bloc chaque jour, posé en premier dans la journée donc à la même heure),
+**Le travail** (au-delà, plus les activités de ≥ 30 min / j d'un domaine de travail). `spreadByFamily` : fond tous les jours ; séances
+du corps (`bodySessions` : 45 min, 1 h au-delà de 3 h / sem, 1 à 4 séances) jamais deux jours de suite pour la même activité ni trois
+jours de séance d'affilée, étalées ; travail en Deep work (2 h, 1 h 30, puis le reste) du lundi au vendredi (samedi si « Travailler le
+samedi », `plan_work_saturday`), à tour de rôle, une fois par activité et par jour, `kMaxWorkBlocksPerDay` (2) ; ce qui ne tient pas
+va dans `unplaced` et est DIT (« … ne tiennent pas dans la semaine »), jamais tassé dans le week-end ; `reasons` = « Pourquoi ici ».
+Écrans : CE QUI SE JOUE → « LE CONTRAT, TRIÉ » (une carte par famille : règle, puces, total, alerte quand le travail dépasse le libre
+des jours ouvrés) ; RÉPARTIR → « Ta semaine » jour par jour (barre de charge, dates en pointillés, blocs colorés par famille, tap = feuille
+Jour · Durée · Pourquoi ici · Enlever), pied « + n au quotidien gardées libres » et ce qui ne tient pas, interrupteur « Travailler le
+samedi », Recommencer · Valider (blocs posés fond d'abord, puis travail, puis corps).
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 
