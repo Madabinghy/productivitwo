@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -262,7 +263,7 @@ class _OrionScreenState extends State<OrionScreen>
         _replyCtrl.clear();
         await _load();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
             content: Text(
               skipped
                   ? 'Limite atteinte — demande ignorée'
@@ -504,7 +505,7 @@ class _OrionScreenState extends State<OrionScreen>
       if (!mounted) return;
       setState(() => _userNeeds = value);
       FocusScope.of(context).unfocus();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(value.isEmpty
             ? 'Instructions effacées'
             : 'Instructions enregistrées'),

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -43,7 +44,7 @@ class _ClaudeAutomationSheetState extends State<_ClaudeAutomationSheet> {
     final ok = await launchUrl(claudeNewUri(a.prompt), mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
       await Clipboard.setData(ClipboardData(text: a.prompt));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
         content: Text('Impossible d\'ouvrir Claude — demande copiée, colle-la dans Claude.'),
         behavior: SnackBarBehavior.floating,
       ));
@@ -106,7 +107,7 @@ class _ClaudeAutomationSheetState extends State<_ClaudeAutomationSheet> {
                   onTap: () async {
                     await Clipboard.setData(ClipboardData(text: a.prompt));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
                         content: Text('« ${a.title} » copié'),
                         duration: const Duration(seconds: 2),
                         behavior: SnackBarBehavior.floating,

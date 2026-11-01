@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -197,7 +198,7 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen> {
       final fed = applyCarryOver(p, i, debrief.points);
       await widget.sync.saveProject(p);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(fed == null
             ? 'Séance terminée. Bilan enregistré.'
             : 'Séance terminée · ${debrief.points.length} point${debrief.points.length > 1 ? 's' : ''} '

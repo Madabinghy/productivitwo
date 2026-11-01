@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -654,7 +655,7 @@ class _DomainHeatmapSectionState extends State<_DomainHeatmapSection> {
                                         '${activeDomains[di].name}  ${fmtDate(d)} — ${fmtMin(mins)}';
                                     ScaffoldMessenger.of(context)
                                       ..clearSnackBars()
-                                      ..showSnackBar(SnackBar(
+                                      ..showClosingSnackBar(SnackBar(
                                         content: Text(msg),
                                         duration:
                                             const Duration(seconds: 2),

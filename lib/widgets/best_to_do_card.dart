@@ -122,7 +122,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
     logic.setNowSkipped(ymd, ids);
     setState(() {});
     if (!wasSkipped) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Reculée en fin de liste : ${a.name}'),
         duration: const Duration(seconds: 3),
       ));

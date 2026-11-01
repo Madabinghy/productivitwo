@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/onboarding_catalog.dart';
 import 'softpop_tokens.dart';
@@ -341,7 +342,7 @@ class _SoftPopOnboardingScreenState extends State<SoftPopOnboardingScreen> {
             label: 'Commencer',
             icon: Icons.rocket_launch_outlined,
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
                 content: Text(
                     'Aperçu : ${_domains.length} domaines · ${_routines.length} habitudes (non créés — preview)',
                     style: SoftPop.ui(

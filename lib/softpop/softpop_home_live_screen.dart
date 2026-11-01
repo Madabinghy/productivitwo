@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -145,7 +146,7 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
     if (delta > 0) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
+        ..showClosingSnackBar(SnackBar(
           content: Text('« ${a.name} » ✓',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           backgroundColor: SoftPop.teal,

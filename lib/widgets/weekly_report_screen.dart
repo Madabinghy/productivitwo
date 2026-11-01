@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -180,7 +181,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     }
     if (mounted) {
       setState(() => _weekModeChosen = mode);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(mode == 'minimal'
             ? 'Semaine minimale posée — rien à rattraper, le plan reprend où il s\'est arrêté.'
             : 'Vital protégé — on en reparle dimanche.'),
@@ -219,7 +220,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     await _sync.setWeeklyReportDecision(r.weekStart, 'applied');
     if (mounted) {
       setState(() => _decisionStatus = 'applied');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Décidé — « ${d.to} » dès lundi.'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,

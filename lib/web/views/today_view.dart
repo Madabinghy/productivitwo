@@ -412,7 +412,7 @@ class TodayViewState extends State<TodayView> {
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
+          .showClosingSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
     }
   }
 
@@ -529,7 +529,7 @@ class TodayViewState extends State<TodayView> {
     setState(() {});
     await widget.sync.patchActionOf(p, a);
     if (!changed || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
       duration: const Duration(seconds: 2),
     ));
@@ -687,7 +687,7 @@ class TodayViewState extends State<TodayView> {
       widget.sync.saveHabitHit(logic.state.habitHits.last);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Routine validée : ${act.name}'),
         duration: const Duration(milliseconds: 1400),
       ));
@@ -1545,7 +1545,7 @@ class TodayViewState extends State<TodayView> {
     setState(() {});
     await steps.save();
     if (!changed || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
       duration: const Duration(seconds: 2),
     ));
@@ -3020,7 +3020,7 @@ class TodayViewState extends State<TodayView> {
   void _incRoutine(Activity act) {
     final logic = _logic;
     if (logic == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
         content: Text('Chargement en cours, réessaie dans un instant.'),
         duration: Duration(seconds: 2),
       ));

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -155,7 +156,7 @@ class _InboxSheetState extends State<_InboxSheet> {
     if (!mounted) return;
     setState(() => _sweeping = false);
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
+        .showClosingSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
   }
 
   Future<void> _saveEdit(CaptureItem item) async {

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
@@ -29,7 +30,7 @@ class _SoftPopStreakScreenState extends State<SoftPopStreakScreen> {
   void _toast(String msg, Color c, {String emoji = ''}) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('$emoji  $msg'.trim(),
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         duration: const Duration(milliseconds: 1300),

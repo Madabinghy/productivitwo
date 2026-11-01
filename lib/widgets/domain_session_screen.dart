@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:convert';
 
@@ -156,7 +157,7 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
   void _showResult() {
     if (_stage == _Stage.result) return;
     setState(() => _stage = _Stage.result);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
       content: Text('Domaine défini — je m\'en servirai chaque jour'),
       duration: Duration(seconds: 3),
       behavior: SnackBarBehavior.floating,

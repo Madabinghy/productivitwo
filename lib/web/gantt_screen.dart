@@ -540,7 +540,7 @@ class _GanttScreenState extends State<GanttScreen> {
     await _sync.saveProject(_project);
     widget.onChanged?.call();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 }
@@ -2370,7 +2370,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
         .toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(
           const SnackBar(content: Text('Aucun autre projet disponible.')));
       return null;
     }
@@ -2395,7 +2395,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
         project.tasks.where((t) => t.id != excludeTaskId).toList();
     if (!mounted) return null;
     if (tasks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
           content: Text('« ${project.title} » n\'a aucune autre tâche.')));
       return null;
     }
@@ -2426,7 +2426,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     widget.onProjectUpdated(widget.project);
     if (!mounted) return;
     _close(); // la tâche a quitté ce projet → on ferme la fiche
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Tâche déplacée vers « ${target.title} ».')));
   }
 
@@ -2456,7 +2456,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     widget.onProjectUpdated(widget.project);
     if (!mounted) return;
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Action déplacée vers « ${targetTask.title} ».')));
   }
 
@@ -2491,7 +2491,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (!mounted) return;
     setState(() => _saving = false);
     if (child != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
           content: Text('Sous-projet « ${child.title} » créé.')));
     }
   }
@@ -3116,7 +3116,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
         // Vérifie la taille (Firestore limite à 1 Mo, base64 ×1.33)
         if (file.size > 700 * 1024) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
               content: Text('PDF trop grand (max ~700 Ko). Compresse-le d\'abord.'),
             ));
           }
@@ -3306,7 +3306,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                 onPressed: () {
                   setState(() => _task.actions.remove(a));
                   _save();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
                     duration: Duration(seconds: 2),
                     content: Text('Action supprimée'),
                   ));

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -77,7 +78,7 @@ class _ObjectiveReadingsCardState extends State<ObjectiveReadingsCard> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving.remove(o.id));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
       }
       return;
     }
@@ -90,7 +91,7 @@ class _ObjectiveReadingsCardState extends State<ObjectiveReadingsCard> {
         : r.delta == 0
             ? 'Relevé noté : ${_fmt(value)}$unit · pile sur la trajectoire.'
             : 'Relevé noté : ${_fmt(value)}$unit · ${r.delta > 0 ? '${_fmt(r.delta)}$unit d\'avance' : '${_fmt(-r.delta)}$unit de retard'} (attendu ${_fmt(r.expectedValue)}$unit).';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text(msg)));
     setState(() {
       _saving.remove(o.id);
       _due = _due.where((x) => x.id != o.id).toList();
@@ -244,11 +245,11 @@ Future<bool> noteReadingQuick(BuildContext context, {required FirestoreSync sync
   try {
     await sync.saveStrategicObjective(objective);
   } catch (_) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
+    if (context.mounted) ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
     return false;
   }
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Relevé noté : ${fmt(value)}${m.unit == null || m.unit!.isEmpty ? '' : ' ${m.unit}'}')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Relevé noté : ${fmt(value)}${m.unit == null || m.unit!.isEmpty ? '' : ' ${m.unit}'}')));
   }
   return true;
 }

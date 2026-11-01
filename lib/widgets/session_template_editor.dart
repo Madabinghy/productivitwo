@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -190,7 +191,7 @@ class _SessionTemplateEditorState extends State<SessionTemplateEditor> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
             content: Text('Échec réseau — rien n\'a changé, réessaie.')));
       }
     }

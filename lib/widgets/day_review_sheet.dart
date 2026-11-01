@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -193,7 +194,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     ));
     if (count != null && mounted) {
       setState(() => _plannedCount = count);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('${_dayName(tomorrow)} est posé — $count blocs'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,

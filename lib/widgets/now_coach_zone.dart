@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -80,14 +81,14 @@ class _NowCoachZoneState extends State<NowCoachZone> {
           if (tgt > 1) {
             final total = await showHabitCountSheet(context, logic: logic, activity: a);
             if (total == null || !context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
               content: Text('${a.name} : $total/$tgt aujourd\'hui'),
               duration: const Duration(seconds: 2),
             ));
             return;
           }
           logic.incHabit(a.id, 1, DateTime(day.year, day.month, day.day));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
             content: Text('Routine validée : ${a.name}'),
             duration: const Duration(seconds: 2),
           ));

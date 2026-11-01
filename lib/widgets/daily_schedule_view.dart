@@ -324,7 +324,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     _routineHit.add(block.id);
     widget.logic.incHabit(id, 1, day);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('✅ Routine validée : ${act.name}'),
         duration: const Duration(seconds: 2),
       ));
@@ -462,7 +462,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
           if (mounted) {
             final name = b.title.replaceFirst('🔥 Défi : ', '');
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
               content: Text(
                   '🔥 Défi relevé : $name ! Série : ${widget.logic.state.challengeStreak} 🔥'),
               duration: const Duration(seconds: 4),
@@ -1633,7 +1633,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               // Défi reporté → l'alarme du jour n'a plus lieu d'être.
               await cancelChallengeNotifications(block);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
                   content: Text(carryMessage([placed])),
                   duration: const Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,

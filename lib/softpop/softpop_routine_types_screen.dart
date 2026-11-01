@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -55,7 +56,7 @@ class _SoftPopRoutineTypesScreenState extends State<SoftPopRoutineTypesScreen> {
   void _toast(String msg, Color c) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(msg,
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         duration: const Duration(milliseconds: 1100),

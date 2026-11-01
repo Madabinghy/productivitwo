@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
@@ -247,7 +248,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     logic.deleteActivityCascade(act.id);
                     widget.onSaved?.call();
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.of(context).showClosingSnackBar(
                           SnackBar(content: Text('Supprimé : $name')));
                       Navigator.pop(context);
                     }

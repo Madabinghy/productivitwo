@@ -1375,6 +1375,13 @@ rien). Restent : minuteur de fin (id 30 / alarme `alarm` 42) et messages ORION /
 n'est PAS poussé (il s'affiche ce jour-là dans l'app) ; `pushAllowed` : interrupteur « Messages ORION / coach » de Paramètres ›
 Notifications = `orion_config/main.pushEnabled` (absent = activé ; `FirestoreSync.fetchOrionPushEnabled` / `setOrionPushEnabled`).
 
+## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
+
+Une `SnackBar` avec une `action` (« Annuler ») peut rester affichée indéfiniment (Flutter récent : `persist` vrai par défaut ;
+navigation accessible iOS) — bug user : « faite · Annuler » ne partait pas. Tous les appels passent par
+`ScaffoldMessengerState.showClosingSnackBar` (extension `ClosingSnackBar`, `widgets/undo_snack.dart`) qui la ferme après sa durée.
+Ne pas utiliser `persist:` (absent de la version de Flutter de la CI). Toute nouvelle SnackBar : `showClosingSnackBar`.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet

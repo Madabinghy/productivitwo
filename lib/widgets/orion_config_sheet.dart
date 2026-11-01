@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -118,7 +119,7 @@ class _OrionConfigSheetState extends State<OrionConfigSheet> {
         final pushed = data['pushed'] as int? ?? 0;
         final skipped = data['skipped'] as bool? ?? false;
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(context).showClosingSnackBar(
             SnackBar(
               content: Text(
                 skipped

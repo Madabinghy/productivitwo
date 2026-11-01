@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -392,7 +393,7 @@ class _PlanScreenState extends State<PlanScreen> {
     });
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text('Plus de créneau libre de 30 min pour ${w.title} : raccourcis ou retire un bloc.')));
+      ..showClosingSnackBar(SnackBar(content: Text('Plus de créneau libre de 30 min pour ${w.title} : raccourcis ou retire un bloc.')));
   }
 
   /// Les blocs DÉJÀ posés de la journée visée (fin de journée : ceux qui ne

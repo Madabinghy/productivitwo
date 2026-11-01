@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -368,7 +369,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       final n = DateTime.now();
       t.action.focusDate = DateTime(n.year, n.month, n.day + 1);
       _persist(t);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('« ${t.action.title} » visée demain')));
+      ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(content: Text('« ${t.action.title} » visée demain')));
     }
     _finish();
   }

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
@@ -72,7 +73,7 @@ class _SoftPopProjectScreenState extends State<SoftPopProjectScreen> {
     if (!wasDone && m.done) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
+        ..showClosingSnackBar(SnackBar(
           content: Text('Jalon atteint ! ${m.xp} 🎉',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           backgroundColor: SoftPop.teal,

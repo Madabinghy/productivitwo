@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show groupActivitiesByDomain;
@@ -228,7 +229,7 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(
           const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
     }
   }

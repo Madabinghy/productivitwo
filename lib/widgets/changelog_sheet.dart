@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
@@ -861,7 +862,7 @@ class _ChangelogSheetState extends State<_ChangelogSheet> {
       } else {
         ProManager.notifier.value = true;
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(nowPro ? '🔓 Mode Non-Pro activé' : '⭐ Mode Pro activé'),
         duration: const Duration(seconds: 2),
       ));

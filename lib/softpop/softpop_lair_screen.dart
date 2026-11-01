@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
@@ -289,7 +290,7 @@ class SoftPopLairScreen extends StatelessWidget {
           }
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(SnackBar(
+            ..showClosingSnackBar(SnackBar(
               content: Text(
                   'Énergie trop basse. Fais des routines pour recharger.',
                   style: SoftPop.ui(

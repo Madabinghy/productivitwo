@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -168,7 +169,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     });
     await _sync.saveProject(_project);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 
@@ -289,7 +290,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   Future<void> _toggleComplete(BuildContext context) async {
     final completing = _project.status != 'done';
     if (completing && !_allTasksDone) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
           content:
               Text('Termine toutes les tâches avant de clôturer le projet.')));
       return;
@@ -298,7 +299,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     await _sync.saveProject(_project);
     if (!context.mounted) return;
     if (completing) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
           content: Text('✅ « ${_project.title} » terminé — rangé dans Terminé.')));
       Navigator.pop(context);
     }
@@ -333,7 +334,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Projet supprimé')));
+        .showClosingSnackBar(const SnackBar(content: Text('Projet supprimé')));
   }
 
   Color _domainColor(ColorScheme cs) {

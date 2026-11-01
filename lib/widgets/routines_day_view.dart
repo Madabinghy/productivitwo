@@ -80,7 +80,7 @@ void routinePlusWithUndo(BuildContext context, AppLogic logic, Activity a) {
           routineMinus(logic, a);
           messenger
             ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text('${a.name} : +1 annulé'), duration: const Duration(seconds: 2)));
+            ..showClosingSnackBar(SnackBar(content: Text('${a.name} : +1 annulé'), duration: const Duration(seconds: 2)));
         },
       ),
     ));
@@ -338,7 +338,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   void _toast(String t) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
+      ..showClosingSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────

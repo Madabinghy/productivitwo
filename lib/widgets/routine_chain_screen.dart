@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -139,7 +140,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
   void _toast(String t) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
+      ..showClosingSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────
