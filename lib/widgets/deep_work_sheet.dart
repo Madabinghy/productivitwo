@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -124,7 +125,7 @@ Future<bool> showDeepWorkSheet(
   } catch (_) {}
   onLaunch(block);
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Deep work · ${picked.title} · $durationMin min à partir de ${block.startTime}'), duration: const Duration(seconds: 3)));
     // Veille des domaines non concernés (§ 2.4) : jusqu'à la fin du coup, sinon ce soir.
     final coup = picked.kind == 'coup' ? objs.where((o) => o.id == picked.objectiveId).firstOrNull : null;

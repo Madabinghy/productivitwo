@@ -202,7 +202,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text(v ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(label: 'Annuler', onPressed: () => _toggleActionDone(a, !v)),
@@ -305,7 +305,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('Action supprimée : ${a.title}'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
@@ -323,7 +323,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     final candidates = projects.where((x) => x.id != excludeId && x.status != 'archived').toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Aucun autre projet disponible.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Aucun autre projet disponible.')));
       return null;
     }
     return showModalBottomSheet<Project>(
@@ -346,7 +346,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     final tasks = project.tasks.where((x) => x.id != excludeTaskId && x.id != 'gtd-flow').toList();
     if (!mounted) return null;
     if (tasks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, content: Text('« ${project.title} » n\'a aucune autre tâche.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('« ${project.title} » n\'a aucune autre tâche.')));
       return null;
     }
     return showModalBottomSheet<ProjectTask>(
@@ -375,7 +375,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     if (target.id == p.id) p.tasks.where((x) => x.id == targetTask.id).firstOrNull?.actions.add(a);
     _changed();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, content: Text('Action déplacée vers « ${targetTask.title} ».')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Action déplacée vers « ${targetTask.title} ».')));
   }
 
   Future<void> _promoteAction(TaskAction a) async {
@@ -395,7 +395,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     t.actions.removeWhere((x) => x.id == a.id);
     _changed();
     if (!mounted || child == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, content: Text('Sous-projet « ${child.title} » créé.')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Sous-projet « ${child.title} » créé.')));
   }
 
   Future<void> _moveTask() async {
@@ -406,7 +406,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     widget.onChanged?.call();
     if (!mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, content: Text('Tâche déplacée vers « ${target.title} ».')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Tâche déplacée vers « ${target.title} ».')));
   }
 
   Future<void> _deleteTask() async {
@@ -430,7 +430,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     widget.onChanged?.call();
     if (!mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Tâche supprimée')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Tâche supprimée')));
   }
 
   Future<void> _editTask() async {
@@ -525,7 +525,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     ];
     if (!mounted) return;
     if (docs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Aucun document lié à cette tâche.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Aucun document lié à cette tâche.')));
       return;
     }
     await showDocList(context, docs);
@@ -580,7 +580,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     t.endDate = DateTime(picked.year, picked.month, picked.day);
     await _patchTask(['endDate']);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Échéance repoussée.')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Échéance repoussée.')));
   }
 
   // ── Fiche d'action ──────────────────────────────────────────────────────────
@@ -902,7 +902,7 @@ class _ActionFicheState extends State<_ActionFiche> {
     if (changed && mounted) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(persist: false, duration: const Duration(seconds: 2), content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}')));
+        ..showClosingSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}')));
     }
   }
 

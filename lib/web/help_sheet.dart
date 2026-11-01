@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -496,8 +497,8 @@ class _ExampleCard extends StatelessWidget {
 
   void _copy(BuildContext context, String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(
+      const SnackBar(
           content: Text('Prompt copié'),
           duration: Duration(seconds: 2)),
     );

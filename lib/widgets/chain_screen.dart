@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -472,7 +473,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       await widget.sync.upsertScheduleBlock(widget.date, c);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(changed.isEmpty
           ? 'Rien à décaler après ce bloc.'
           : '${changed.length} bloc${changed.length > 1 ? 's' : ''} décalé${changed.length > 1 ? 's' : ''} de ${fmtMin(delta)}'),

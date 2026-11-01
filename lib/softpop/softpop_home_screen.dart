@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
@@ -79,7 +80,7 @@ class _SoftPopHomeScreenState extends State<SoftPopHomeScreen> {
     if (r.done) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(persist: false, 
+        ..showClosingSnackBar(SnackBar(
           content: Text('+${r.xp} XP 🎉  ·  ${r.name}',
               style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
           duration: const Duration(milliseconds: 1100),

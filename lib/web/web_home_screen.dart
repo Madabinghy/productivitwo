@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/utils/elan_logic.dart' show dedupeMoodMarks;
 import 'package:productivitwo_v1/utils/elan_view.dart' show todayElanValues;
 import 'package:productivitwo_v1/utils/mode.dart';
@@ -278,7 +279,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     final next = !(_autoPlan ?? false);
     await _sync.setAutoPlan(next);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(next
           ? 'Programmation automatique activée : Claude complète ton programme chaque matin vers 6 h.'
           : 'Programmation automatique désactivée : retour au mode manuel.'),

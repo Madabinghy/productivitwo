@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -913,8 +914,8 @@ class OrionViewState extends State<OrionView> {
         final label = isDeterministic
             ? taskId
             : need.substring(0, need.length.clamp(0, 40));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+          SnackBar(
             content: Text(isDeterministic
                 ? 'Tâche ORION exécutée : $label'
                 : 'ORION activé (LLM) : $label…'),
@@ -942,8 +943,8 @@ class OrionViewState extends State<OrionView> {
         body: jsonEncode({'uid': uid, 'token': token}),
       );
       if (resp.statusCode == 200 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+          const SnackBar(
               content: Text('Cycle ORION déclenché'),
               behavior: SnackBarBehavior.floating),
         );

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -217,7 +218,7 @@ class _GcalSheetState extends State<_GcalSheet> {
     if (r == null) return;
     if (r['ok'] != true) {
       final rescope = r['reason'] == 'rescope';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(rescope
             ? 'Reconnecte ton agenda pour lister tes calendriers (nouvelle permission de lecture).'
             : 'Liste des calendriers indisponible (${r['reason']}).'),
@@ -270,7 +271,7 @@ class _GcalSheetState extends State<_GcalSheet> {
       // nouveau calendrier (l'ancien a été nettoyé côté serveur).
       await _call('syncDay');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
             content: Text('🗓️ La sync écrit désormais sur « ${picked['summary']} ».')));
       }
     }
@@ -288,7 +289,7 @@ class _GcalSheetState extends State<_GcalSheet> {
         ? '🗓️ Programme synchronisé — ${r['created']} créé(s), ${r['updated']} mis à jour, ${r['deleted']} retiré(s).'
         : 'Synchronisation impossible (${r['reason']}).';
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(persist: false, content: Text(msg)));
+        .showClosingSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _disconnect() async {

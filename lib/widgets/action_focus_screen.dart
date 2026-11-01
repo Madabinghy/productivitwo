@@ -341,7 +341,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     await widget.sync.upsertScheduleBlock(logic.livedTodayYmd, block);
     _start(minutes: 90);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         duration: const Duration(seconds: 3),
         content: Text('Bloc Deep work posé ${block.startTime} → ${_plus(block.startTime, 90)} · compte pour le badge'),
       ));
@@ -1055,7 +1055,7 @@ class _BlockEndScreenState extends State<_BlockEndScreen> {
     } catch (_) {}
     if (!mounted) return;
     setState(() => _carried = true);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, content: Text('Bloc ${b.activity.name} posé demain à ${b.block.startTime}.')));
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Bloc ${b.activity.name} posé demain à ${b.block.startTime}.')));
   }
 
   @override

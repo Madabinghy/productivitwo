@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -30,7 +31,7 @@ class _WeeklyReviewSheetState extends State<_WeeklyReviewSheet> {
     final ok = await widget.sync.triggerOrionTask('weekly_review');
     if (!mounted) return;
     setState(() => _triggering = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(ok
           ? 'ORION analyse tes projets — les propositions arriveront dans « À valider ».'
           : 'Impossible de lancer la revue ORION (réessaie plus tard).'),
@@ -129,8 +130,8 @@ class _WeeklyReviewSheetState extends State<_WeeklyReviewSheet> {
                                 await widget.sync
                                     .saveProject(p..status = 'archived');
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(persist: false, 
+                                  ScaffoldMessenger.of(context).showClosingSnackBar(
+                                      SnackBar(
                                           content: Text(
                                               '« ${p.title} » archivé.')));
                                 }

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -177,7 +178,7 @@ class _DishSheetState extends State<DishSheet> {
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Donne un nom au plat.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Donne un nom au plat.')));
       return;
     }
     if (_add.text.trim().isNotEmpty) _addLine(_add.text);

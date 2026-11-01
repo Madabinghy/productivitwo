@@ -236,7 +236,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 2200),
@@ -324,7 +324,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('Échéance reportée au ${_ddmm(day)}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 5),
@@ -356,7 +356,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     final prep = _p.tasks.where((t) => t.interventionId == i.id && t.interventionRole == 'prep').firstOrNull;
     setState(() => _expanded.add(prep?.phaseId ?? '_none'));
     widget.onChanged();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('Séance « ${i.title} » créée : Préparer, Séance et Clôturer ajoutées au plan.'),
       duration: const Duration(seconds: 4),
     ));

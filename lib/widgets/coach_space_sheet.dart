@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'dart:convert';
@@ -307,7 +308,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -341,7 +342,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }

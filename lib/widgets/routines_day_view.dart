@@ -71,7 +71,7 @@ void routinePlusWithUndo(BuildContext context, AppLogic logic, Activity a) {
   if (messenger == null) return;
   messenger
     ..hideCurrentSnackBar()
-    ..showClosingSnackBar(SnackBar(persist: false, 
+    ..showClosingSnackBar(SnackBar(
       content: Text(routinePlusLabel(logic, a)),
       duration: const Duration(seconds: 5),
       action: SnackBarAction(
@@ -80,7 +80,7 @@ void routinePlusWithUndo(BuildContext context, AppLogic logic, Activity a) {
           routineMinus(logic, a);
           messenger
             ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(persist: false, content: Text('${a.name} : +1 annulé'), duration: const Duration(seconds: 2)));
+            ..showClosingSnackBar(SnackBar(content: Text('${a.name} : +1 annulé'), duration: const Duration(seconds: 2)));
         },
       ),
     ));
@@ -322,7 +322,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     });
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('Pas aujourd\'hui : ${a.name}'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
@@ -338,7 +338,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   void _toast(String t) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(persist: false, content: Text(t), duration: const Duration(milliseconds: 2600)));
+      ..showClosingSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────

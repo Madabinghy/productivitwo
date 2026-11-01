@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -98,7 +99,7 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
       widget.sync.saveHabitHit(logic.state.habitHits.last);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('✅ Routine validée : ${act.name}'),
         duration: const Duration(milliseconds: 1200),
       ));

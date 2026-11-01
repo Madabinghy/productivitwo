@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -92,8 +93,8 @@ Future<void> showConsentLinkDialog(BuildContext context, String url) async {
             try {
               await Clipboard.setData(ClipboardData(text: url));
               if (ctx.mounted) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(persist: false, content: Text('🔗 Lien copié')));
+                ScaffoldMessenger.of(ctx).showClosingSnackBar(
+                    const SnackBar(content: Text('🔗 Lien copié')));
               }
             } catch (_) {
               // Refus navigateur : le lien reste sélectionnable à la main.
@@ -201,7 +202,7 @@ class _CoachingScreenState extends State<CoachingScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -383,7 +384,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -407,14 +408,14 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     try {
       await coachCall({'action': 'invite', 'id': c['id']});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
             content: Text(
                 '✅ ${c['email']} autorisé — il peut créer son compte via le magic link.')));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -431,7 +432,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
     if (mounted) setState(() => _busy = false);
@@ -466,7 +467,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
       if (mounted) {
         setState(() => _busy = false);
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -501,7 +502,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
       final r = await coachCall(
           {'action': 'message', 'id': c['id'], 'text': text});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
             content: Text(r['ok'] == true
                 ? '✉️ Envoyé — il le verra à sa prochaine ouverture.'
                 : 'Impossible (${r['reason']}).')));
@@ -509,7 +510,7 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text('$e')));
+            .showClosingSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -611,8 +612,8 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
                         'nextSession': _nextSession.text.trim(),
                       }).then((_) {
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(persist: false, 
+                          ScaffoldMessenger.of(context).showClosingSnackBar(
+                              const SnackBar(
                                   content: Text('Fiche enregistrée.')));
                         }
                       }),

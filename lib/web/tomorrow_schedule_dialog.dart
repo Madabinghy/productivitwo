@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -134,7 +135,7 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(persist: false, content: Text('Impossible d\'ouvrir Claude')));
+          .showClosingSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
     }
   }
 

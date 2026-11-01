@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -62,7 +63,7 @@ void setActivityMinimum(BuildContext context, AppLogic logic, Activity a, int mi
   onChanged?.call();
   final messenger = ScaffoldMessenger.maybeOf(context);
   messenger?.hideCurrentSnackBar();
-  messenger?.showSnackBar(SnackBar(persist: false, 
+  messenger?.showClosingSnackBar(SnackBar(
     content: Text(min <= 0 ? '${a.name} : plus de minimum' : '${a.name} : minimum ${fmtMin(min)} / j'),
     action: SnackBarAction(
       label: 'Annuler',

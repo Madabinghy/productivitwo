@@ -4,6 +4,7 @@
 // plus aucun appelant depuis l'ouverture de sept. 2026. Conservé tel quel pour
 // la phase 3 (rebrancher showPaywallSheet dans le menu ⋯ et l'écran ORION).
 
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -138,8 +139,8 @@ class _PaywallSheetState extends State<_PaywallSheet> {
       setState(() => _loading = false);
       if (!mounted) return;
       if (e != PurchasesErrorCode.purchaseCancelledError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(persist: false, content: Text('Erreur : ${e.name}')),
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+          SnackBar(content: Text('Erreur : ${e.name}')),
         );
       }
     } catch (_) {
@@ -155,8 +156,8 @@ class _PaywallSheetState extends State<_PaywallSheet> {
     } catch (_) {
       setState(() => _loading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(persist: false, content: Text('Aucun achat à restaurer')),
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+          const SnackBar(content: Text('Aucun achat à restaurer')),
         );
       }
     }

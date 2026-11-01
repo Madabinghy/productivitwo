@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -149,7 +150,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
     unawaited(widget.sync.saveProject(project));
     Navigator.pop(context);
     widget.onCreated();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(firstAction.isEmpty
           ? 'Projet créé — ajoute tes actions au fil de l\'eau.'
           : 'Projet créé — première action : « $firstAction »'),

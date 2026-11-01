@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -211,7 +212,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     await save();
   }
 
-  void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+  void _snack(String text) => ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(text),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,

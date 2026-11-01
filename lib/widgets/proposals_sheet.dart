@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -122,7 +123,7 @@ class _ProposalCardState extends State<ProposalCard> {
       await action();
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(persist: false, content: Text(done)));
+            .showClosingSnackBar(SnackBar(content: Text(done)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -138,8 +139,8 @@ class _ProposalCardState extends State<ProposalCard> {
         .toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(persist: false, content: Text('Aucun projet disponible.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(
+          const SnackBar(content: Text('Aucun projet disponible.')));
       return null;
     }
     return showModalBottomSheet<Project>(

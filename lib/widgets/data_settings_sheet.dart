@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -474,7 +475,7 @@ class _DataSettingsScreenState extends State<DataSettingsScreen> {
     } catch (_) {
       if (mounted) Navigator.pop(context); // spinner
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
             content:
                 Text('La restauration a échoué. Rien n\'a été modifié.')));
       }
@@ -537,7 +538,7 @@ class _DataSettingsScreenState extends State<DataSettingsScreen> {
       preview = parseBackup(await File(path).readAsString());
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
             content: Text('Sauvegarde d\'annulation introuvable.')));
       }
       return;

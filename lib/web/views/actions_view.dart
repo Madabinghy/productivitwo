@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -292,7 +293,7 @@ class _ActionsViewState extends State<ActionsView> {
       await widget.sync.saveHabitHit(logic.state.habitHits.last);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Routine validée : ${act.name}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 1400),

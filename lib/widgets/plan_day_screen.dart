@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'dart:convert';
 
@@ -564,7 +565,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       // Validation optimiste : en cas d'échec, l'écran reste intact.
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
             content: Text('Échec réseau — rien n\'a été écrit, réessaie.')));
       }
     }

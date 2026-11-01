@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -388,7 +389,7 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
       if (fresh != null && mounted) setState(() => _artifact = fresh);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
+        ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
             content:
                 Text('Régénération échouée — l\'artefact actuel est intact.')));
       }

@@ -114,7 +114,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 2200),
@@ -143,7 +143,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('Étape retirée : ${c.title}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 5),
@@ -749,7 +749,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
               final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
               if (!ok && mounted) {
                 ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(persist: false, content: Text('Impossible d\'ouvrir Claude.')));
+                    .showClosingSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude.')));
               }
             },
             icon: const Icon(Icons.auto_awesome, size: 15),
@@ -922,7 +922,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
       await widget.sync.saveProject(_p);
       widget.onChanged();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text(fed == null
             ? 'Bilan enregistré.'
             : 'Bilan enregistré · ${points.length} point${points.length > 1 ? 's' : ''} poussé'

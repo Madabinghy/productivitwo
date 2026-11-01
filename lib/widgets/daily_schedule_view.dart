@@ -324,7 +324,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     _routineHit.add(block.id);
     widget.logic.incHabit(id, 1, day);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('✅ Routine validée : ${act.name}'),
         duration: const Duration(seconds: 2),
       ));
@@ -380,7 +380,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Un seul message à la fois (plusieurs glissers = pas de file de 5 s
     // chacun) et fermeture forcée au bout de 5 s quoi qu'il arrive.
     final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
-    final ctrl = messenger.showClosingSnackBar(SnackBar(persist: false, 
+    final ctrl = messenger.showClosingSnackBar(SnackBar(
         content: Text('« ${block.title} » supprimé'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
@@ -462,7 +462,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
           if (mounted) {
             final name = b.title.replaceFirst('🔥 Défi : ', '');
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+            ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
               content: Text(
                   '🔥 Défi relevé : $name ! Série : ${widget.logic.state.challengeStreak} 🔥'),
               duration: const Duration(seconds: 4),
@@ -775,7 +775,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text(carryMessage(placed)),
         duration: const Duration(seconds: 6),
         behavior: SnackBarBehavior.floating,
@@ -1633,7 +1633,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               // Défi reporté → l'alarme du jour n'a plus lieu d'être.
               await cancelChallengeNotifications(block);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+                ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
                   content: Text(carryMessage([placed])),
                   duration: const Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
@@ -1654,7 +1654,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showClosingSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('« ${block.title} » annulé'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,

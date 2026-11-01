@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -234,7 +235,7 @@ class _NowCardState extends State<NowCard> {
     setState(() {});
     await _sync.upsertScheduleBlock(_date, b);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('${b.title} décalé à ${_clock(start)}'),
         duration: const Duration(seconds: 2),
       ));
@@ -268,7 +269,7 @@ class _NowCardState extends State<NowCard> {
     if (tgt > 0 && widget.logic.habitValueOn(act.id, day) >= tgt) return;
     widget.logic.incHabit(act.id, 1, day);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Routine validée : ${act.name}'),
         duration: const Duration(seconds: 2),
       ));
@@ -782,7 +783,7 @@ class _NowSessionPanelState extends State<NowSessionPanel> {
     setState(() {});
     save();
     if (changed && a.done && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('Action faite : ${a.title}'),
         duration: const Duration(seconds: 2),
       ));

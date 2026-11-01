@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -514,7 +515,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       }
     }
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, content: Text('Aucune action de projet à lier dans ce domaine.')));
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Aucune action de projet à lier dans ce domaine.')));
       return;
     }
     final picked = await showModalBottomSheet<({Project project, ProjectTask task, TaskAction action})>(

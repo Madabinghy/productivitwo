@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -64,7 +65,7 @@ class _SoftPopFocusLiveScreenState extends State<SoftPopFocusLiveScreen> {
     setState(() {});
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
         content: Text('Bravo ! « ${a.name} » ✓',
             style: SoftPop.ui(color: Colors.white, weight: FontWeight.w600)),
         backgroundColor: SoftPop.teal,

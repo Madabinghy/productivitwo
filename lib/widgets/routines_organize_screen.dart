@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -77,7 +78,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
     setState(() => _chipOpen = null);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(persist: false, 
+      ..showClosingSnackBar(SnackBar(
           content: Text('Déplacée vers ${momentOf(momentKey).label} : ${a.name}'),
           duration: const Duration(milliseconds: 2600)));
   }

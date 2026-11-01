@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show shortDateFr, focusLabel;
 import 'package:flutter/material.dart';
@@ -356,7 +357,7 @@ Future<bool> moveActionToAnotherTask(
   );
   fromTask.actions.removeWhere((x) => x.id == action.id);
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('Action déplacée vers « ${picked.$2.title} ».'),
       duration: const Duration(seconds: 3),
       behavior: SnackBarBehavior.floating,
@@ -376,7 +377,7 @@ Future<bool> showAddOwnActionDialog(
   final timeActivities =
       activities.where((a) => !a.deleted && a.type == 'time').toList();
   if (timeActivities.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(persist: false, 
+    ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
       content: Text('Crée d\'abord une activité-temps pour y rattacher des actions simples.'),
       behavior: SnackBarBehavior.floating,
     ));
