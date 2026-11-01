@@ -431,7 +431,7 @@ Routage dans `_openBlockSource` (`main.dart`).
 **Retouches « action » mobile (2026-10, maquettes validées)** : écran bloc → bouton **« Étape suivante »** (coche l'étape
 en cours de l'action en avant, « Ensuite : … ») ; arrêt d'un chrono sans tâche ni action (≥ 3 min, geste user :
 `AppLogic.onUserStopped`, jamais au changement de chrono) → feuille **« Ces n min, c'était pour quoi ? »** avec les
-actions probables de l'activité (`stopTargetCandidates` : programme du jour, puis échéance, jamais à venir) ; Actions
+actions probables de l'activité (`stopTargetCandidates` : programme du jour, puis échéance, jamais à venir ; 5 au plus) puis, depuis le 2026-11-01, les TÂCHES SANS ACTION des projets liés (`stopTaskCandidates` : rattache par `taskId` seul ; feuille défilante) ; Actions
 → pastille **« NOUVEAU »** + groupe « Arrivées aujourd'hui » pour les tâches qui démarrent le jour même
 (`startsToday`) ; programme du jour, à partir de 18 h et 2 blocs passés non faits (hors miroirs) → encart **« Caser
 les n demain »** (`blocksToCarry` / `showCarryCard`, annulable via `undoReportToTomorrow`) ; **miroirs récurrents** :
