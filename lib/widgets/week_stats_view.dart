@@ -37,6 +37,8 @@ class WeekStatsView extends StatefulWidget {
   final VoidCallback onManageDomains;
   /// Centre de badges (facultatif) : programmes pour la ligne Élan et la feuille du mode.
   final BadgeCenter? badges;
+  /// « Ma vie » (2026-11-01) : seulement la ligne MA SEMAINE.
+  final bool onlyWeekLine;
   const WeekStatsView({
     super.key,
     required this.logic,
@@ -44,6 +46,7 @@ class WeekStatsView extends StatefulWidget {
     required this.onOpenDomain,
     required this.onManageDomains,
     this.badges,
+    this.onlyWeekLine = false,
   });
 
   @override
@@ -91,6 +94,16 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     // Temps par jour et par domaine sur la fenêtre (mêmes données que « Répartition »).
     final perDay = dailyMinutesByDomain(st.sessions, st.activeActivities, budgetWindowStart(now, days), days, now: now);
     final todayIdx = budgetDayIndex(now, days) - 1;
+    if (widget.onlyWeekLine) {
+      return _weekLine(cs, week, now,
+          heldWeeks(
+              activities: st.activities,
+              hits: st.habitHits,
+              objectives: _objectives,
+              now: now,
+              dayStartMin: widget.logic.dayStartMin,
+              frozenOf: (a) => widget.logic.frozenOf(a.id)));
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -234,8 +247,11 @@ class _WeekStatsViewState extends State<WeekStatsView> {
             ]),
             const SizedBox(height: 6),
             Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Text(pct == null ? 'Pas d\'engagement' : '${w.kept} / $n au rythme',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: pct == null ? muted : cs.onSurface)),
+              Flexible(
+                child: Text(pct == null ? 'Pas d\'engagement' : '${w.kept} / $n au rythme',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: pct == null ? muted : cs.onSurface)),
+              ),
               const SizedBox(width: 10),
               if (hw.current > 0)
                 Text('${hw.current} semaine${hw.current > 1 ? 's' : ''} tenue${hw.current > 1 ? 's' : ''}',
