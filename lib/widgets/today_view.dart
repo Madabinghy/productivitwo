@@ -31,7 +31,7 @@ import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
-import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayStart, mergeLivedDay, nextYmd;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedDayStart, mergeLivedDay, nextYmd;
 import 'package:productivitwo_v1/utils/evening_ledger.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
@@ -66,6 +66,8 @@ import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -710,6 +712,7 @@ class TodayViewState extends State<TodayView> {
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
                   PendingRunCard(logic: widget.logic),
+                  ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
                   if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
@@ -1091,6 +1094,63 @@ class TodayViewState extends State<TodayView> {
     ];
   }
 
+  // Revue du dimanche : carte d'entrée (samedi 18 h → lundi midi) et rappel
+  // du cap de la semaine (posé le dimanche d'avant). « Plus tard » / ✕ sont
+  // mémorisés par semaine.
+  String? _reviewHidden;
+  String? _intentionHidden;
+  bool _reviewPrefsLoaded = false;
+
+  List<Widget> _weekReviewCards() {
+    if (!_reviewPrefsLoaded) {
+      _reviewPrefsLoaded = true;
+      SharedPreferences.getInstance().then((p) {
+        if (!mounted) return;
+        setState(() {
+          _reviewHidden = p.getString('week_review_later');
+          _intentionHidden = p.getString('week_intention_hidden');
+        });
+      }).catchError((_) {});
+    }
+    final logic = widget.logic;
+    final now = DateTime.now();
+    final out = <Widget>[];
+    final monday = reviewedMonday(now, logic.dayStartMin);
+    if (reviewWindowOpen(now, logic.dayStartMin) && !logic.weekReviews.containsKey(monday) && _reviewHidden != monday) {
+      out.addAll([
+        const SizedBox(height: 12),
+        WeekReviewCard(
+          onOpen: _openWeekReview,
+          onLater: () {
+            setState(() => _reviewHidden = monday);
+            SharedPreferences.getInstance().then((p) => p.setString('week_review_later', monday)).catchError((_) => false);
+          },
+        ),
+      ]);
+    }
+    final intention = weekIntention(logic.weekReviews, now, logic.dayStartMin);
+    final d = livedDate(now, logic.dayStartMin);
+    final thisMonday = ymdOf(DateTime(d.year, d.month, d.day - (d.weekday - 1)));
+    if (intention != null && _intentionHidden != thisMonday) {
+      out.addAll([
+        const SizedBox(height: 12),
+        WeekIntentionCard(
+          intention: intention,
+          onDismiss: () {
+            setState(() => _intentionHidden = thisMonday);
+            SharedPreferences.getInstance().then((p) => p.setString('week_intention_hidden', thisMonday)).catchError((_) => false);
+          },
+        ),
+      ]);
+    }
+    return out;
+  }
+
+  Future<void> _openWeekReview() async {
+    await showWeekReviewScreen(context, widget.logic, badges: widget.badges);
+    if (mounted) setState(() {});
+  }
+
   void _openReviewChoice() {
     showModalBottomSheet<void>(
       context: context,
@@ -1107,6 +1167,15 @@ class TodayViewState extends State<TodayView> {
                 widget.onOpenDayReview!();
               },
             ),
+          ListTile(
+            leading: const Icon(Icons.event_repeat_rounded),
+            title: const Text('Revue de la semaine'),
+            subtitle: const Text('ce qui a tenu, ce qui a coûté, la suivante posée'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _openWeekReview();
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.explore_outlined),
             title: const Text('Où on va'),
