@@ -436,6 +436,14 @@ class BadgePainter extends CustomPainter {
         line(60, 34, 60, 40, 5);
         c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(33, 39, 34, 25), const Radius.circular(5)), stroke(5));
         polyline([42, 51, 48, 57, 58, 46], 4.5);
+      case 'crosshair':
+        // Sniper : un viseur.
+        c.drawCircle(const Offset(50, 42), 17, stroke(5));
+        line(50, 18, 50, 30, 5);
+        line(50, 54, 50, 66, 5);
+        line(26, 42, 38, 42, 5);
+        line(62, 42, 74, 42, 5);
+        c.drawCircle(const Offset(50, 42), 4, fill);
       case 'bolt':
         // Guérilla : un éclair.
         c.drawPath(_poly([56, 18, 38, 46, 50, 46, 44, 68, 64, 38, 52, 38]), fill);

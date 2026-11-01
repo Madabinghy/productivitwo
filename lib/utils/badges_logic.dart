@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/planning.dart' show capHeld, kCapTiers;
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show guerillaCounts, guerillaLift, isGuerillaRun, kGuerillaTiers;
 import 'package:productivitwo_v1/utils/offensive.dart' show isOffensiveRun, kOffensiveTiers, offensiveCounts;
+import 'package:productivitwo_v1/utils/sniper.dart' show isSniperRun, kSniperTiers, sniperCounts;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
@@ -969,6 +970,20 @@ BadgeDeck computeBadges({
     ],
   ));
 
+  // Sniper (2026-11-01) : une session compte quand toutes les cibles visées tombent, au moins 3.
+  final snipers = chainRuns.where(sniperCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'sniper', family: BadgeFamily.discipline, name: 'Sniper', symbol: 'crosshair', tiers: kSniperTiers, unit: 'sessions', unitLong: 'sessions Sniper sans cible manquée'),
+    level: _levelOf(kSniperTiers, snipers.length),
+    value: snipers.length,
+    tierDates: [for (final t in kSniperTiers) t <= snipers.length ? _day(snipers[t - 1].endedAt) : null],
+    facts: [
+      ('Sessions sans cible manquée', '${snipers.length}'),
+      ('Cibles touchées', '${chainRuns.where(isSniperRun).fold(0, (s, r) => s + r.doneCount)}'),
+      if (snipers.isNotEmpty) ('La dernière', _fmtDate(snipers.last.endedAt)),
+    ],
+  ));
+
   // Cap tenu (2026-10-31, mode Planification) : journée posée la veille et tenue à 70 %.
   final capDays = schedules.where((x) => x.date.compareTo(todayYmd) < 0 && capHeld(x)).toList()..sort((a, b) => a.date.compareTo(b.date));
   final planned = schedules.where((x) => x.date.compareTo(todayYmd) < 0 && x.generatedBy == 'plan' && !x.plannedSameDay).length;
@@ -1175,6 +1190,12 @@ BadgeDeck computeBadges({
         if (last.isEmpty) return null;
         final cells = [for (final r in last) offensiveCounts(r) ? TrackCell.hit : TrackCell.miss];
         return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} offensive${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} comptée(s)', hitLabel: 'comptée (3 coups et plus)', missLabel: 'moins de 3 coups');
+      case 'sniper':
+        final runs = chainRuns.where(isSniperRun).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+        final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
+        if (last.isEmpty) return null;
+        final cells = [for (final r in last) sniperCounts(r) ? TrackCell.hit : TrackCell.miss];
+        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} comptée(s)', hitLabel: 'toutes les cibles touchées', missLabel: 'cible manquée ou moins de 3');
       case 'guerilla':
         final runs = chainRuns.where(isGuerillaRun).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
         final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
