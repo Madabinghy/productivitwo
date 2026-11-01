@@ -15,6 +15,12 @@ void main() {
     expect(countsForBadges(_b('e', 'skipped', reason: kSkipUnavailable)), isFalse);
     expect(countsForBadges(_b('s', 'skipped')), isFalse);
     expect(isLetGoBlock(_b('l', 'skipped', reason: kSkipLetGo)), isTrue);
+    // Rendez-vous d'agenda : ne compte pas tant qu'il est à faire, compte s'il est lâché.
+    ScheduleBlock m(String status, {String? reason}) =>
+        ScheduleBlock(id: 'm', startTime: '09:00', durationMin: 60, title: 'GDS', status: status, skipReason: reason, gcalEventId: 'evt');
+    expect(countsForBadges(m('pending')), isFalse);
+    expect(countsForBadges(m('skipped', reason: kSkipLetGo)), isTrue);
+    expect(countsForBadges(m('skipped', reason: kSkipUnavailable)), isFalse);
   });
 
   test('Cap tenu : le bloc lâché reste dans le compte', () {
@@ -46,6 +52,7 @@ void main() {
     expect(find.text('Je le déplace'), findsOneWidget);
     expect(find.text('J’ai été empêché'), findsOneWidget);
     expect(find.text('10 min'), findsOneWidget);
+    expect(find.textContaining('Google Agenda'), findsNothing);
     await t.tap(find.text('Je lâche ce bloc'));
     await t.pumpAndSettle();
     expect(got, RemoveBlockChoice.letGo);

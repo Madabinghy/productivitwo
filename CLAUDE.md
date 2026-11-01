@@ -1387,7 +1387,10 @@ Montre suisse, Métronome et séries ne bougent pas · **⛔ J'ai été empêch�
 compte pas) · « Posé par erreur » (effacé, `deleted`). En Flemme, une ligne propose d'abord « 10 min » (`onLaunchTimed`). Après
 « Je lâche » : `showLetGoDoneSheet` (« C'est décidé. Le reste de ta journée est intact », prochains blocs, routines à atteindre,
 Guérilla, ce que ça change dont Cap tenu). « Hors du programme » : `asideBlocks().letGo`, « ✋ lâché » / « ⛔ empêché », Rétablir
-pour les deux. Miroirs d'agenda et blocs faits : suppression comme avant. Reste possible : ligne du bilan du soir, compte lâchés /
+pour les deux. Blocs faits : suppression comme avant. **Rendez-vous d'agenda** (retour user 2026-11-01 : « Supprimer partout » = triche) :
+le miroir passe aussi par « Pourquoi ? », sans « Je le déplace » (il se déplace dans Google Agenda) ; lâché / empêché, le rendez-vous
+reste dans l'agenda (l'import garde le statut) ; un miroir LÂCHÉ compte comme non fait (`countsForBadges`, `capHeld` : `isLetGoBlock`
+avant le filtre miroir), à faire il ne compte toujours pas ; « Posé par erreur » = l'ancien choix Masquer ici / Supprimer partout. Reste possible : ligne du bilan du soir, compte lâchés /
 empêchés côté coach.
 
 ## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
