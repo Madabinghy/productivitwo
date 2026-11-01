@@ -39,9 +39,38 @@ class WeekPiece {
   /// Proposé par l'app, pas encore gardé : ne compte pas.
   final bool ghost;
   final String? reason;
-  const WeekPiece(this.id, this.minutes, {this.ghost = false, this.reason});
-  WeekPiece kept() => WeekPiece(id, minutes, reason: reason);
+  /// Heure de début choisie (minutes depuis minuit), null = pas d'heure.
+  final int? start;
+  /// Heure proposée par l'app, pas encore touchée (affichage seulement).
+  final bool proposed;
+  const WeekPiece(this.id, this.minutes, {this.ghost = false, this.reason, this.start, this.proposed = false});
+  WeekPiece kept() => WeekPiece(id, minutes, reason: reason, start: start, proposed: proposed);
+  WeekPiece at(int? s, {bool proposed = false}) => WeekPiece(id, minutes, ghost: ghost, reason: reason, start: s, proposed: proposed);
+  int? get end => start == null ? null : start! + minutes;
 }
+
+/// [count] morceaux sur [days] jours : les premiers jours prennent le surplus
+/// (10 sur 4 → 3, 3, 2, 2).
+List<int> perDay(int count, int days) {
+  if (days <= 0) return const [];
+  return [for (var i = 0; i < days; i++) count ~/ days + (i < count % days ? 1 : 0)];
+}
+
+/// Premier début libre, au quart d'heure, à partir de [from], où [minutes]
+/// tient avant [end] sans chevaucher [busy] (intervalles [début, fin[).
+int? firstFreeStart(List<(int, int)> busy, int from, int end, int minutes) {
+  final sorted = [...busy]..sort((a, b) => a.$1.compareTo(b.$1));
+  var t = ((from + 14) ~/ 15) * 15;
+  for (final b in sorted) {
+    if (b.$2 <= t) continue;
+    if (b.$1 >= t + minutes) break;
+    t = ((b.$2 + 14) ~/ 15) * 15;
+  }
+  return t + minutes <= end ? t : null;
+}
+
+/// [start, start + minutes[ chevauche un des intervalles.
+bool overlapsAny(List<(int, int)> busy, int start, int minutes) => busy.any((b) => b.$1 < start + minutes && start < b.$2);
 
 /// Morceaux placés (gardés) d'une activité sur la semaine.
 int placedCount(List<List<WeekPiece>> days, String id) =>
