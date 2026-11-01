@@ -1424,6 +1424,22 @@ mini carte · mesure · gain) ; « Ranger dans l'album » retourne les cartes pa
 (`_collect`), et pose l'instantané (`markHarvested`). Rien de neuf, ou premier passage = instantané posé en silence ; après
 l'ouverture de la collection seulement.
 
+## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
+
+Un catalogue composé par l'administrateur, que les utilisateurs activent ; chaque routine a sa carte illustrée. **Lot 1 livré** :
+logique pure `catalog/routine_catalog.dart` — `CatalogRoutine` (nom, texte, rubrique `kCatalogRubrics` Santé · Sport · Esprit · Foi ·
+Maison · Finances · Travail, fréquence / cible / unité, minuteur, moment ou moments répartis, fond `bg` ARGB, dessin `svg` 100 × 100,
+`cadence`, `toJson` / `from` — `published:false` = écartée), **premier lot `kRoutineCatalogSeed`** = les 23 routines de
+l'administrateur dessinées, `catalogOrSeed` (collection serveur si non vide, sinon le lot embarqué), `catalogMatch` (routine liée par
+`Activity.catalogId`, sinon même nom → proposition de lier), `domainForRubric`, `activityFromCatalog`, `momentLabel`.
+`Activity.catalogId` (nouveau champ). Serveur : collection racine `routine_catalog` en lecture pour tout utilisateur connecté, écriture
+admin seulement (`firestore.rules` — ⚠️ `firebase deploy --only firestore:rules` ; sans déploiement l'app sert le lot embarqué),
+`FirestoreSync.fetchRoutineCatalog`. Écran `widgets/routine_catalog_screen.dart` (`showRoutineCatalog`, menu ⋯ « Catalogue » ; les
+anciennes suggestions de domaines et d'activités restent en lien en bas) : rubriques en puces, cartes `CatalogCardView` (SVG via
+`flutter_svg`, pastille ACTIVÉE), fiche (carte, texte, RÉGLÉE POUR TOI, domaine proposé) → « Activer la routine » ou, si la
+personne a déjà une routine du même nom, « C'est ma routine « … » · lier la carte » (pose `catalogId`, réglages inchangés).
+**Lot 2 à venir** : la carte de série au dessin du catalogue (album, retournement, récolte). **Lot 3** : composer le catalogue sur le web.
+
 ## Règles du jeu en place (2026-10-30)
 
 Retour user : « pas une tonne de texte, pas un tuto au fond des paramètres ». Toute fonctionnalité à enjeux porte un petit
@@ -1845,6 +1861,8 @@ actions: [
   avec « Réactiver », et une confirmation sur « Archiver ».
 
 - **Modes et coups tactiques** (noté 2026-10-27, handoff `docs/specs/modes-et-coups-2026-10/README.md`, maquette à valider) : mode Flemme / Normal / En forme changeable à tout moment (= pointage d'élan), ambiance par mode, chips « malgré tout » / « à fond » dérivés, coups = `StrategicObjective.horizon:"tactical"` (3–10 j, même fiche / graphe), veille de domaines `data/meta.restDomains`, budget de domaine sur 14 j, carte du moment pilotée par le mode, `plan_day` par jours de focus. Maquette validée le 2026-10-27. **Lot 0 livré** : `lib/utils/mode.dart` ↔ `functions/src/mode.ts` (`modeOf` = dernier élan du jour vécu, `malgreTout` / `aFond` dérivés, `isResting`, `parseBudgetWindowDays`), `StrategicObjective.horizon`, `AppLogic.mode` / `setMode` / `restDomains` / `budgetWindowDays`, MCP `set_mode`, `rest_domain`, `save_objective {horizon}`, `list_objectives.coups`, `get_user_context.mode`, règles `plan_day` par mode. **Lot 1 livré** : `ModePill` / `showModeSheet` / `modeChipFor` (`widgets/mode_sheet.dart`), `utils/mode_colors.dart` (thème par `AppLogic.modeNotifier`, `NowPalette.primary` sombre par mode), chips « malgré tout » / « à fond » (programme, actions faites, récap Enchaîner), badge « Deep work » (`deepWorkSessions(sessions, schedules)` : **strict depuis le 2026-10-27** — seul un bloc `kind:"deepwork"` posé par « Deep work 90 min » et couvert ≥ 60 min par un chrono de sa source compte ; jamais un chrono long seul). **Lot 2 livré** : `utils/mode_moves.dart` (`deepWorkCandidates`, `deepWorkBlock`, `smallChain`), feuille « Sur quoi ? » `widgets/deep_work_sheet.dart` (propose, jamais de chrono sans geste), MAINTENANT « 10 min, malgré tout » / « n petites choses » / « Deep work 90 min », `pickActionMoment(mode:, focusProjectId:)`, `rankObjectiveMoments(mode:)`, « Bloc de 90 min » sur la carte Objectif. **Lot 3 livré** : `utils/coups.dart` (`coupLabel`, `validateCoup`, `coupProjectIds`…), section « COUPS · n » + `widgets/coup_sheet.dart` (quoi · cible · jusqu'à quand · pour) + `widgets/rest_sheet.dart` (veille par domaine, `liftRest`), veille dans Stats (`domainWeeks(rest:)`), Actions (section « EN VEILLE »), Projets (`rankProjectMoments(priorityIds:)`), deep work et `plan_day` (`restLines`). **Lot 4 livré** : `utils/budget_window.dart` (`budgetWindowStart` 7 = lundi / 14 = quinzaine à départ fixe, `dailyMinutesByDomain`), `domainWeeks(windowDays:)`, Stats sur la fenêtre + section « Répartition sur n j » de la fiche Ma semaine, tuile Paramètres « Budget des minimums », `plan_day` jours de focus (`modeRules`) + `budgetRules`. **Lot 5 livré (web)** : `lib/web/mode_web.dart` (`moodMarkForMode`, `showWebModeDialog`, `WebModePill`, `webModeChip`), « Mode du jour » dans le menu ⋯ + pilule de la barre, chips sur les blocs faits d'Aujourd'hui, coups en tête de la carte Objectifs du jour et cartes « COUP » dans Projets. **Les 6 lots sont livrés.**
+- **Cartes dessinées par Claude** (noté 2026-11-01, pas maintenant) : un outil MCP qui crée une carte personnalisée (dessin SVG) pour
+  une routine créée à la main, dans la grammaire du catalogue de routines (`CatalogRoutine.svg` / `bg`).
 - **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
   dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
   restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
