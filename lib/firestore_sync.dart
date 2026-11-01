@@ -3174,6 +3174,34 @@ class FirestoreSync {
   /// Parole d'un jour (`data/meta.paroles.<ymd>`, Parole tenue 2026-10-31) :
   /// fusion par jour, les autres jours ne bougent pas.
   /// « Mes activités de sport » (`data/meta.sportPick {add, remove}`).
+  /// Menu de la semaine (`data/meta.meals.plans.<lundi>.<ymd|moment>`) :
+  /// un repas posé, ou retiré (null).
+  Future<void> setMealSlot(String monday, String key, Map<String, dynamic>? meal) async {
+    if (uid == null) return;
+    await _meta().set({
+      'meals': {
+        'plans': {
+          monday: {key: meal ?? FieldValue.delete()}
+        }
+      }
+    }, SetOptions(merge: true));
+  }
+
+  /// Liste de courses de la semaine : lignes cochées et ajouts à la main.
+  Future<void> setShopping(String monday, {List<String>? checked, List<Map<String, dynamic>>? extra}) async {
+    if (uid == null) return;
+    await _meta().set({
+      'meals': {
+        'shopping': {
+          monday: {
+            if (checked != null) 'checked': checked,
+            if (extra != null) 'extra': extra,
+          }
+        }
+      }
+    }, SetOptions(merge: true));
+  }
+
   Future<void> setSportPick(Map<String, dynamic> pick) async {
     if (uid == null) return;
     await _meta().set({'sportPick': pick}, SetOptions(merge: true));
