@@ -152,4 +152,18 @@ void main() {
     expect(more.aimed.map((t) => t.title), ['B', 'C']);
     expect(adjustPlan(base).aimed.map((t) => t.title), ['Lecture', 'B']);
   });
+
+  test('routine à minuteur : on règle la durée, pas les coches', () {
+    final louanges = Activity(id: 'lou', domainId: 'd', name: 'Louanges', goalMin: 0, timerMin: 15);
+    final t = sniperTargetOf(routine(louanges), routineLeft: {'lou': 1})!;
+    expect(t.timedRoutine, isTrue);
+    expect(t.amount, 15);
+    expect(stepAmount(t, up: false), 10);
+    expect(stepAmount(t, up: true), 20);
+    final short = t.withAmount(10);
+    expect(short.minutes, 10);
+    expect(short.delta, 1);
+    expect(short.isMini, isFalse);
+    expect(short.durLabel, '10 min');
+  });
 }
