@@ -34,6 +34,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
+import 'package:productivitwo_v1/utils/week_review.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
@@ -1870,6 +1871,16 @@ class AppLogic implements HuntStore {
   // ── Parole tenue (2026-10-31, `utils/parole.dart`) ───────────────────────
   /// Paroles gelées par jour (`data/meta.paroles`, alimentées par le flux meta).
   Map<String, ParoleDay> paroles = const {};
+
+  /// Revues du dimanche par lundi (`data/meta.weekReviews`, `utils/week_review.dart`).
+  Map<String, WeekReview> weekReviews = const {};
+
+  /// Enregistre la revue de la semaine qui commence à [monday].
+  Future<void> saveWeekReview(String monday, WeekReview r) async {
+    weekReviews = {...weekReviews, monday: r};
+    onChange();
+    await sync?.setWeekReview(monday, r.toJson());
+  }
   String? _paroleFrozenYmd;
 
   /// Gèle la parole du jour vécu : les actions visées pour aujourd'hui avant
