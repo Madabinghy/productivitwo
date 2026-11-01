@@ -1405,7 +1405,7 @@ de stocké. Dessin : l'écusson d'origine (`BadgePainter`) avec `metal: BadgeMet
 liseré, encre, ruban) et quatre symboles (`cards`, `crest`, `chest`, `crown`) ; texte du ruban dès 64 px pour un écusson de métal.
 Widgets `widgets/collection_badge_view.dart` : `CollectionShield`, `CollectionPlaque` (l'écusson monté sur sa plaque gravée : fond
 sombre teinté du métal, liseré et vis, nom · palier · chiffre ; pas encore = silhouette + jauge), `showCollectionBadgeSheet` (écusson
-150, jauge, ce qu'il manque, LES CARTES du badge en grille depuis le 2026-11-01 — `cardsOfCollection` : famille = toutes ses cartes, Collectionneur = les gagnées, Écrin d'or = or et mieux, Légende = légendaires ; tap = fiche de la carte —, la règle). Album : « n pts » et « Prochain badge : … » dans l'en-tête, étagère MES BADGES (deux plaques
+150, jauge, ce qu'il manque, LES CARTES du badge en grille depuis le 2026-11-01 — `cardsOfCollection` : famille = toutes ses cartes, Collectionneur = les gagnées, Écrin d'or = or et mieux, Légende = légendaires ; tap = fiche de la carte —, la règle ; feuille glissante `DraggableScrollableSheet`, sinon elle ne se fermait plus avec beaucoup de cartes). Album : « n pts » et « Prochain badge : … » dans l'en-tête, étagère MES BADGES (deux plaques
 par rangée) avant les familles de cartes. **Lot 2 livré** : au retournement, chaque carte dit ce qu'elle rapporte (« +1 pt · bronze →
 argent ») et où en est Collectionneur après elle (`showCardReveal(points:)`) ; paliers vus des badges de collection sur l'appareil
 (`CardSeenStore.pendingCollection` / `markCollectionSeen`, SharedPreferences `collection_badges_seen`, premier passage = vus) ; après
