@@ -725,7 +725,7 @@ class TodayViewState extends State<TodayView> {
                     StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: widget.logic.lostSeriesYesterday().length),
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
-                  LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged, onPlus: _emberPlus),
+                  LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged),
                   // Routine acquise : la proposition à 66 jours, l'alerte de décrochage.
                   AcquiredPrompts(logic: widget.logic, onChanged: () {
                     widget.badges?.load(refresh: true);
@@ -1661,11 +1661,6 @@ class TodayViewState extends State<TodayView> {
     if (mounted) setState(() {});
   }
 
-  void _emberPlus(Activity a) {
-    routinePlusWithUndo(context, widget.logic, a);
-    _onEmbersChanged();
-  }
-
   /// Les enjeux du jour dans une feuille (tap sur « Ta journée » / « Ce soir »,
   /// retour user 2026-10-30) : le tableau (ou le bilan complet du soir) puis la
   /// liste EN JEU. Un +1 garde la feuille ouverte ; un chrono ou la page focus
@@ -1721,10 +1716,6 @@ class TodayViewState extends State<TodayView> {
               all: true,
               onChanged: () {
                 _onEmbersChanged();
-                setLocal(() {});
-              },
-              onPlus: (a) {
-                _emberPlus(a);
                 setLocal(() {});
               },
             ),

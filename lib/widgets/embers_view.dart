@@ -42,30 +42,28 @@ class EmberDots extends StatelessWidget {
 
 String emberCountLabel(int n) => n == 0 ? 'aucune braise en réserve' : '$n braise${n > 1 ? 's' : ''} en réserve';
 
-/// Une série cassée hier : « Rallumer · 🔥1 », ou en attente du +1 du jour
-/// (bouton +1, annuler), ou indisponible avec la raison.
+/// Une série cassée hier : « Rallumer · 🔥1 », ou en attente de la routine du
+/// jour (faite ailleurs, par le geste habituel ; ✕ = annuler avec confirmation),
+/// ou indisponible avec la raison.
 class LostSeriesRow extends StatelessWidget {
   final LostSeries lost;
   final int todayCount;
   final int target;
   final VoidCallback? onRekindle;
-  final VoidCallback? onPlus;
   final VoidCallback? onCancel;
-  const LostSeriesRow({super.key, required this.lost, this.todayCount = 0, this.target = 1, this.onRekindle, this.onPlus, this.onCancel});
+  const LostSeriesRow({super.key, required this.lost, this.todayCount = 0, this.target = 1, this.onRekindle, this.onCancel});
 
   @override
   Widget build(BuildContext context) {
     final l = lost;
     final sub = l.pending
-        ? 'rallumée · braise en attente · $todayCount / $target aujourd’hui'
+        ? 'rallumée · fais ${l.name} aujourd’hui ($todayCount / $target) pour garder la série'
         : (l.blocked ?? '${l.nextTier == null ? '' : 'palier ${l.nextTier} j dans ${l.nextTier! - l.length} j · '}rattrapable jusqu’à ce soir');
     final Widget action;
     if (l.pending) {
-      action = Row(mainAxisSize: MainAxisSize.min, children: [
-        if (onCancel != null)
-          IconButton(tooltip: 'Annuler le rallumage', visualDensity: VisualDensity.compact, onPressed: onCancel, icon: const Icon(Icons.close_rounded, size: 18, color: kBText3)),
-        _pill('+1', kEmberColor, onPlus, filled: true),
-      ]);
+      action = onCancel == null
+          ? const SizedBox.shrink()
+          : IconButton(tooltip: 'Annuler le rallumage', visualDensity: VisualDensity.compact, onPressed: onCancel, icon: const Icon(Icons.close_rounded, size: 20, color: kBText3));
     } else if (l.rekindlable) {
       action = _pill('Rallumer · 🔥1', kEmberColor, onRekindle, filled: true);
     } else {
@@ -120,8 +118,7 @@ class LostYesterdaySection extends StatelessWidget {
   final AppLogic logic;
   final bool all;
   final VoidCallback onChanged;
-  final void Function(Activity routine) onPlus;
-  const LostYesterdaySection({super.key, required this.logic, required this.onChanged, required this.onPlus, this.all = false});
+  const LostYesterdaySection({super.key, required this.logic, required this.onChanged, this.all = false});
 
   @override
   Widget build(BuildContext context) {
@@ -150,11 +147,19 @@ class LostYesterdaySection extends StatelessWidget {
             final ok = await showRekindleSheet(context, logic: logic, routine: a, lost: l);
             if (ok) onChanged();
           },
-          onPlus: () {
-            final a = act(l.activityId);
-            if (a != null) onPlus(a);
-          },
           onCancel: () async {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Annuler le rallumage ?'),
+                content: Text('La braise revient dans ta réserve et la série de ${l.name} reste cassée.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Garder')),
+                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Annuler le rallumage')),
+                ],
+              ),
+            );
+            if (ok != true) return;
             await logic.cancelRekindle(l.activityId);
             onChanged();
           },
