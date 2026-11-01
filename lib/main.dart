@@ -3588,6 +3588,14 @@ class _AppRootState extends State<AppRoot>
         behavior: SnackBarBehavior.floating,
       ));
     };
+    logic.onSportRoutineCounted ??= (r) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${r.name} +1 · séance comptée'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    };
 
 
 
