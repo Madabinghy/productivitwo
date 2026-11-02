@@ -368,3 +368,22 @@ bool isBudgetRoutineName(String name) {
   final n = name.toLowerCase();
   return n.contains('budget') || n.contains('dépenses') || n.contains('depenses') || n.contains('finances');
 }
+
+/// Dernier solde recopié (le plus récent), ou null.
+String? lastCheckYmd(Finances f) {
+  String? last;
+  for (final k in f.checks.keys) {
+    if (last == null || k.compareTo(last) > 0) last = k;
+  }
+  return last;
+}
+
+/// Le point est dû : jamais fait, ou le dernier date d'au moins 7 jours.
+bool checkDue(Finances f, String todayYmd) {
+  final last = lastCheckYmd(f);
+  if (last == null) return true;
+  return DateTime.parse(todayYmd).difference(DateTime.parse(last)).inDays >= 7;
+}
+
+/// Un écart de moins d'un euro ne compte pas (arrondis, centimes).
+bool gapIsZero(int gap) => gap.abs() < 100;

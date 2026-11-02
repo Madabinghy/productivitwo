@@ -935,6 +935,13 @@ puis fixes par jour du mois ; tap = coché avec le montant réel / décoché ; a
 (plein = dépense, clair = rien dépensé). `showExpenseSheet` (montant clavier ouvert, enveloppe = la dernière utilisée, note, Aujourd'hui
 · Hier), `showEnvelopesSheet` (renommer, plafond, ajouter, retirer), `showRecurringSheet` (revenus et fixes : nom, montant, jour). Ma vie :
 nature `DomainNature.money` (devinée pour financ · budget · argent · compta), tuile FINANCES = reste à vivre · k / 90 jours suivis.
+**Lot 3 livré (le point de la semaine)** : `widgets/balance_check_sheet.dart` (`showBalanceCheck`) — « Ton compte dit ? » (solde recopié,
+case « À découvert »), interrupteur « Chrono Budget » (activité-temps du nom budget, `budgetTimeActivity`, jamais lancé sans geste) ;
+premier point = base posée ; ensuite le calcul (point précédent − dépenses − fixes passés + revenus reçus = « D'après l'app », écart,
+`gapIsZero` < 1 €) et le classement : écart négatif → « Noter n € oubliés » (choix de l'enveloppe, Imprévus en avant, note « oubli ·
+point du … ») ou « C'est lui » sur un fixe pas encore coché ; écart positif → un revenu pas coché ; « Garder ce solde tel quel » ou
+« Je vérifierai plus tard ». Le solde posé devient la base du point suivant (`recordBalance`). Carte LE POINT DE LA SEMAINE dans la feuille
+Finances (`checkDue` : jamais fait ou ≥ 7 jours, `lastCheckYmd`). **Les 3 lots sont livrés.**
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
