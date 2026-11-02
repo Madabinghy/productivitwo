@@ -17,6 +17,7 @@ void main() {
     expect(h.level, 1);
     expect(h.tierDates.first, DateTime(2026, 10, 24));
     expect(out.any((b) => b.def.id == 'heures-total'), isTrue);
+    expect(out.firstWhere((b) => b.def.id == 'heures-annee').value, 6.0);
     final f = out.firstWhere((b) => b.def.id == 'fois-${vaisselle.id}');
     expect(f.value, 12);
     expect(f.level, 1);
