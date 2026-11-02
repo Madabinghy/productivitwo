@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
+import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin, kFlemmeChronoMin;
@@ -1800,6 +1801,110 @@ class AppLogic implements HuntStore {
   /// Historique des veilles (`data/meta.restPeriods`) : gèle les séries.
   List<RestPeriod> restPeriods = const [];
   int budgetWindowDays = 7;
+
+  /// Finances, 100 % manuel (`data/meta.finances`, `utils/finances.dart`, 2026-11-02).
+  Finances finances = const Finances();
+
+  /// La routine « Suivre mon budget » : carte `budget` du catalogue, sinon par le nom.
+  Activity? get budgetRoutine {
+    final rs = state.activities.where((a) => !a.deleted && a.isHabit).toList();
+    return rs.where((a) => a.catalogId == 'budget').firstOrNull ?? rs.where((a) => isBudgetRoutineName(a.name)).firstOrNull;
+  }
+
+  String _newFinanceId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${math.Random().nextInt(1 << 20).toRadixString(36)}';
+
+  /// Un jour suivi coche une fois la routine « Suivre mon budget » de ce
+  /// jour-là (aujourd'hui ou hier), jamais deux.
+  void _countTrackedDay(String ymd) {
+    final r = budgetRoutine;
+    if (r == null) return;
+    final day = DateTime.parse(ymd);
+    final start = DateTime(day.year, day.month, day.day).add(Duration(minutes: dayStartMin));
+    final end = start.add(const Duration(days: 1));
+    final has = state.habitHits.any((h) => h.habitId == r.id && !h.ts.isBefore(start) && h.ts.isBefore(end));
+    if (has) return;
+    if (ymd == livedTodayYmd) {
+      incHabit(r.id, 1, livedToday);
+      return;
+    }
+    // Hier : la coche est posée dans la journée vécue d'hier (22 h).
+    final key = yyyymmdd(day);
+    final i = state.habitProgress.indexWhere((h) => h.activityId == r.id && h.yyyymmdd == key);
+    if (i < 0) {
+      state.habitProgress.add(HabitProgress(activityId: r.id, yyyymmdd: key, value: 1));
+    } else {
+      state.habitProgress[i].value += 1;
+    }
+    final ts = DateTime(day.year, day.month, day.day, 22);
+    state.habitHits.add(HabitHit(habitId: r.id, ts: ts.isBefore(start) ? start : ts));
+    onChange();
+  }
+
+  /// Note une dépense (aujourd'hui par défaut, ou hier) ; renvoie son id, null si refusée.
+  Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd}) async {
+    final day = ymd ?? livedTodayYmd;
+    if (amount <= 0 || !canLogOn(day, livedTodayYmd)) return null;
+    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim());
+    final wasNothing = finances.nothing.contains(day);
+    finances = finances.copyWith(
+      expenses: {...finances.expenses, x.id: x},
+      nothing: wasNothing ? ({...finances.nothing}..remove(day)) : null,
+    );
+    _countTrackedDay(day);
+    onChange();
+    await sync?.setFinanceExpense(x.id, x.toJson());
+    if (wasNothing) await sync?.setFinanceFields({'nothing': finances.nothing.toList()..sort()});
+    return x.id;
+  }
+
+  Future<void> removeExpense(String id) async {
+    if (!finances.expenses.containsKey(id)) return;
+    finances = finances.copyWith(expenses: {...finances.expenses}..remove(id));
+    onChange();
+    await sync?.setFinanceExpense(id, null);
+  }
+
+  /// « Rien dépensé » ce jour-là (aujourd'hui ou hier) ; [on] false le retire.
+  Future<void> setNothingSpent(String ymd, bool on) async {
+    if (on && !canLogOn(ymd, livedTodayYmd)) return;
+    final next = {...finances.nothing};
+    on ? next.add(ymd) : next.remove(ymd);
+    finances = finances.copyWith(nothing: next);
+    if (on) _countTrackedDay(ymd);
+    onChange();
+    await sync?.setFinanceFields({'nothing': next.toList()..sort()});
+  }
+
+  Future<void> saveEnvelopes(List<Envelope> list) async {
+    finances = finances.copyWith(envelopes: list);
+    onChange();
+    await sync?.setFinanceFields({'envelopes': [for (final e in list) e.toJson()]});
+  }
+
+  Future<void> saveRecurring(List<Recurring> list) async {
+    finances = finances.copyWith(recurring: list);
+    onChange();
+    await sync?.setFinanceFields({'recurring': [for (final r in list) r.toJson()]});
+  }
+
+  /// Coche un fixe ou un revenu comme passé ce mois-ci ([amount] null = le décocher).
+  Future<void> setPaid(String recurringId, int? amount) async {
+    final today = livedTodayYmd;
+    final month = monthOf(today);
+    final m = {...?finances.paid[month]};
+    amount == null ? m.remove(recurringId) : m[recurringId] = Paid(amount, today);
+    finances = finances.copyWith(paid: {...finances.paid, month: m});
+    onChange();
+    await sync?.setFinancePaid(month, recurringId, amount == null ? null : m[recurringId]!.toJson());
+  }
+
+  /// Le solde recopié lors du point de la semaine (aujourd'hui).
+  Future<void> recordBalance(int cents) async {
+    final today = livedTodayYmd;
+    finances = finances.copyWith(checks: {...finances.checks, today: cents});
+    onChange();
+    await sync?.setFinanceCheck(today, cents);
+  }
 
   /// Gels d'une activité ou d'une routine (`data/meta.freezes`, 2026-11-02).
   List<RestPeriod> freezes = const [];
