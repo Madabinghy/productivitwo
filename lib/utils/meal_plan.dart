@@ -174,3 +174,15 @@ List<ShoppingLine> shoppingFor(MealWeek week, List<Recipe> recipes) {
     for (final x in week.extra) ShoppingLine('+${x.label.trim().toLowerCase()}', x.label, x.qty, const [], manual: true),
   ];
 }
+
+/// Retirer la portion de restes posée sur le repas [key] (retour user
+/// 2026-11-02 : supprimer une case de restes ne doit rien pousser plus loin) :
+/// le plat qui cuisine perd une portion, et les restes qui restent se
+/// replacent sur les midis libres les plus proches (`leftoversOf`). Renvoie
+/// (clé du plat, nouvelles portions), ou null si [key] n'est pas un reste.
+({String sourceKey, int portions})? removeLeftoverAt(Map<String, PlannedMeal> slots, List<String> days, String key) {
+  final src = leftoversOf(slots, days)[key];
+  final p = src == null ? null : slots[src];
+  if (src == null || p == null) return null;
+  return (sourceKey: src, portions: (p.portions - 1).clamp(1, 12));
+}
