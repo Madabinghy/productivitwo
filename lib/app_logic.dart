@@ -1845,7 +1845,7 @@ class AppLogic implements HuntStore {
   Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd, String? domainId, String? projectId, List<String> items = const []}) async {
     final day = ymd ?? livedTodayYmd;
     if (amount <= 0 || !canLogOn(day, livedTodayYmd)) return null;
-    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim(), domainId: domainId, projectId: projectId, items: items);
+    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim(), domainId: domainId, projectId: projectId, items: items, at: DateTime.now().millisecondsSinceEpoch);
     final wasNothing = finances.nothing.contains(day);
     finances = finances.copyWith(
       expenses: {...finances.expenses, x.id: x},
@@ -1893,7 +1893,7 @@ class AppLogic implements HuntStore {
     final today = livedTodayYmd;
     final month = monthOf(today);
     final m = {...?finances.paid[month]};
-    amount == null ? m.remove(recurringId) : m[recurringId] = Paid(amount, today);
+    amount == null ? m.remove(recurringId) : m[recurringId] = Paid(amount, today, at: DateTime.now().millisecondsSinceEpoch);
     finances = finances.copyWith(paid: {...finances.paid, month: m});
     onChange();
     await sync?.setFinancePaid(month, recurringId, amount == null ? null : m[recurringId]!.toJson());
@@ -2010,9 +2010,35 @@ class AppLogic implements HuntStore {
   /// Le solde recopié lors du point de la semaine (aujourd'hui).
   Future<void> recordBalance(int cents) async {
     final today = livedTodayYmd;
-    finances = finances.copyWith(checks: {...finances.checks, today: cents});
+    final at = DateTime.now().millisecondsSinceEpoch;
+    finances = finances.copyWith(checks: {...finances.checks, today: cents}, checksAt: {...finances.checksAt, today: at});
     onChange();
-    await sync?.setFinanceCheck(today, cents);
+    await sync?.setFinanceCheck(today, cents, at: at);
+  }
+
+  /// Une rentrée ponctuelle (facture encaissée…), n'importe quel jour passé.
+  Future<String?> addIncome({required int amount, String? ymd, String? from, String? domainId, String? projectId}) async {
+    final day = ymd ?? livedTodayYmd;
+    if (amount <= 0 || day.compareTo(livedTodayYmd) > 0) return null;
+    final x = Income(id: _newFinanceId(), ymd: day, amount: amount, from: from?.trim(), domainId: domainId, projectId: projectId, at: DateTime.now().millisecondsSinceEpoch);
+    finances = finances.copyWith(incomes: {...finances.incomes, x.id: x});
+    onChange();
+    await sync?.setFinanceIncome(x.id, x.toJson());
+    return x.id;
+  }
+
+  Future<void> removeIncome(String id) async {
+    if (!finances.incomes.containsKey(id)) return;
+    finances = finances.copyWith(incomes: {...finances.incomes}..remove(id));
+    onChange();
+    await sync?.setFinanceIncome(id, null);
+  }
+
+  /// Remet une rentrée retirée (« Annuler »), avec son id d'origine.
+  Future<void> restoreIncome(Income x) async {
+    finances = finances.copyWith(incomes: {...finances.incomes, x.id: x});
+    onChange();
+    await sync?.setFinanceIncome(x.id, x.toJson());
   }
 
   /// Gels d'une activité ou d'une routine (`data/meta.freezes`, 2026-11-02).

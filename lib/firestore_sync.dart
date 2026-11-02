@@ -3166,11 +3166,21 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
-  Future<void> setFinanceCheck(String ymd, int? balance) async {
+  Future<void> setFinanceCheck(String ymd, int? balance, {int? at}) async {
     if (uid == null) return;
     await _meta().set({
       'finances': {
-        'checks': {ymd: balance ?? FieldValue.delete()}
+        'checks': {ymd: balance ?? FieldValue.delete()},
+        'checksAt': {ymd: balance == null || at == null ? FieldValue.delete() : at},
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setFinanceIncome(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'finances': {
+        'incomes': {id: json ?? FieldValue.delete()}
       }
     }, SetOptions(merge: true));
   }

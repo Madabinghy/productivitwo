@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
@@ -144,35 +145,8 @@ class _FinanceSheetState extends State<FinanceSheet> {
         const InfoDot(kRuleFinances),
       ]),
       const SizedBox(height: 10),
-      // Reste à vivre.
-      Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF0F2B27), Color(0xFF0B1D18)]),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kMoneyAccent.withValues(alpha: .25)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('RESTE À VIVRE · ${monthName.toUpperCase()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kMoneyAccent)),
-          const SizedBox(height: 2),
-          if (m.hasIncome) ...[
-            Text(euros(m.remaining), style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: m.remaining < 0 ? _kRed : Colors.white)),
-            Text(
-              m.remaining <= 0
-                  ? 'revenus − fixes − dépenses · le mois est dépassé'
-                  : 'sur ${m.daysLeft} jour${m.daysLeft > 1 ? 's' : ''} · ≈ ${euros(m.perDay)} par jour',
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFFB9CFC4)),
-            ),
-          ] else ...[
-            Text('${euros(m.spent)} dépensés', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
-            const Text('pose tes revenus et tes fixes pour voir ce qu’il te reste', style: TextStyle(fontSize: 12.5, color: Color(0xFFB9CFC4))),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(onPressed: () => showRecurringSheet(context, logic: logic), child: const Text('Revenus et fixes ›')),
-            ),
-          ],
-        ]),
-      ),
+      // Le compte (dès qu'un solde est posé), sinon le reste à vivre du mois.
+      _hero(m, monthName, today),
       title('AUJOURD’HUI', _dayLabel(today)),
       Container(
         padding: const EdgeInsets.all(12),
@@ -194,17 +168,23 @@ class _FinanceSheetState extends State<FinanceSheet> {
                 child: const Text('+ Dépense', style: TextStyle(fontWeight: FontWeight.w800)),
               ),
             ),
-            if (todayList.isEmpty && !nothingToday) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                  onPressed: () => _nothing(today),
-                  child: const Text('✓ Rien dépensé'),
-                ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), foregroundColor: kMoneyAccent, side: BorderSide(color: kMoneyAccent.withValues(alpha: .6))),
+                onPressed: () => showIncomeSheet(context, logic: logic),
+                child: const Text('+ Rentrée', style: TextStyle(fontWeight: FontWeight.w800)),
               ),
-            ],
+            ),
           ]),
+          if (todayList.isEmpty && !nothingToday) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              onPressed: () => _nothing(today),
+              child: const Text('✓ Rien dépensé'),
+            ),
+          ],
           if (!yesterdayTracked) ...[
             const SizedBox(height: 8),
             Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
@@ -215,6 +195,10 @@ class _FinanceSheetState extends State<FinanceSheet> {
           ],
         ]),
       ),
+      if (monthIncomes(f, today).isNotEmpty) ...[
+        title('RENTRÉES CE MOIS', euros(monthIncomes(f, today).fold<int>(0, (s, x) => s + x.amount))),
+        for (final x in monthIncomes(f, today)) _incomeRow(cs, mute, x),
+      ],
       title('ENVELOPPES DU MOIS', 'trait = attendu à ce jour'),
       for (final e in m.envelopes) _envelopeRow(cs, mute, e),
       Wrap(alignment: WrapAlignment.spaceBetween, children: [
@@ -257,6 +241,115 @@ class _FinanceSheetState extends State<FinanceSheet> {
       title('90 JOURS SUIVIS', '${_last90(f, today).where((x) => x > 0).length} / 90'),
       _grid(cs, f, today),
     ]);
+  }
+
+  Widget _hero(MonthSummary m, String monthName, String today) {
+    final acc = accountNow(logic.finances, today);
+    const sub = TextStyle(fontSize: 12.5, color: Color(0xFFB9CFC4));
+    Widget link(String t, VoidCallback onTap) => TextButton(
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), visualDensity: VisualDensity.compact, foregroundColor: kMoneyAccent),
+          onPressed: onTap,
+          child: Text(t),
+        );
+    final List<Widget> body;
+    if (acc != null) {
+      body = [
+        Text('SUR TON COMPTE · d’après le solde du ${_dayLabel(acc.sinceYmd)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kMoneyAccent)),
+        const SizedBox(height: 2),
+        Text(euros(acc.balance), style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: acc.balance < 0 ? _kRed : Colors.white)),
+        Text(
+          [
+            'reste à vivre ce mois ${euros(acc.remaining)}',
+            if (acc.remaining > 0) '≈ ${euros(acc.perDay)} par jour',
+            if (acc.fixedLeft > 0) '${euros(acc.fixedLeft)} de fixes à venir',
+            if (acc.incomeLeft > 0) '${euros(acc.incomeLeft)} de revenus attendus',
+          ].join(' · '),
+          style: sub.copyWith(color: acc.remaining < 0 ? _kRed : null),
+        ),
+        Wrap(children: [link('Mettre à jour le solde', _updateBalance), link('Revenus et fixes ›', () => showRecurringSheet(context, logic: logic))]),
+      ];
+    } else {
+      body = [
+        Text('RESTE À VIVRE · ${monthName.toUpperCase()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kMoneyAccent)),
+        const SizedBox(height: 2),
+        if (m.hasIncome) ...[
+          Text(euros(m.remaining), style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: m.remaining < 0 ? _kRed : Colors.white)),
+          Text(
+            m.remaining <= 0 ? 'revenus − fixes − dépenses · le mois est dépassé' : 'sur ${m.daysLeft} jour${m.daysLeft > 1 ? 's' : ''} · ≈ ${euros(m.perDay)} par jour',
+            style: sub,
+          ),
+        ] else ...[
+          Text('${euros(m.spent)} dépensés', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
+          const Text('pose ton solde de départ : l’app part de ce que dit ton compte', style: sub),
+        ],
+        const SizedBox(height: 6),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: kMoneyAccent, foregroundColor: kMoneyInk),
+          onPressed: _updateBalance,
+          child: const Text('Ton compte dit ? · Poser mon solde', style: TextStyle(fontWeight: FontWeight.w800)),
+        ),
+        Wrap(children: [link('Revenus et fixes ›', () => showRecurringSheet(context, logic: logic))]),
+      ];
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xFF0F2B27), Color(0xFF0B1D18)]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kMoneyAccent.withValues(alpha: .25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: body),
+    );
+  }
+
+  /// Recopier le solde du compte, n'importe quand : il devient la base, et
+  /// l'écart avec ce que l'app avait calculé est dit (une dépense oubliée ?).
+  Future<void> _updateBalance() async {
+    final before = accountNow(logic.finances, logic.livedTodayYmd);
+    final v = await askBalance(context, current: before?.balance);
+    if (v == null) return;
+    await logic.recordBalance(v);
+    if (!mounted) return;
+    final gap = before == null ? null : v - before.balance;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+      content: Text(gap == null
+          ? '✓ Solde posé : ${euros(v)} · l’app part de là'
+          : (gap.abs() < 100
+              ? '✓ Solde à jour · tout était noté'
+              : '✓ Solde à jour · écart de ${euros(gap, sign: true)}${gap < 0 ? ' (une dépense oubliée ?)' : ' (une rentrée oubliée ?)'}')),
+      duration: const Duration(seconds: 5),
+    ));
+  }
+
+  Widget _incomeRow(ColorScheme cs, Color mute, Income x) {
+    final dom = logic.state.activeDomains.where((d) => d.id == x.domainId).firstOrNull?.name;
+    final proj = x.projectId == null ? null : logic.currentProjects.where((p) => p.id == x.projectId).firstOrNull?.title;
+    return Dismissible(
+      key: ValueKey('inc-${x.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 12), child: const Icon(Icons.delete_outline, color: _kRed)),
+      onDismissed: (_) {
+        logic.removeIncome(x.id);
+        ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+          content: Text('Rentrée de ${euros(x.amount)} retirée'),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(label: 'Annuler', onPressed: () => logic.restoreIncome(x)),
+        ));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          const Text('↓ ', style: TextStyle(color: kMoneyAccent, fontWeight: FontWeight.w900)),
+          Expanded(
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: x.from?.isNotEmpty == true ? x.from : 'Rentrée', style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: ' · ${[_dayLabel(x.ymd), if (dom != null) dom, if (proj != null) proj].join(' · ')}', style: TextStyle(color: mute, fontSize: 12.5)),
+            ]), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          Text(euros(x.amount, sign: true), style: const TextStyle(fontWeight: FontWeight.w800, color: kMoneyAccent)),
+        ]),
+      ),
+    );
   }
 
   /// CE MOIS · PAR DOMAINE DE VIE, puis les projets qui ont coûté quelque chose.
@@ -867,3 +960,182 @@ Future<String?> _askText(BuildContext context, String title, String initial) {
     ),
   );
 }
+
+
+/// « Ton compte dit ? » : un solde, éventuellement négatif ; null = annulé.
+Future<int?> askBalance(BuildContext context, {int? current}) {
+  final ctrl = TextEditingController();
+  var negative = false;
+  return showDialog<int>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        title: const Text('Ton compte dit ?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            current == null ? 'Recopie le solde de ton appli bancaire : l’app part de là.' : 'D’après l’app : ${euros(current)}. Recopie ce que dit ta banque.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            decoration: InputDecoration(prefixText: negative ? '− ' : null, suffixText: '€'),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('À découvert'),
+            value: negative,
+            onChanged: (v) => setLocal(() => negative = v ?? false),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final v = parseEuros(ctrl.text) ?? (ctrl.text.trim() == '0' ? 0 : null);
+              if (v == null) return;
+              Navigator.pop(ctx, negative ? -v : v);
+            },
+            child: const Text('C’est ça'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Une rentrée : montant, de qui, domaine (Business / travail par défaut),
+/// projet facultatif, quel jour (aujourd'hui, hier ou un autre jour passé).
+Future<void> showIncomeSheet(BuildContext context, {required AppLogic logic}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+      child: _IncomeEntry(logic: logic, host: context),
+    ),
+  );
+}
+
+/// Le domaine proposé pour une rentrée : un domaine de travail (Business…).
+String? defaultIncomeDomain(List<Domain> domains) =>
+    domains.where((d) => RegExp(r'business|travail|pro|entreprise|activit', caseSensitive: false).hasMatch(d.name)).firstOrNull?.id;
+
+class _IncomeEntry extends StatefulWidget {
+  final AppLogic logic;
+  final BuildContext host;
+  const _IncomeEntry({required this.logic, required this.host});
+
+  @override
+  State<_IncomeEntry> createState() => _IncomeEntryState();
+}
+
+class _IncomeEntryState extends State<_IncomeEntry> {
+  final _amount = TextEditingController();
+  final _from = TextEditingController();
+  late String _ymd = widget.logic.livedTodayYmd;
+  late String? _domain = defaultIncomeDomain(widget.logic.state.activeDomains);
+  String? _project;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _from.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final v = parseEuros(_amount.text);
+    if (v == null) return;
+    final id = await widget.logic.addIncome(amount: v, ymd: _ymd, from: _from.text, domainId: _domain, projectId: _project);
+    if (!mounted || id == null) return;
+    Navigator.of(context).pop();
+    if (widget.host.mounted) {
+      ScaffoldMessenger.of(widget.host).showClosingSnackBar(SnackBar(content: Text('↓ ${euros(v)} rentrés${_from.text.trim().isEmpty ? '' : ' · ${_from.text.trim()}'}'), duration: const Duration(seconds: 3)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final mute = cs.onSurface.withValues(alpha: .55);
+    final logic = widget.logic;
+    final today = logic.livedTodayYmd;
+    final domains = logic.state.activeDomains;
+    final projects = logic.currentProjects.where((p) => p.status == 'active' && !p.paused && (_domain == null || p.domainId == _domain)).take(8).toList();
+    final v = parseEuros(_amount.text);
+    final other = _ymd != today && _ymd != prevYmd(today);
+    ChoiceChip chip(String t, bool on, VoidCallback tap, {Color? dot}) => ChoiceChip(
+          avatar: dot == null ? null : CircleAvatar(backgroundColor: dot, radius: 5),
+          label: Text(t),
+          selected: on,
+          selectedColor: kMoneyAccent,
+          labelStyle: TextStyle(fontWeight: FontWeight.w700, color: on ? kMoneyInk : null),
+          onSelected: (_) => tap(),
+        );
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: mute)),
+        );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        const Text('Une rentrée', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        Text('Une facture encaissée, un remboursement : ce qui arrive sur le compte sans être un revenu du mois.', style: TextStyle(fontSize: 12.5, color: mute)),
+        TextField(
+          controller: _amount,
+          autofocus: true,
+          textAlign: TextAlign.center,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+          style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: kMoneyAccent),
+          decoration: InputDecoration(hintText: '0', prefixText: '+ ', suffixText: '€', suffixStyle: TextStyle(fontSize: 22, color: mute), border: InputBorder.none),
+          onChanged: (_) => setState(() {}),
+        ),
+        TextField(
+          controller: _from,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(labelText: 'De qui ?', hintText: 'facultatif · client, facture n°…', isDense: true),
+        ),
+        label('POUR QUEL DOMAINE ?'),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final d in domains) chip(d.name, d.id == _domain, () => setState(() {
+                _domain = d.id == _domain ? null : d.id;
+                _project = null;
+              }), dot: domainColor(d.id, domains)),
+        ]),
+        if (projects.isNotEmpty) ...[
+          label('POUR UN PROJET ?  facultatif'),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final p in projects) chip(p.title.length > 28 ? '${p.title.substring(0, 27)}…' : p.title, p.id == _project, () => setState(() => _project = p.id == _project ? null : p.id)),
+          ]),
+        ],
+        label('QUAND ?'),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          chip('Aujourd’hui', _ymd == today, () => setState(() => _ymd = today)),
+          chip('Hier', _ymd == prevYmd(today), () => setState(() => _ymd = prevYmd(today))),
+          chip(other ? _dayLabel(_ymd) : 'Un autre jour', other, () async {
+            final t = DateTime.parse(today);
+            final d = await showDatePicker(context: context, firstDate: t.subtract(const Duration(days: 90)), lastDate: t, initialDate: DateTime.parse(_ymd), locale: const Locale('fr', 'FR'));
+            if (d != null) setState(() => _ymd = _ymdOf(d));
+          }),
+        ]),
+        const SizedBox(height: 14),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: kMoneyAccent, foregroundColor: kMoneyInk, minimumSize: const Size.fromHeight(50)),
+          onPressed: v == null ? null : _save,
+          child: Text(v == null ? 'Noter la rentrée' : 'Noter · + ${euros(v)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
+}
+
+String _ymdOf(DateTime d) => _ymd(d);
