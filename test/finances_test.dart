@@ -104,4 +104,14 @@ void main() {
     expect(isTracked(logic.finances, yesterday), isTrue);
     expect(await logic.logExpense(amount: 100, envelopeId: 'courses', ymd: prevYmd(yesterday)), isNull);
   });
+
+  test('le point est dû tous les 7 jours, un écart < 1 € ne compte pas', () {
+    expect(checkDue(const Finances(), '2026-11-02'), isTrue);
+    final f = const Finances().copyWith(checks: {'2026-10-25': 100, '2026-10-30': 200});
+    expect(lastCheckYmd(f), '2026-10-30');
+    expect(checkDue(f, '2026-11-02'), isFalse);
+    expect(checkDue(f, '2026-11-06'), isTrue);
+    expect(gapIsZero(-99), isTrue);
+    expect(gapIsZero(-100), isFalse);
+  });
 }

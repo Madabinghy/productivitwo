@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
@@ -224,6 +225,29 @@ class _FinanceSheetState extends State<FinanceSheet> {
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton(onPressed: () => showRecurringSheet(context, logic: logic), child: Text(f.recurring.isEmpty ? '+ Revenus et fixes' : 'Gérer les fixes ›')),
+      ),
+      title('LE POINT DE LA SEMAINE', lastCheckYmd(f) == null ? null : 'dernier : ${_dayLabel(lastCheckYmd(f)!)}'),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: box,
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              lastCheckYmd(f) == null
+                  ? 'Recopie le solde de ton compte : l’app te dira chaque semaine si rien n’a été oublié.'
+                  : (checkDue(f, today) ? 'C’est le moment : un solde recopié, et l’app dit ce qui manque.' : 'Fait cette semaine. Le prochain dans ${7 - DateTime.parse(today).difference(DateTime.parse(lastCheckYmd(f)!)).inDays} j.'),
+              style: TextStyle(fontSize: 13, color: checkDue(f, today) ? null : mute, height: 1.35),
+            ),
+          ),
+          const SizedBox(width: 10),
+          checkDue(f, today)
+              ? FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: kMoneyAccent, foregroundColor: kMoneyInk),
+                  onPressed: () => showBalanceCheck(context, logic: logic),
+                  child: const Text('Faire le point'),
+                )
+              : TextButton(onPressed: () => showBalanceCheck(context, logic: logic), child: const Text('Refaire')),
+        ]),
       ),
       title('90 JOURS SUIVIS', '${_last90(f, today).where((x) => x > 0).length} / 90'),
       _grid(cs, f, today),
