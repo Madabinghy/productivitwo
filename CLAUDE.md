@@ -423,7 +423,7 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
 - `plan_week(startDate?, syncToCalendar?)` — idem sur 5 jours ouvrés (défaut : lundi prochain)
 - `sync_calendar(date?)` — lit le programme existant et retourne les instructions GCal précises (delete + create_event avec colorId et tag `source: productivitwo`)
 
-**Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant.
+**Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant. **Rafraîchi en direct** (2026-11-02, bug user) : la liste et la frise (`day_timeline_view.dart`) écoutent `AppLogic` (`_onLogic`, reporté après la frame si besoin) — un chrono lancé / arrêté redessine aussitôt le bloc en cours, même dans la feuille Programme, au lieu d'attendre le tick de la minute.
 **Toucher un bloc de tâche** (mobile, 2026-10) : ouvre l'écran « bloc » (`widgets/block_work_screen.dart`, logique
 `utils/block_work.dart`) — l'action visée (sinon la 1ʳᵉ ouverte) en avant avec ses étapes cochables, les autres actions
 repliées, chrono, « Voir la tâche » (fiche), « Bloc terminé ». Bloc de séance (🎯 d'une intervention) → écran séance.

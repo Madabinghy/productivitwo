@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -93,6 +94,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
       }
     });
+    // Un chrono lancé / arrêté redessine aussitôt le bloc en cours (bug user
+    // 2026-11-02 : dans la feuille Programme, rien ne bougeait avant la minute).
+    widget.logic.addListener(_onLogic);
     if (_isToday) {
       _nowTick = Timer.periodic(const Duration(minutes: 1), (_) {
         if (mounted) setState(() {});
@@ -103,8 +107,20 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     });
   }
 
+  void _onLogic() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    widget.logic.removeListener(_onLogic);
     _nowTick?.cancel();
     _sub?.cancel();
     super.dispose();
