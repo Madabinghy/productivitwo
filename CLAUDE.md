@@ -1542,6 +1542,13 @@ de la fiche d'activité et de la fiche routine, à côté des puces **Cible** et
 `showFreezeSheet` : Aujourd'hui seulement · Pas avant lundi · Une semaine · Deux semaines · Choisir les dates (plage, peut commencer
 plus tard) · Dégeler. La « pause jusqu'à » des activités (`snoozedUntil`) reste à part (elle masque, ne gèle pas).
 
+## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
+
+Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /
+solide (`scoreDay(excused:)`, `scoreDays(excusedOf:)`), hors Métronome (`metronomeDays(excusedOf:)`) et hors faits du jour
+(`composeTodayFacts(excused:)` : tuile Journée parfaite, enjeux, notification du soir). Branché par `BadgeCenter`
+(`excusedOf: nowDoneSet(ymd sans tirets)`). La série de la routine, elle, n'est pas comblée : le jour reste non atteint.
+
 ## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
 
 Une `SnackBar` avec une `action` (« Annuler ») peut rester affichée indéfiniment (Flutter récent : `persist` vrai par défaut ;

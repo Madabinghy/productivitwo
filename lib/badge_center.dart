@@ -91,6 +91,7 @@ class BadgeCenter extends ChangeNotifier {
       seasons: logic.seasons,
       acquired: logic.acquired,
       paroles: logic.paroles,
+      excusedOf: (ymd) => logic.nowDoneSet(ymd.replaceAll('-', '')),
     );
     deck = d;
     logic.embers = d.embers;
@@ -129,6 +130,7 @@ class BadgeCenter extends ChangeNotifier {
       schedule: liveToday?.date == ymd ? liveToday : _schedules.where((s) => s.date == ymd).firstOrNull,
       pendingChain: pending != null && pending.isLive(now, ymd) ? pending : null,
       acquired: logic.acquired,
+      excused: logic.nowDoneSet(logic.livedYmdNow),
       frozenOf: (a) => logic.frozenOf(a.id),
       restingDomainIds: {for (final d in st.activeDomains) if (logic.isDomainResting(d.id)) d.id},
     );

@@ -414,6 +414,7 @@ DayScore scoreDay(DateTime day, {
   required Map<String, Set<String>> reachedDaysByRoutine,
   DailySchedule? schedule,
   Map<String, Acquired> acquired = const {},
+  Set<String> excused = const {},
 }) {
   final ymd = ymdOf(day);
   var due = 0, reached = 0;
@@ -422,6 +423,8 @@ DayScore scoreDay(DateTime day, {
     if (_day(a.createdAt).isAfter(day)) continue;
     // Acquise (2026-10-30) : hors journée parfaite / solide à partir de son passage.
     if (isAcquiredOn(acquired, a.id, ymd)) continue;
+    // « Pas aujourd'hui » (2026-11-02, décision user) : la routine écartée ce jour-là n'est plus réclamée.
+    if (excused.contains(a.id)) continue;
     due++;
     if (reachedDaysByRoutine[a.id]?.contains(ymd) ?? false) reached++;
   }
@@ -445,6 +448,7 @@ List<DayScore> scoreDays({
   required DateTime now,
   int dayStartMin = kDefaultDayStartMin,
   Map<String, Acquired> acquired = const {},
+  Set<String> Function(String ymd)? excusedOf,
 }) {
   final reached = <String, Set<String>>{};
   for (final a in activities) {
@@ -467,7 +471,7 @@ List<DayScore> scoreDays({
   if (first.isBefore(floor)) first = floor;
   final out = <DayScore>[];
   for (var d = first; !d.isAfter(yesterday); d = d.add(const Duration(days: 1))) {
-    out.add(scoreDay(d, activities: activities, reachedDaysByRoutine: reached, schedule: byDate[ymdOf(d)], acquired: acquired));
+    out.add(scoreDay(d, activities: activities, reachedDaysByRoutine: reached, schedule: byDate[ymdOf(d)], acquired: acquired, excused: excusedOf?.call(ymdOf(d)) ?? const {}));
   }
   return out;
 }
@@ -623,11 +627,13 @@ BadgeDeck computeBadges({
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
   Map<String, ParoleDay> paroles = const {},
+  /// Routines écartées « pas aujourd'hui » par jour vécu (`YYYY-MM-DD`).
+  Set<String> Function(String ymd)? excusedOf,
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
   // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
-  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired);
+  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired, excusedOf: excusedOf);
 
   // Séries de routine : un badge par routine quotidienne active, par nom.
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()
@@ -773,6 +779,7 @@ BadgeDeck computeBadges({
     reachedDaysByRoutine: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
     frozenOf: frozenOf,
     acquired: acquired,
+    excusedOf: excusedOf,
   );
   for (final (id, name, symbol, h, what) in [
     ('montre-suisse', 'Montre suisse', 'watch', watch, 'Journées toutes activités au rythme'),
