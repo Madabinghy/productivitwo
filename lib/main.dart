@@ -1815,6 +1815,7 @@ class _AppRootState extends State<AppRoot>
       final elanAll = m['elanPromptsAll'] == true;
       final rest = parseRestDomains(m['restDomains']);
       final periods = parseRestPeriods(m['restPeriods']);
+      final freezes = parseRestPeriods(m['freezes']);
       final seasons = parseSeasons(m['seasons']);
       final acquired = parseAcquired(m['acquired']);
       final asked = parseAcquireAsked(m['acquireAsked']);
@@ -1840,6 +1841,7 @@ class _AppRootState extends State<AppRoot>
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
           periods.map((x) => x.toJson().toString()).join('|') == logic.restPeriods.map((x) => x.toJson().toString()).join('|') &&
+          freezes.map((x) => x.toJson().toString()).join('|') == logic.freezes.map((x) => x.toJson().toString()).join('|') &&
           seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
           acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
           asked.length == logic.acquireAsked.length && asked.containsAll(logic.acquireAsked);
@@ -1864,6 +1866,7 @@ class _AppRootState extends State<AppRoot>
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
       logic.restPeriods = periods;
+      logic.freezes = freezes;
       logic.seasons = seasons;
       logic.acquired = acquired;
       logic.acquireAsked = asked;

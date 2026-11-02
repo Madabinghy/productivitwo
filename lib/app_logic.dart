@@ -1801,10 +1801,31 @@ class AppLogic implements HuntStore {
   List<RestPeriod> restPeriods = const [];
   int budgetWindowDays = 7;
 
-  /// Jours gelés d'une routine par une veille de son domaine.
+  /// Gels d'une activité ou d'une routine (`data/meta.freezes`, 2026-11-02).
+  List<RestPeriod> freezes = const [];
+
+  /// Jours gelés d'une activité ou routine : veille de son domaine ∪ ses gels propres.
   Set<String> frozenOf(String activityId) {
     final a = state.activities.where((x) => x.id == activityId).firstOrNull;
-    return a == null ? const {} : frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
+    if (a == null) return const {};
+    final own = frozenDaysOfActivity(activityId, freezes, livedTodayYmd);
+    final dom = frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
+    return own.isEmpty ? dom : {...dom, ...own};
+  }
+
+  /// Gel en cours ou à venir d'une activité / routine, sinon null.
+  RestPeriod? freezeOf(String activityId) => currentFreezeOf(freezes, activityId, livedTodayYmd);
+
+  Future<void> freezeActivity(String activityId, String fromYmd, String toYmd) async {
+    freezes = withFreezeSet(freezes, activityId, livedTodayYmd, fromYmd, toYmd);
+    onChange();
+    await sync?.setFreezes([for (final p in freezes) p.toJson()]);
+  }
+
+  Future<void> unfreezeActivity(String activityId) async {
+    freezes = withFreezeLifted(freezes, activityId, livedTodayYmd);
+    onChange();
+    await sync?.setFreezes([for (final p in freezes) p.toJson()]);
   }
 
   /// Mode du jour = dernier pointage d'élan de la journée vécue (jamais stocké).
@@ -2014,7 +2035,7 @@ class AppLogic implements HuntStore {
       reached: reached,
       ledger: ledger,
       todayYmd: livedTodayYmd,
-      frozen: {for (final a in routines) a.id: frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd)},
+      frozen: {for (final a in routines) a.id: frozenOf(a.id)},
     );
   }
 

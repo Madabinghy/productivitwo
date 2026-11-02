@@ -1530,6 +1530,18 @@ reste dans l'agenda (l'import garde le statut) ; un miroir LÂCHÉ compte comme 
 avant le filtre miroir), à faire il ne compte toujours pas ; « Posé par erreur » = l'ancien choix Masquer ici / Supprimer partout. Reste possible : ligne du bilan du soir, compte lâchés /
 empêchés côté coach.
 
+## Geler une activité ou une routine (2026-11-02, retour user : vacances, « pas avant lundi »)
+
+`data/meta.freezes` = liste de `RestPeriod` dont `domainId` porte l'id de l'ACTIVITÉ (logique pure `utils/rest_periods.dart` :
+`withFreezeSet` — peut commencer plus tard, jamais avant aujourd'hui —, `withFreezeLifted`, `currentFreezeOf`, `frozenDaysOfActivity`).
+`AppLogic.freezes` (flux meta de main.dart, `FirestoreSync.setFreezes`, dans `kBackupMetaKeys`), `freezeOf` / `freezeActivity` /
+`unfreezeActivity` ; `AppLogic.frozenOf(id)` = veille du domaine ∪ gels propres, et `computeBadges(freezes:)` fait l'union : un jour
+gelé ne réclame rien et ne casse rien (séries, Métronome, Montre suisse, journée parfaite) ; `composeTodayFacts` ne réclame plus une
+routine gelée aujourd'hui. Écran `widgets/freeze_sheet.dart` : `FreezeChip` (« ❄ Geler une période » / « Gelée jusqu'au … ») EN TÊTE
+de la fiche d'activité et de la fiche routine, à côté des puces **Cible** et **Minuteur** (remontées des réglages, retour user) ;
+`showFreezeSheet` : Aujourd'hui seulement · Pas avant lundi · Une semaine · Deux semaines · Choisir les dates (plage, peut commencer
+plus tard) · Dégeler. La « pause jusqu'à » des activités (`snoozedUntil`) reste à part (elle masque, ne gèle pas).
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /

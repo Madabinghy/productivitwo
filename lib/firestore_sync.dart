@@ -3141,6 +3141,11 @@ class FirestoreSync {
     await _meta().set({'restPeriods': periods}, SetOptions(merge: true));
   }
 
+  /// Gels d'activité / routine (`data/meta.freezes`, `utils/rest_periods.dart`).
+  Future<void> setFreezes(List<Map<String, dynamic>> periods) async {
+    await _meta().set({'freezes': periods}, SetOptions(merge: true));
+  }
+
   Future<void> setRestDomain(String domainId, String? untilYmd) async {
     if (uid == null) return;
     await _meta().set({

@@ -35,6 +35,7 @@ TodayFacts composeTodayFacts({
     if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
     if (a.createdAt.isAfter(now)) continue;
     if (isAcquiredOn(acquired, a.id, ymd)) continue; // acquise : plus réclamée
+    if (frozenOf != null && frozenOf(a).contains(ymd)) continue; // gelée (veille, gel) : plus réclamée
     if (excused.contains(a.id)) continue; // « pas aujourd'hui » : plus réclamée
     final t = a.habitTarget ?? 1;
     final done = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(dayStart)).length;
