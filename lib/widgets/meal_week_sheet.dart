@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -209,7 +210,7 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
           const SizedBox(height: 18),
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: kMealAccent, foregroundColor: const Color(0xFF0F1A0C), minimumSize: const Size.fromHeight(50)),
-            onPressed: () => showShoppingSheet(context, logic: logic, sync: widget.sync, monday: monday, recipes: _all),
+            onPressed: () => showGroceriesSheet(context, logic: logic, sync: widget.sync),
             icon: const Icon(Icons.shopping_basket_outlined),
             label: Text(lines.isEmpty ? 'Liste de courses' : 'Liste de courses · $toBuy à prendre', style: const TextStyle(fontWeight: FontWeight.w800)),
           ),

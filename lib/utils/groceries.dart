@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/utils/finances.dart' show Expense, Finances, monthOf;
+import 'package:productivitwo_v1/utils/meal_plan.dart' show ShoppingLine;
 
 /// Courses générales (maquette validée 2026-11-02 « Courses générales ») —
 /// logique pure. UNE liste : les ingrédients du menu de la semaine (dérivés,
@@ -299,3 +300,100 @@ List<MapEntry<String, int>> spentByProject(Finances f, String todayYmd) {
   if (known == 0) return null;
   return (cents: cents, known: known, total: ingredientLabels.length);
 }
+
+
+// ── La liste affichée ───────────────────────────────────────────────────────
+
+/// Une ligne de LA liste : un ingrédient du menu (`menuKey`) ou une ligne à la
+/// main / via Claude (`itemId`).
+class GroceryRow {
+  final String label;
+  final String qty;
+  final String? domainId;
+  final String? projectId;
+  final String store;
+  /// `menu` · `hand` · `claude`.
+  final String source;
+  /// Plats d'où vient un ingrédient du menu.
+  final List<String> from;
+  final bool inBasket;
+  final String? itemId;
+  final String? menuKey;
+  const GroceryRow({
+    required this.label,
+    this.qty = '',
+    this.domainId,
+    this.projectId,
+    required this.store,
+    required this.source,
+    this.from = const [],
+    this.inBasket = false,
+    this.itemId,
+    this.menuKey,
+  });
+  String get key => itemId ?? 'menu:$menuKey';
+}
+
+/// Fond les ingrédients du menu de la semaine ([menuLines], cochés dans
+/// [menuChecked]) et les lignes à la main. Un ingrédient prend le domaine
+/// retenu pour son mot, sinon [menuDomainId] ; son endroit retenu, sinon le
+/// supermarché. Un mot à la main qui est aussi un ingrédient du menu n'est
+/// montré qu'une fois (la ligne du menu, qui dit d'où il vient).
+List<GroceryRow> groceryRows({
+  required List<ShoppingLine> menuLines,
+  required Set<String> menuChecked,
+  required Groceries g,
+  String? menuDomainId,
+}) {
+  final out = <GroceryRow>[];
+  final menuWords = <String>{};
+  for (final l in menuLines) {
+    final m = g.memory[normLabel(l.label)];
+    menuWords.add(normLabel(l.label));
+    out.add(GroceryRow(
+      label: l.label,
+      qty: l.qty,
+      domainId: m?.domainId ?? menuDomainId,
+      projectId: m?.projectId,
+      store: m?.store ?? kMenuStore,
+      source: 'menu',
+      from: l.from,
+      inBasket: menuChecked.contains(l.key),
+      menuKey: l.key,
+    ));
+  }
+  for (final x in g.items.values) {
+    if (menuWords.contains(normLabel(x.label))) continue;
+    out.add(GroceryRow(
+      label: x.label,
+      qty: x.qty,
+      domainId: x.domainId,
+      projectId: x.projectId,
+      store: x.store,
+      source: x.source,
+      inBasket: x.inBasket,
+      itemId: x.id,
+    ));
+  }
+  return out;
+}
+
+/// Les lignes groupées par endroit, dans l'ordre des endroits connus, puis
+/// les autres ; dans un endroit, par libellé.
+List<MapEntry<String, List<GroceryRow>>> rowsByStore(List<GroceryRow> rows, List<String> stores) {
+  final by = <String, List<GroceryRow>>{};
+  for (final r in rows) {
+    by.putIfAbsent(r.store, () => []).add(r);
+  }
+  for (final l in by.values) {
+    l.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+  }
+  final order = [...stores.where(by.containsKey), ...by.keys.where((k) => !stores.contains(k))];
+  return [for (final k in order) MapEntry(k, by[k]!)];
+}
+
+/// Lignes du panier → lignes de caisse (avec le prix retenu de chaque mot).
+List<CheckoutLine> checkoutLinesOf(Iterable<GroceryRow> rows, Groceries g) => [
+      for (final r in rows)
+        if (r.inBasket) CheckoutLine(label: r.label, domainId: r.domainId, projectId: r.projectId, price: g.memory[normLabel(r.label)]?.price, itemId: r.itemId),
+    ];
