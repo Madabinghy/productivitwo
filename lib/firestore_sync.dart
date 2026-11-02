@@ -3142,6 +3142,45 @@ class FirestoreSync {
   }
 
   /// Gels d'activité / routine (`data/meta.freezes`, `utils/rest_periods.dart`).
+  /// Finances (`data/meta.finances`, 2026-11-02) : écriture ciblée d'un
+  /// morceau (une dépense, un fixe passé, un solde) ; `null` = le retirer.
+  Future<void> setFinanceExpense(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'finances': {
+        'expenses': {id: json ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setFinancePaid(String month, String recurringId, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'finances': {
+        'months': {
+          month: {
+            'paid': {recurringId: json ?? FieldValue.delete()}
+          }
+        }
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setFinanceCheck(String ymd, int? balance) async {
+    if (uid == null) return;
+    await _meta().set({
+      'finances': {
+        'checks': {ymd: balance ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  /// Champs entiers (`envelopes`, `recurring`, `nothing`).
+  Future<void> setFinanceFields(Map<String, dynamic> fields) async {
+    if (uid == null) return;
+    await _meta().set({'finances': fields}, SetOptions(merge: true));
+  }
+
   Future<void> setFreezes(List<Map<String, dynamic>> periods) async {
     await _meta().set({'freezes': periods}, SetOptions(merge: true));
   }

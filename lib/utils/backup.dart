@@ -55,6 +55,7 @@ const List<String> kBackupMetaKeys = [
   'weekReviews',
   'sportPick',
   'meals',
+  'finances',
   'mirrorActivities',
   'interventionTemplates',
   'ganttVisible',

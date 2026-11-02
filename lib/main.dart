@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show parseMeals;
+import 'package:productivitwo_v1/utils/finances.dart' show parseFinances;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
@@ -1790,6 +1791,7 @@ class _AppRootState extends State<AppRoot>
   final _sync = FirestoreSync();
   late final BadgeCenter _badges = BadgeCenter(logic: logic, sync: _sync);
   String _mealsJson = ''; // dernier `data/meta.meals` lu (repas, 2026-11-01)
+  String _financesJson = ''; // dernier `data/meta.finances` lu (2026-11-02)
   String _syncStatus = ''; // '' = en cours, '☁️' = OK, '⚠️' = local
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
@@ -1826,6 +1828,8 @@ class _AppRootState extends State<AppRoot>
       final sport = SportOverrides.from(m['sportPick']);
       final mealsJson = jsonEncode(m['meals'] ?? const {});
       final sameMeals = mealsJson == _mealsJson;
+      final financesJson = jsonEncode(m['finances'] ?? const {});
+      final sameFinances = financesJson == _financesJson;
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1837,6 +1841,7 @@ class _AppRootState extends State<AppRoot>
           sameReviews &&
           sport.sameAs(logic.sportOverrides) &&
           sameMeals &&
+          sameFinances &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1862,6 +1867,10 @@ class _AppRootState extends State<AppRoot>
       if (!sameMeals) {
         _mealsJson = mealsJson;
         logic.meals = parseMeals(m['meals']);
+      }
+      if (!sameFinances) {
+        _financesJson = financesJson;
+        logic.finances = parseFinances(m['finances']);
       }
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;

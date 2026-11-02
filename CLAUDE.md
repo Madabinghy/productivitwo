@@ -909,6 +909,25 @@ de la semaine, heures moyennes du déjeuner et du dîner d'après Manger). Écra
 soir), trois chiffres, TES HEURES DE REPAS, « Les repas de la semaine », Mes plats ›, Liste de courses · n. Entrées : rond 🍽
 (`kMealAccent`) dans la barre du haut après Sport, ligne « Repas · k / n équilibrés » dans Domaines (`_mealLine`) ; tuile Repas de Ma vie.
 
+## Finances, 100 % manuel (2026-11-02, maquette validée « Suivi des finances »)
+
+Objectif user « Reprendre mon budget en main 100 % manuel · 90 jours suivis » : une feuille Finances comme Sommeil, Sport et Repas ;
+noter une dépense en cinq secondes, « Rien dépensé » en un tap ; un **jour suivi** (au moins une dépense notée ce jour-là, ou « Rien
+dépensé ») coche une fois la routine « Suivre mon budget » (`AppLogic.budgetRoutine` : carte `budget` du catalogue, sinon
+`isBudgetRoutineName`). Pas de synchronisation bancaire ni d'import (voulu). Le coach ne voit jamais un montant. **Lot 1 livré (données
++ logique)** : logique pure `utils/finances.dart` — montants en CENTIMES ; `Envelope {id, name, monthly}` (plafond, 0 = aucun ;
+`kDefaultEnvelopes` Courses · Essence · Sorties · Maison · Imprévus), `Recurring {id, name, amount, day, income?}` (fixe ou revenu
+mensuel), `Expense {ymd, amount, envelopeId, note?}`, `Paid` (fixe passé : montant réel, jour coché), soldes `checks`. Stockage
+`data/meta.finances {envelopes, recurring, expenses: {<id>: …}, nothing: [ymd], months: {<YYYY-MM>: {paid: {<id>: …}}}, checks: {<ymd>:
+cents}}` (écritures ciblées `FirestoreSync.setFinanceExpense` / `setFinancePaid` / `setFinanceCheck` / `setFinanceFields`, flux meta de
+main.dart via `_financesJson`, dans `kBackupMetaKeys`). Une dépense ne se note que pour aujourd'hui ou hier (`canLogOn`, journée vécue) ;
+`trackedDays` / `trackingStreak` / `trackedSince` ; `monthSummary` (reste à vivre = revenus − fixes − dépenses, montant réel d'un fixe
+passé sinon prévu ; `EnvelopeMonth.expected` = plafond × jour / jours du mois, `ahead`) ; `balanceCheck` (dernier solde recopié avant
+aujourd'hui − dépenses − fixes passés + revenus cochés depuis → `expected`, `gap`) ; `euros` / `parseEuros`. `AppLogic` : `finances`,
+`logExpense` (retire le « rien dépensé » du jour), `removeExpense`, `setNothingSpent`, `saveEnvelopes`, `saveRecurring`, `setPaid`,
+`recordBalance` ; `_countTrackedDay` pose le +1 (hier : hit à 22 h dans la journée vécue d'hier). Limite : tout vit dans le doc meta
+(≈ 30 Ko par an à deux dépenses par jour).
+
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
 Le coach voit ce que l'app mesure en plus des engagements : sommeil, parole tenue, Montre suisse, Métronome, journée posée la
@@ -1908,6 +1927,7 @@ actions: [
   avec « Réactiver », et une confirmation sur « Archiver ».
 
 - **Modes et coups tactiques** (noté 2026-10-27, handoff `docs/specs/modes-et-coups-2026-10/README.md`, maquette à valider) : mode Flemme / Normal / En forme changeable à tout moment (= pointage d'élan), ambiance par mode, chips « malgré tout » / « à fond » dérivés, coups = `StrategicObjective.horizon:"tactical"` (3–10 j, même fiche / graphe), veille de domaines `data/meta.restDomains`, budget de domaine sur 14 j, carte du moment pilotée par le mode, `plan_day` par jours de focus. Maquette validée le 2026-10-27. **Lot 0 livré** : `lib/utils/mode.dart` ↔ `functions/src/mode.ts` (`modeOf` = dernier élan du jour vécu, `malgreTout` / `aFond` dérivés, `isResting`, `parseBudgetWindowDays`), `StrategicObjective.horizon`, `AppLogic.mode` / `setMode` / `restDomains` / `budgetWindowDays`, MCP `set_mode`, `rest_domain`, `save_objective {horizon}`, `list_objectives.coups`, `get_user_context.mode`, règles `plan_day` par mode. **Lot 1 livré** : `ModePill` / `showModeSheet` / `modeChipFor` (`widgets/mode_sheet.dart`), `utils/mode_colors.dart` (thème par `AppLogic.modeNotifier`, `NowPalette.primary` sombre par mode), chips « malgré tout » / « à fond » (programme, actions faites, récap Enchaîner), badge « Deep work » (`deepWorkSessions(sessions, schedules)` : **strict depuis le 2026-10-27** — seul un bloc `kind:"deepwork"` posé par « Deep work 90 min » et couvert ≥ 60 min par un chrono de sa source compte ; jamais un chrono long seul). **Lot 2 livré** : `utils/mode_moves.dart` (`deepWorkCandidates`, `deepWorkBlock`, `smallChain`), feuille « Sur quoi ? » `widgets/deep_work_sheet.dart` (propose, jamais de chrono sans geste), MAINTENANT « 10 min, malgré tout » / « n petites choses » / « Deep work 90 min », `pickActionMoment(mode:, focusProjectId:)`, `rankObjectiveMoments(mode:)`, « Bloc de 90 min » sur la carte Objectif. **Lot 3 livré** : `utils/coups.dart` (`coupLabel`, `validateCoup`, `coupProjectIds`…), section « COUPS · n » + `widgets/coup_sheet.dart` (quoi · cible · jusqu'à quand · pour) + `widgets/rest_sheet.dart` (veille par domaine, `liftRest`), veille dans Stats (`domainWeeks(rest:)`), Actions (section « EN VEILLE »), Projets (`rankProjectMoments(priorityIds:)`), deep work et `plan_day` (`restLines`). **Lot 4 livré** : `utils/budget_window.dart` (`budgetWindowStart` 7 = lundi / 14 = quinzaine à départ fixe, `dailyMinutesByDomain`), `domainWeeks(windowDays:)`, Stats sur la fenêtre + section « Répartition sur n j » de la fiche Ma semaine, tuile Paramètres « Budget des minimums », `plan_day` jours de focus (`modeRules`) + `budgetRules`. **Lot 5 livré (web)** : `lib/web/mode_web.dart` (`moodMarkForMode`, `showWebModeDialog`, `WebModePill`, `webModeChip`), « Mode du jour » dans le menu ⋯ + pilule de la barre, chips sur les blocs faits d'Aujourd'hui, coups en tête de la carte Objectifs du jour et cartes « COUP » dans Projets. **Les 6 lots sont livrés.**
+- **Ticket de caisse en photo** (noté 2026-11-02, vision user) : photographier un ticket de courses, Claude lit les lignes et les range en dépenses par enveloppe, domaine, projet (« Dressing » → projet Dressing). Après les trois lots Finances.
 - **Cartes dessinées par Claude** (noté 2026-11-01, pas maintenant) : un outil MCP qui crée une carte personnalisée (dessin SVG) pour
   une routine créée à la main, dans la grammaire du catalogue de routines (`CatalogRoutine.svg` / `bg`).
 - **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
