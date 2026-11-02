@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/utils/duration_fmt.dart' show pickDurationMin;
+import 'package:productivitwo_v1/widgets/freeze_sheet.dart';
 import 'package:productivitwo_v1/widgets/gains_section.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
@@ -262,6 +264,32 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               ],
             ),
             const SizedBox(height: 4),
+            // Cible, minuteur et gel en tête (retour user 2026-11-02 : cachés dans les réglages).
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              ActionChip(
+                avatar: const Icon(Icons.flag_outlined, size: 16),
+                label: Text('Cible · ${act.habitTarget ?? 1} ${switch (logic.effectiveHabitFreq(act)) { HabitFreq.weekly => '/ sem.', HabitFreq.monthly => '/ mois', _ => '/ jour' }}'),
+                onPressed: () async {
+                  final v = await _pickCount(context, act.habitTarget ?? 1);
+                  if (v == null) return;
+                  act.habitTarget = v;
+                  _applySetting();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.timer_outlined, size: 16),
+                label: Text((act.timerMin ?? 0) > 0 ? 'Minuteur · ${act.timerMin} min' : 'Minuteur'),
+                onPressed: () async {
+                  final v = await pickDurationMin(context, initial: act.timerMin ?? 0, title: 'Minuteur de la routine', allowZero: true);
+                  if (v == null) return;
+                  logic.setActivityTimerMin(act.id, v == 0 ? null : v);
+                  widget.onSaved?.call();
+                  setState(() {});
+                },
+              ),
+              FreezeChip(logic: logic, activity: act, onChanged: () => setState(() {})),
+            ]),
+            const SizedBox(height: 8),
 
             // ── Tuile interactive ────────────────────────────────────────────
             NowHabitTileFull(
@@ -918,4 +946,26 @@ Future<bool> pickLinkedActivity(BuildContext context, {required AppState st, req
   // Le minuteur survit au déliage : sans activité liée, le décompte tourne
   // sur la routine elle-même (micro-routines).
   return true;
+}
+
+/// Cible d'une routine : − n + (1 à 999).
+Future<int?> _pickCount(BuildContext context, int initial) {
+  var v = initial < 1 ? 1 : initial;
+  return showDialog<int>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, set) => AlertDialog(
+        title: const Text('Cible par période'),
+        content: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          IconButton(onPressed: v > 1 ? () => set(() => v--) : null, icon: const Icon(Icons.remove_circle_outline)),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('$v', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800))),
+          IconButton(onPressed: v < 999 ? () => set(() => v++) : null, icon: const Icon(Icons.add_circle_outline)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, v), child: const Text('OK')),
+        ],
+      ),
+    ),
+  );
 }

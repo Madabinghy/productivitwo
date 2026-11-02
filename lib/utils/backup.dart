@@ -45,6 +45,7 @@ const List<String> kBackupMetaKeys = [
   'budgetWindowDays',
   'restDomains',
   'restPeriods',
+  'freezes',
   'acquired',
   'acquireAsked',
   'seasons',

@@ -91,3 +91,45 @@ Set<String> frozenDaysOf(String? domainId, List<RestPeriod> periods, Map<String,
   if (until != null && until.compareTo(todayYmd) >= 0) out.add(todayYmd);
   return out;
 }
+
+// ── Gel d'une activité ou d'une routine (2026-11-02, retour user) ───────────
+// `data/meta.freezes` = liste de [RestPeriod] dont `domainId` porte l'id de
+// l'ACTIVITÉ gelée. Contrairement à la veille d'un domaine, un gel peut être
+// posé à l'avance (vacances) : il commence le jour choisi, jamais avant
+// aujourd'hui. Les jours gelés ne réclament rien et ne cassent rien.
+
+/// Gèle [activityId] du [fromYmd] au [toYmd] inclus (from ≥ aujourd'hui) :
+/// remplace les périodes à venir ou en cours de cette activité.
+List<RestPeriod> withFreezeSet(List<RestPeriod> periods, String activityId, String todayYmd, String fromYmd, String toYmd) {
+  final from = fromYmd.compareTo(todayYmd) < 0 ? todayYmd : fromYmd;
+  if (toYmd.compareTo(from) < 0) return periods;
+  final kept = withFreezeLifted(periods, activityId, todayYmd);
+  return _capped([...kept, RestPeriod(domainId: activityId, from: from, to: toYmd)]);
+}
+
+/// Dégèle [activityId] : la période en cours s'arrête hier, les périodes à
+/// venir disparaissent, le passé reste (les jours gelés restent gelés).
+List<RestPeriod> withFreezeLifted(List<RestPeriod> periods, String activityId, String todayYmd) {
+  final yesterday = _shift(todayYmd, -1);
+  return [
+    for (final p in periods)
+      if (p.domainId != activityId || p.to.compareTo(todayYmd) < 0)
+        p
+      else if (p.from.compareTo(yesterday) <= 0)
+        RestPeriod(domainId: activityId, from: p.from, to: yesterday),
+  ];
+}
+
+/// Le gel en cours ou à venir de [activityId], sinon null.
+RestPeriod? currentFreezeOf(List<RestPeriod> periods, String activityId, String todayYmd) {
+  RestPeriod? best;
+  for (final p in periods) {
+    if (p.domainId != activityId || p.to.compareTo(todayYmd) < 0) continue;
+    if (best == null || p.from.compareTo(best.from) < 0) best = p;
+  }
+  return best;
+}
+
+/// Jours gelés de [activityId] par ses gels propres, jusqu'à aujourd'hui inclus.
+Set<String> frozenDaysOfActivity(String activityId, List<RestPeriod> freezes, String todayYmd) =>
+    frozenDaysOf(activityId, freezes, const {}, todayYmd);

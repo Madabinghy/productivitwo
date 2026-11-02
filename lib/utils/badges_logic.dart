@@ -617,6 +617,8 @@ BadgeDeck computeBadges({
   int dayStartMin = kDefaultDayStartMin,
   List<EmberSpend> emberSpends = const [],
   List<RestPeriod> restPeriods = const [],
+  /// Gels d'une activité / routine (`data/meta.freezes`) : jours gelés en plus de la veille du domaine.
+  List<RestPeriod> freezes = const [],
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
@@ -632,7 +634,11 @@ BadgeDeck computeBadges({
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   final todayYmd = ymdOf(livedDate(now, dayStartMin));
   final frozenByDomain = <String, Set<String>>{};
-  Set<String> frozenOf(Activity a) => frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
+  Set<String> frozenOf(Activity a) {
+    final dom = frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
+    final own = frozenDaysOfActivity(a.id, freezes, todayYmd);
+    return own.isEmpty ? dom : {...dom, ...own};
+  }
   // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
   final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
   final embers = emberLedger(

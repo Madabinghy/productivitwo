@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/freeze_sheet.dart';
 import 'package:productivitwo_v1/widgets/gains_section.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
@@ -241,6 +242,32 @@ class _ActivityFicheState extends State<_ActivityFiche> {
           chipColor: chipColor,
           kpi: kpi,
         ),
+        // Cible, minuteur et gel en tête (retour user 2026-11-02 : cachés dans les réglages).
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 6, children: [
+          ActionChip(
+            avatar: const Icon(Icons.flag_outlined, size: 16),
+            label: Text(a.goalMin > 0 ? 'Cible · ${fmtMin(a.goalMin)} / j' : 'Pas de cible'),
+            onPressed: () async {
+              final v = await pickDurationMin(context, initial: a.goalMin, title: 'Cible quotidienne', allowZero: true);
+              if (v == null) return;
+              a.goalMin = v.clamp(0, 720);
+              a.targetSource = 'user';
+              _changed();
+            },
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.timer_outlined, size: 16),
+            label: Text((a.timerMin ?? 0) > 0 ? 'Minuteur · ${a.timerMin} min' : 'Minuteur'),
+            onPressed: () async {
+              final v = await pickDurationMin(context, initial: a.timerMin ?? 0, title: 'Minuteur par défaut', allowZero: true);
+              if (v == null) return;
+              logic.setActivityTimerMin(a.id, v == 0 ? null : v);
+              _changed();
+            },
+          ),
+          FreezeChip(logic: logic, activity: a, onChanged: () => setState(() {})),
+        ]),
         const SizedBox(height: 14),
         IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
