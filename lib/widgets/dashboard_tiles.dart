@@ -173,10 +173,11 @@ class _Tile extends StatelessWidget {
             if (t is ProgramTile) ...[
               Text(t.value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kBText)),
               const SizedBox(height: 6),
+              LayoutBuilder(builder: (context, box) => Stack(clipBehavior: Clip.none, children: [
               Row(children: [
                 for (final (i, p) in t.strip.indexed)
                   Expanded(
-                    flex: p.durationMin.clamp(5, 600),
+                    flex: stripWeight(p.durationMin),
                     child: Container(
                       height: 10,
                       margin: EdgeInsets.only(right: i == t.strip.length - 1 ? 0 : 2),
@@ -188,6 +189,15 @@ class _Tile extends StatelessWidget {
                     ),
                   ),
               ]),
+              // Trait rouge « maintenant » (2026-11-02, retour user).
+              if (t.nowAt case final at?)
+                Positioned(
+                  left: (box.maxWidth * at - 1).clamp(0.0, box.maxWidth - 2),
+                  top: -3,
+                  bottom: -3,
+                  child: Container(width: 2, decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(1))),
+                ),
+            ])),
             ] else if (t.mini.isNotEmpty) ...[
               const SizedBox(height: 6),
               Row(children: [
