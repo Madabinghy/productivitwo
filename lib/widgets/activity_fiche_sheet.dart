@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/gains_section.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -292,6 +293,9 @@ class _ActivityFicheState extends State<_ActivityFiche> {
         // ── Tendance (2026-10 : au-dessus des engagements, toujours visible) ──
         const FicheTitle('TENDANCE · 12 SEMAINES'),
         _trendBox(cs, now),
+
+        // ── Ce que ça fait avancer : cartes d'heures, l'année, le chemin des 10 000 h ──
+        GainsSection(activityId: a.id, title: (_) => const FicheTitle('CE QUE ÇA FAIT AVANCER')),
 
         // ── Engagements ────────────────────────────────────────────────────
         FicheTitle('ENGAGEMENTS', trailing: engaged.isEmpty ? null : FicheDelta('${engaged.length} objectif${engaged.length > 1 ? 's' : ''}', color: cs.onSurface.withValues(alpha: .6))),

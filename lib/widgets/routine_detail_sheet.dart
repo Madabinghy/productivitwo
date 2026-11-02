@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/widgets/gains_section.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -286,6 +287,19 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 bridged: logic.bridgedOf(act.id),
                 frozen: logic.frozenOf(act.id),
               ),
+              const SizedBox(height: 4),
+            ],
+            // Ce que la routine fait avancer : sa série et son compteur, avec leurs jauges.
+            GainsSection(
+              activityId: act.id,
+              time: false,
+              title: (c) => Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 2),
+                child: Text('CE QUE ÇA FAIT AVANCER',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Theme.of(c).colorScheme.onSurface.withValues(alpha: .55))),
+              ),
+            ),
+            if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
               // Routine acquise (2026-10-30) : hors journée parfaite et enjeux, toujours dans le contrat.
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

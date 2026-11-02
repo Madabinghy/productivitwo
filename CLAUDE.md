@@ -1443,6 +1443,11 @@ catalogue si la routine en a un). Hors du « n sur N » (`BadgeDeck.counted`) et
 **« TES COMPTEURS »** après les familles (`_counters`, `badge_gallery_screen.dart` : l'année et le total en tête, sans écusson ; les familles ne
 les montrent plus), la récolte du matin et les retournements comme les autres. Un +1 au-delà de la cible dit « +1 bonus · n fois au total · palier … dans k »
 (`routinePlusLabel`). Textes `badge_texts.dart`.
+**Ce que ça fait avancer** (2026-11-02, retour user : voir le prochain gain hors de l'album) : `widgets/gains_section.dart` — `gainsFor(deck,
+activityId)` (série, compteur de coches, heures de l'activité, l'année, le chemin des 10 000 h ; deck de `WidgetService.badges`),
+`GainRow` (libellé, « 152,4 / 250 h », prochain cadre, petite jauge à sa couleur ; tap = fiche de la carte), `GainsSection`. Branché :
+fiche d'activité (section CE QUE ÇA FAIT AVANCER avant ENGAGEMENTS), fiche routine (série + compteur, sous les paliers), carte EN COURS du
+lanceur d'activités (heures de l'activité + l'année, jauges fines).
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
