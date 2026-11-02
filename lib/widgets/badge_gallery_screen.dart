@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -165,6 +166,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
             if (_facts case final f?) _inPlayButton(deck, f),
             for (final f in BadgeFamily.values) _family(deck, f),
+            _counters(deck),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
@@ -487,7 +489,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   /// tête, son badge « au complet » (l'écusson et ce qu'il faut remplir), puis
   /// les cartes numérotées, les pochettes vides en pointillés.
   Widget _family(BadgeDeck deck, BadgeFamily f) {
-    final badges = deck.ofFamily(f);
+    // Les compteurs (heures, coches au total) ont leur section : le « k / n » de la famille reste celui de son écusson.
+    final badges = deck.ofFamily(f).where((b) => !isLongHaulId(b.def.id)).toList();
     if (badges.isEmpty) return const SizedBox.shrink();
     final ordered = albumOrder(badges);
     final fam = f == BadgeFamily.routines ? null : collectionBadges(deck).where((b) => b.id == 'family-${f.name}').firstOrNull;
@@ -549,6 +552,34 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           runSpacing: 12,
           children: [for (final (i, b) in ordered.indexed) _card(b, pocket: i + 1)],
         ),
+      ]),
+    );
+  }
+
+  /// « Tes compteurs » (2026-11-02) : les cartes qui additionnent sans série ni
+  /// journée à tenir (heures par activité, l'année, le chemin des 10 000 h, coches
+  /// par routine). Pas d'écusson « au complet » : une activité de 5 min par jour
+  /// ne bloque rien.
+  Widget _counters(BadgeDeck deck) {
+    final cards = deck.badges.where((b) => isLongHaulId(b.def.id)).toList();
+    if (cards.isEmpty) return const SizedBox.shrink();
+    final total = cards.where((b) => b.def.id == 'heures-total' || b.def.id == 'heures-annee').toList()
+      ..sort((a, b) => a.def.id.compareTo(b.def.id));
+    final rest = albumOrder(cards.where((b) => !total.contains(b)).toList());
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          child: const Row(children: [
+            Text('TES COMPTEURS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
+            Spacer(),
+            Text('tout s’additionne, rien ne se perd', style: TextStyle(fontSize: 12, color: kBText4)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 10, runSpacing: 12, children: [for (final b in [...total, ...rest]) _card(b)]),
       ]),
     );
   }

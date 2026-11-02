@@ -190,7 +190,7 @@ List<BadgeState> cardsOfCollection(CollectionBadge b, BadgeDeck deck) {
   if (b.id.startsWith('family-')) {
     final f = BadgeFamily.values.where((x) => x.name == b.id.substring(7)).firstOrNull;
     if (f == null) return const [];
-    return albumOrder(deck.ofFamily(f).where((x) => x.def.measured).toList());
+    return albumOrder(deck.ofFamily(f).where((x) => x.def.measured && !isLongHaulId(x.def.id)).toList());
   }
   final List<BadgeState> picked = switch (b.id) {
     'collector' => deck.badges.where((x) => x.acquired).toList(),
