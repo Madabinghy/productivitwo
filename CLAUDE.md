@@ -944,7 +944,7 @@ action ouverte, rien coché depuis 10 j), `minutesByDomainOf`, `ReviewDecision`.
 semaine revue (jeux par jour, sommeil). **Lot 2 livré (écran)** : `widgets/week_review_screen.dart`
 (`showWeekReviewScreen`, plein écran, accent violet `kReviewAccent`, 4 étapes et une barre) — CE QUI A TENU (contrat de la semaine
 d'après `BadgeDeck.weeks`, jeux une case par jour : Métronome · Montre suisse · Parole tenue · Posé la veille, journées parfaites,
-sommeil, temps dit par mode) · CE QUI A AVANCÉ (actions / tâches, `projectWeeks` — 0 en ambre —, temps par domaine, paliers de la
+sommeil, temps dit par mode ; une valeur longue passe sous son libellé, `_row`) · CE QUI A AVANCÉ (actions / tâches, `projectWeeks` — 0 en ambre —, temps par domaine, paliers de la
 semaine) · CE QUI A COÛTÉ (au plus 3 cartes : activité qui coûte la Montre suisse `watchBlockers` → Baisser à n / Pas de minimum /
 Garder ; projet endormi → Viser lundi (`focusDate` de `nextAction`) / Mettre en pause / Garder ; nuits courtes ≥ 3 → « Me coucher à
 HH:MM cette semaine » (texte de décision seulement) ; lien « Mise au clair » = l'ancienne `showWeeklyReviewSheet`) · LE CAP (phrase,
