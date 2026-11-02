@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
@@ -54,7 +55,8 @@ List<BadgeState> longHaulBadges({
   int lv(List<int> tiers, num v) => tiers.where((t) => v >= t).length;
   String h(double v) => '${v.toStringAsFixed(v < 10 ? 1 : 0).replaceAll('.', ',')} h';
 
-  final times = activities.where((a) => !a.deleted && !a.isHabit).toList()
+  // Sommeil, sieste et repas : des besoins de base, pas du temps investi (le sommeil seul ferait ~2 900 h par an).
+  final times = activities.where((a) => !a.deleted && !a.isHabit && !isBasicNeedName(a.name)).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   for (final a in times) {
     final list = byAct[a.id] ?? const <Session>[];

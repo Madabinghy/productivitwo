@@ -20,5 +20,8 @@ void main() {
     final f = out.firstWhere((b) => b.def.id == 'fois-${vaisselle.id}');
     expect(f.value, 12);
     expect(f.level, 1);
+    final sommeil = Activity(name: 'Sommeil', domainId: 'd');
+    final out2 = longHaulBadges(activities: [sommeil], habitHits: const [], sessions: [Session(activityId: sommeil.id, startAt: DateTime(2026, 10, 30, 23), endAt: DateTime(2026, 10, 31, 7))], now: now);
+    expect(out2, isEmpty);
   });
 }
