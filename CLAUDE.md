@@ -862,7 +862,7 @@ sans chrono de séance sur son activité liée — ou sans aucun chrono si elle 
 repos (les répétitions seules n'en font pas une). `sportSummary` (semaine en cours, séances 7 j, semaines à 3 séances sur 8,
 plus long repos sur 30 j), `sportWeeks` / `sportDecline` (« baisse depuis 4 semaines » : 4 semaines closes < moitié des 4 d'avant
 ≥ 30 min), `repsStats` (semaine, cible × 7, record d'un jour, 8 semaines), `sportCommitments` (engagements des objectifs actifs
-sur les activités suivies), `sportObjective` (objectif chiffré qui engage le sport : le poids), `sportLaunchOrder` (plus en retard
+sur les activités suivies) (une routine de séance s'y compte par ses COCHES, `SportDay.routineHits`, même un jour déjà couvert par le chrono de son activité liée — bug user 2026-11-02 : Footing coché restait à 0 / 3), `sportObjective` (objectif chiffré qui engage le sport : le poids), `sportLaunchOrder` (plus en retard
 d'abord), `sportImpact` (lendemains d'une séance contre d'un jour sans : part de Flemme et nuit qui suit, ≥ 5 de chaque côté). **Lot 2 livré (écrans)** : `widgets/sport_sheet.dart` (`showSportSheet`, accent
 `kSportAccent`, ⓘ `kRuleSport`) — chip « n séances cette semaine », CETTE SEMAINE (temps actif, une colonne par jour empilée par
 activité, points = routines de répétitions faites, jour courant cerclé, routines de séance en retard en ambre), trois chiffres,
