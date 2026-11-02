@@ -11,13 +11,14 @@ void main() {
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
     final now = DateTime.now();
+    final t0 = DateTime(now.year, now.month, now.day, 0, 1);
     final st = AppState(
       domains: [Domain(id: 'sl', name: 'Sommeil'), Domain(id: 'sp', name: 'Sport'), Domain(id: 'b', name: 'Business'), Domain(id: 'i', name: 'Intendance')],
       activities: [
         Activity(id: 'run', domainId: 'sp', name: 'Courir', role: ActivityRole.generic, type: 'time', goalMin: 7, createdAt: DateTime(2026)),
         Activity(id: 'w', domainId: 'b', name: 'Contenu', role: ActivityRole.generic, type: 'time', goalMin: 30, createdAt: DateTime(2026)),
       ],
-      sessions: [Session(activityId: 'run', startAt: now.subtract(const Duration(minutes: 50)), endAt: now.subtract(const Duration(minutes: 10)))],
+      sessions: [Session(activityId: 'run', startAt: t0, endAt: t0.add(const Duration(minutes: 40)))],
       habitProgress: [],
     );
     final logic = AppLogic(st, () {})..dayStartMin = 0;

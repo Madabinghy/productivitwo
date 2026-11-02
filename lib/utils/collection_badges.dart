@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
@@ -109,7 +110,7 @@ List<CollectionBadge> collectionBadges(BadgeDeck deck) {
   ];
   for (final f in BadgeFamily.values) {
     if (f == BadgeFamily.routines) continue;
-    final cards = deck.ofFamily(f).where((b) => b.def.measured).toList();
+    final cards = deck.ofFamily(f).where((b) => b.def.measured && !isLongHaulId(b.def.id)).toList();
     if (cards.isEmpty) continue;
     final won = cards.where((b) => b.acquired).length;
     final goldN = cards.where((b) => rarityOf(b).index >= CardRarity.or.index).length;

@@ -10,6 +10,27 @@
           'Un jour manqué remet la série à zéro ; le palier atteint reste acquis. Paliers : 3, 7, 21, 66 et 100 jours.',
     );
   }
+  if (id == 'heures-total') {
+    return (
+      what: 'Toutes les heures que tu as chronométrées, toutes activités confondues : le chemin des 10 000 heures.',
+      how: 'Chaque minute de chrono compte, même une fois tes enjeux du jour gagnés : rien ne se perd, rien ne se remet à zéro. '
+          'Paliers : 100, 500, 1 000, 2 500, 5 000 et 10 000 heures.',
+    );
+  }
+  if (id.startsWith('heures-')) {
+    return (
+      what: 'Les heures de chrono passées sur « $name », depuis toujours.',
+      how: 'Lance le chrono sur « $name ». Le temps en plus de ton minimum compte aussi : c’est de l’avance pour la suite. '
+          'Paliers : 5, 20, 50, 100, 250, 500, 1 000 et 10 000 heures.',
+    );
+  }
+  if (id.startsWith('fois-')) {
+    return (
+      what: 'Le nombre de fois où tu as fait « $name », depuis toujours.',
+      how: 'Chaque +1 compte, y compris au-delà de la cible du jour : la deuxième vaisselle du soir fait avancer la carte. '
+          'Paliers : 10, 50, 100, 250, 500 et 1 000 fois.',
+    );
+  }
   if (id.startsWith('temps-')) {
     return (
       what: 'Les heures de chrono passées sur les activités engagées de l’objectif « $name », depuis son début.',

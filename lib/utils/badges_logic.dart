@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/long_haul.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
@@ -163,7 +164,7 @@ class BadgeDeck {
   /// séries de routine (décision 2026-10-26) : un badge par routine gonflait le
   /// total avec chaque routine créée. Les séries se montrent à part
   /// (`seriesRunning`).
-  List<BadgeState> get counted => badges.where((b) => b.def.family != BadgeFamily.routines).toList();
+  List<BadgeState> get counted => badges.where((b) => b.def.family != BadgeFamily.routines && !isLongHaulId(b.def.id)).toList();
   int get total => counted.fold(0, (s, b) => s + b.paliersTotal);
   int get acquired => counted.fold(0, (s, b) => s + b.paliersDone);
 
@@ -1052,6 +1053,9 @@ BadgeDeck computeBadges({
       facts: [('Heures investies', '${h.hours.toStringAsFixed(1).replaceAll('.', ',')} h'), ('Depuis le', _fmtDate(objectiveStart(o)))],
     ));
   }
+
+  // Au long cours : heures par activité, heures au total, coches par routine.
+  out.addAll(longHaulBadges(activities: activities, habitHits: habitHits, sessions: sessions, now: now));
 
   // ── Graphiques d'avancement ────────────────────────────────────────────────
   final today = livedDate(now, dayStartMin);
