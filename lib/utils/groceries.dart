@@ -110,15 +110,18 @@ class Groceries {
   final Map<String, GroceryItem> items;
   final Map<String, GroceryMemory> memory;
   final List<String> stores;
-  const Groceries({this.items = const {}, this.memory = const {}, this.stores = kDefaultStores});
+  /// Ingrédients du menu déjà passés en caisse, par lundi : ils quittent la liste.
+  final Map<String, Set<String>> boughtMenu;
+  const Groceries({this.items = const {}, this.memory = const {}, this.stores = kDefaultStores, this.boughtMenu = const {}});
 
-  Groceries copyWith({Map<String, GroceryItem>? items, Map<String, GroceryMemory>? memory, List<String>? stores}) =>
-      Groceries(items: items ?? this.items, memory: memory ?? this.memory, stores: stores ?? this.stores);
+  Groceries copyWith({Map<String, GroceryItem>? items, Map<String, GroceryMemory>? memory, List<String>? stores, Map<String, Set<String>>? boughtMenu}) =>
+      Groceries(items: items ?? this.items, memory: memory ?? this.memory, stores: stores ?? this.stores, boughtMenu: boughtMenu ?? this.boughtMenu);
 
   Map<String, dynamic> toJson() => {
         'items': {for (final x in items.values) x.id: x.toJson()},
         'memory': memory.map((k, v) => MapEntry(k, v.toJson())),
         'stores': stores,
+        'bought': boughtMenu.map((k, v) => MapEntry(k, v.toList()..sort())),
       };
 }
 
@@ -138,7 +141,13 @@ Groceries parseGroceries(Object? raw) {
     }
   }
   final stores = raw['stores'] is List ? [for (final s in raw['stores'] as List) '$s'] : const <String>[];
-  return Groceries(items: items, memory: memory, stores: stores.isEmpty ? kDefaultStores : stores);
+  final bought = <String, Set<String>>{};
+  if (raw['bought'] is Map) {
+    for (final e in (raw['bought'] as Map).entries) {
+      if (e.value is List) bought['${e.key}'] = {for (final k in e.value as List) '$k'};
+    }
+  }
+  return Groceries(items: items, memory: memory, stores: stores.isEmpty ? kDefaultStores : stores, boughtMenu: bought);
 }
 
 /// Les réglages proposés pour un mot tapé : ce que l'app en a retenu, sinon
@@ -164,7 +173,9 @@ class CheckoutLine {
   final int? price;
   /// Id de la ligne à la main (null pour un ingrédient du menu).
   final String? itemId;
-  const CheckoutLine({required this.label, this.domainId, this.projectId, this.price, this.itemId});
+  /// Clé de l'ingrédient du menu (null pour une ligne à la main).
+  final String? menuKey;
+  const CheckoutLine({required this.label, this.domainId, this.projectId, this.price, this.itemId, this.menuKey});
 }
 
 /// La part d'un ticket pour un domaine (et un projet).
@@ -344,10 +355,16 @@ List<GroceryRow> groceryRows({
   required Set<String> menuChecked,
   required Groceries g,
   String? menuDomainId,
+  String? monday,
 }) {
   final out = <GroceryRow>[];
   final menuWords = <String>{};
+  final bought = monday == null ? const <String>{} : (g.boughtMenu[monday] ?? const <String>{});
   for (final l in menuLines) {
+    if (bought.contains(l.key)) {
+      menuWords.add(normLabel(l.label));
+      continue;
+    }
     final m = g.memory[normLabel(l.label)];
     menuWords.add(normLabel(l.label));
     out.add(GroceryRow(
@@ -395,5 +412,5 @@ List<MapEntry<String, List<GroceryRow>>> rowsByStore(List<GroceryRow> rows, List
 /// Lignes du panier → lignes de caisse (avec le prix retenu de chaque mot).
 List<CheckoutLine> checkoutLinesOf(Iterable<GroceryRow> rows, Groceries g) => [
       for (final r in rows)
-        if (r.inBasket) CheckoutLine(label: r.label, domainId: r.domainId, projectId: r.projectId, price: g.memory[normLabel(r.label)]?.price, itemId: r.itemId),
+        if (r.inBasket) CheckoutLine(label: r.label, domainId: r.domainId, projectId: r.projectId, price: g.memory[normLabel(r.label)]?.price, itemId: r.itemId, menuKey: r.menuKey),
     ];

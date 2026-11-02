@@ -1973,7 +1973,7 @@ class AppLogic implements HuntStore {
   /// Passage en caisse : une dépense par part (domaine, projet) dans
   /// l'enveloppe Courses, les lignes à la main achetées quittent la liste,
   /// chaque mot retient son prix. Renvoie les ids des dépenses.
-  Future<List<String>> checkoutGroceries({required List<CheckoutLine> lines, required List<TicketShare> shares, String? store}) async {
+  Future<List<String>> checkoutGroceries({required List<CheckoutLine> lines, required List<TicketShare> shares, String? store, String? monday}) async {
     final env = finances.envelopeOf('courses')?.id ?? finances.envelopes.first.id;
     final ids = <String>[];
     for (final sh in shares) {
@@ -1994,9 +1994,13 @@ class AppLogic implements HuntStore {
       mem[e.key] = (mem[e.key] ?? const GroceryMemory()).merge(price: e.value);
     }
     final bought = {for (final l in lines) if (l.itemId != null) l.itemId!};
-    groceries = groceries.copyWith(memory: mem, items: {...groceries.items}..removeWhere((k, _) => bought.contains(k)));
+    final menuKeys = {for (final l in lines) if (l.menuKey != null) l.menuKey!};
+    final boughtMenu = {...groceries.boughtMenu};
+    if (monday != null && menuKeys.isNotEmpty) boughtMenu[monday] = {...?boughtMenu[monday], ...menuKeys};
+    groceries = groceries.copyWith(memory: mem, boughtMenu: boughtMenu, items: {...groceries.items}..removeWhere((k, _) => bought.contains(k)));
     onChange();
     await sync?.setGroceryMemory({for (final k in prices.keys) k: mem[k]!.toJson()});
+    if (monday != null && menuKeys.isNotEmpty) await sync?.setGroceryBought(monday, boughtMenu[monday]!.toList()..sort());
     for (final id in bought) {
       await sync?.setGroceryItem(id, null);
     }
