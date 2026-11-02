@@ -178,7 +178,7 @@ class _BadgeCardViewState extends State<BadgeCardView> with SingleTickerProvider
   Widget _front(BadgeState b, double w, CardFace face, CardRarity r, bool small) {
     final won = face == CardFace.won;
     // Routine du catalogue : son dessin et son fond au lieu de la flamme.
-    final cat = b.def.family == BadgeFamily.routines ? CatalogArt.forActivity(b.def.subjectId) : null;
+    final cat = b.def.family == BadgeFamily.routines || b.def.id.startsWith('fois-') ? CatalogArt.forActivity(b.def.subjectId) : null;
     final art = cat == null ? familyArtColor(b.def.family) : Color(cat.bg);
     final ink = won ? familyInkColor(b.def.family) : const Color(0xFF8FA69A);
     // Nom en petit, sur deux lignes, pour qu'il s'affiche en entier (retour user 2026-11-01).

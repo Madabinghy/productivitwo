@@ -1433,6 +1433,16 @@ mini carte · mesure · gain) ; « Ranger dans l'album » retourne les cartes pa
 (`_collect`), et pose l'instantané (`markHarvested`). Rien de neuf, ou premier passage = instantané posé en silence ; après
 l'ouverture de la collection seulement.
 
+## Cartes au long cours (2026-11-02, retour user : « une fois les enjeux gagnés, continuer ne rapporte rien »)
+
+Le cumul, sans série ni journée : chaque minute de chrono et chaque coche en plus de la cible comptent, rien ne se perd. Logique pure
+`utils/long_haul.dart` (`longHaulBadges`, appelé par `computeBadges`) : `heures-<activité>` (famille Temps investi, paliers
+`kActivityHourTiers` 5 · 20 · 50 · 100 · 250 · 500 · 1 000 · 10 000 h, dès 1 h), `heures-total` « Le chemin des 10 000 h » (`kTotalHourTiers`
+100 → 10 000 h, dès 1 h), `fois-<routine>` (famille Actions, `kRoutineCountTiers` 10 · 50 · 100 · 250 · 500 · 1 000 coches, dès 3, dessin du
+catalogue si la routine en a un). Hors du « n sur N » (`BadgeDeck.counted`) et des « Famille au complet » (`isLongHaulId`) ; dans l'album,
+la récolte du matin et les retournements comme les autres. Un +1 au-delà de la cible dit « +1 bonus · n fois au total · palier … dans k »
+(`routinePlusLabel`). Textes `badge_texts.dart`.
+
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
 Un catalogue composé par l'administrateur, que les utilisateurs activent ; chaque routine a sa carte illustrée. **Lot 1 livré** :
