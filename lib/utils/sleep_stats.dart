@@ -60,6 +60,30 @@ List<SleepNight?> sleepNightList({
   return [for (var k = nights - 1; k >= 0; k--) _night(sessions, ids, DateTime(last.year, last.month, last.day - k, last.hour, last.minute), now)];
 }
 
+/// Les [nights] nuits rangées par JOUR DU COUCHER (retour user 2026-11-02 :
+/// « lundi » = la nuit de lundi à mardi). La dernière case = la nuit de ce
+/// soir (journée vécue), vide tant qu'elle n'a pas commencé. `bedDays[i]` =
+/// le jour du coucher de la case i.
+({List<SleepNight?> nights, List<DateTime> bedDays}) sleepNightsByBedDay({
+  required List<Session> sessions,
+  required List<Activity> activities,
+  required DateTime now,
+  required int dayStartMin,
+  int nights = 14,
+}) {
+  final ids = sleepActivityIds(activities);
+  final today = livedDayStart(now, dayStartMin);
+  final out = <SleepNight?>[];
+  final days = <DateTime>[];
+  for (var k = nights - 1; k >= 0; k--) {
+    final bed = DateTime(today.year, today.month, today.day - k);
+    final pivot = DateTime(today.year, today.month, today.day - k + 1, today.hour, today.minute);
+    days.add(bed);
+    out.add(_night(sessions, ids, pivot, now));
+  }
+  return (nights: out, bedDays: days);
+}
+
 SleepNight? _night(List<Session> sessions, Set<String> ids, DateTime pivot, DateTime now) {
   if (ids.isEmpty) return null;
   final from = pivot.subtract(const Duration(hours: 10));
