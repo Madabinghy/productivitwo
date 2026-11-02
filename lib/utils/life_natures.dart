@@ -6,12 +6,13 @@ import 'package:productivitwo_v1/utils/sport_stats.dart' show isSportDomainName;
 /// NATURE qui décide de sa tuile et de ce qui s'ouvre au tap. Devinée au
 /// départ, changeable d'un tap (`life_natures` en SharedPreferences).
 
-enum DomainNature { night, sessions, meals, work, practice, tracking, upkeep }
+enum DomainNature { night, sessions, meals, money, work, practice, tracking, upkeep }
 
 const kNatureLabels = {
   DomainNature.night: 'Nuit',
   DomainNature.sessions: 'Séances',
   DomainNature.meals: 'Repas',
+  DomainNature.money: 'Finances',
   DomainNature.work: 'Travail',
   DomainNature.practice: 'Pratique',
   DomainNature.tracking: 'Suivi',
@@ -22,6 +23,7 @@ const kNatureHints = {
   DomainNature.night: 'feuille Sommeil · nuits, coucher, dette',
   DomainNature.sessions: 'feuille Sport · séances, repos, répétitions',
   DomainNature.meals: 'feuille Repas · menu, plats, courses',
+  DomainNature.money: 'feuille Finances · reste à vivre, jours suivis',
   DomainNature.work: 'temps de la semaine, projets, objectifs',
   DomainNature.practice: 'jours tenus, routines, minimum',
   DomainNature.tracking: 'relevé, chiffre de l’objectif',
@@ -32,6 +34,7 @@ const kNatureEmoji = {
   DomainNature.night: '🌙',
   DomainNature.sessions: '🏃',
   DomainNature.meals: '🍽',
+  DomainNature.money: '💶',
   DomainNature.work: '💼',
   DomainNature.practice: '🙏',
   DomainNature.tracking: '📏',
@@ -47,7 +50,7 @@ DomainNature guessNature(Domain d, List<Activity> activities) {
   if (isSportDomainName(n)) return DomainNature.sessions;
   if (_has(n, r'repas|nutrition|alimentation|cuisine|manger')) return DomainNature.meals;
   if (_has(n, r'business|travail|pro|boulot|carri|entreprise|job|études|etudes|formation')) return DomainNature.work;
-  if (_has(n, r'financ|budget|argent|compta')) return DomainNature.tracking;
+  if (_has(n, r'financ|budget|argent|compta')) return DomainNature.money;
   if (_has(n, r'intendance|maison|ménage|menage|foyer|logement|organisation')) return DomainNature.upkeep;
   final mine = activities.where((a) => !a.deleted && a.domainId == d.id);
   if (mine.any((a) => isBalancedMealRoutine(a) || isCookActivity(a) || isEatActivity(a))) return DomainNature.meals;

@@ -10,7 +10,7 @@ void main() {
     expect(guessNature(d('m', 'Musculation'), const []), DomainNature.sessions);
     expect(guessNature(d('sante', 'Santé'), [cuis]), DomainNature.meals);
     expect(guessNature(d('b', 'Business'), const []), DomainNature.work);
-    expect(guessNature(d('f', 'Finances'), const []), DomainNature.tracking);
+    expect(guessNature(d('f', 'Finances'), const []), DomainNature.money);
     expect(guessNature(d('i', 'Intendance'), const []), DomainNature.upkeep);
     expect(guessNature(d('sp', 'Spiritualité'), const []), DomainNature.practice);
     expect(parseNatures({'x': 'meals', 'y': 'zzz'}), {'x': DomainNature.meals});

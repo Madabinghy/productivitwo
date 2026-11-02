@@ -927,6 +927,14 @@ aujourd'hui − dépenses − fixes passés + revenus cochés depuis → `expect
 `logExpense` (retire le « rien dépensé » du jour), `removeExpense`, `setNothingSpent`, `saveEnvelopes`, `saveRecurring`, `setPaid`,
 `recordBalance` ; `_countTrackedDay` pose le +1 (hier : hit à 22 h dans la journée vécue d'hier). Limite : tout vit dans le doc meta
 (≈ 30 Ko par an à deux dépenses par jour).
+**Lot 2 livré (écrans)** : `widgets/finance_sheet.dart` — `showFinanceSheet` (accent `kMoneyAccent`, ⓘ `kRuleFinances`) : chip « 🔥 n jours
+suivis », RESTE À VIVRE du mois (sans revenus posés : « n € dépensés » + « Revenus et fixes › »), AUJOURD'HUI (dépenses du jour —
+glisser = retirer, « Annuler » —, « + Dépense » · « ✓ Rien dépensé », « Hier n'est pas suivi : Dépense d'hier · Rien hier »),
+ENVELOPPES DU MOIS (barre + trait blanc de l'attendu, ambre en avance, rouge au-delà du plafond ; tap = plafond), LES FIXES (revenus ↓
+puis fixes par jour du mois ; tap = coché avec le montant réel / décoché ; ambre si la date est passée), grille des 90 JOURS SUIVIS
+(plein = dépense, clair = rien dépensé). `showExpenseSheet` (montant clavier ouvert, enveloppe = la dernière utilisée, note, Aujourd'hui
+· Hier), `showEnvelopesSheet` (renommer, plafond, ajouter, retirer), `showRecurringSheet` (revenus et fixes : nom, montant, jour). Ma vie :
+nature `DomainNature.money` (devinée pour financ · budget · argent · compta), tuile FINANCES = reste à vivre · k / 90 jours suivis.
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
