@@ -1530,6 +1530,13 @@ reste dans l'agenda (l'import garde le statut) ; un miroir LÂCHÉ compte comme 
 avant le filtre miroir), à faire il ne compte toujours pas ; « Posé par erreur » = l'ancien choix Masquer ici / Supprimer partout. Reste possible : ligne du bilan du soir, compte lâchés /
 empêchés côté coach.
 
+## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
+
+Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /
+solide (`scoreDay(excused:)`, `scoreDays(excusedOf:)`), hors Métronome (`metronomeDays(excusedOf:)`) et hors faits du jour
+(`composeTodayFacts(excused:)` : tuile Journée parfaite, enjeux, notification du soir). Branché par `BadgeCenter`
+(`excusedOf: nowDoneSet(ymd sans tirets)`). La série de la routine, elle, n'est pas comblée : le jour reste non atteint.
+
 ## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
 
 Une `SnackBar` avec une `action` (« Annuler ») peut rester affichée indéfiniment (Flutter récent : `persist` vrai par défaut ;
