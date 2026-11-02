@@ -12,6 +12,8 @@ exports.existingItem = existingItem;
 exports.newGroceryItem = newGroceryItem;
 exports.findItems = findItems;
 exports.groceriesText = groceriesText;
+exports.planReceipt = planReceipt;
+exports.mondayOfYmd = mondayOfYmd;
 exports.MENU_STORE = "Supermarché";
 /** Même clé que l'app (`normLabel`) : minuscules, espaces resserrés. */
 function groceryKey(s) {
@@ -104,5 +106,71 @@ function groceriesText(items, domainName, projectTitle) {
     }
     parts.push("\n(Les ingrédients du menu de la semaine s'ajoutent tout seuls dans l'app ; ils ne sont pas listés ici.)");
     return parts.join("\n");
+}
+function apportionInt(total, weights) {
+    const sum = weights.reduce((a, b) => a + b, 0);
+    if (!weights.length)
+        return [];
+    if (sum <= 0)
+        return apportionInt(total, weights.map(() => 1));
+    const raw = weights.map((w) => (total * w) / sum);
+    const out = raw.map((r) => Math.floor(r));
+    let left = total - out.reduce((a, b) => a + b, 0);
+    const order = raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+    for (let k = 0; left > 0; k = (k + 1) % order.length, left--)
+        out[order[k]]++;
+    return out;
+}
+/**
+ * Le ticket réparti par (domaine, projet) : chaque ligne garde son prix ; si
+ * le total du ticket diffère de la somme des lignes (remise, arrondi), l'écart
+ * est réparti au prorata. Domaine d'une ligne : celui donné, sinon celui
+ * retenu pour l'article de la liste ou pour le mot, sinon aucun.
+ */
+function planReceipt(lines, totalEuros, ctx) {
+    const warnings = [];
+    const cents = lines.map((l) => Math.max(0, Math.round((Number(l.price) || 0) * 100)));
+    const sumLines = cents.reduce((a, b) => a + b, 0);
+    const total = totalEuros != null && totalEuros > 0 ? Math.round(totalEuros * 100) : sumLines;
+    if (total !== sumLines) {
+        warnings.push(`Total du ticket ${(total / 100).toFixed(2)} € ≠ somme des lignes ${(sumLines / 100).toFixed(2)} € : l'écart est réparti au prorata.`);
+    }
+    const paid = total === sumLines ? cents : apportionInt(total, cents);
+    const removeItemIds = [];
+    const menuKeys = [];
+    const groups = new Map();
+    const prices = {};
+    lines.forEach((l, i) => {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel)) : undefined;
+        const memKey = groceryKey(l.listLabel || l.label);
+        const mem = (_b = (_a = ctx.memory[memKey]) !== null && _a !== void 0 ? _a : ctx.memory[groceryKey(l.label)]) !== null && _b !== void 0 ? _b : {};
+        let domainId = l.domain ? resolveDomain(l.domain, ctx.domains) : null;
+        if (l.domain && !domainId)
+            warnings.push(`Domaine introuvable pour « ${l.label} » : « ${l.domain} ».`);
+        domainId = (_d = (_c = domainId !== null && domainId !== void 0 ? domainId : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].domainId) !== null && _c !== void 0 ? _c : mem.domainId) !== null && _d !== void 0 ? _d : null;
+        const projectId = (_g = (_f = (_e = l.projectId) !== null && _e !== void 0 ? _e : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].projectId) !== null && _f !== void 0 ? _f : mem.projectId) !== null && _g !== void 0 ? _g : null;
+        if (listMatch)
+            removeItemIds.push(listMatch[0]);
+        else if (l.listLabel)
+            menuKeys.push(l.listLabel.trim().toLowerCase());
+        const k = `${domainId !== null && domainId !== void 0 ? domainId : ""}|${projectId !== null && projectId !== void 0 ? projectId : ""}`;
+        const g = (_h = groups.get(k)) !== null && _h !== void 0 ? _h : { domainId, projectId, amount: 0, labels: [] };
+        g.amount += paid[i];
+        g.labels.push(l.listLabel || l.label);
+        groups.set(k, g);
+        prices[memKey] = Object.assign(Object.assign({ price: paid[i] }, (domainId ? { domainId } : {})), (projectId ? { projectId } : {}));
+    });
+    const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
+    if (shares.some((s) => s.domainId == null))
+        warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
+    return { total, shares, prices, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+}
+/** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */
+function mondayOfYmd(ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    const wd = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - wd);
+    return d.toISOString().slice(0, 10);
 }
 //# sourceMappingURL=groceries.js.map

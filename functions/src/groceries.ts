@@ -109,3 +109,98 @@ export function groceriesText(
   parts.push("\n(Les ingrédients du menu de la semaine s'ajoutent tout seuls dans l'app ; ils ne sont pas listés ici.)");
   return parts.join("\n");
 }
+
+// ── Ticket de caisse lu par Claude (record_receipt, 2026-11-02) ─────────────
+
+export type ReceiptLineInput = {
+  label: string;
+  /** Prix payé pour la ligne, en euros (ex. 3.49). */
+  price: number;
+  domain?: string;
+  projectId?: string;
+  /** Article de la liste de courses que cette ligne couvre (libellé exact de la liste). */
+  listLabel?: string;
+};
+
+export type ReceiptShare = { domainId: string | null; projectId: string | null; amount: number; labels: string[] };
+
+export type ReceiptPlan = {
+  total: number;
+  shares: ReceiptShare[];
+  /** Mot → prix (centimes), pour la mémoire. */
+  prices: Record<string, { price: number; domainId?: string; projectId?: string }>;
+  /** Lignes de la liste couvertes (ids des lignes à la main à retirer). */
+  removeItemIds: string[];
+  /** Clés d'ingrédients du menu à marquer achetés (libellé de la liste, minuscules). */
+  menuKeys: string[];
+  warnings: string[];
+};
+
+function apportionInt(total: number, weights: number[]): number[] {
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (!weights.length) return [];
+  if (sum <= 0) return apportionInt(total, weights.map(() => 1));
+  const raw = weights.map((w) => (total * w) / sum);
+  const out = raw.map((r) => Math.floor(r));
+  let left = total - out.reduce((a, b) => a + b, 0);
+  const order = raw.map((r, i) => [r - out[i], i] as const).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+  for (let k = 0; left > 0; k = (k + 1) % order.length, left--) out[order[k]]++;
+  return out;
+}
+
+/**
+ * Le ticket réparti par (domaine, projet) : chaque ligne garde son prix ; si
+ * le total du ticket diffère de la somme des lignes (remise, arrondi), l'écart
+ * est réparti au prorata. Domaine d'une ligne : celui donné, sinon celui
+ * retenu pour l'article de la liste ou pour le mot, sinon aucun.
+ */
+export function planReceipt(
+  lines: ReceiptLineInput[],
+  totalEuros: number | undefined,
+  ctx: {
+    domains: { id: string; name: string }[];
+    memory: Record<string, GroceryMemoryDoc>;
+    items: Record<string, GroceryItemDoc>;
+  },
+): ReceiptPlan {
+  const warnings: string[] = [];
+  const cents = lines.map((l) => Math.max(0, Math.round((Number(l.price) || 0) * 100)));
+  const sumLines = cents.reduce((a, b) => a + b, 0);
+  const total = totalEuros != null && totalEuros > 0 ? Math.round(totalEuros * 100) : sumLines;
+  if (total !== sumLines) {
+    warnings.push(`Total du ticket ${(total / 100).toFixed(2)} € ≠ somme des lignes ${(sumLines / 100).toFixed(2)} € : l'écart est réparti au prorata.`);
+  }
+  const paid = total === sumLines ? cents : apportionInt(total, cents);
+  const removeItemIds: string[] = [];
+  const menuKeys: string[] = [];
+  const groups = new Map<string, ReceiptShare>();
+  const prices: ReceiptPlan["prices"] = {};
+  lines.forEach((l, i) => {
+    const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel!)) : undefined;
+    const memKey = groceryKey(l.listLabel || l.label);
+    const mem = ctx.memory[memKey] ?? ctx.memory[groceryKey(l.label)] ?? {};
+    let domainId = l.domain ? resolveDomain(l.domain, ctx.domains) : null;
+    if (l.domain && !domainId) warnings.push(`Domaine introuvable pour « ${l.label} » : « ${l.domain} ».`);
+    domainId = domainId ?? listMatch?.[1].domainId ?? mem.domainId ?? null;
+    const projectId = l.projectId ?? listMatch?.[1].projectId ?? mem.projectId ?? null;
+    if (listMatch) removeItemIds.push(listMatch[0]);
+    else if (l.listLabel) menuKeys.push(l.listLabel.trim().toLowerCase());
+    const k = `${domainId ?? ""}|${projectId ?? ""}`;
+    const g = groups.get(k) ?? { domainId, projectId, amount: 0, labels: [] };
+    g.amount += paid[i];
+    g.labels.push(l.listLabel || l.label);
+    groups.set(k, g);
+    prices[memKey] = { price: paid[i], ...(domainId ? { domainId } : {}), ...(projectId ? { projectId } : {}) };
+  });
+  const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
+  if (shares.some((s) => s.domainId == null)) warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
+  return { total, shares, prices, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+}
+
+/** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */
+export function mondayOfYmd(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  const wd = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - wd);
+  return d.toISOString().slice(0, 10);
+}

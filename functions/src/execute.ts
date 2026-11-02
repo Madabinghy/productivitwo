@@ -1,4 +1,4 @@
-import { existingItem, findItems, groceriesText, groceryKey, newGroceryItem, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc } from "./groceries";
+import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
 import { normalizeSplitMoments, splitLabel } from "./routine_split";
 import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
@@ -1321,6 +1321,80 @@ async function executeCheckShoppingItem(
   partial[0].checked = checked;
   await menu.ref.update({ shoppingList: legacy });
   return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} (ancienne liste du menu).`;
+}
+
+/**
+ * record_receipt : un ticket de caisse lu par Claude (photo) → une dépense par
+ * domaine de vie (et projet) dans Finances, avec les vrais prix ; chaque mot
+ * retient son prix exact ; les articles de la liste couverts quittent la liste.
+ * `apply:false` (défaut) = la répartition proposée, rien n'est écrit.
+ */
+async function executeRecordReceipt(
+  uid: string,
+  args: { lines?: ReceiptLineInput[]; total?: number; store?: string; date?: string; envelope?: string; apply?: boolean },
+): Promise<string> {
+  const lines = (args.lines ?? []).filter((l) => l && String(l.label ?? "").trim() && Number(l.price) > 0);
+  if (!lines.length) return "❌ Aucune ligne lisible (label + price en euros).";
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  const [metaSnap, domainsSnap, projectsSnap] = await Promise.all([
+    metaRef.get(),
+    db.collection(`users/${uid}/domains`).get(),
+    db.collection(`users/${uid}/projects`).get(),
+  ]);
+  const meta = (metaSnap.data() ?? {}) as Record<string, any>;
+  const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+  const today = todayParis(new Date(Date.now() - dayStartMin * 60000));
+  const ymd = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : today;
+  if (ymd > today) return `❌ Date dans le futur : ${ymd}.`;
+  const domains = domainsSnap.docs.filter((d) => d.data().deleted !== true).map((d) => ({ id: d.id, name: String(d.data().name ?? "") }));
+  const projects = new Map(projectsSnap.docs.map((d) => [d.id, String(d.data().title ?? "")]));
+  const g = (meta.groceries ?? {}) as { items?: Record<string, GroceryItemDoc>; memory?: Record<string, GroceryMemoryDoc> };
+  const plan = planReceipt(lines, args.total, { domains, memory: g.memory ?? {}, items: g.items ?? {} });
+  const envs = (meta.finances?.envelopes ?? []) as { id: string; name: string }[];
+  const env = (args.envelope ? envs.find((e) => e.name?.toLowerCase() === args.envelope!.toLowerCase())?.id : undefined) ??
+    envs.find((e) => e.id === "courses")?.id ?? envs[0]?.id ?? "courses";
+  const dn = (id: string | null) => (id ? domains.find((d) => d.id === id)?.name ?? "domaine retiré" : "Sans domaine");
+  const eur = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
+  const summary = [
+    `Ticket${args.store ? ` ${args.store}` : ""} du ${ymd} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
+    ...plan.shares.map((s) => `• ${dn(s.domainId)}${s.projectId ? ` · ${projects.get(s.projectId) ?? "projet"}` : ""} : ${eur(s.amount)} (${s.labels.join(", ")})`),
+    ...(plan.removeItemIds.length || plan.menuKeys.length ? [`Liste de courses : ${plan.removeItemIds.length + plan.menuKeys.length} article(s) couvert(s), retirés de la liste.`] : []),
+    ...plan.warnings.map((w) => `⚠️ ${w}`),
+  ].join("\n");
+  if (args.apply !== true) {
+    return `${summary}\n\nRien n'est enregistré : montre cette répartition à l'utilisateur, corrige les domaines s'il le demande, puis rappelle record_receipt avec apply:true.`;
+  }
+  const at = Date.now();
+  const expenses: Record<string, unknown> = {};
+  plan.shares.forEach((s, i) => {
+    if (s.amount <= 0) return;
+    const id = `${at.toString(36)}r${i}`;
+    expenses[id] = {
+      ymd,
+      amount: s.amount,
+      envelopeId: env,
+      note: args.store ? `Courses · ${args.store}` : "Courses",
+      ...(s.domainId ? { domainId: s.domainId } : {}),
+      ...(s.projectId ? { projectId: s.projectId } : {}),
+      items: s.labels,
+      at,
+    };
+  });
+  const memory: Record<string, GroceryMemoryDoc> = {};
+  for (const [k, v] of Object.entries(plan.prices)) memory[k] = { ...(g.memory?.[k] ?? {}), ...v };
+  const items: Record<string, unknown> = {};
+  for (const id of plan.removeItemIds) items[id] = FieldValue.delete();
+  const nothing = ((meta.finances?.nothing ?? []) as string[]).filter((d) => d !== ymd);
+  const patch: Record<string, unknown> = {
+    finances: { expenses, ...(nothing.length !== (meta.finances?.nothing ?? []).length ? { nothing } : {}) },
+    groceries: {
+      memory,
+      ...(plan.removeItemIds.length ? { items } : {}),
+      ...(plan.menuKeys.length ? { bought: { [mondayOfYmd(ymd)]: FieldValue.arrayUnion(...plan.menuKeys) } } : {}),
+    },
+  };
+  await metaRef.set(patch, { merge: true });
+  return `✅ Enregistré : ${Object.keys(expenses).length} dépense(s) dans Finances.\n${summary}`;
 }
 
 async function executeGetArchives(uid: string): Promise<string> {
@@ -5069,7 +5143,7 @@ export {
   executeSaveDocument,
   executeGetDocuments,
   executeGetArchives,
-  executeGetShoppingList,
+  executeGetShoppingList, executeRecordReceipt,
   executeAddShoppingItem,
   executeCheckShoppingItem,
   executeRestoreItem,

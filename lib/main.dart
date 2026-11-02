@@ -1874,8 +1874,15 @@ class _AppRootState extends State<AppRoot>
         logic.meals = parseMeals(m['meals']);
       }
       if (!sameFinances) {
+        final firstFinances = _financesJson.isEmpty;
         _financesJson = financesJson;
-        logic.finances = parseFinances(m['finances']);
+        final next = parseFinances(m['finances']);
+        // Premier chargement : rien à cocher (les jours déjà suivis l'ont été).
+        if (firstFinances || firstMeta) {
+          logic.finances = next;
+        } else {
+          logic.onFinancesFromServer(next);
+        }
       }
       if (!sameGroceries) {
         _groceriesJson = groceriesJson;
