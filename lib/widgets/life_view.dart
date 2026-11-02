@@ -25,6 +25,8 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBad
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
+import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, showFinanceSheet;
+import 'package:productivitwo_v1/utils/finances.dart' show euros, monthSummary, trackedDays;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
@@ -42,6 +44,7 @@ const _natureColors = {
   DomainNature.night: _kNight,
   DomainNature.sessions: Color(0xFFF07C4C),
   DomainNature.meals: Color(0xFF7CC96A),
+  DomainNature.money: kMoneyAccent,
 };
 const _kNaturesPref = 'life_natures';
 
@@ -309,7 +312,7 @@ class _LifeViewState extends State<LifeView> {
     }
     final behind = [
       for (final d in st.activeDomains)
-        if (weeks[d.id] case final r? when r.hasGoal && !r.resting && r.expectedMin > 0 && r.doneMin < r.expectedMin * .7 && !{DomainNature.night, DomainNature.meals}.contains(natures[d.id]))
+        if (weeks[d.id] case final r? when r.hasGoal && !r.resting && r.expectedMin > 0 && r.doneMin < r.expectedMin * .7 && !{DomainNature.night, DomainNature.meals, DomainNature.money}.contains(natures[d.id]))
           d.name,
     ];
     return lifeSentence(kept: w.kept, engagements: w.engagements.length, sleepAvgMin: sleepAvg, sleepTargetMin: target, sportSessions: sport, behindDomains: behind);
@@ -417,6 +420,21 @@ class _LifeViewState extends State<LifeView> {
         value = v.counted == 0 ? 'Repas' : '${v.balanced} / ${v.counted}';
         sub = next != null ? '${moment == 'midi' ? 'ce midi' : 'ce soir'} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');
         onTap = () => showMealSheet(context, logic: logic, sync: widget.sync);
+      case DomainNature.money:
+        final f = logic.finances;
+        final today = logic.livedTodayYmd;
+        final m = monthSummary(f, today);
+        final t = DateTime.parse(today);
+        final from = ymdOf(DateTime(t.year, t.month, t.day - 89));
+        final tracked = trackedDays(f).where((y) => y.compareTo(from) >= 0 && y.compareTo(today) <= 0).length;
+        eyebrow = 'FINANCES';
+        value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
+        sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · $tracked / 90 suivis' : 'note tes dépenses, jour après jour');
+        viz = ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(value: tracked / 90, minHeight: 4, color: c, backgroundColor: cs.onSurface.withValues(alpha: .08)),
+        );
+        onTap = () => showFinanceSheet(context, logic: logic);
       case DomainNature.work:
       case DomainNature.practice:
       case DomainNature.tracking:
