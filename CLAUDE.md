@@ -1378,7 +1378,7 @@ bronze → argent → or répartis, le dernier palier toujours légendaire : 5 p
 via `BadgePainter.paintSymbol` sur le fond de sa famille `familyArtColor` / `familyInkColor`, nom en petit sur deux lignes (en entier), points des paliers, jauge ambre
 « ce soir ? », dos rayé « ? » + indice, pastille NOUVEAU). Galerie (`badge_gallery_screen.dart`) : en-tête album « k / n cartes ·
 x or · paliers » + barre, trois cartes par rangée par famille (`albumOrder`) ; EN JEU AUJOURD'HUI et À PORTÉE tiennent dans UN bouton compact (`_inPlayButton` : mini cartes, « n à tenir · il manque k choses · m à portée ») qui ouvre leur feuille (mini cartes) ; la section EN CHASSE de l'album est retirée (2026-11-01, retour user ; les chasses vivent dans la Saison) ; fiche d'un badge : la carte en tête et « les paliers
-= les cadres » (`_CardLadder`). `BadgeView` (écusson) reste pour les petites tailles (lignes, tuiles).
+= les cadres » (`_CardLadder` : jamais de « … », paliers courts `_shortTier` 1k / 2,5k / 10k et texte réduit pour tenir dans la case, 2026-11-02). `BadgeView` (écusson) reste pour les petites tailles (lignes, tuiles).
 **Lot 2 livré (une carte tombe)** : `newCards(deck, seen)` / `seenOf` / `newCardLine` (« Nouvelle carte » · « Passe en argent » ·
 « Palier 7 j ») ; paliers vus par badge sur l'appareil (`lib/card_seen_store.dart`, `CardSeenStore`, SharedPreferences
 `badge_cards_seen` ; premier passage = tout ce qui est gagné compte vu, pas d'avalanche). `widgets/card_reveal.dart` :
