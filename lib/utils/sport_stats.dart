@@ -86,7 +86,10 @@ class SportDay {
   final Map<String, int> minutes; // activité de séance → minutes (tous chronos)
   final List<String> sessionIds; // activités ou routines qui font une séance ce jour
   final Map<String, int> reps; // routine de répétitions → nombre
-  const SportDay(this.ymd, this.minutes, this.sessionIds, this.reps);
+  /// Routine de séance → coches du jour, même quand un chrono de séance couvre
+  /// déjà le jour (pour les engagements : Footing coché = 1 / 3).
+  final Map<String, int> routineHits;
+  const SportDay(this.ymd, this.minutes, this.sessionIds, this.reps, [this.routineHits = const {}]);
 
   int get sessions => sessionIds.length;
   bool get isRest => sessionIds.isEmpty;
@@ -148,7 +151,7 @@ List<SportDay> sportDays({
       final covered = linked != null ? chrono.contains(linked) : chrono.isNotEmpty;
       if (!covered) ids.add(e.key);
     }
-    out.add(SportDay(ymd, m, ids, reps[ymd] ?? const {}));
+    out.add(SportDay(ymd, m, ids, reps[ymd] ?? const {}, routineHits[ymd] ?? const {}));
   }
   return out;
 }
@@ -300,7 +303,7 @@ List<SportCommitment> sportCommitments(SportPick pick, List<StrategicObjective> 
     for (final e in time.entries)
       SportCommitment(pick.byId[e.key]!, e.value, week.fold(0, (s, d) => s + (d.minutes[e.key] ?? 0)), true),
     for (final e in routine.entries)
-      SportCommitment(pick.byId[e.key]!, e.value, week.fold(0, (s, d) => s + (d.sessionIds.contains(e.key) ? 1 : 0)), false),
+      SportCommitment(pick.byId[e.key]!, e.value, week.fold(0, (s, d) => s + (d.routineHits[e.key] ?? 0)), false),
   ];
 }
 

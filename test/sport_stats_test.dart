@@ -53,6 +53,12 @@ void main() {
     expect(reps.single.week, 15);
     expect(reps.single.weekTarget, 140);
     expect(reps.single.record, 15);
+    // Engagement « Footing 3 / semaine » : le lundi couvert par Courir compte quand même.
+    final obj = StrategicObjective(id: 'o', title: 'Atteindre 90kg', routineCommitments: [ObjectiveRoutineCommitment(activityId: 'footing')]);
+    final week = days.where((d) => d.ymd.compareTo('2026-10-26') >= 0).toList();
+    final c = sportCommitments(pick, [obj], week).single;
+    expect(c.done, 2);
+    expect(c.target, 3);
   });
 
   test('baisse sur 4 semaines et lendemains', () {
