@@ -1438,7 +1438,7 @@ l'ouverture de la collection seulement.
 Le cumul, sans série ni journée : chaque minute de chrono et chaque coche en plus de la cible comptent, rien ne se perd. Logique pure
 `utils/long_haul.dart` (`longHaulBadges`, appelé par `computeBadges`) : `heures-<activité>` (famille Temps investi, paliers
 `kActivityHourTiers` 5 · 20 · 50 · 100 · 250 · 500 · 1 000 · 10 000 h, dès 1 h), `heures-total` « Le chemin des 10 000 h » (`kTotalHourTiers`
-100 → 10 000 h, dès 1 h), `fois-<routine>` (famille Actions, `kRoutineCountTiers` 10 · 50 · 100 · 250 · 500 · 1 000 coches, dès 3, dessin du
+1 000 · 5 000 · 10 000 · 25 000 · 50 000 h, dès 1 h), `heures-annee` « L'année 2026 » (depuis le 1er janvier, `kYearHourTiers` 100 → 2 500 h ; sommeil, sieste et repas exclus — `isBasicNeedName`), `fois-<routine>` (famille Actions, `kRoutineCountTiers` 10 · 50 · 100 · 250 · 500 · 1 000 coches, dès 3, dessin du
 catalogue si la routine en a un). Hors du « n sur N » (`BadgeDeck.counted`) et des « Famille au complet » (`isLongHaulId`) ; dans l'album,
 la récolte du matin et les retournements comme les autres. Un +1 au-delà de la cible dit « +1 bonus · n fois au total · palier … dans k »
 (`routinePlusLabel`). Textes `badge_texts.dart`.

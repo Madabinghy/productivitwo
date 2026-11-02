@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
@@ -9,7 +10,9 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 ///  - `heures-total` : toutes les heures chronométrées (le chemin des 10 000 h) ;
 ///  - `fois-<routine>` : nombre total de coches d'une routine.
 const kActivityHourTiers = [5, 20, 50, 100, 250, 500, 1000, 10000];
-const kTotalHourTiers = [100, 500, 1000, 2500, 5000, 10000];
+const kTotalHourTiers = [1000, 5000, 10000, 25000, 50000];
+/// L'année en cours (repart chaque 1er janvier) : 6 h par jour ≈ 2 200 h.
+const kYearHourTiers = [100, 500, 1000, 1500, 2000, 2500];
 const kRoutineCountTiers = [10, 50, 100, 250, 500, 1000];
 
 /// Une carte apparaît dès 1 h (activité) ou 3 coches (routine) : pas d'album
@@ -54,7 +57,8 @@ List<BadgeState> longHaulBadges({
   int lv(List<int> tiers, num v) => tiers.where((t) => v >= t).length;
   String h(double v) => '${v.toStringAsFixed(v < 10 ? 1 : 0).replaceAll('.', ',')} h';
 
-  final times = activities.where((a) => !a.deleted && !a.isHabit).toList()
+  // Sommeil, sieste et repas : des besoins de base, pas du temps investi (le sommeil seul ferait ~2 900 h par an).
+  final times = activities.where((a) => !a.deleted && !a.isHabit && !isBasicNeedName(a.name)).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   for (final a in times) {
     final list = byAct[a.id] ?? const <Session>[];
@@ -77,6 +81,24 @@ List<BadgeState> longHaulBadges({
   final all = [for (final a in times) ...?byAct[a.id]];
   final total = all.fold<int>(0, (s, x) => s + minutesOf(x)) / 60;
   if (total < kLongHaulMinHours) return [...out, ..._routineCounts(activities, habitHits)];
+  // L'année en cours : les sessions depuis le 1er janvier.
+  final jan1 = DateTime(now.year);
+  final year = [for (final x in all) if (!x.startAt.isBefore(jan1)) x];
+  final yHours = year.fold<int>(0, (s, x) => s + minutesOf(x)) / 60;
+  if (yHours >= kLongHaulMinHours) {
+    final yLevel = lv(kYearHourTiers, yHours);
+    final yNext = yLevel < kYearHourTiers.length ? kYearHourTiers[yLevel] : null;
+    out.add(BadgeState(
+      def: BadgeDef(id: 'heures-annee', family: BadgeFamily.time, name: 'L’année ${now.year}', symbol: 'season', tiers: kYearHourTiers, unit: 'h', unitLong: 'heures'),
+      level: yLevel,
+      value: double.parse(yHours.toStringAsFixed(1)),
+      tierDates: hourDates(year, kYearHourTiers),
+      facts: [
+        ('Heures cette année', h(yHours)),
+        if (yNext != null) ('Prochain palier', '${fmtInt(yNext)} h · encore ${h(yNext - yHours)}'),
+      ],
+    ));
+  }
   final tLevel = lv(kTotalHourTiers, total);
   final tNext = tLevel < kTotalHourTiers.length ? kTotalHourTiers[tLevel] : null;
   out.add(BadgeState(

@@ -17,8 +17,12 @@ void main() {
     expect(h.level, 1);
     expect(h.tierDates.first, DateTime(2026, 10, 24));
     expect(out.any((b) => b.def.id == 'heures-total'), isTrue);
+    expect(out.firstWhere((b) => b.def.id == 'heures-annee').value, 6.0);
     final f = out.firstWhere((b) => b.def.id == 'fois-${vaisselle.id}');
     expect(f.value, 12);
     expect(f.level, 1);
+    final sommeil = Activity(name: 'Sommeil', domainId: 'd');
+    final out2 = longHaulBadges(activities: [sommeil], habitHits: const [], sessions: [Session(activityId: sommeil.id, startAt: DateTime(2026, 10, 30, 23), endAt: DateTime(2026, 10, 31, 7))], now: now);
+    expect(out2, isEmpty);
   });
 }

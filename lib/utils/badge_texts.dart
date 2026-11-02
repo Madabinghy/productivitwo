@@ -14,7 +14,14 @@
     return (
       what: 'Toutes les heures que tu as chronométrées, toutes activités confondues : le chemin des 10 000 heures.',
       how: 'Chaque minute de chrono compte, même une fois tes enjeux du jour gagnés : rien ne se perd, rien ne se remet à zéro. '
-          'Paliers : 100, 500, 1 000, 2 500, 5 000 et 10 000 heures.',
+          'Paliers : 1 000, 5 000, 10 000, 25 000 et 50 000 heures.',
+    );
+  }
+  if (id == 'heures-annee') {
+    return (
+      what: 'Toutes les heures chronométrées depuis le 1er janvier, toutes activités confondues.',
+      how: 'Chaque minute de chrono compte ; la carte repart chaque 1er janvier, les paliers atteints restent dans ta récolte. '
+          'Paliers : 100, 500, 1 000, 1 500, 2 000 et 2 500 heures.',
     );
   }
   if (id.startsWith('heures-')) {
