@@ -893,6 +893,15 @@ d'une portion). `Expense` porte `domainId?`, `projectId?`, `items`. Stockage `da
 `AppLogic` : `groceries`, `addGrocery` (pas de doublon hors panier), `updateGrocery`, `removeGrocery`, `setGroceryInBasket`,
 `addGroceryStore`, `checkoutGroceries` (une dépense par part, lignes à la main achetées retirées, prix retenus) ; `logExpense(domainId:,
 projectId:, items:)`.
+**Lot 2 livré (la liste)** : `widgets/groceries_sheet.dart` — `showGroceriesSheet` (accent `kGroceryAccent`) : « n à prendre », champ
+« Ajouter… » (mot déjà retenu avec un domaine = ajout direct + SnackBar « Modifier », sinon l'éditeur), bandeau « Du menu de la semaine
+· n ingrédients », sections par endroit (`rowsByStore`), ligne = case (tap = panier ; ingrédient du menu → `meals.shopping.checked` de la
+semaine, comme avant), pastille du domaine, « pour Bolognaise » / nom du domaine, étiquettes menu · projet · via Claude, quantité ;
+appui long = éditeur, glisser = retirer (« Annuler ») ; DANS LE PANIER replié. `showGroceryEditor` : libellé, quantité, POUR QUEL
+DOMAINE ?, POUR UN PROJET ? (actifs, choisir un projet pose son domaine), OÙ ÇA S'ACHÈTE ? (+ un endroit). Logique pure `groceryRows`
+(menu + à la main, un mot du menu n'est montré qu'une fois ; domaine d'un ingrédient = retenu, sinon `menuDomainOf` : routine Repas
+équilibré · Cuisiner · « Santé »), `checkoutLinesOf`. La feuille Repas et « Les repas de la semaine » ouvrent désormais cette liste
+(l'ancienne `ShoppingSheet` reste dans `meal_week_sheet.dart`, plus appelée).
 
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 

@@ -10,7 +10,8 @@ import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent, showDishesSheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
-import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet, showShoppingSheet;
+import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
+import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
 
 const _kAmber = Color(0xFFF0B44C);
@@ -267,7 +268,7 @@ class _MealSheetState extends State<MealSheet> {
           Wrap(alignment: WrapAlignment.spaceBetween, children: [
             TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync), child: const Text('Mes plats ›')),
             TextButton(
-              onPressed: () => showShoppingSheet(context, logic: logic, sync: widget.sync, monday: monday, recipes: _all),
+              onPressed: () => showGroceriesSheet(context, logic: logic, sync: widget.sync),
               child: Text('Liste de courses${toBuy > 0 ? ' · $toBuy' : ''}'),
             ),
           ]),
