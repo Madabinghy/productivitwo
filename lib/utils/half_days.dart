@@ -168,6 +168,7 @@ HalfDays metronomeDays({
   required Map<String, Set<String>> reachedDaysByRoutine,
   Set<String> Function(Activity a)? frozenOf,
   Map<String, Acquired> acquired = const {},
+  Set<String> Function(String ymd)? excusedOf,
 }) {
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList();
   return halfDaysFrom([
@@ -179,6 +180,7 @@ HalfDays metronomeDays({
           if (_day(a.createdAt).isAfter(d)) continue;
           if (isAcquiredOn(acquired, a.id, ymd)) continue;
           if (frozenOf != null && frozenOf(a).contains(ymd)) continue;
+          if (excusedOf?.call(ymd).contains(a.id) ?? false) continue;
           due++;
           if (reachedDaysByRoutine[a.id]?.contains(ymd) ?? false) reached++;
         }

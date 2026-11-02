@@ -22,6 +22,8 @@ TodayFacts composeTodayFacts({
   DailySchedule? schedule,
   PendingChain? pendingChain,
   Map<String, Acquired> acquired = const {},
+  /// Routines écartées « pas aujourd'hui » : plus réclamées (journée parfaite, Métronome).
+  Set<String> excused = const {},
   Set<String> restingDomainIds = const {},
   /// Jours en veille d'une activité : ne réclament rien dans la fenêtre de Montre suisse.
   Set<String> Function(Activity a)? frozenOf,
@@ -33,6 +35,7 @@ TodayFacts composeTodayFacts({
     if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
     if (a.createdAt.isAfter(now)) continue;
     if (isAcquiredOn(acquired, a.id, ymd)) continue; // acquise : plus réclamée
+    if (excused.contains(a.id)) continue; // « pas aujourd'hui » : plus réclamée
     final t = a.habitTarget ?? 1;
     final done = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(dayStart)).length;
     routines.add(RoutineToday(a, done, t <= 0 ? 1 : t));
