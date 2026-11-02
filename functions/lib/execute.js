@@ -33,6 +33,7 @@ exports.executeSaveDocument = executeSaveDocument;
 exports.executeGetDocuments = executeGetDocuments;
 exports.executeGetArchives = executeGetArchives;
 exports.executeGetShoppingList = executeGetShoppingList;
+exports.executeRecordReceipt = executeRecordReceipt;
 exports.executeAddShoppingItem = executeAddShoppingItem;
 exports.executeCheckShoppingItem = executeCheckShoppingItem;
 exports.executeRestoreItem = executeRestoreItem;
@@ -1181,6 +1182,68 @@ async function executeCheckShoppingItem(uid, label, checked) {
     partial[0].checked = checked;
     await menu.ref.update({ shoppingList: legacy });
     return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} (ancienne liste du menu).`;
+}
+/**
+ * record_receipt : un ticket de caisse lu par Claude (photo) → une dépense par
+ * domaine de vie (et projet) dans Finances, avec les vrais prix ; chaque mot
+ * retient son prix exact ; les articles de la liste couverts quittent la liste.
+ * `apply:false` (défaut) = la répartition proposée, rien n'est écrit.
+ */
+async function executeRecordReceipt(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+    const lines = ((_a = args.lines) !== null && _a !== void 0 ? _a : []).filter((l) => { var _a; return l && String((_a = l.label) !== null && _a !== void 0 ? _a : "").trim() && Number(l.price) > 0; });
+    if (!lines.length)
+        return "❌ Aucune ligne lisible (label + price en euros).";
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const [metaSnap, domainsSnap, projectsSnap] = await Promise.all([
+        metaRef.get(),
+        db_1.db.collection(`users/${uid}/domains`).get(),
+        db_1.db.collection(`users/${uid}/projects`).get(),
+    ]);
+    const meta = ((_b = metaSnap.data()) !== null && _b !== void 0 ? _b : {});
+    const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+    const today = (0, push_rules_1.todayParis)(new Date(Date.now() - dayStartMin * 60000));
+    const ymd = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : today;
+    if (ymd > today)
+        return `❌ Date dans le futur : ${ymd}.`;
+    const domains = domainsSnap.docs.filter((d) => d.data().deleted !== true).map((d) => { var _a; return ({ id: d.id, name: String((_a = d.data().name) !== null && _a !== void 0 ? _a : "") }); });
+    const projects = new Map(projectsSnap.docs.map((d) => { var _a; return [d.id, String((_a = d.data().title) !== null && _a !== void 0 ? _a : "")]; }));
+    const g = ((_c = meta.groceries) !== null && _c !== void 0 ? _c : {});
+    const plan = (0, groceries_1.planReceipt)(lines, args.total, { domains, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {}, items: (_e = g.items) !== null && _e !== void 0 ? _e : {} });
+    const envs = ((_g = (_f = meta.finances) === null || _f === void 0 ? void 0 : _f.envelopes) !== null && _g !== void 0 ? _g : []);
+    const env = (_p = (_m = (_j = (args.envelope ? (_h = envs.find((e) => { var _a; return ((_a = e.name) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === args.envelope.toLowerCase(); })) === null || _h === void 0 ? void 0 : _h.id : undefined)) !== null && _j !== void 0 ? _j : (_l = envs.find((e) => e.id === "courses")) === null || _l === void 0 ? void 0 : _l.id) !== null && _m !== void 0 ? _m : (_o = envs[0]) === null || _o === void 0 ? void 0 : _o.id) !== null && _p !== void 0 ? _p : "courses";
+    const dn = (id) => { var _a, _b; return (id ? (_b = (_a = domains.find((d) => d.id === id)) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : "domaine retiré" : "Sans domaine"); };
+    const eur = (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
+    const summary = [
+        `Ticket${args.store ? ` ${args.store}` : ""} du ${ymd} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
+        ...plan.shares.map((s) => { var _a; return `• ${dn(s.domainId)}${s.projectId ? ` · ${(_a = projects.get(s.projectId)) !== null && _a !== void 0 ? _a : "projet"}` : ""} : ${eur(s.amount)} (${s.labels.join(", ")})`; }),
+        ...(plan.removeItemIds.length || plan.menuKeys.length ? [`Liste de courses : ${plan.removeItemIds.length + plan.menuKeys.length} article(s) couvert(s), retirés de la liste.`] : []),
+        ...plan.warnings.map((w) => `⚠️ ${w}`),
+    ].join("\n");
+    if (args.apply !== true) {
+        return `${summary}\n\nRien n'est enregistré : montre cette répartition à l'utilisateur, corrige les domaines s'il le demande, puis rappelle record_receipt avec apply:true.`;
+    }
+    const at = Date.now();
+    const expenses = {};
+    plan.shares.forEach((s, i) => {
+        if (s.amount <= 0)
+            return;
+        const id = `${at.toString(36)}r${i}`;
+        expenses[id] = Object.assign(Object.assign(Object.assign({ ymd, amount: s.amount, envelopeId: env, note: args.store ? `Courses · ${args.store}` : "Courses" }, (s.domainId ? { domainId: s.domainId } : {})), (s.projectId ? { projectId: s.projectId } : {})), { items: s.labels, at });
+    });
+    const memory = {};
+    for (const [k, v] of Object.entries(plan.prices))
+        memory[k] = Object.assign(Object.assign({}, ((_r = (_q = g.memory) === null || _q === void 0 ? void 0 : _q[k]) !== null && _r !== void 0 ? _r : {})), v);
+    const items = {};
+    for (const id of plan.removeItemIds)
+        items[id] = db_1.FieldValue.delete();
+    const nothing = ((_t = (_s = meta.finances) === null || _s === void 0 ? void 0 : _s.nothing) !== null && _t !== void 0 ? _t : []).filter((d) => d !== ymd);
+    const patch = {
+        finances: Object.assign({ expenses }, (nothing.length !== ((_v = (_u = meta.finances) === null || _u === void 0 ? void 0 : _u.nothing) !== null && _v !== void 0 ? _v : []).length ? { nothing } : {})),
+        groceries: Object.assign(Object.assign({ memory }, (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
+    };
+    await metaRef.set(patch, { merge: true });
+    return `✅ Enregistré : ${Object.keys(expenses).length} dépense(s) dans Finances.\n${summary}`;
 }
 async function executeGetArchives(uid) {
     const [domainsSnap, activitiesSnap] = await Promise.all([

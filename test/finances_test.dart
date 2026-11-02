@@ -114,4 +114,15 @@ void main() {
     expect(gapIsZero(-99), isTrue);
     expect(gapIsZero(-100), isFalse);
   });
+
+  test('un ticket enregistré par Claude (serveur) coche aussi la routine', () {
+    final r = Activity(id: 'b', domainId: 'd', name: 'Suivre mon budget', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 1, 1));
+    final st = AppState(domains: [], activities: [r], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final today = logic.livedTodayYmd;
+    logic.onFinancesFromServer(const Finances().copyWith(expenses: {'x': Expense(id: 'x', ymd: today, amount: 100, envelopeId: 'courses')}));
+    expect(st.habitHits.where((h) => h.habitId == 'b').length, 1);
+    logic.onFinancesFromServer(logic.finances);
+    expect(st.habitHits.where((h) => h.habitId == 'b').length, 1);
+  });
 }

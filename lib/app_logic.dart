@@ -1841,6 +1841,17 @@ class AppLogic implements HuntStore {
     onChange();
   }
 
+  /// Finances relues depuis le serveur (un ticket enregistré par Claude…) :
+  /// un jour devenu suivi (aujourd'hui ou hier) coche aussi la routine.
+  void onFinancesFromServer(Finances next) {
+    final before = trackedDays(finances);
+    finances = next;
+    final today = livedTodayYmd;
+    for (final d in [today, prevYmd(today)]) {
+      if (!before.contains(d) && isTracked(next, d)) _countTrackedDay(d);
+    }
+  }
+
   /// Note une dépense (aujourd'hui par défaut, ou hier) ; renvoie son id, null si refusée.
   Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd, String? domainId, String? projectId, List<String> items = const []}) async {
     final day = ymd ?? livedTodayYmd;
