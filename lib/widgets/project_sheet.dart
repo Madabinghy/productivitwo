@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -933,6 +934,26 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     await _sync.patchActionOf(_project, a);
   }
 
+  /// Ajout en place depuis la tâche dépliée (2026-11-02, retour user) :
+  /// titre seul, estimation par défaut d'après le verbe ; « Annuler » le retire.
+  Future<void> _addActionTo(ProjectTask task, String title) async {
+    final a = TaskAction(title: title, estimatedMin: defaultEstimateFor(title));
+    setState(() => task.actions.add(a));
+    await _sync.saveProjectTasks(_project.id, _project.tasks);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+      content: Text('Action ajoutée · ${task.title}'),
+      duration: const Duration(seconds: 4),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () async {
+          setState(() => task.actions.remove(a));
+          await _sync.saveProjectTasks(_project.id, _project.tasks);
+        },
+      ),
+    ));
+  }
+
   Future<void> _setStep(TaskAction a, ChecklistItem c, bool done) async {
     setState(() => setChecklistItem(a, c.id, done));
     await _sync.patchActionOf(_project, a);
@@ -954,6 +975,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
       onActionDone: _setActionDone,
       onStep: _setStep,
       onLaunchSession: _sessionLauncher(task),
+      onAddAction: task.status == 'done' ? null : (title) => _addActionTo(task, title),
     );
   }
 
