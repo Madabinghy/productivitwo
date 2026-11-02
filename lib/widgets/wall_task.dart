@@ -26,6 +26,8 @@ class WallTask extends StatefulWidget {
   final Future<void> Function(TaskAction a, ChecklistItem c, bool done) onStep;
   /// Jalon d'une séance : ouvre l'écran « séance en cours ».
   final VoidCallback? onLaunchSession;
+  /// Ajout d'une action en place, sous les actions de la tâche dépliée (2026-11-02).
+  final Future<void> Function(String title)? onAddAction;
 
   const WallTask({
     super.key,
@@ -41,6 +43,7 @@ class WallTask extends StatefulWidget {
     required this.onActionDone,
     required this.onStep,
     this.onLaunchSession,
+    this.onAddAction,
   });
 
   @override
@@ -52,6 +55,21 @@ class _WallTaskState extends State<WallTask> {
   final _openActions = <String>{};
   /// Actions faites masquées par défaut (prioriser l'action) ; « n faites » les montre.
   bool _showDoneActions = false;
+  final _add = TextEditingController();
+
+  @override
+  void dispose() {
+    _add.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitAdd() async {
+    final title = _add.text.trim();
+    if (title.isEmpty || widget.onAddAction == null) return;
+    _add.clear();
+    await widget.onAddAction!(title);
+    if (mounted) setState(() {});
+  }
 
   ProjectTask get t => widget.task;
 
@@ -102,7 +120,7 @@ class _WallTaskState extends State<WallTask> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: hasActions ? () => setState(() => _open = !_open) : widget.onOpenFiche,
+          onTap: hasActions || widget.onAddAction != null ? () => setState(() => _open = !_open) : widget.onOpenFiche,
           onLongPress: widget.onOpenFiche,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
@@ -167,7 +185,7 @@ class _WallTaskState extends State<WallTask> {
             ]),
           ),
         ),
-        if (_open && hasActions)
+        if (_open && (hasActions || widget.onAddAction != null))
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 10, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -191,6 +209,31 @@ class _WallTaskState extends State<WallTask> {
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .5)),
                         ),
                       ]),
+                    ),
+                  ),
+                ),
+              if (widget.onAddAction != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 2),
+                  child: TextField(
+                    controller: _add,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submitAdd(),
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      prefixIcon: Icon(Icons.add_rounded, size: 18, color: kPalierGreen),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 30),
+                      hintText: 'Ajouter une action',
+                      hintStyle: TextStyle(fontSize: 14, color: cs.onSurface.withValues(alpha: .45)),
+                      suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _add,
+                        builder: (_, v, __) => v.text.trim().isEmpty
+                            ? const SizedBox.shrink()
+                            : IconButton(icon: Icon(Icons.check_rounded, color: kPalierGreen), onPressed: _submitAdd),
+                      ),
                     ),
                   ),
                 ),
