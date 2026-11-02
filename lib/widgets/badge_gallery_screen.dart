@@ -1080,6 +1080,13 @@ Future<({int tier, DateTime? date})?> _pickHunt(BuildContext ctx, BadgeState b) 
 
 
 /// « Les paliers = les cadres » : chaque palier et la rareté qu'il donne.
+/// Palier court pour tenir dans sa case sans « … » : 1 000 → 1k, 2 500 → 2,5k.
+String _shortTier(int t) {
+  if (t < 1000) return fmtInt(t);
+  final k = t / 1000;
+  return '${k == k.roundToDouble() ? k.round() : k.toStringAsFixed(1).replaceAll('.', ',')}k';
+}
+
 class _CardLadder extends StatelessWidget {
   final BadgeState state;
   const _CardLadder({required this.state});
@@ -1101,8 +1108,8 @@ class _CardLadder extends StatelessWidget {
               border: i == state.level - 1 ? Border.all(color: rarityInk(ladder[i]), width: 2) : null,
             ),
             child: Column(children: [
-              Text('${fmtInt(d.tiers[i])}$unit', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i < state.level ? Colors.white : kBText3)),
-              Text(rarityLabel(ladder[i]).toLowerCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: i < state.level ? rarityInk(ladder[i]) : kBText4)),
+              FittedBox(fit: BoxFit.scaleDown, child: Text('${_shortTier(d.tiers[i])}$unit', maxLines: 1, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i < state.level ? Colors.white : kBText3))),
+              FittedBox(fit: BoxFit.scaleDown, child: Text(rarityLabel(ladder[i]).toLowerCase(), maxLines: 1, style: TextStyle(fontSize: 10, color: i < state.level ? rarityInk(ladder[i]) : kBText4))),
             ]),
           ),
         ),
