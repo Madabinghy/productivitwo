@@ -38,7 +38,29 @@ class StripPiece {
 
 class ProgramTile extends DashTile {
   final List<StripPiece> strip;
-  const ProgramTile({required super.value, required super.sub, required this.strip}) : super(label: 'PROGRAMME');
+  /// Trait rouge « maintenant » sur la bande (2026-11-02) : position 0..1, null
+  /// avant le premier bloc ou après le dernier. Même pondération que la bande.
+  final double? nowAt;
+  const ProgramTile({required super.value, required super.sub, required this.strip, this.nowAt}) : super(label: 'PROGRAMME');
+}
+
+/// Poids d'un bloc sur la bande (le widget utilise le même).
+int stripWeight(int durationMin) => durationMin.clamp(5, 600);
+
+/// Position du trait « maintenant » sur la bande, entre 0 et 1.
+double? stripNowAt(List<ScheduleBlock> sorted, int nowMin) {
+  if (sorted.isEmpty) return null;
+  final total = sorted.fold<int>(0, (s, b) => s + stripWeight(b.durationMin));
+  if (total <= 0 || nowMin < blockStartMin(sorted.first)) return null;
+  var cum = 0.0;
+  for (final b in sorted) {
+    final s = blockStartMin(b);
+    final w = stripWeight(b.durationMin);
+    if (nowMin < s) return cum / total;
+    if (nowMin < s + b.durationMin) return (cum + w * (nowMin - s) / (b.durationMin <= 0 ? 1 : b.durationMin)) / total;
+    cum += w;
+  }
+  return null;
 }
 
 String _hm(int min) {
@@ -70,6 +92,7 @@ ProgramTile? programTile(List<ScheduleBlock> blocks, int nowMin) {
     value: '${live.length} bloc${live.length > 1 ? 's' : ''} · $done fait${done > 1 ? 's' : ''}',
     sub: parts.isEmpty ? 'plus rien de prévu aujourd’hui' : parts.join(' · '),
     strip: strip,
+    nowAt: stripNowAt(live, nowMin),
   );
 }
 
