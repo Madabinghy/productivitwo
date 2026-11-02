@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/long_haul.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
@@ -8,7 +10,7 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBad
 /// Les cartes qu'une activité ou une routine fait avancer (2026-11-02, retour
 /// user : voir la progression vers le prochain gain hors de l'album) : sa
 /// série, son compteur, ses heures, l'année et le chemin des 10 000 h.
-List<BadgeState> gainsFor(BadgeDeck deck, String activityId, {bool time = true}) {
+List<BadgeState> gainsFor(BadgeDeck deck, String activityId, {bool time = true, AppState? state}) {
   final ids = [
     'serie-$activityId',
     'fois-$activityId',
@@ -16,7 +18,13 @@ List<BadgeState> gainsFor(BadgeDeck deck, String activityId, {bool time = true})
     if (time) 'heures-annee',
     if (time) 'heures-total',
   ];
-  return [for (final id in ids) if (deck.byId(id) case final b?) b];
+  // Compteurs recalculés EN DIRECT depuis les sessions et coches en mémoire
+  // (retour user 2026-11-02 : « 152,4 » ne bougeait qu'à la relance de l'app,
+  // le deck n'étant recalculé que de temps en temps). La série reste au deck.
+  final live = state == null
+      ? const <String, BadgeState>{}
+      : {for (final b in longHaulBadges(activities: state.activities, habitHits: state.habitHits, sessions: state.sessions, now: DateTime.now())) b.def.id: b};
+  return [for (final id in ids) if (live[id] ?? deck.byId(id) case final b?) b];
 }
 
 String _label(BadgeState b) {
@@ -84,13 +92,14 @@ class GainsSection extends StatelessWidget {
   final String activityId;
   final bool time;
   final Widget Function(BuildContext)? title;
-  const GainsSection({super.key, required this.activityId, this.time = true, this.title});
+  final AppState? state;
+  const GainsSection({super.key, required this.activityId, this.time = true, this.title, this.state});
 
   @override
   Widget build(BuildContext context) {
     final deck = WidgetService.badges?.deck;
     if (deck == null) return const SizedBox.shrink();
-    final gains = gainsFor(deck, activityId, time: time);
+    final gains = gainsFor(deck, activityId, time: time, state: state);
     if (gains.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (title != null) title!(context),

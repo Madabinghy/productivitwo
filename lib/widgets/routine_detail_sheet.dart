@@ -293,6 +293,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
             GainsSection(
               activityId: act.id,
               time: false,
+              state: logic.state,
               title: (c) => Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 2),
                 child: Text('CE QUE ÇA FAIT AVANCER',
