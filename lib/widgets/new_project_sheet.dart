@@ -17,6 +17,8 @@ Future<void> showNewProjectSheet(
   required VoidCallback onCreated,
   required FirestoreSync sync,
   List<Activity> activities = const [],
+  String? initialTitle,
+  ValueChanged<Project>? onProject,
 }) async {
   await showModalBottomSheet(
     context: context,
@@ -27,7 +29,9 @@ Future<void> showNewProjectSheet(
         domains: domains,
         onCreated: onCreated,
         sync: sync,
-        activities: activities),
+        activities: activities,
+        initialTitle: initialTitle,
+        onProject: onProject),
   );
 }
 
@@ -36,12 +40,18 @@ class _NewProjectSheet extends StatefulWidget {
   final VoidCallback onCreated;
   final FirestoreSync sync;
   final List<Activity> activities;
+  /// Titre pré-rempli (capture triée en projet, 2026-11-02).
+  final String? initialTitle;
+  /// Le projet créé, pour l'appelant (trace sur la capture).
+  final ValueChanged<Project>? onProject;
 
   const _NewProjectSheet(
       {required this.domains,
       required this.onCreated,
       required this.sync,
-      this.activities = const []});
+      this.activities = const [],
+      this.initialTitle,
+      this.onProject});
 
   @override
   State<_NewProjectSheet> createState() => _NewProjectSheetState();
@@ -63,6 +73,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   void initState() {
     super.initState();
     if (widget.domains.isNotEmpty) _selectedDomainId = widget.domains.first.id;
+    if (widget.initialTitle case final t?) _titleCtrl.text = t;
   }
 
   @override
@@ -149,6 +160,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
     );
     unawaited(widget.sync.saveProject(project));
     Navigator.pop(context);
+    widget.onProject?.call(project);
     widget.onCreated();
     ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(firstAction.isEmpty

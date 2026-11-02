@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
+import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -49,6 +50,7 @@ class _TriageSheetState extends State<_TriageSheet> {
   int _created = 0;
   final _title = TextEditingController();
   bool _toProject = true;
+  bool _newProject = false; // « Nouveau projet » : la capture devient un projet
   String? _projectId;
   String? _taskId; // null = « Au fil de l'eau »
   String? _activityId;
@@ -126,6 +128,35 @@ class _TriageSheetState extends State<_TriageSheet> {
     _next();
   }
 
+  /// Capture → nouveau projet (2026-11-02, retour user) : la feuille de création
+  /// de projet, titre pré-rempli ; une fois créé, la capture passe `processed`.
+  Future<void> _createProject() async {
+    final c = _cur;
+    final title = _title.text.trim();
+    if (c == null || title.isEmpty) return;
+    Project? made;
+    await showNewProjectSheet(
+      context,
+      domains: widget.logic.state.activeDomains,
+      activities: _timeActivities,
+      sync: widget.sync,
+      initialTitle: title,
+      onProject: (p) => made = p,
+      onCreated: () {},
+    );
+    final p = made;
+    if (p == null || !mounted) return;
+    widget.logic.onChange();
+    unawaited(widget.sync.updateCaptureItem(c.id, {
+      'status': 'processed',
+      'processedAt': DateTime.now().toIso8601String(),
+      'orionNote': '→ projet « ${p.title} »',
+    }));
+    _created++;
+    widget.onChanged?.call();
+    _next();
+  }
+
   Future<void> _delete() async {
     final c = _cur;
     if (c == null) return;
@@ -175,25 +206,32 @@ class _TriageSheetState extends State<_TriageSheet> {
           textCapitalization: TextCapitalization.sentences,
           maxLines: 2,
           minLines: 1,
-          decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder()),
+          decoration: InputDecoration(labelText: _newProject ? 'Nom du projet' : 'Action', border: const OutlineInputBorder()),
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 14),
         Row(children: [
           Expanded(
-            child: SegmentedButton<bool>(
+            child: SegmentedButton<String>(
               segments: const [
-                ButtonSegment(value: true, label: Text('Dans un projet'), icon: Icon(Icons.folder_outlined, size: 16)),
-                ButtonSegment(value: false, label: Text('Action simple'), icon: Icon(Icons.flash_on_outlined, size: 16)),
+                ButtonSegment(value: 'project', label: Text('Projet'), icon: Icon(Icons.folder_outlined, size: 16)),
+                ButtonSegment(value: 'simple', label: Text('Simple'), icon: Icon(Icons.flash_on_outlined, size: 16)),
+                ButtonSegment(value: 'new', label: Text('Nouveau projet'), icon: Icon(Icons.create_new_folder_outlined, size: 16)),
               ],
-              selected: {_toProject},
-              onSelectionChanged: (s) => setState(() => _toProject = s.first),
+              selected: {_newProject ? 'new' : (_toProject ? 'project' : 'simple')},
+              onSelectionChanged: (s) => setState(() {
+                _newProject = s.first == 'new';
+                _toProject = s.first != 'simple';
+              }),
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
         ]),
         const SizedBox(height: 12),
-        if (_toProject) ...[
+        if (_newProject) ...[
+          Text('La capture devient un projet : tu choisis son domaine, son échéance et sa première action.',
+              style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+        ] else if (_toProject) ...[
           label('PROJET'),
           const SizedBox(height: 6),
           if (projects.isEmpty)
@@ -237,16 +275,23 @@ class _TriageSheetState extends State<_TriageSheet> {
           ),
           TextButton(onPressed: _next, child: Text(_i + 1 >= widget.items.length ? 'Fermer' : 'Passer')),
           const Spacer(),
-          FilledButton.icon(
-            onPressed: canCreate ? _create : null,
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Créer l\'action'),
-          ),
+          if (_newProject)
+            FilledButton.icon(
+              onPressed: _title.text.trim().isEmpty ? null : _createProject,
+              icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+              label: const Text('Créer le projet'),
+            )
+          else
+            FilledButton.icon(
+              onPressed: canCreate ? _create : null,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Créer l\'action'),
+            ),
         ]),
         if (_created > 0)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('$_created action${_created > 1 ? 's' : ''} créée${_created > 1 ? 's' : ''} dans ce tri',
+            child: Text('$_created capture${_created > 1 ? 's' : ''} triée${_created > 1 ? 's' : ''}',
                 style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45))),
           ),
       ]),

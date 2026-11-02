@@ -30,7 +30,7 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   demain, capture rapide → boîte d'entrée, et **« n captures à trier en actions »** (2026-10,
   `widgets/capture_triage_sheet.dart`) : une capture à la fois, titre retouchable, destination projet › tâche (« Au fil de
   l'eau » = `flowTaskOf`, `utils/actions_logic.dart`) ou activité-temps ; la capture passe `processed` avec la trace
-  « → action … ». Même logique pure que le web (`utils/actions_logic.dart`).
+  « → action … ». **« Nouveau projet »** (2026-11-02, 3ᵉ choix du tri) : ouvre `showNewProjectSheet(initialTitle:, onProject:)` pré-rempli ; une fois créé, la capture passe `processed` (« → projet … »). Même logique pure que le web (`utils/actions_logic.dart`).
   Chaque carte porte au-dessus du titre « Projet › Tâche » (la tâche seule en vue par projet) ; la feuille d'action
   affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué). **« Rattacher à un projet »** (2026-10, feuille
   d'une action SIMPLE) : choix du projet (actifs, hors dossiers) puis de la tâche ou « Au fil de l'eau » ; l'action quitte
