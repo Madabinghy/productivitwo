@@ -1447,7 +1447,7 @@ les montrent plus), la récolte du matin et les retournements comme les autres. 
 activityId)` (série, compteur de coches, heures de l'activité, l'année, le chemin des 10 000 h ; deck de `WidgetService.badges`),
 `GainRow` (libellé, « 152,4 / 250 h », prochain cadre, petite jauge à sa couleur ; tap = fiche de la carte), `GainsSection`. Branché :
 fiche d'activité (section CE QUE ÇA FAIT AVANCER avant ENGAGEMENTS), fiche routine (série + compteur, sous les paliers), carte EN COURS du
-lanceur d'activités (heures de l'activité + l'année, jauges fines).
+lanceur d'activités (heures de l'activité + l'année, jauges fines). Compteurs (heures, coches) recalculés EN DIRECT depuis `AppState` (`gainsFor(state:)` → `longHaulBadges`), la série reste au deck (bug 2026-11-02 : « 152,4 h » ne bougeait qu'à la relance).
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
