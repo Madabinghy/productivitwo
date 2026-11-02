@@ -66,7 +66,10 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
 
   Future<void> _pick(String key, String label) async {
     final monday = ymdOf(_monday);
-    final cur = logic.mealWeek(monday).slots[key];
+    final week = logic.mealWeek(monday);
+    final cur = week.slots[key];
+    final srcKey = leftoversOf(week.slots, _ymds)[key];
+    final src = srcKey == null ? null : week.slots[srcKey];
     final s = sortDishes(_all, DateTime.now());
     final dishes = [...s.often, ...s.stale, ...s.fresh];
     final choice = await showModalBottomSheet<Object>(
@@ -84,6 +87,35 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
               const SizedBox(height: 4),
               Text('Un plat de plusieurs portions remplit aussi les midis suivants.', style: TextStyle(fontSize: 12.5, color: mute)),
               const SizedBox(height: 8),
+              if (src != null) ...[
+                Text('Ici : les restes de « ${src.title} »', style: const TextStyle(fontWeight: FontWeight.w800, color: kMealAccent)),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.block_rounded),
+                  title: const Text('Plus de restes ici'),
+                  subtitle: Text('le plat est fini avant ; rien ne passe au repas suivant', style: TextStyle(fontSize: 12, color: mute)),
+                  onTap: () => Navigator.pop(ctx, 'stop'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.restaurant_rounded),
+                  title: const Text('Pas de restes de ce plat'),
+                  subtitle: Text('« ${src.title} » passe à 1 portion', style: TextStyle(fontSize: 12, color: mute)),
+                  onTap: () => Navigator.pop(ctx, 'noLeft'),
+                ),
+                const Divider(),
+              ],
+              if (cur != null && !cur.out) ...[
+                Row(children: [
+                  const Expanded(child: Text('Portions', style: TextStyle(fontWeight: FontWeight.w700))),
+                  IconButton(onPressed: cur.portions > 1 ? () => Navigator.pop(ctx, 'less') : null, icon: const Icon(Icons.remove_circle_outline)),
+                  Text('${cur.portions}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  IconButton(onPressed: cur.portions < 12 ? () => Navigator.pop(ctx, 'more') : null, icon: const Icon(Icons.add_circle_outline)),
+                ]),
+                Text(cur.portions > 1 ? '${cur.portions - 1} portion${cur.portions > 2 ? 's' : ''} en restes, sur les midis suivants' : 'pas de restes',
+                    style: TextStyle(fontSize: 12, color: mute)),
+                const Divider(),
+              ],
               for (final r in dishes)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -124,6 +156,12 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
       await logic.setMeal(monday, key, const PlannedMeal(title: 'Dehors / libre', out: true));
     } else if (choice == 'clear') {
       await logic.setMeal(monday, key, null);
+    } else if (choice == 'stop' || choice == 'noLeft') {
+      final stop = stopLeftoversAt(week.slots, _ymds, key);
+      if (stop == null || src == null) return;
+      await logic.setMeal(monday, stop.sourceKey, PlannedMeal(recipeId: src.recipeId, title: src.title, portions: choice == 'stop' ? stop.portions : 1, out: src.out, ate: src.ate));
+    } else if ((choice == 'less' || choice == 'more') && cur != null) {
+      await logic.setMeal(monday, key, PlannedMeal(recipeId: cur.recipeId, title: cur.title, portions: (cur.portions + (choice == 'more' ? 1 : -1)).clamp(1, 12), out: cur.out, ate: cur.ate));
     } else if (choice == 'new') {
       await showDishSheet(context, sync: widget.sync, all: _all);
     }
