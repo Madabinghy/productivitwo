@@ -11,16 +11,18 @@ void main() {
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
     final now = DateTime.now();
+    // Ancré en début de journée : juste après minuit, « il y a 40 min » tombait la veille (autre semaine le lundi).
+    final t0 = DateTime(now.year, now.month, now.day, 0, 1);
     final run = Activity(id: 'courir', domainId: 'sp', name: 'Courir', role: ActivityRole.generic, type: 'time', goalMin: 7, createdAt: DateTime(2026, 1, 1));
     final pompes = Activity(
         id: 'pompes', domainId: 'sp', name: 'Pompes', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 20, createdAt: DateTime(2026, 1, 1));
     final st = AppState(
       domains: [Domain(id: 'sp', name: 'Sport')],
       activities: [run, pompes],
-      sessions: [Session(activityId: 'courir', startAt: now.subtract(const Duration(minutes: 40)), endAt: now.subtract(const Duration(minutes: 5)))],
+      sessions: [Session(activityId: 'courir', startAt: t0, endAt: t0.add(const Duration(minutes: 35)))],
       habitProgress: [],
     );
-    st.habitHits.addAll([for (var i = 0; i < 12; i++) HabitHit(habitId: 'pompes', ts: now.subtract(Duration(minutes: 30 - i)))]);
+    st.habitHits.addAll([for (var i = 0; i < 12; i++) HabitHit(habitId: 'pompes', ts: t0.add(Duration(minutes: i)))]);
     final logic = AppLogic(st, () {})..dayStartMin = 0;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SportSheet(logic: logic, sync: FirestoreSync()))));
     await tester.pump();
