@@ -51,9 +51,22 @@ class Expense {
   final int amount;
   final String envelopeId;
   final String? note;
-  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note});
+  /// Domaine de vie et projet servis (courses générales, 2026-11-02) ; null = sans.
+  final String? domainId;
+  final String? projectId;
+  /// Lignes de courses couvertes par cette dépense (passage en caisse).
+  final List<String> items;
+  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const []});
 
-  Map<String, dynamic> toJson() => {'ymd': ymd, 'amount': amount, 'envelopeId': envelopeId, if (note != null && note!.isNotEmpty) 'note': note};
+  Map<String, dynamic> toJson() => {
+        'ymd': ymd,
+        'amount': amount,
+        'envelopeId': envelopeId,
+        if (note != null && note!.isNotEmpty) 'note': note,
+        if (domainId != null) 'domainId': domainId,
+        if (projectId != null) 'projectId': projectId,
+        if (items.isNotEmpty) 'items': items,
+      };
   static Expense? from(String id, Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
     return Expense(
@@ -62,6 +75,9 @@ class Expense {
       amount: (raw['amount'] as num?)?.toInt() ?? 0,
       envelopeId: '${raw['envelopeId'] ?? ''}',
       note: raw['note'] as String?,
+      domainId: raw['domainId'] as String?,
+      projectId: raw['projectId'] as String?,
+      items: raw['items'] is List ? [for (final x in raw['items'] as List) '$x'] : const [],
     );
   }
 }

@@ -3175,6 +3175,31 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Courses générales (`data/meta.groceries`, 2026-11-02) : une ligne
+  /// (`null` = la retirer), des mots retenus, la liste des endroits.
+  Future<void> setGroceryItem(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'groceries': {
+        'items': {id: json ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setGroceryMemory(Map<String, Map<String, dynamic>> memory) async {
+    if (uid == null || memory.isEmpty) return;
+    await _meta().set({
+      'groceries': {'memory': memory}
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setGroceryStores(List<String> stores) async {
+    if (uid == null) return;
+    await _meta().set({
+      'groceries': {'stores': stores}
+    }, SetOptions(merge: true));
+  }
+
   /// Champs entiers (`envelopes`, `recurring`, `nothing`).
   Future<void> setFinanceFields(Map<String, dynamic> fields) async {
     if (uid == null) return;
