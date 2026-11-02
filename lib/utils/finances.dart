@@ -56,7 +56,9 @@ class Expense {
   final String? projectId;
   /// Lignes de courses couvertes par cette dépense (passage en caisse).
   final List<String> items;
-  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const []});
+  /// Moment de la saisie (ms) : départage une dépense et une mise à jour du solde du même jour.
+  final int? at;
+  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const [], this.at});
 
   Map<String, dynamic> toJson() => {
         'ymd': ymd,
@@ -66,6 +68,7 @@ class Expense {
         if (domainId != null) 'domainId': domainId,
         if (projectId != null) 'projectId': projectId,
         if (items.isNotEmpty) 'items': items,
+        if (at != null) 'at': at,
       };
   static Expense? from(String id, Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
@@ -78,6 +81,42 @@ class Expense {
       domainId: raw['domainId'] as String?,
       projectId: raw['projectId'] as String?,
       items: raw['items'] is List ? [for (final x in raw['items'] as List) '$x'] : const [],
+      at: (raw['at'] as num?)?.toInt(),
+    );
+  }
+}
+
+/// Une rentrée ponctuelle (facture encaissée, remboursement…), 2026-11-02 :
+/// pour qui n'a pas de salaire fixe.
+class Income {
+  final String id;
+  final String ymd;
+  final int amount;
+  /// De qui (client), facultatif.
+  final String? from;
+  final String? domainId;
+  final String? projectId;
+  final int? at;
+  const Income({required this.id, required this.ymd, required this.amount, this.from, this.domainId, this.projectId, this.at});
+
+  Map<String, dynamic> toJson() => {
+        'ymd': ymd,
+        'amount': amount,
+        if (from != null && from!.isNotEmpty) 'from': from,
+        if (domainId != null) 'domainId': domainId,
+        if (projectId != null) 'projectId': projectId,
+        if (at != null) 'at': at,
+      };
+  static Income? fromJson(String id, Object? raw) {
+    if (raw is! Map || raw['ymd'] == null) return null;
+    return Income(
+      id: id,
+      ymd: '${raw['ymd']}',
+      amount: (raw['amount'] as num?)?.toInt() ?? 0,
+      from: raw['from'] as String?,
+      domainId: raw['domainId'] as String?,
+      projectId: raw['projectId'] as String?,
+      at: (raw['at'] as num?)?.toInt(),
     );
   }
 }
@@ -86,11 +125,12 @@ class Expense {
 class Paid {
   final int amount;
   final String ymd;
-  const Paid(this.amount, this.ymd);
-  Map<String, dynamic> toJson() => {'amount': amount, 'ymd': ymd};
+  final int? at;
+  const Paid(this.amount, this.ymd, {this.at});
+  Map<String, dynamic> toJson() => {'amount': amount, 'ymd': ymd, if (at != null) 'at': at};
   static Paid? from(Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
-    return Paid((raw['amount'] as num?)?.toInt() ?? 0, '${raw['ymd']}');
+    return Paid((raw['amount'] as num?)?.toInt() ?? 0, '${raw['ymd']}', at: (raw['at'] as num?)?.toInt());
   }
 }
 
@@ -110,8 +150,12 @@ class Finances {
   final Set<String> nothing;
   /// Fixes passés, par mois (`YYYY-MM`) puis par id de fixe.
   final Map<String, Map<String, Paid>> paid;
-  /// Soldes recopiés lors du point de la semaine, par jour.
+  /// Soldes recopiés (point de la semaine, mise à jour du solde), par jour.
   final Map<String, int> checks;
+  /// Moment (ms) de chaque solde recopié.
+  final Map<String, int> checksAt;
+  /// Rentrées ponctuelles (factures encaissées…).
+  final Map<String, Income> incomes;
   const Finances({
     this.envelopes = kDefaultEnvelopes,
     this.recurring = const [],
@@ -119,6 +163,8 @@ class Finances {
     this.nothing = const {},
     this.paid = const {},
     this.checks = const {},
+    this.checksAt = const {},
+    this.incomes = const {},
   });
 
   Finances copyWith({
@@ -128,6 +174,8 @@ class Finances {
     Set<String>? nothing,
     Map<String, Map<String, Paid>>? paid,
     Map<String, int>? checks,
+    Map<String, int>? checksAt,
+    Map<String, Income>? incomes,
   }) =>
       Finances(
         envelopes: envelopes ?? this.envelopes,
@@ -136,6 +184,8 @@ class Finances {
         nothing: nothing ?? this.nothing,
         paid: paid ?? this.paid,
         checks: checks ?? this.checks,
+        checksAt: checksAt ?? this.checksAt,
+        incomes: incomes ?? this.incomes,
       );
 
   Envelope? envelopeOf(String id) {
@@ -154,6 +204,8 @@ class Finances {
           for (final m in paid.entries) m.key: {'paid': m.value.map((k, v) => MapEntry(k, v.toJson()))}
         },
         'checks': checks,
+        'checksAt': checksAt,
+        'incomes': {for (final x in incomes.values) x.id: x.toJson()},
       };
 }
 
@@ -186,6 +238,19 @@ Finances parseFinances(Object? raw) {
       if (e.value is num) checks['${e.key}'] = (e.value as num).toInt();
     }
   }
+  final checksAt = <String, int>{};
+  if (raw['checksAt'] is Map) {
+    for (final e in (raw['checksAt'] as Map).entries) {
+      if (e.value is num) checksAt['${e.key}'] = (e.value as num).toInt();
+    }
+  }
+  final incomes = <String, Income>{};
+  if (raw['incomes'] is Map) {
+    for (final e in (raw['incomes'] as Map).entries) {
+      final x = Income.fromJson('${e.key}', e.value);
+      if (x != null) incomes[x.id] = x;
+    }
+  }
   return Finances(
     envelopes: envs == null || envs.isEmpty ? kDefaultEnvelopes : envs,
     recurring: rec,
@@ -193,6 +258,8 @@ Finances parseFinances(Object? raw) {
     nothing: nothing,
     paid: paid,
     checks: checks,
+    checksAt: checksAt,
+    incomes: incomes,
   );
 }
 
@@ -277,7 +344,8 @@ MonthSummary monthSummary(Finances f, String todayYmd) {
   final total = daysInMonth(d.year, d.month);
   final paidNow = f.paid[month] ?? const {};
   int amountOf(Recurring r) => paidNow[r.id]?.amount ?? r.amount;
-  final income = f.recurring.where((r) => r.income).fold<int>(0, (s, r) => s + amountOf(r));
+  final oneOff = f.incomes.values.where((x) => monthOf(x.ymd) == month && x.ymd.compareTo(todayYmd) <= 0).fold<int>(0, (s, x) => s + x.amount);
+  final income = f.recurring.where((r) => r.income).fold<int>(0, (s, r) => s + amountOf(r)) + oneOff;
   final fixedList = f.recurring.where((r) => !r.income).toList();
   final fixed = fixedList.fold<int>(0, (s, r) => s + amountOf(r));
   final mine = f.expenses.values.where((x) => monthOf(x.ymd) == month && x.ymd.compareTo(todayYmd) <= 0);
@@ -334,13 +402,24 @@ BalanceCheck balanceCheck(Finances f, String todayYmd) {
     if (k.compareTo(todayYmd) < 0 && (last == null || k.compareTo(last) > 0)) last = k;
   }
   if (last == null) return const BalanceCheck();
-  bool inWindow(String ymd) => ymd.compareTo(last!) > 0 && ymd.compareTo(todayYmd) <= 0;
-  final spent = f.expenses.values.where((x) => inWindow(x.ymd)).fold<int>(0, (s, x) => s + x.amount);
+  final m = _movesSince(f, last, f.checksAt[last], todayYmd);
+  return BalanceCheck(lastYmd: last, lastBalance: f.checks[last], spentSince: m.spent, paidOutSince: m.out, paidInSince: m.inc);
+}
+
+/// Un mouvement daté [ymd] / [at] est-il APRÈS le solde recopié le [cYmd] à
+/// [cAt] ? Un autre jour : par la date ; le même jour : par l'heure (sans
+/// heure, il est supposé déjà dans le solde).
+bool _after(String ymd, int? at, String cYmd, int? cAt) =>
+    ymd.compareTo(cYmd) > 0 || (ymd == cYmd && at != null && cAt != null && at > cAt);
+
+({int spent, int out, int inc}) _movesSince(Finances f, String cYmd, int? cAt, String todayYmd) {
+  bool keep(String ymd, int? at) => _after(ymd, at, cYmd, cAt) && ymd.compareTo(todayYmd) <= 0;
+  final spent = f.expenses.values.where((x) => keep(x.ymd, x.at)).fold<int>(0, (s, x) => s + x.amount);
   var out = 0, inc = 0;
   final byId = {for (final r in f.recurring) r.id: r};
   for (final month in f.paid.values) {
     for (final e in month.entries) {
-      if (!inWindow(e.value.ymd)) continue;
+      if (!keep(e.value.ymd, e.value.at)) continue;
       if (byId[e.key]?.income == true) {
         inc += e.value.amount;
       } else {
@@ -348,7 +427,56 @@ BalanceCheck balanceCheck(Finances f, String todayYmd) {
       }
     }
   }
-  return BalanceCheck(lastYmd: last, lastBalance: f.checks[last], spentSince: spent, paidOutSince: out, paidInSince: inc);
+  inc += f.incomes.values.where((x) => keep(x.ymd, x.at)).fold<int>(0, (s, x) => s + x.amount);
+  return (spent: spent, out: out, inc: inc);
+}
+
+/// Ce que dit le compte maintenant, d'après le dernier solde recopié (jusqu'à
+/// aujourd'hui compris) et ce qui a été noté depuis ; null sans solde.
+class AccountNow {
+  final String sinceYmd;
+  final int base;
+  final int balance;
+  /// Fixes du mois pas encore passés, revenus mensuels pas encore reçus.
+  final int fixedLeft;
+  final int incomeLeft;
+  final int daysLeft;
+  const AccountNow({required this.sinceYmd, required this.base, required this.balance, required this.fixedLeft, required this.incomeLeft, required this.daysLeft});
+  /// Reste à vivre jusqu'à la fin du mois = compte + revenus attendus − fixes à venir.
+  int get remaining => balance + incomeLeft - fixedLeft;
+  int get perDay => daysLeft <= 0 ? remaining : (remaining / daysLeft).floor();
+}
+
+AccountNow? accountNow(Finances f, String todayYmd) {
+  String? last;
+  for (final k in f.checks.keys) {
+    if (k.compareTo(todayYmd) <= 0 && (last == null || k.compareTo(last) > 0)) last = k;
+  }
+  if (last == null) return null;
+  final m = _movesSince(f, last, f.checksAt[last], todayYmd);
+  final base = f.checks[last]!;
+  final month = monthOf(todayYmd);
+  final paidNow = f.paid[month] ?? const {};
+  var fixedLeft = 0, incomeLeft = 0;
+  for (final r in f.recurring) {
+    if (paidNow.containsKey(r.id)) continue;
+    r.income ? incomeLeft += r.amount : fixedLeft += r.amount;
+  }
+  final d = DateTime.parse(todayYmd);
+  return AccountNow(
+    sinceYmd: last,
+    base: base,
+    balance: base - m.spent - m.out + m.inc,
+    fixedLeft: fixedLeft,
+    incomeLeft: incomeLeft,
+    daysLeft: daysInMonth(d.year, d.month) - d.day + 1,
+  );
+}
+
+/// Rentrées du mois de [todayYmd] (ponctuelles), jusqu'à aujourd'hui.
+List<Income> monthIncomes(Finances f, String todayYmd) {
+  final month = monthOf(todayYmd);
+  return f.incomes.values.where((x) => monthOf(x.ymd) == month && x.ymd.compareTo(todayYmd) <= 0).toList()..sort((a, b) => b.ymd.compareTo(a.ymd));
 }
 
 // ── Affichage ───────────────────────────────────────────────────────────────

@@ -983,6 +983,17 @@ premier point = base posée ; ensuite le calcul (point précédent − dépenses
 point du … ») ou « C'est lui » sur un fixe pas encore coché ; écart positif → un revenu pas coché ; « Garder ce solde tel quel » ou
 « Je vérifierai plus tard ». Le solde posé devient la base du point suivant (`recordBalance`). Carte LE POINT DE LA SEMAINE dans la feuille
 Finances (`checkDue` : jamais fait ou ≥ 7 jours, `lastCheckYmd`). **Les 3 lots sont livrés.**
+**Indépendant : rentrées, solde de départ, compte en direct** (2026-11-02, retour user : des factures, pas un salaire) : `Income {ymd, amount,
+from?, domainId?, projectId?, at?}` (`finances.incomes`, `AppLogic.addIncome` / `removeIncome` / `restoreIncome`,
+`FirestoreSync.setFinanceIncome`) — « + Rentrée » à côté de « + Dépense » (`showIncomeSheet` : montant, De qui ?, domaine — un domaine de
+travail par défaut, `defaultIncomeDomain` —, projet, Aujourd'hui · Hier · un autre jour jusqu'à 90 j), section RENTRÉES CE MOIS (glisser =
+retirer, « Annuler »). Les rentrées comptent dans le revenu du mois (`monthSummary`) et dans le point de la semaine. Chaque mouvement porte
+son heure (`Expense.at`, `Income.at`, `Paid.at`) et chaque solde recopié la sienne (`finances.checksAt`) : le même jour, seul ce qui est
+noté APRÈS le solde s'y ajoute (`_after`, sans heure = déjà dans le solde). **Le compte en direct** (`accountNow` → `AccountNow`) : dernier
+solde recopié (aujourd'hui compris) − dépenses − fixes passés + rentrées et revenus reçus depuis ; reste à vivre = compte + revenus
+mensuels pas encore reçus − fixes du mois pas encore passés. En tête de la feuille : SUR TON COMPTE · d'après le solde du … (dès qu'un solde
+existe, sinon le reste à vivre « revenus − fixes − dépenses » et le bouton « Ton compte dit ? · Poser mon solde »), lien « Mettre à jour le
+solde » (`askBalance`, n'importe quand : le solde devient la base, SnackBar avec l'écart « une dépense oubliée ? »).
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
