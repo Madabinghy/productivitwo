@@ -31,16 +31,20 @@ import 'package:productivitwo_v1/utils/badge_today.dart';
 /// Tous les badges en feuille (2026-10-30 : bouton Badges d'Aujourd'hui, tuile
 /// Badges d'Objectifs) ; tirer vers le bas ferme.
 Future<void> showBadgeGallerySheet(BuildContext context, {required AppLogic logic, required FirestoreSync sync, BadgeCenter? center}) {
+  // Feuille glissante comme les autres (2026-11-02, retour user) : tirer vers le bas la réduit puis la ferme.
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => FractionallySizedBox(
-      heightFactor: .94,
-      child: ClipRRect(
+    builder: (_) => DraggableScrollableSheet(
+      initialChildSize: .94,
+      minChildSize: .5,
+      maxChildSize: .96,
+      expand: false,
+      builder: (ctx, scroll) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: BadgeGalleryScreen(logic: logic, sync: sync, center: center, showSamples: false),
+        child: BadgeGalleryScreen(logic: logic, sync: sync, center: center, showSamples: false, sheetScroll: scroll),
       ),
     ),
   );
@@ -53,7 +57,9 @@ class BadgeGalleryScreen extends StatefulWidget {
   final BadgeCenter? center;
   /// Aperçu du gabarit et des niveaux en tête (Paramètres) ; faux = le deck seul.
   final bool showSamples;
-  const BadgeGalleryScreen({super.key, required this.logic, required this.sync, this.center, this.showSamples = true});
+  /// Contrôleur de la feuille glissante : la liste le suit, plus de barre d'app.
+  final ScrollController? sheetScroll;
+  const BadgeGalleryScreen({super.key, required this.logic, required this.sync, this.center, this.showSamples = true, this.sheetScroll});
 
   @override
   State<BadgeGalleryScreen> createState() => _BadgeGalleryScreenState();
@@ -121,14 +127,23 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     _facts = widget.center?.todayFacts();
     return Scaffold(
       backgroundColor: kBBg,
-      appBar: AppBar(
-        backgroundColor: kBBar,
-        foregroundColor: kBText,
-        title: Text(widget.showSamples ? 'Badges · aperçu' : 'Badges'),
-      ),
+      appBar: widget.sheetScroll != null
+          ? null
+          : AppBar(
+              backgroundColor: kBBar,
+              foregroundColor: kBText,
+              title: Text(widget.showSamples ? 'Badges · aperçu' : 'Badges'),
+            ),
       body: ListView(
+        controller: widget.sheetScroll,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 48),
         children: [
+          if (widget.sheetScroll != null) ...[
+            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: kBText.withValues(alpha: .25), borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 10),
+            const Text('Collection', style: TextStyle(color: kBText, fontSize: 20, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+          ],
           if (widget.showSamples) ...[
             _kicker('LE GABARIT · 150 / 72 / 40 PX'),
             _sampleRow(),
