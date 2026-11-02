@@ -877,6 +877,23 @@ les activités »), 8 SEMAINES (barres empilées, pointillés = engagement, phra
 (`linkedActivityId`, Footing → Courir) prend son +1 du jour si elle n'en a pas (`AppLogic._checkSportRoutine`, tick minute, une
 fois par session ; SnackBar « Footing +1 · séance comptée » via `onSportRoutineCounted`).
 
+## Courses générales (2026-11-02, maquette validée « Courses générales »)
+
+UNE liste de courses : les ingrédients du menu de la semaine (dérivés comme avant, `shoppingFor`) + les lignes à la main ou via Claude,
+chacune avec un domaine de vie, parfois un projet, et un endroit (Supermarché · Bricolage · Pharmacie · Marché). À la caisse on tape le
+total du ticket : il est réparti par (domaine, projet) en dépenses Finances (enveloppe Courses). Chaque ligne retient un prix estimé (sa
+part du ticket) : base du coût d'un plat et de la future photo de ticket. **Lot 1 livré (données + logique)** : logique pure
+`utils/groceries.dart` — `GroceryItem {label, qty, domainId?, projectId?, store, source hand|claude, inBasket}`, `GroceryMemory {domainId?,
+projectId?, store?, price?}` par mot (`normLabel`), `guessFor` (mémoire, sinon domaine du projet, sinon dernier domaine) ; caisse :
+`CheckoutLine` (ligne à la main ou ingrédient du menu, prix estimé), `splitTicket` (poids = prix estimé, sinon moyenne des connus, sinon
+parts égales ; somme juste au centime), `adjustShare` (corriger une part, les autres au prorata), `learnedPrices` (moyenne avec l'ancien
+prix) ; `spentByDomain` / `spentByProject` (mois en cours, '' = sans domaine), `dishCost` (somme des prix connus — prix d'un achat, pas
+d'une portion). `Expense` porte `domainId?`, `projectId?`, `items`. Stockage `data/meta.groceries {items, memory, stores}`
+(`FirestoreSync.setGroceryItem` / `setGroceryMemory` / `setGroceryStores`, flux meta `_groceriesJson`, dans `kBackupMetaKeys`).
+`AppLogic` : `groceries`, `addGrocery` (pas de doublon hors panier), `updateGrocery`, `removeGrocery`, `setGroceryInBasket`,
+`addGroceryStore`, `checkoutGroceries` (une dépense par part, lignes à la main achetées retirées, prix retenus) ; `logExpense(domainId:,
+projectId:, items:)`.
+
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 
 Une feuille « Repas » comme Sommeil et Sport ; le plat est la seule chose à saisir, une fois (nom, portions, temps, ingrédients

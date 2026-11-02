@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
+import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin, kFlemmeChronoMin;
@@ -1841,10 +1842,10 @@ class AppLogic implements HuntStore {
   }
 
   /// Note une dépense (aujourd'hui par défaut, ou hier) ; renvoie son id, null si refusée.
-  Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd}) async {
+  Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd, String? domainId, String? projectId, List<String> items = const []}) async {
     final day = ymd ?? livedTodayYmd;
     if (amount <= 0 || !canLogOn(day, livedTodayYmd)) return null;
-    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim());
+    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim(), domainId: domainId, projectId: projectId, items: items);
     final wasNothing = finances.nothing.contains(day);
     finances = finances.copyWith(
       expenses: {...finances.expenses, x.id: x},
@@ -1896,6 +1897,110 @@ class AppLogic implements HuntStore {
     finances = finances.copyWith(paid: {...finances.paid, month: m});
     onChange();
     await sync?.setFinancePaid(month, recurringId, amount == null ? null : m[recurringId]!.toJson());
+  }
+
+  /// Courses générales (`data/meta.groceries`, `utils/groceries.dart`, 2026-11-02).
+  Groceries groceries = const Groceries();
+
+  /// Dernier domaine choisi pour une ligne à la main (proposé à la suivante).
+  String? get lastGroceryDomainId {
+    final list = groceries.items.values.where((x) => x.domainId != null).toList();
+    return list.isEmpty ? null : list.reduce((a, b) => a.id.compareTo(b.id) >= 0 ? a : b).domainId;
+  }
+
+  void _rememberGrocery(GroceryItem x) {
+    final key = normLabel(x.label);
+    if (key.isEmpty) return;
+    final m = (groceries.memory[key] ?? const GroceryMemory()).merge(domainId: x.domainId, projectId: x.projectId, store: x.store);
+    groceries = groceries.copyWith(memory: {...groceries.memory, key: m});
+    sync?.setGroceryMemory({key: m.toJson()});
+  }
+
+  /// Ajoute une ligne ; un mot déjà sur la liste (hors panier) n'est pas doublé.
+  Future<GroceryItem> addGrocery({required String label, String qty = '', String? domainId, String? projectId, String? store, String source = 'hand'}) async {
+    final key = normLabel(label);
+    for (final x in groceries.items.values) {
+      if (normLabel(x.label) == key && !x.inBasket) return x;
+    }
+    final guess = guessFor(groceries, label, lastDomainId: lastGroceryDomainId);
+    final x = GroceryItem(
+      id: _newFinanceId(),
+      label: label.trim(),
+      qty: qty.trim(),
+      domainId: domainId ?? guess.domainId,
+      projectId: projectId ?? guess.projectId,
+      store: store ?? guess.store ?? kMenuStore,
+      source: source,
+    );
+    groceries = groceries.copyWith(items: {...groceries.items, x.id: x});
+    _rememberGrocery(x);
+    onChange();
+    await sync?.setGroceryItem(x.id, x.toJson());
+    return x;
+  }
+
+  Future<void> updateGrocery(GroceryItem x) async {
+    groceries = groceries.copyWith(items: {...groceries.items, x.id: x});
+    _rememberGrocery(x);
+    onChange();
+    await sync?.setGroceryItem(x.id, x.toJson());
+  }
+
+  Future<void> removeGrocery(String id) async {
+    if (!groceries.items.containsKey(id)) return;
+    groceries = groceries.copyWith(items: {...groceries.items}..remove(id));
+    onChange();
+    await sync?.setGroceryItem(id, null);
+  }
+
+  Future<void> setGroceryInBasket(String id, bool inBasket) async {
+    final x = groceries.items[id];
+    if (x == null) return;
+    final y = x.copyWith(inBasket: inBasket);
+    groceries = groceries.copyWith(items: {...groceries.items, id: y});
+    onChange();
+    await sync?.setGroceryItem(id, y.toJson());
+  }
+
+  Future<void> addGroceryStore(String name) async {
+    final n = name.trim();
+    if (n.isEmpty || groceries.stores.contains(n)) return;
+    groceries = groceries.copyWith(stores: [...groceries.stores, n]);
+    onChange();
+    await sync?.setGroceryStores(groceries.stores);
+  }
+
+  /// Passage en caisse : une dépense par part (domaine, projet) dans
+  /// l'enveloppe Courses, les lignes à la main achetées quittent la liste,
+  /// chaque mot retient son prix. Renvoie les ids des dépenses.
+  Future<List<String>> checkoutGroceries({required List<CheckoutLine> lines, required List<TicketShare> shares, String? store}) async {
+    final env = finances.envelopeOf('courses')?.id ?? finances.envelopes.first.id;
+    final ids = <String>[];
+    for (final sh in shares) {
+      if (sh.amount <= 0) continue;
+      final id = await logExpense(
+        amount: sh.amount,
+        envelopeId: env,
+        note: store == null ? 'Courses' : 'Courses · $store',
+        domainId: sh.domainId,
+        projectId: sh.projectId,
+        items: sh.labels,
+      );
+      if (id != null) ids.add(id);
+    }
+    final prices = learnedPrices(lines, shares, groceries.memory);
+    final mem = {...groceries.memory};
+    for (final e in prices.entries) {
+      mem[e.key] = (mem[e.key] ?? const GroceryMemory()).merge(price: e.value);
+    }
+    final bought = {for (final l in lines) if (l.itemId != null) l.itemId!};
+    groceries = groceries.copyWith(memory: mem, items: {...groceries.items}..removeWhere((k, _) => bought.contains(k)));
+    onChange();
+    await sync?.setGroceryMemory({for (final k in prices.keys) k: mem[k]!.toJson()});
+    for (final id in bought) {
+      await sync?.setGroceryItem(id, null);
+    }
+    return ids;
   }
 
   /// Le solde recopié lors du point de la semaine (aujourd'hui).
