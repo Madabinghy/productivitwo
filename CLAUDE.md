@@ -1425,7 +1425,7 @@ semaine), MES DOMAINES = une tuile par domaine (deux colonnes) selon sa **nature
 Repas / Cuisiner / Manger → repas —, réglage par appui long sur une tuile, `life_natures` en SharedPreferences) : Nuit = feuille
 Sommeil (moyenne, dette, 7 barres), Séances = feuille Sport (séances de la semaine, une case par jour), Repas = feuille Repas
 (équilibrés, repas qui vient) — une seule tuile par nature à feuille —, les autres = page du domaine (temps de la semaine sur
-l'attendu ou routines au rythme, ambre en retard, en veille). Chaque tuile porte l'objectif actif de son domaine le plus en
+l'attendu ou routines au rythme, ambre en retard, en veille). **Tuiles égales** (2026-11-02, retour user) : toutes à la même hauteur (`kLifeTileHeight`, à l'échelle du texte), places fixes pour la sous-ligne (2 lignes), un MINI-GRAPHIQUE des 7 jours dans chacune (Nuit = 7 nuits, Séances = temps actif par jour, Repas = repas équilibrés par jour, Finances = dépense par jour — petit trait = « rien dépensé », autres = minutes chronométrées du domaine ou coches de ses routines, `_domainDays`) et l'objectif (« pas d'objectif » sinon, « +n » sur la ligne). Chaque tuile porte l'objectif actif de son domaine le plus en
 retard (`computeObjectiveProgress`, % du rythme, tap = fiche trajectoire) et « + n objectifs ». OBJECTIFS SANS DOMAINE en lignes.
 En bas : Saison, Badges, OBJECTIFS (« n actifs › » = feuille avec `ObjectivesCard` complète : rushs, veille, archivés, création).
 L'ancien `ObjectivesHomeView` et le corps Domaines (`_buildDashboardBody`) ne sont plus affichés.
