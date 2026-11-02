@@ -152,7 +152,15 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
   Widget _row(ColorScheme cs, String k, String v, {List<Color?>? dots, Color? color}) => Container(
         padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.onSurface.withValues(alpha: .07)))),
-        child: Row(children: [
+        // Valeur longue (« Normal 61 % · Flemme 26 % · … ») : elle passe sous le libellé
+        // au lieu d'écraser celui-ci en colonne d'une lettre (bug 2026-11-02).
+        child: dots == null && v.length > 22
+            ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(k, style: const TextStyle(fontSize: 14.5)),
+                const SizedBox(height: 3),
+                Text(v, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: color)),
+              ])
+            : Row(children: [
           Expanded(child: Text(k, style: const TextStyle(fontSize: 14.5))),
           if (dots != null)
             SizedBox(
@@ -169,7 +177,7 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
               ]),
             ),
           const SizedBox(width: 10),
-          Text(v, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: color)),
+          Flexible(child: Text(v, textAlign: TextAlign.right, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: color))),
         ]),
       );
 
