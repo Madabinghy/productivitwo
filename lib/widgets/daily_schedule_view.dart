@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels, kTimeBlockColors;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -178,6 +179,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       final s = _schedule;
       if (s != null && applyMirrorMemory(s.blocks, _mirrorMemory) > 0) setState(() {});
     });
+    // Un chrono lancé / arrêté redessine aussitôt le bloc en cours (bug user
+    // 2026-11-02 : dans la feuille Programme, rien ne bougeait avant la minute).
+    widget.logic.addListener(_onLogic);
     // Le trait « maintenant » suit la minute (affichage seul, zéro écriture).
     if (_isToday) {
       _nowTick = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -186,8 +190,20 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     }
   }
 
+  void _onLogic() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    widget.logic.removeListener(_onLogic);
     _nowTick?.cancel();
     _sub?.cancel();
     _nextSub?.cancel();
