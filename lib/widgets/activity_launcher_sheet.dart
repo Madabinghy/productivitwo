@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/widget_service.dart';
+import 'package:productivitwo_v1/widgets/gains_section.dart' show GainRow, gainsFor;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -460,6 +462,9 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
             ].join(' · '),
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .65)),
           ),
+        // Ce que ce chrono fait avancer (heures de l'activité, l'année), en petites jauges.
+        if (WidgetService.badges?.deck case final deck?)
+          for (final b in gainsFor(deck, running.id).where((b) => b.def.id != 'heures-total').take(2)) GainRow(b, dense: true),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
