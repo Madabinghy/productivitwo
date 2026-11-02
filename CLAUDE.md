@@ -902,6 +902,13 @@ DOMAINE ?, POUR UN PROJET ? (actifs, choisir un projet pose son domaine), OÙ Ç
 (menu + à la main, un mot du menu n'est montré qu'une fois ; domaine d'un ingrédient = retenu, sinon `menuDomainOf` : routine Repas
 équilibré · Cuisiner · « Santé »), `checkoutLinesOf`. La feuille Repas et « Les repas de la semaine » ouvrent désormais cette liste
 (l'ancienne `ShoppingSheet` reste dans `meal_week_sheet.dart`, plus appelée).
+**Lot 3 livré (en magasin, en caisse)** : `widgets/grocery_shop_screen.dart` — « J'y vais » sur un endroit ou « Je pars faire les courses »
+→ `GroceryShopScreen` (plein écran, écran allumé `wakelock_plus`) : « Au rayon … », barre « k / n dans le panier · Bricolage ensuite »,
+À PRENDRE en gros (tap = panier), DANS LE PANIER barré, ⓘ magasin = changer d'endroit, « Passer en caisse · n » (tout le panier, tous
+endroits). `GroceryCheckout` (`showGroceryCheckout`) : « Le ticket fait ? » → répartition en direct (`splitTicket`, barre empilée aux
+couleurs des domaines, une ligne par domaine · projet avec ses lignes), tap = corriger (`adjustShare`), « Enregistrer · n dépenses »
+(`checkoutGroceries(monday:)`) ; SnackBar « ✓ Jour suivi · n dépenses dans « Courses » ». Les ingrédients du menu passés en caisse
+quittent la liste (`Groceries.boughtMenu`, `data/meta.groceries.bought.<lundi>`, `CheckoutLine.menuKey`, `groceryRows(monday:)`).
 
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 

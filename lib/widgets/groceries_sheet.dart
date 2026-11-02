@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/meal_day.dart' show isBalancedMealRoutine, isCookActivity;
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
+import 'package:productivitwo_v1/widgets/grocery_shop_screen.dart' show showGroceryShop;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
 /// Feuille « Courses » (maquette validée 2026-11-02 « Courses générales »,
@@ -31,7 +32,15 @@ String? menuDomainOf(AppLogic logic) {
 }
 
 Future<void> showGroceriesSheet(BuildContext context, {required AppLogic logic, required FirestoreSync sync}) {
-  return showFiche<void>(context, builder: (ctx, scroll) => GroceriesSheet(logic: logic, sync: sync, scroll: scroll));
+  return showFiche<void>(
+    context,
+    builder: (ctx, scroll) => GroceriesSheet(
+      logic: logic,
+      sync: sync,
+      scroll: scroll,
+      onShop: (store, recipes) => showGroceryShop(ctx, logic: logic, store: store, recipes: recipes),
+    ),
+  );
 }
 
 class GroceriesSheet extends StatefulWidget {
@@ -115,7 +124,7 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
       builder: (ctx, snap) {
         _all = snap.data ?? _all;
         final week = logic.mealWeek(_monday);
-        final rows = groceryRows(menuLines: shoppingFor(week, _all), menuChecked: week.checked, g: logic.groceries, menuDomainId: menuDomainOf(logic));
+        final rows = groceryRows(menuLines: shoppingFor(week, _all), menuChecked: week.checked, g: logic.groceries, menuDomainId: menuDomainOf(logic), monday: _monday);
         final toBuy = rows.where((r) => !r.inBasket).toList();
         final basket = rows.where((r) => r.inBasket).toList();
         final menuCount = rows.where((r) => r.source == 'menu').length;

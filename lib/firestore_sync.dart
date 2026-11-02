@@ -3193,6 +3193,15 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  Future<void> setGroceryBought(String monday, List<String> keys) async {
+    if (uid == null) return;
+    await _meta().set({
+      'groceries': {
+        'bought': {monday: keys}
+      }
+    }, SetOptions(merge: true));
+  }
+
   Future<void> setGroceryStores(List<String> stores) async {
     if (uid == null) return;
     await _meta().set({
