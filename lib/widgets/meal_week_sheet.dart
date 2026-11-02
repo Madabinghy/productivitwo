@@ -91,10 +91,10 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
                 Text('Ici : les restes de « ${src.title} »', style: const TextStyle(fontWeight: FontWeight.w800, color: kMealAccent)),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.block_rounded),
-                  title: const Text('Plus de restes ici'),
-                  subtitle: Text('le plat est fini avant ; rien ne passe au repas suivant', style: TextStyle(fontSize: 12, color: mute)),
-                  onTap: () => Navigator.pop(ctx, 'stop'),
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Retirer ces restes'),
+                  subtitle: Text('une portion de moins ; les autres restes remontent sur les midis libres', style: TextStyle(fontSize: 12, color: mute)),
+                  onTap: () => Navigator.pop(ctx, 'remove'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -156,10 +156,9 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
       await logic.setMeal(monday, key, const PlannedMeal(title: 'Dehors / libre', out: true));
     } else if (choice == 'clear') {
       await logic.setMeal(monday, key, null);
-    } else if (choice == 'stop' || choice == 'noLeft') {
-      final stop = stopLeftoversAt(week.slots, _ymds, key);
-      if (stop == null || src == null) return;
-      await logic.setMeal(monday, stop.sourceKey, PlannedMeal(recipeId: src.recipeId, title: src.title, portions: choice == 'stop' ? stop.portions : 1, out: src.out, ate: src.ate));
+    } else if ((choice == 'remove' || choice == 'noLeft') && srcKey != null && src != null) {
+      final portions = choice == 'remove' ? removeLeftoverAt(week.slots, _ymds, key)!.portions : 1;
+      await logic.setMeal(monday, srcKey, PlannedMeal(recipeId: src.recipeId, title: src.title, portions: portions, out: src.out, ate: src.ate));
     } else if ((choice == 'less' || choice == 'more') && cur != null) {
       await logic.setMeal(monday, key, PlannedMeal(recipeId: cur.recipeId, title: cur.title, portions: (cur.portions + (choice == 'more' ? 1 : -1)).clamp(1, 12), out: cur.out, ate: cur.ate));
     } else if (choice == 'new') {

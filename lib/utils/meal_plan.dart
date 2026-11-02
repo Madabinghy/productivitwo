@@ -175,16 +175,14 @@ List<ShoppingLine> shoppingFor(MealWeek week, List<Recipe> recipes) {
   ];
 }
 
-/// Les restes s'arrêtent AVANT le repas [key] (retour user 2026-11-02 : vider
-/// une case de restes la poussait au midi suivant) : le plat qui cuisine garde
-/// juste assez de portions pour les restes déjà placés avant [key]. Renvoie
+/// Retirer la portion de restes posée sur le repas [key] (retour user
+/// 2026-11-02 : supprimer une case de restes ne doit rien pousser plus loin) :
+/// le plat qui cuisine perd une portion, et les restes qui restent se
+/// replacent sur les midis libres les plus proches (`leftoversOf`). Renvoie
 /// (clé du plat, nouvelles portions), ou null si [key] n'est pas un reste.
-({String sourceKey, int portions})? stopLeftoversAt(Map<String, PlannedMeal> slots, List<String> days, String key) {
-  final left = leftoversOf(slots, days);
-  final src = left[key];
-  if (src == null) return null;
-  final order = [for (final d in days) for (final m in kMealMoments) mealKey(d, m)];
-  final at = order.indexOf(key);
-  final before = left.entries.where((e) => e.value == src && order.indexOf(e.key) < at).length;
-  return (sourceKey: src, portions: 1 + before);
+({String sourceKey, int portions})? removeLeftoverAt(Map<String, PlannedMeal> slots, List<String> days, String key) {
+  final src = leftoversOf(slots, days)[key];
+  final p = src == null ? null : slots[src];
+  if (src == null || p == null) return null;
+  return (sourceKey: src, portions: (p.portions - 1).clamp(1, 12));
 }
