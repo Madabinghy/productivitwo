@@ -139,6 +139,8 @@ class _SleepSheetState extends State<SleepSheet> {
     final target = sleepTargetMin(sleep);
     final nights30 = sleepNightList(sessions: st.sessions, activities: st.activities, now: now, dayStartMin: logic.dayStartMin, nights: 30);
     final nights14 = nights30.sublist(16);
+    // 14 NUITS : rangées par jour du coucher, la dernière = ce soir.
+    final byBed = sleepNightsByBedDay(sessions: st.sessions, activities: st.activities, now: now, dayStartMin: logic.dayStartMin);
     final week = nights14.sublist(7);
     final stats = sleepStats(week, target);
     final planned = plannedSleep(_schedules, ids);
@@ -179,7 +181,8 @@ class _SleepSheetState extends State<SleepSheet> {
         ],
         title('14 NUITS', 'touche une nuit'),
         _NightsChart(
-          nights: nights14,
+          nights: byBed.nights,
+          bedDays: byBed.bedDays,
           target: target,
           planned: planned,
           onTap: (n) => _openNight(n, planned, target),
@@ -187,8 +190,8 @@ class _SleepSheetState extends State<SleepSheet> {
         const SizedBox(height: 6),
         Text(
           planned == null
-              ? 'Une barre = une nuit, du coucher au lever. Ambre = sous ta cible de ${fmtNight(target)}.'
-              : 'Une barre = une nuit, du coucher au lever. La bande bleue = ton bloc Sommeil (${clockOf(planned.bed)} → ${clockOf(planned.bed + planned.durationMin)}). Ambre = sous ta cible.',
+              ? 'Une barre = une nuit, du coucher au lever, sous le jour du coucher (lu = lundi → mardi). Ambre = sous ta cible de ${fmtNight(target)}.'
+              : 'Une barre = une nuit, du coucher au lever, sous le jour du coucher (lu = lundi → mardi). La bande bleue = ton bloc Sommeil (${clockOf(planned.bed)} → ${clockOf(planned.bed + planned.durationMin)}). Ambre = sous ta cible.',
           style: TextStyle(fontSize: 12, color: mute),
         ),
         if (stats.avgBed != null) ...[
@@ -426,10 +429,11 @@ class _SleepSheetState extends State<SleepSheet> {
 
 class _NightsChart extends StatelessWidget {
   final List<SleepNight?> nights;
+  final List<DateTime> bedDays;
   final int target;
   final ({int bed, int durationMin})? planned;
   final void Function(SleepNight n) onTap;
-  const _NightsChart({required this.nights, required this.target, required this.planned, required this.onTap});
+  const _NightsChart({required this.nights, required this.bedDays, required this.target, required this.planned, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -444,7 +448,7 @@ class _NightsChart extends StatelessWidget {
         },
         child: CustomPaint(
           size: Size(w, h),
-          painter: _NightsPainter(nights, target, planned, cs.onSurface, MaterialLocalizations.of(context)),
+          painter: _NightsPainter(nights, bedDays, target, planned, cs.onSurface, MaterialLocalizations.of(context)),
         ),
       );
     });
@@ -454,11 +458,12 @@ class _NightsChart extends StatelessWidget {
 class _NightsPainter extends CustomPainter {
   static const left = 30.0;
   final List<SleepNight?> nights;
+  final List<DateTime> bedDays;
   final int target;
   final ({int bed, int durationMin})? planned;
   final Color ink;
   final MaterialLocalizations loc;
-  _NightsPainter(this.nights, this.target, this.planned, this.ink, this.loc);
+  _NightsPainter(this.nights, this.bedDays, this.target, this.planned, this.ink, this.loc);
 
   /// Minutes depuis 18:00 la veille du lendemain.
   int _m(DateTime t, DateTime pivot) {
@@ -536,8 +541,8 @@ class _NightsPainter extends CustomPainter {
                 ..strokeWidth = 1.5);
         }
       }
-      final day = DateTime.now().subtract(Duration(days: nights.length - 1 - i));
-      final label = n == null ? _days[day.weekday - 1].substring(0, 2) : _days[n.pivot.weekday - 1].substring(0, 2);
+      // Une nuit porte le nom du jour du coucher (lundi = lundi → mardi).
+      final label = _days[bedDays[i].weekday - 1].substring(0, 2);
       final tp = TextPainter(text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset(cx - tp.width / 2, size.height - 12));

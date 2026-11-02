@@ -75,4 +75,26 @@ void main() {
     expect(few.enough, isFalse);
     expect(few.sentence, isNull);
   });
+
+  test('14 nuits rangées par jour du coucher : ce soir lundi = case vide', () {
+    final r = sleepNightsByBedDay(
+      sessions: [ses(DateTime(2026, 11, 1, 22), DateTime(2026, 11, 2, 8, 30))],
+      activities: [sleep],
+      now: DateTime(2026, 11, 2, 23, 30),
+      dayStartMin: dayStart,
+      nights: 3,
+    );
+    expect(r.bedDays.map((d) => d.weekday), [DateTime.saturday, DateTime.sunday, DateTime.monday]);
+    expect(r.nights[1]!.minutes, 630); // dimanche → lundi
+    expect(r.nights[2], isNull); // lundi soir : pas encore couché
+    // Couché à 23:00 ce lundi : la case de lundi se remplit.
+    final r2 = sleepNightsByBedDay(
+      sessions: [ses(DateTime(2026, 11, 2, 23), null)],
+      activities: [sleep],
+      now: DateTime(2026, 11, 2, 23, 30),
+      dayStartMin: dayStart,
+      nights: 3,
+    );
+    expect(r2.nights[2]!.minutes, 30);
+  });
 }
