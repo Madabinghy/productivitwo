@@ -1770,7 +1770,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeGetShoppingList(uid);
         } else if (toolName === "add_shopping_item") {
           text = await executeAddShoppingItem(
-              uid, args.label as string, args.qty as string | undefined);
+              uid, args.label as string, args.qty as string | undefined,
+              {domain: args.domain as string | undefined, projectId: args.projectId as string | undefined, store: args.store as string | undefined});
         } else if (toolName === "check_shopping_item") {
           text = await executeCheckShoppingItem(
               uid, args.label as string, args.checked !== false);

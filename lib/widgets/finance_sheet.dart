@@ -6,6 +6,10 @@ import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/groceries.dart' show spentByDomain, spentByProject;
+import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
 /// Feuille « Finances » (maquette validée 2026-11-02 « Suivi des finances »,
@@ -213,10 +217,11 @@ class _FinanceSheetState extends State<FinanceSheet> {
       ),
       title('ENVELOPPES DU MOIS', 'trait = attendu à ce jour'),
       for (final e in m.envelopes) _envelopeRow(cs, mute, e),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(onPressed: () => showEnvelopesSheet(context, logic: logic), child: const Text('Gérer les enveloppes ›')),
-      ),
+      Wrap(alignment: WrapAlignment.spaceBetween, children: [
+        TextButton(onPressed: () => showEnvelopesSheet(context, logic: logic), child: const Text('Gérer les enveloppes ›')),
+        TextButton(onPressed: () => showGroceriesSheet(context, logic: logic, sync: FirestoreSync()), child: const Text('Liste de courses ›')),
+      ]),
+      ..._byDomain(cs, mute, f, today),
       title('LES FIXES', m.fixedCount == 0 ? null : '${m.fixedPaidCount} / ${m.fixedCount} passés'),
       if (f.recurring.isEmpty)
         Text('Loyer, abonnements, salaire : pose-les une fois, coche-les chaque mois.', style: TextStyle(fontSize: 13, color: mute)),
@@ -252,6 +257,64 @@ class _FinanceSheetState extends State<FinanceSheet> {
       title('90 JOURS SUIVIS', '${_last90(f, today).where((x) => x > 0).length} / 90'),
       _grid(cs, f, today),
     ]);
+  }
+
+  /// CE MOIS · PAR DOMAINE DE VIE, puis les projets qui ont coûté quelque chose.
+  List<Widget> _byDomain(ColorScheme cs, Color mute, Finances f, String today) {
+    final by = spentByDomain(f, today);
+    if (by.isEmpty || (by.length == 1 && by.first.key.isEmpty)) return const [];
+    final domains = logic.state.activeDomains;
+    final total = by.fold<int>(0, (s, e) => s + e.value);
+    final projects = spentByProject(f, today);
+    Widget head(String t, String? r) => Padding(
+          padding: const EdgeInsets.only(top: 20, bottom: 8),
+          child: Row(children: [
+            Expanded(child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute))),
+            if (r != null) Text(r, style: TextStyle(fontSize: 11.5, color: mute)),
+          ]),
+        );
+    return [
+      head('CE MOIS · PAR DOMAINE DE VIE', euros(total)),
+      for (final e in by)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Container(width: 9, height: 9, decoration: BoxDecoration(color: domainColor(e.key, domains) ?? mute, shape: BoxShape.circle)),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(e.key.isEmpty ? 'Sans domaine' : (domains.where((d) => d.id == e.key).firstOrNull?.name ?? 'Domaine retiré'),
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: e.key.isEmpty ? mute : null)),
+              ),
+              Text(euros(e.value), style: TextStyle(fontSize: 12.5, color: mute)),
+            ]),
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : e.value / total,
+                minHeight: 6,
+                color: domainColor(e.key, domains) ?? mute,
+                backgroundColor: cs.onSurface.withValues(alpha: .08),
+              ),
+            ),
+          ]),
+        ),
+      if (projects.isNotEmpty) ...[
+        head('PROJETS CE MOIS', null),
+        for (final e in projects)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(children: [
+              Expanded(
+                child: Text(logic.currentProjects.where((p) => p.id == e.key).firstOrNull?.title ?? 'Projet',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              ),
+              Text(euros(e.value), style: TextStyle(fontSize: 12.5, color: mute)),
+            ]),
+          ),
+      ],
+    ];
   }
 
   Widget _expenseRow(ColorScheme cs, Color mute, Finances f, Expense x) {
@@ -465,6 +528,7 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
   final _note = TextEditingController();
   late String _ymd = widget.ymd ?? widget.logic.livedTodayYmd;
   late String _env = _lastEnvelope();
+  String? _domain;
 
   String _lastEnvelope() {
     final f = widget.logic.finances;
@@ -487,7 +551,7 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
     if (v == null) return;
     final logic = widget.logic;
     final first = !isTracked(logic.finances, _ymd);
-    final id = await logic.logExpense(amount: v, envelopeId: _env, note: _note.text, ymd: _ymd);
+    final id = await logic.logExpense(amount: v, envelopeId: _env, note: _note.text, ymd: _ymd, domainId: _domain);
     if (!mounted || id == null) return;
     Navigator.of(context).pop();
     if (first && widget.host.mounted) _trackedSnack(widget.host, logic, _ymd);
@@ -526,6 +590,27 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
               onSelected: (_) => setState(() => _env = e.id),
             ),
         ]),
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 4),
+          child: Text('POUR QUEL DOMAINE ?  facultatif', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: mute)),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final d in widget.logic.state.activeDomains)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  avatar: CircleAvatar(backgroundColor: domainColor(d.id, widget.logic.state.activeDomains) ?? mute, radius: 5),
+                  label: Text(d.name),
+                  selected: d.id == _domain,
+                  selectedColor: kMoneyAccent,
+                  labelStyle: TextStyle(fontWeight: FontWeight.w700, color: d.id == _domain ? kMoneyInk : null),
+                  onSelected: (_) => setState(() => _domain = d.id == _domain ? null : d.id),
+                ),
+              ),
+          ]),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _note,

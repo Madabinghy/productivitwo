@@ -909,6 +909,14 @@ endroits). `GroceryCheckout` (`showGroceryCheckout`) : « Le ticket fait ? » �
 couleurs des domaines, une ligne par domaine · projet avec ses lignes), tap = corriger (`adjustShare`), « Enregistrer · n dépenses »
 (`checkoutGroceries(monday:)`) ; SnackBar « ✓ Jour suivi · n dépenses dans « Courses » ». Les ingrédients du menu passés en caisse
 quittent la liste (`Groceries.boughtMenu`, `data/meta.groceries.bought.<lundi>`, `CheckoutLine.menuKey`, `groceryRows(monday:)`).
+**Lot 4 livré (Finances par domaine + connecteur)** : feuille Finances — CE MOIS · PAR DOMAINE DE VIE (`spentByDomain`, barre par domaine
+à sa couleur, « Sans domaine »), PROJETS CE MOIS (`spentByProject`), lien « Liste de courses › » ; la saisie d'une dépense propose
+« POUR QUEL DOMAINE ? facultatif » (`logExpense(domainId:)`). Serveur (⚠️ `firebase deploy --only functions`) : logique pure
+`functions/src/groceries.ts` (`groceryKey` = clé de l'app, `resolveDomain` par nom ou id sans accents, `existingItem`, `newGroceryItem` —
+domaine / endroit retenus pour le mot, `source:"claude"` —, `findItems`, `groceriesText` par endroit) ; `get_shopping_list` lit
+`data/meta.groceries` (+ l'ancienne liste de l'artefact `weekly_menu` s'il en reste une), `add_shopping_item {label, qty?, domain?,
+projectId?, store?}` écrit la ligne et la mémoire du mot, `check_shopping_item` met dans le panier (repli : ancienne liste du menu). Le
+passage en caisse reste dans l'app. **Les 4 lots sont livrés.**
 
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 

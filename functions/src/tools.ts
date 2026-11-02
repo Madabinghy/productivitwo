@@ -1531,29 +1531,34 @@ const GENERATE_WEEKLY_REPORT_TOOL = {
   },
 };
 
-// ── Liste de courses (artefact « menu de la semaine ») ───────────────────────
+// ── Liste de courses générale (data/meta.groceries, 2026-11-02) ─────────────
 
 const GET_SHOPPING_LIST_TOOL = {
   name: "get_shopping_list",
   description:
-    "Lit la liste de courses du menu de la semaine le plus récent (artefact " +
-    "weekly_menu) : articles, quantités, coché/restant. La même liste que " +
-    "l'utilisateur coche dans l'app quand le contexte @courses est actif.",
+    "Lit la liste de courses générale de l'utilisateur, rangée par endroit " +
+    "(Supermarché, Bricolage…), avec le domaine de vie et le projet de chaque " +
+    "ligne, et ce qui est déjà dans le panier. Les ingrédients du menu de la " +
+    "semaine s'y ajoutent dans l'app et ne sont pas listés ici.",
   inputSchema: { type: "object", properties: {} },
 };
 
 const ADD_SHOPPING_ITEM_TOOL = {
   name: "add_shopping_item",
   description:
-    "Ajoute un article à la liste de courses du menu de la semaine le plus " +
-    "récent. Échoue proprement s'il n'existe aucun menu (la liste vit sur " +
-    "l'artefact weekly_menu).",
+    "Ajoute un article à la liste de courses générale. Donne le domaine de vie " +
+    "(par son nom, ex. « Intendance », « Santé ») pour que la dépense soit " +
+    "rangée au bon domaine au passage en caisse ; sans domaine, celui retenu " +
+    "pour ce mot s'applique. Un mot déjà sur la liste n'est pas doublé.",
   inputSchema: {
     type: "object",
     required: ["label"],
     properties: {
-      label: { type: "string", description: "L'article (ex: 'lait')" },
+      label: { type: "string", description: "L'article (ex: 'lessive')" },
       qty: { type: "string", description: "Quantité optionnelle (ex: '×2', '500 g')" },
+      domain: { type: "string", description: "Domaine de vie : nom (ou id) d'un domaine existant" },
+      projectId: { type: "string", description: "Projet servi (optionnel, id via list_projects)" },
+      store: { type: "string", description: "Où ça s'achète : Supermarché (défaut), Bricolage, Pharmacie, Marché…" },
     },
   },
 };
@@ -1561,9 +1566,10 @@ const ADD_SHOPPING_ITEM_TOOL = {
 const CHECK_SHOPPING_ITEM_TOOL = {
   name: "check_shopping_item",
   description:
-    "Coche (ou décoche avec checked:false) un article de la liste de courses, " +
-    "par son libellé (insensible à la casse et aux accents). En cas " +
-    "d'ambiguïté, l'outil liste les candidats au lieu de deviner.",
+    "Met un article de la liste de courses dans le panier (ou l'en sort avec " +
+    "checked:false), par son libellé (insensible à la casse et aux accents). " +
+    "En cas d'ambiguïté, l'outil liste les candidats au lieu de deviner. Le " +
+    "passage en caisse (total du ticket réparti par domaine) se fait dans l'app.",
   inputSchema: {
     type: "object",
     required: ["label"],
@@ -1571,7 +1577,7 @@ const CHECK_SHOPPING_ITEM_TOOL = {
       label: { type: "string", description: "Libellé (ou fragment) de l'article" },
       checked: {
         type: "boolean",
-        description: "true = coché (défaut), false = décoché",
+        description: "true = dans le panier (défaut), false = à prendre",
       },
     },
   },
