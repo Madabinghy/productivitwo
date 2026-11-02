@@ -1751,7 +1751,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeGetShoppingList)(uid);
                 }
                 else if (toolName === "add_shopping_item") {
-                    text = await (0, execute_1.executeAddShoppingItem)(uid, args.label, args.qty);
+                    text = await (0, execute_1.executeAddShoppingItem)(uid, args.label, args.qty, { domain: args.domain, projectId: args.projectId, store: args.store });
                 }
                 else if (toolName === "check_shopping_item") {
                     text = await (0, execute_1.executeCheckShoppingItem)(uid, args.label, args.checked !== false);

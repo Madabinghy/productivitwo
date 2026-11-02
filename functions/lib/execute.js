@@ -92,6 +92,7 @@ exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
+const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
 const schedule_dedupe_1 = require("./schedule_dedupe");
@@ -1084,65 +1085,102 @@ async function latestMenu(uid) {
     }
     return best ? { ref: best.ref, data: best.data } : null;
 }
-async function executeGetShoppingList(uid) {
+async function legacyMenuText(uid) {
     var _a, _b;
     const menu = await latestMenu(uid);
-    if (!menu) {
-        return "Aucun menu de la semaine — la liste de courses vit sur l'artefact menu (générable depuis l'app).";
-    }
+    if (!menu)
+        return null;
     const items = (_a = menu.data.shoppingList) !== null && _a !== void 0 ? _a : [];
-    const at = String((_b = menu.data.generatedAt) !== null && _b !== void 0 ? _b : "").slice(0, 10);
     if (!items.length)
-        return `Menu du ${at} : liste de courses vide.`;
-    const remaining = items.filter((s) => s.checked !== true).length;
+        return null;
+    const at = String((_b = menu.data.generatedAt) !== null && _b !== void 0 ? _b : "").slice(0, 10);
     const lines = items.map((s) => {
         var _a, _b;
         const qty = ((_a = s.qty) !== null && _a !== void 0 ? _a : "").trim();
         return `${s.checked === true ? "☑" : "☐"} ${(_b = s.label) !== null && _b !== void 0 ? _b : "?"}${qty ? ` ${qty}` : ""}`;
     });
-    return (`Liste de courses — menu du ${at} (${remaining} restant${remaining > 1 ? "s" : ""} sur ${items.length}) :\n` +
-        lines.join("\n"));
+    return `Ancienne liste du menu du ${at} :\n${lines.join("\n")}`;
 }
-async function executeAddShoppingItem(uid, label, qty) {
-    var _a;
+async function groceriesState(uid) {
+    var _a, _b, _c, _d;
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const g = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.groceries) !== null && _b !== void 0 ? _b : {});
+    return { items: (_c = g.items) !== null && _c !== void 0 ? _c : {}, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {} };
+}
+async function executeGetShoppingList(uid) {
+    const [{ items }, domainsSnap, projectsSnap, legacy] = await Promise.all([
+        groceriesState(uid),
+        db_1.db.collection(`users/${uid}/domains`).get(),
+        db_1.db.collection(`users/${uid}/projects`).get(),
+        legacyMenuText(uid),
+    ]);
+    const domains = new Map(domainsSnap.docs.map((d) => { var _a; return [d.id, String((_a = d.data().name) !== null && _a !== void 0 ? _a : "")]; }));
+    const projects = new Map(projectsSnap.docs.map((d) => { var _a; return [d.id, String((_a = d.data().title) !== null && _a !== void 0 ? _a : "")]; }));
+    const text = (0, groceries_1.groceriesText)(items, (id) => domains.get(id), (id) => projects.get(id));
+    return legacy ? `${text}\n\n${legacy}` : text;
+}
+async function executeAddShoppingItem(uid, label, qty, opts = {}) {
+    var _a, _b, _c, _d;
     const clean = (label !== null && label !== void 0 ? label : "").trim();
     if (!clean)
         return "❌ label vide.";
-    const menu = await latestMenu(uid);
-    if (!menu) {
-        return "❌ Aucun menu de la semaine : impossible d'ajouter (la liste vit sur l'artefact menu, générable depuis l'app).";
+    const { items, memory } = await groceriesState(uid);
+    const dup = (0, groceries_1.existingItem)(items, clean);
+    if (dup)
+        return `Déjà sur la liste : « ${dup[1].label} ».`;
+    const domainsSnap = await db_1.db.collection(`users/${uid}/domains`).get();
+    const domains = domainsSnap.docs.filter((d) => d.data().deleted !== true).map((d) => { var _a; return ({ id: d.id, name: String((_a = d.data().name) !== null && _a !== void 0 ? _a : "") }); });
+    const domainId = (0, groceries_1.resolveDomain)(opts.domain, domains);
+    if (opts.domain && !domainId) {
+        return `❌ Domaine introuvable : « ${opts.domain} ». Domaines : ${domains.map((d) => d.name).join(", ")}.`;
     }
-    const items = ((_a = menu.data.shoppingList) !== null && _a !== void 0 ? _a : []).slice();
-    if (items.some((s) => { var _a; return normLabel(String((_a = s.label) !== null && _a !== void 0 ? _a : "")) === normLabel(clean); })) {
-        return `Déjà sur la liste : « ${clean} ».`;
-    }
-    items.push({ label: clean, qty: (qty !== null && qty !== void 0 ? qty : "").trim(), checked: false });
-    await menu.ref.update({ shoppingList: items });
-    return `✅ Ajouté à la liste de courses : ${clean}${qty ? ` ${qty}` : ""} (${items.filter((s) => s.checked !== true).length} restants).`;
+    const item = (0, groceries_1.newGroceryItem)({ label: clean, qty, domainId, projectId: (_a = opts.projectId) !== null && _a !== void 0 ? _a : null, store: (_b = opts.store) !== null && _b !== void 0 ? _b : null }, memory);
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const mem = Object.assign({}, ((_c = memory[(0, groceries_1.groceryKey)(clean)]) !== null && _c !== void 0 ? _c : {}));
+    if (item.domainId)
+        mem.domainId = item.domainId;
+    if (item.projectId)
+        mem.projectId = item.projectId;
+    if (item.store)
+        mem.store = item.store;
+    await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: { items: { [id]: item }, memory: { [(0, groceries_1.groceryKey)(clean)]: mem } } }, { merge: true });
+    const dom = item.domainId ? (_d = domains.find((d) => d.id === item.domainId)) === null || _d === void 0 ? void 0 : _d.name : undefined;
+    const left = Object.values(items).filter((x) => x.inBasket !== true).length + 1;
+    return `✅ Ajouté à la liste de courses : ${clean}${item.qty ? ` ${item.qty}` : ""} · ${[dom !== null && dom !== void 0 ? dom : "sans domaine", item.store].join(" · ")} (${left} à prendre).` +
+        (item.domainId ? "" : " Précise un domaine de vie (paramètre domain) pour que la dépense soit rangée au passage en caisse.");
 }
 async function executeCheckShoppingItem(uid, label, checked) {
     var _a;
-    const needle = normLabel(label !== null && label !== void 0 ? label : "");
+    const needle = (label !== null && label !== void 0 ? label : "").trim();
     if (!needle)
         return "❌ label vide.";
+    const { items } = await groceriesState(uid);
+    const found = (0, groceries_1.findItems)(items, needle);
+    if (found.length > 1) {
+        return `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` + found.map(([, x]) => `• ${x.label}`).join("\n");
+    }
+    if (found.length === 1) {
+        const [id, x] = found[0];
+        await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: { items: { [id]: Object.assign(Object.assign({}, x), { inBasket: checked }) } } }, { merge: true });
+        const left = Object.entries(items).filter(([k, y]) => (k === id ? !checked : y.inBasket !== true)).length;
+        return `✅ ${x.label} ${checked ? "dans le panier" : "remis à prendre"} — ${left} à prendre.`;
+    }
+    // Repli : l'ancienne liste du menu (artefact weekly_menu).
     const menu = await latestMenu(uid);
     if (!menu)
-        return "❌ Aucun menu de la semaine (donc pas de liste de courses).";
-    const items = ((_a = menu.data.shoppingList) !== null && _a !== void 0 ? _a : []).slice();
-    const exact = items.filter((s) => { var _a; return normLabel(String((_a = s.label) !== null && _a !== void 0 ? _a : "")) === needle; });
-    const partial = exact.length
-        ? exact
-        : items.filter((s) => { var _a; return normLabel(String((_a = s.label) !== null && _a !== void 0 ? _a : "")).includes(needle); });
+        return `❌ Introuvable sur la liste : « ${label} ». (Les ingrédients du menu se cochent dans l'app.)`;
+    const legacy = ((_a = menu.data.shoppingList) !== null && _a !== void 0 ? _a : []).slice();
+    const n = normLabel(needle);
+    const exact = legacy.filter((s) => { var _a; return normLabel(String((_a = s.label) !== null && _a !== void 0 ? _a : "")) === n; });
+    const partial = exact.length ? exact : legacy.filter((s) => { var _a; return normLabel(String((_a = s.label) !== null && _a !== void 0 ? _a : "")).includes(n); });
     if (!partial.length)
         return `❌ Introuvable sur la liste : « ${label} ».`;
     if (partial.length > 1) {
-        return (`❓ Plusieurs articles correspondent à « ${label} » — précise :\n` +
-            partial.map((s) => `• ${s.label}`).join("\n"));
+        return `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` + partial.map((s) => `• ${s.label}`).join("\n");
     }
     partial[0].checked = checked;
-    await menu.ref.update({ shoppingList: items });
-    const remaining = items.filter((s) => s.checked !== true).length;
-    return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} — ${remaining} restant${remaining > 1 ? "s" : ""}.`;
+    await menu.ref.update({ shoppingList: legacy });
+    return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} (ancienne liste du menu).`;
 }
 async function executeGetArchives(uid) {
     const [domainsSnap, activitiesSnap] = await Promise.all([

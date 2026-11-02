@@ -1,3 +1,4 @@
+import { existingItem, findItems, groceriesText, groceryKey, newGroceryItem, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
 import { normalizeSplitMoments, splitLabel } from "./routine_split";
 import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
@@ -1217,43 +1218,72 @@ async function latestMenu(
   return best ? { ref: best.ref, data: best.data } : null;
 }
 
-async function executeGetShoppingList(uid: string): Promise<string> {
+async function legacyMenuText(uid: string): Promise<string | null> {
   const menu = await latestMenu(uid);
-  if (!menu) {
-    return "Aucun menu de la semaine — la liste de courses vit sur l'artefact menu (générable depuis l'app).";
-  }
+  if (!menu) return null;
   const items = (menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? [];
+  if (!items.length) return null;
   const at = String(menu.data.generatedAt ?? "").slice(0, 10);
-  if (!items.length) return `Menu du ${at} : liste de courses vide.`;
-  const remaining = items.filter((s) => s.checked !== true).length;
   const lines = items.map((s) => {
     const qty = (s.qty ?? "").trim();
     return `${s.checked === true ? "☑" : "☐"} ${s.label ?? "?"}${qty ? ` ${qty}` : ""}`;
   });
-  return (
-    `Liste de courses — menu du ${at} (${remaining} restant${remaining > 1 ? "s" : ""} sur ${items.length}) :\n` +
-    lines.join("\n")
-  );
+  return `Ancienne liste du menu du ${at} :\n${lines.join("\n")}`;
+}
+
+async function groceriesState(uid: string): Promise<{
+  items: Record<string, GroceryItemDoc>;
+  memory: Record<string, GroceryMemoryDoc>;
+}> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const g = (snap.data()?.groceries ?? {}) as { items?: Record<string, GroceryItemDoc>; memory?: Record<string, GroceryMemoryDoc> };
+  return { items: g.items ?? {}, memory: g.memory ?? {} };
+}
+
+async function executeGetShoppingList(uid: string): Promise<string> {
+  const [{ items }, domainsSnap, projectsSnap, legacy] = await Promise.all([
+    groceriesState(uid),
+    db.collection(`users/${uid}/domains`).get(),
+    db.collection(`users/${uid}/projects`).get(),
+    legacyMenuText(uid),
+  ]);
+  const domains = new Map(domainsSnap.docs.map((d) => [d.id, String(d.data().name ?? "")]));
+  const projects = new Map(projectsSnap.docs.map((d) => [d.id, String(d.data().title ?? "")]));
+  const text = groceriesText(items, (id) => domains.get(id), (id) => projects.get(id));
+  return legacy ? `${text}\n\n${legacy}` : text;
 }
 
 async function executeAddShoppingItem(
   uid: string,
   label: string,
-  qty?: string
+  qty?: string,
+  opts: { domain?: string; projectId?: string; store?: string } = {}
 ): Promise<string> {
   const clean = (label ?? "").trim();
   if (!clean) return "❌ label vide.";
-  const menu = await latestMenu(uid);
-  if (!menu) {
-    return "❌ Aucun menu de la semaine : impossible d'ajouter (la liste vit sur l'artefact menu, générable depuis l'app).";
+  const { items, memory } = await groceriesState(uid);
+  const dup = existingItem(items, clean);
+  if (dup) return `Déjà sur la liste : « ${dup[1].label} ».`;
+  const domainsSnap = await db.collection(`users/${uid}/domains`).get();
+  const domains = domainsSnap.docs.filter((d) => d.data().deleted !== true).map((d) => ({ id: d.id, name: String(d.data().name ?? "") }));
+  const domainId = resolveDomain(opts.domain, domains);
+  if (opts.domain && !domainId) {
+    return `❌ Domaine introuvable : « ${opts.domain} ». Domaines : ${domains.map((d) => d.name).join(", ")}.`;
   }
-  const items = ((menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? []).slice();
-  if (items.some((s) => normLabel(String(s.label ?? "")) === normLabel(clean))) {
-    return `Déjà sur la liste : « ${clean} ».`;
-  }
-  items.push({ label: clean, qty: (qty ?? "").trim(), checked: false });
-  await menu.ref.update({ shoppingList: items });
-  return `✅ Ajouté à la liste de courses : ${clean}${qty ? ` ${qty}` : ""} (${items.filter((s) => s.checked !== true).length} restants).`;
+  const item = newGroceryItem({ label: clean, qty, domainId, projectId: opts.projectId ?? null, store: opts.store ?? null }, memory);
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const mem: GroceryMemoryDoc = { ...(memory[groceryKey(clean)] ?? {}) };
+  if (item.domainId) mem.domainId = item.domainId;
+  if (item.projectId) mem.projectId = item.projectId;
+  if (item.store) mem.store = item.store;
+  await db.doc(`users/${uid}/data/meta`).set(
+    { groceries: { items: { [id]: item }, memory: { [groceryKey(clean)]: mem } } },
+    { merge: true },
+  );
+  const dom = item.domainId ? domains.find((d) => d.id === item.domainId)?.name : undefined;
+  const left = Object.values(items).filter((x) => x.inBasket !== true).length + 1;
+  return `✅ Ajouté à la liste de courses : ${clean}${item.qty ? ` ${item.qty}` : ""} · ${[dom ?? "sans domaine", item.store].join(" · ")} (${left} à prendre).` +
+    (item.domainId ? "" : " Précise un domaine de vie (paramètre domain) pour que la dépense soit rangée au passage en caisse.");
 }
 
 async function executeCheckShoppingItem(
@@ -1261,26 +1291,36 @@ async function executeCheckShoppingItem(
   label: string,
   checked: boolean
 ): Promise<string> {
-  const needle = normLabel(label ?? "");
+  const needle = (label ?? "").trim();
   if (!needle) return "❌ label vide.";
+  const { items } = await groceriesState(uid);
+  const found = findItems(items, needle);
+  if (found.length > 1) {
+    return `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` + found.map(([, x]) => `• ${x.label}`).join("\n");
+  }
+  if (found.length === 1) {
+    const [id, x] = found[0];
+    await db.doc(`users/${uid}/data/meta`).set(
+      { groceries: { items: { [id]: { ...x, inBasket: checked } } } },
+      { merge: true },
+    );
+    const left = Object.entries(items).filter(([k, y]) => (k === id ? !checked : y.inBasket !== true)).length;
+    return `✅ ${x.label} ${checked ? "dans le panier" : "remis à prendre"} — ${left} à prendre.`;
+  }
+  // Repli : l'ancienne liste du menu (artefact weekly_menu).
   const menu = await latestMenu(uid);
-  if (!menu) return "❌ Aucun menu de la semaine (donc pas de liste de courses).";
-  const items = ((menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? []).slice();
-  const exact = items.filter((s) => normLabel(String(s.label ?? "")) === needle);
-  const partial = exact.length
-    ? exact
-    : items.filter((s) => normLabel(String(s.label ?? "")).includes(needle));
+  if (!menu) return `❌ Introuvable sur la liste : « ${label} ». (Les ingrédients du menu se cochent dans l'app.)`;
+  const legacy = ((menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? []).slice();
+  const n = normLabel(needle);
+  const exact = legacy.filter((s) => normLabel(String(s.label ?? "")) === n);
+  const partial = exact.length ? exact : legacy.filter((s) => normLabel(String(s.label ?? "")).includes(n));
   if (!partial.length) return `❌ Introuvable sur la liste : « ${label} ».`;
   if (partial.length > 1) {
-    return (
-      `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` +
-      partial.map((s) => `• ${s.label}`).join("\n")
-    );
+    return `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` + partial.map((s) => `• ${s.label}`).join("\n");
   }
   partial[0].checked = checked;
-  await menu.ref.update({ shoppingList: items });
-  const remaining = items.filter((s) => s.checked !== true).length;
-  return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} — ${remaining} restant${remaining > 1 ? "s" : ""}.`;
+  await menu.ref.update({ shoppingList: legacy });
+  return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} (ancienne liste du menu).`;
 }
 
 async function executeGetArchives(uid: string): Promise<string> {
