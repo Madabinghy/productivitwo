@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sleep_stats.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek, weekSummary;
+import 'package:productivitwo_v1/utils/budget_window.dart' show dailyMinutesByDomain;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
@@ -47,6 +48,8 @@ const _natureColors = {
   DomainNature.money: kMoneyAccent,
 };
 const _kNaturesPref = 'life_natures';
+/// Hauteur commune des tuiles de Ma vie (à l'échelle du texte 1).
+const kLifeTileHeight = 172.0;
 
 /// Onglet « Ma vie » (maquette validée 2026-11-01) : les lanceurs des modes,
 /// la semaine en une ligne, une tuile par domaine selon sa nature (Sommeil,
@@ -343,7 +346,7 @@ class _LifeViewState extends State<LifeView> {
         ),
       );
 
-  Widget _objectiveLine(ColorScheme cs, StrategicObjective o, ObjectiveProgress? p, Color c) {
+  Widget _objectiveLine(ColorScheme cs, StrategicObjective o, ObjectiveProgress? p, Color c, {int more = 0}) {
     final pct = p?.weekPercent;
     return InkWell(
       onTap: () async {
@@ -355,6 +358,7 @@ class _LifeViewState extends State<LifeView> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: Text(o.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5))),
+            if (more > 0) Text(' +$more ', style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: .5))),
             if (pct != null) Text('${(pct * 100).round()} %', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c)),
           ]),
           if (pct != null)
@@ -398,15 +402,9 @@ class _LifeViewState extends State<LifeView> {
         eyebrow = 'SPORT';
         value = '$sessions séance${sessions > 1 ? 's' : ''}';
         sub = min == 0 ? 'rien encore cette semaine' : '${fmtMin(min)} cette semaine';
-        viz = Row(children: [
-          for (var i = 0; i < 7; i++)
-            Container(
-              width: 12,
-              height: 12,
-              margin: const EdgeInsets.only(right: 4),
-              decoration: BoxDecoration(color: i < days.length && !days[i].isRest ? c : cs.onSurface.withValues(alpha: .08), borderRadius: BorderRadius.circular(4)),
-            ),
-        ]);
+        // Une barre par jour de la semaine : le temps actif (vide = repos).
+        final maxMin = days.fold<int>(0, (a, x) => a > x.activeMin ? a : x.activeMin);
+        viz = _bars([for (var i = 0; i < 7; i++) i < days.length && days[i].activeMin > 0 ? (days[i].activeMin / maxMin).clamp(0.12, 1.0) : 0.0], c, cs);
         onTap = () => showSportSheet(context, logic: logic, sync: widget.sync);
       case DomainNature.meals:
         final t = logic.livedToday;
@@ -419,6 +417,14 @@ class _LifeViewState extends State<LifeView> {
         eyebrow = 'REPAS';
         value = v.counted == 0 ? 'Repas' : '${v.balanced} / ${v.counted}';
         sub = next != null ? '${moment == 'midi' ? 'ce midi' : 'ce soir'} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');
+        // Une barre par jour de la semaine : repas équilibrés (0, 1 ou 2).
+        viz = _bars([
+          for (final d in days)
+            () {
+              final ok = ['midi', 'soir'].where((m) => v.cells[mealKey(d, m)]?.name == 'ok').length;
+              return ok / 2;
+            }(),
+        ], c, cs);
         onTap = () => showMealSheet(context, logic: logic, sync: widget.sync);
       case DomainNature.money:
         final f = logic.finances;
@@ -430,10 +436,21 @@ class _LifeViewState extends State<LifeView> {
         eyebrow = 'FINANCES';
         value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
         sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · $tracked / 90 suivis' : 'note tes dépenses, jour après jour');
-        viz = ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(value: tracked / 90, minHeight: 4, color: c, backgroundColor: cs.onSurface.withValues(alpha: .08)),
-        );
+        // 7 derniers jours : la dépense de chaque jour ; un jour « rien dépensé » = petit trait.
+        final spentDays = [
+          for (var i = 6; i >= 0; i--)
+            () {
+              final y = ymdOf(DateTime(t.year, t.month, t.day - i));
+              return f.expenses.values.where((x) => x.ymd == y).fold<int>(0, (s, x) => s + x.amount);
+            }(),
+        ];
+        final maxSpent = spentDays.fold<int>(0, (a, b) => a > b ? a : b);
+        viz = _bars([
+          for (var i = 0; i < 7; i++)
+            spentDays[i] > 0
+                ? (spentDays[i] / maxSpent).clamp(0.08, 1.0)
+                : (f.nothing.contains(ymdOf(DateTime(t.year, t.month, t.day - 6 + i))) ? 0.05 : 0.0),
+        ], c, cs);
         onTap = () => showFinanceSheet(context, logic: logic);
       case DomainNature.work:
       case DomainNature.practice:
@@ -448,6 +465,7 @@ class _LifeViewState extends State<LifeView> {
             sub = w.routinesTotal == 0 ? 'cette semaine' : 'routines au rythme';
           }
           if (w.resting) sub = 'en veille';
+          viz = _domainDays(cs, d, w, n, now, c);
         }
     }
     final behind = w != null && w.hasGoal && !w.resting && w.doneMin < w.expectedMin * .95;
@@ -458,8 +476,11 @@ class _LifeViewState extends State<LifeView> {
       child: InkWell(
         onTap: onTap,
         onLongPress: () => _pickNature(d),
+        // Toutes les tuiles ont la même hauteur (retour user 2026-11-02) : des
+        // places fixes pour la sous-ligne (2 lignes), le mini-graphique des
+        // 7 jours et l'objectif (vide s'il n'y en a pas).
         child: Container(
-          constraints: const BoxConstraints(minHeight: 112),
+          height: kLifeTileHeight * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5),
           decoration: BoxDecoration(border: Border(top: BorderSide(color: c, width: 3))),
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -469,17 +490,45 @@ class _LifeViewState extends State<LifeView> {
             ]),
             const SizedBox(height: 3),
             Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: behind ? _kAmber : null)),
-            if (sub.isNotEmpty) Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: mute, height: 1.3)),
-            if (viz != null) ...[const SizedBox(height: 8), viz],
-            if (objs.isNotEmpty) ...[
-              Padding(padding: const EdgeInsets.only(top: 7), child: Divider(height: 1, color: cs.onSurface.withValues(alpha: .07))),
-              _objectiveLine(cs, objs.first, progress[objs.first.id], c),
-              if (objs.length > 1) Padding(padding: const EdgeInsets.only(top: 3), child: Text('+ ${objs.length - 1} objectif${objs.length > 2 ? 's' : ''}', style: TextStyle(fontSize: 11, color: mute))),
-            ],
+            Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: mute, height: 1.3)),
+            const Spacer(),
+            viz ?? _bars(const [0, 0, 0, 0, 0, 0, 0], c, cs),
+            const SizedBox(height: 7),
+            Divider(height: 1, color: cs.onSurface.withValues(alpha: .07)),
+            SizedBox(
+              height: 30,
+              child: objs.isEmpty
+                  ? Align(alignment: Alignment.centerLeft, child: Text('pas d’objectif', style: TextStyle(fontSize: 11, color: mute.withValues(alpha: .6))))
+                  : _objectiveLine(cs, objs.first, progress[objs.first.id], c, more: objs.length - 1),
+            ),
           ]),
         ),
       ),
     );
+  }
+
+  /// Mini-graphique des 7 derniers jours d'un domaine : le temps chronométré
+  /// pour un domaine de temps, sinon les coches des routines du domaine.
+  Widget _domainDays(ColorScheme cs, Domain d, DomainWeek w, DomainNature n, DateTime now, Color c) {
+    final st = logic.state;
+    final today = livedDate(now, logic.dayStartMin);
+    final start = DateTime(today.year, today.month, today.day - 6);
+    final time = n == DomainNature.work || (n != DomainNature.upkeep && w.routinesTotal == 0);
+    if (time) {
+      final row = dailyMinutesByDomain(st.sessions, st.activities, start, 7, now: now)[d.id] ?? List<int>.filled(7, 0);
+      final mx = row.fold<int>(0, (a, b) => a > b ? a : b);
+      return _bars([for (final m in row) m <= 0 ? 0.0 : (m / mx).clamp(0.1, 1.0)], c, cs);
+    }
+    final routines = {for (final a in st.activities) if (!a.deleted && a.isHabit && a.domainId == d.id) a.id};
+    final per = List<int>.filled(7, 0);
+    for (final h in st.habitHits) {
+      if (!routines.contains(h.habitId)) continue;
+      final day = livedDate(h.ts, logic.dayStartMin);
+      final i = DateTime(day.year, day.month, day.day).difference(start).inDays;
+      if (i >= 0 && i < 7) per[i]++;
+    }
+    final mx = per.fold<int>(0, (a, b) => a > b ? a : b);
+    return _bars([for (final k in per) k <= 0 ? 0.0 : (k / mx).clamp(0.1, 1.0)], c, cs);
   }
 
   Widget _bars(List<double> values, Color c, ColorScheme cs) => SizedBox(
