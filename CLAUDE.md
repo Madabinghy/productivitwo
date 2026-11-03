@@ -1554,6 +1554,15 @@ cards}`, `won` = au moins une carte, `name` « Séries or »), `pileStarted`, et
 badges + 8 piles). Widget `widgets/card_pile_view.dart` (`CardPileView` : dos décalés, cadre de la pile, icône flamme / sablier, nombre ;
 `showCardPileSheet` : les cartes de la pile en grille, tap = fiche). En-tête : TES n CARTES / À GAGNER y ajoutent les piles ; la ligne
 « séries de routine · hors compteur » est retirée. Tuile Collection : éventail et noms sur les badges seulement (`bestCards` sur `deck.counted`).
+## Cartes à aller chercher (2026-11-03, maquette validée « Cartes à aller chercher », Sniper seul, pas de « Viser »)
+
+Les cartes que la journée peut faire avancer, leur stratégie et un Sniper ciblé sur une carte. **Lot 1 livré (logique pure)**
+`utils/card_quests.dart` : `cardQuestOf(badge, activities:, facts:)` → `CardQuest {kind, nextRarity, need, days, effortMin, strategy,
+steps, modeKind}` ou null hors de portée — `QuestKind` time (`heures-<activité>`, ≤ `kQuestMaxMin` 120 min, tir ≤ 60 min) · reps
+(`fois-<routine>`, ≤ 10 coches) · series (`serie-<routine>`, ≤ 3 j, tir = le +1 du jour s'il manque) · days (Métronome : routines qui
+manquent ; Montre suisse : activités en retard, ≤ 3 ; ≤ 3 j) · mode (Guérilla, Offensive, Sniper : ≤ 2 sessions, pas de tir) ;
+`QuestStep {key 'activity:<id>' | 'routine:<id>', activity, amount, minutes}` = mêmes clés que les enjeux ; `cardQuests(deck, …, limit:)`
+classe par jours, puis effort du jour, puis avancement. L'année et le chemin des 10 000 h ne sont jamais proposés.
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
