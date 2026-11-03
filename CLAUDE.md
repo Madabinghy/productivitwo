@@ -1163,8 +1163,11 @@ d'agenda (miroir `gcalEventId`) ou une séance (bloc qui vise une tâche 🎯, `
 (Offensive)** : ligne « Ensuite Cours 6e à 14:00 · dans 1 h 05 » sous la piste (`_aheadLine`, ambre dans les 10 dernières minutes) ;
 alarme d'atterrissage UNE fois par rendez-vous (`CoupAlarm.scheduleLanding`, alarme id 45 + notification id 32, sonne téléphone en
 veille ou app fermée ; annulée à la fin de l'offensive) ; à l'heure, feuille « Atterrissage » (`_showLanding`) : « Je finis ce coup,
-puis j'y vais » (l'offensive s'arrête au bout du coup, `_leaveAfterCoup`) · « J'arrête maintenant ». Lots suivants : point d'étape
-qui n'arrête plus le chrono (ce qui arrive, ce qui se perd ce soir), fin du bloc Deep work (continuer 30 min = la suite souple se
+puis j'y vais » (l'offensive s'arrête au bout du coup, `_leaveAfterCoup`) · « J'arrête maintenant ». **Lot 2 livré (point d'étape)** :
+tous les 3 coups, le chrono CONTINUE (« Le chrono continue · 47 min sur … ») ; « Lève la tête 20 secondes » : CE QUI ARRIVE
+(`upcomingBlocks` : 3 prochains blocs à faire, pastille daté / souple), SE PERD CE SOIR SI RIEN (`seriesAtRisk` : routines quotidiennes
+non atteintes, série ≥ 2 j jusqu'à hier, hors acquises et gelées), DÉJÀ GAGNÉ ; Je continue · Je souffle 3 min (arrête le chrono) ·
+Coups de 10 min · C'est bon. La session garde `cur` / `endsAt` pendant le point d'étape (resté dedans = coups comptés). Lots suivants : fin du bloc Deep work (continuer 30 min = la suite souple se
 décale), reprise « Pendant que tu étais dedans ».
 
 ## Sniper (2026-11-01, maquette validée « Mode Sniper »)

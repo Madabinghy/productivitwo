@@ -61,3 +61,32 @@ String inLabel(int min) {
   final h = min ~/ 60, m = min % 60;
   return m == 0 ? 'dans $h h' : 'dans $h h ${m.toString().padLeft(2, '0')}';
 }
+
+/// Le point d'étape (lot 2) : les prochains blocs à faire de la journée, datés
+/// ou souples, sans les besoins de base ; [limit] au plus.
+List<({ScheduleBlock block, DateTime at, bool fixed})> upcomingBlocks(List<ScheduleBlock> blocks, DateTime now, int dayStartMin,
+    {Set<String> sessionTaskIds = const {}, int limit = 3}) {
+  final nowMin = livedNowMin(now, dayStartMin);
+  final base = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+  final list = blocks.where((b) => b.status == 'pending' && blockStartMin(b) >= nowMin && !isBasicNeedName(b.title)).toList()
+    ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+  return [
+    for (final b in list.take(limit))
+      (block: b, at: base.add(Duration(minutes: blockStartMin(b) - nowMin)), fixed: isFixedBlock(b, sessionTaskIds: sessionTaskIds)),
+  ];
+}
+
+/// Série qui se perd ce soir si rien n'est fait : routine quotidienne pas encore
+/// atteinte aujourd'hui, avec une série d'au moins 2 jours jusqu'à hier.
+class SeriesAtRisk {
+  final String name;
+  final int count;
+  final int target;
+  final int streak;
+  const SeriesAtRisk(this.name, this.count, this.target, this.streak);
+}
+
+List<SeriesAtRisk> seriesAtRisk(Iterable<SeriesAtRisk> routines, {int limit = 3}) {
+  final l = routines.where((r) => r.count < r.target && r.streak >= 2).toList()..sort((a, b) => b.streak.compareTo(a.streak));
+  return l.take(limit).toList();
+}

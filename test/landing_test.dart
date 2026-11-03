@@ -41,4 +41,26 @@ void main() {
     expect(inLabel(35), 'dans 35 min');
     expect(inLabel(120), 'dans 2 h');
   });
+
+  test('point d’étape : prochains blocs, datés ou souples', () {
+    final l = upcomingBlocks([
+      b('16:00', 'Petites choses', time: 'small'),
+      b('14:00', 'Cours 6e', gcal: 'e1'),
+      b('12:00', 'Passé'),
+      b('13:00', 'Déjeuner'),
+    ], now, 300);
+    expect(l.map((x) => x.block.title), ['Cours 6e', 'Petites choses']);
+    expect(l.first.fixed, isTrue);
+    expect(l.last.fixed, isFalse);
+  });
+
+  test('séries qui se perdent ce soir', () {
+    final l = seriesAtRisk(const [
+      SeriesAtRisk('Pompes', 0, 20, 12),
+      SeriesAtRisk('Eau', 6, 6, 30),
+      SeriesAtRisk('Lecture', 0, 1, 1),
+      SeriesAtRisk('Prière', 0, 1, 4),
+    ]);
+    expect(l.map((r) => r.name), ['Pompes', 'Prière']);
+  });
 }

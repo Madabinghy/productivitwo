@@ -101,7 +101,8 @@ const kRuleGuerilla = GameRule('La guérilla', [
 const kRuleOffensive = GameRule('L’offensive', [
   RuleCard('🎯', 'Tu choisis le front', 'Un projet, ou « tout mélanger » : la prochaine action de chaque projet, la plus en retard d’abord. L’app enchaîne les actions, une étape en avant.'),
   RuleCard('⏱️', 'Des coups de 10 ou 15 min', 'Au bout du minuteur, le coup est gagné, même sans finir l’action. Le chrono tourne sur l’activité liée.'),
-  RuleCard('☕', 'Tous les 3 coups', 'Trois minutes debout. Puis : à fond, je ralentis (coups de 10 min) ou c’est bon pour aujourd’hui.'),
+  RuleCard('☕', 'Tous les 3 coups', 'Tu lèves la tête : ce qui arrive, ce qui se perd ce soir. Le chrono continue. Puis : je continue, je souffle 3 min, coups de 10 min ou c’est bon.'),
+  RuleCard('🔔', 'Rien ne t’échappe', 'La ligne « Ensuite » montre ton prochain rendez-vous. Dix minutes avant, une alarme sonne, une seule fois.'),
   RuleCard('🏅', 'Le badge', 'Une offensive compte dès 3 coups gagnés. Le deep work 90 min reste à part : un seul gros bloc.'),
 ]);
 
