@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
 import 'package:productivitwo_v1/utils/landing.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowMin;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
@@ -47,7 +47,7 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingR
       builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId, activityId: activityId)));
 }
 
-enum _Phase { setup, coup, pause, end }
+enum _Phase { setup, coup, pause, back, end }
 
 class OffensiveScreen extends StatefulWidget {
   final AppLogic logic;
@@ -90,6 +90,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   String? _deepId;
   String? _deepAsked;
   bool _sheetOpen = false;
+  /// Reprise après être resté dedans : ce qui est passé sans toi, à régler avant de replonger.
+  List<ScheduleBlock> _missed = const [];
+  List<SeriesAtRisk> _backRisk = const [];
+  final _handled = <String, String>{};
+  DateTime? _resumeEndsAt;
   /// Point d'étape : « Je souffle 3 min » a arrêté le chrono.
   bool _breathing = false;
   final _passed = <String>{};
@@ -159,8 +164,16 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         final m = now.difference(open.startAt).inMinutes;
         _awayNote = 'Tu es resté dedans : +$extra coup${extra > 1 ? 's' : ''} compté${extra > 1 ? 's' : ''} · chrono ${m ~/ 60 > 0 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min'} sur cette action';
       }
+      // Resté dedans au-delà du coup : d'abord ce qui est passé sans toi (« Plongé, pas perdu », lot 4).
+      _missed = extra > 0 ? missedWhileAway(logic.todayBlocks, endsAt, now, logic.dayStartMin) : const [];
+      _backRisk = extra > 0 ? _atRisk() : const [];
+      _resumeEndsAt = extra > 0 ? null : endsAt;
+      if (_missed.isNotEmpty || _backRisk.isNotEmpty) {
+        _phase = _Phase.back;
+        return;
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _startCoup(endsAt: extra > 0 ? null : endsAt);
+        if (mounted) _startCoup(endsAt: _resumeEndsAt);
       });
       return;
     }
@@ -204,8 +217,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         'chronoSec': _chronoSec + (_chronoFrom == null ? 0 : now.difference(_chronoFrom!).inSeconds),
         'chronoBase': _chronoSec,
         if (_chronoFrom case final f?) 'chronoFrom': f.millisecondsSinceEpoch,
-        if (_phase != _Phase.setup && _phase != _Phase.end && _cur != null) 'cur': _cur!.action.id,
-        if (_phase != _Phase.setup && _phase != _Phase.end && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
+        if ((_phase == _Phase.coup || _phase == _Phase.pause) && _cur != null) 'cur': _cur!.action.id,
+        if ((_phase == _Phase.coup || _phase == _Phase.pause) && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
         'own': _ownChrono,
         'passed': _passed.toList(),
         'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
@@ -578,6 +591,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
               _Phase.setup => _setup(),
               _Phase.coup => _coup(),
               _Phase.pause => _pause(),
+              _Phase.back => _back(),
               _Phase.end => _endView(),
             },
           ),
@@ -946,7 +960,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     return seriesAtRisk([
       for (final a in logic.state.activeActivities)
         if (a.isHabit && a.habitFreq == HabitFreq.daily && !logic.isAcquired(a.id) && !logic.frozenOf(a.id).contains(ymd))
-          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday)),
+          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday), id: a.id),
     ]);
   }
 
@@ -1032,6 +1046,110 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         const SizedBox(width: 8),
         Expanded(child: _outline('C’est bon', () => _end())),
       ]),
+    ]);
+  }
+
+  Future<void> _settleBlock(ScheduleBlock b, String how) async {
+    final doc = b.docDate ?? logic.livedTodayYmd;
+    final sync = logic.sync;
+    setState(() => _handled[b.id] = how);
+    if (sync == null) return;
+    switch (how) {
+      case 'fait':
+        await sync.updateBlockStatus(doc, b.id, 'done', manual: true);
+      case 'demain':
+        await sync.reportBlockToTomorrow(doc, b);
+      case 'lâché':
+        await sync.setBlockLetGo(doc, b.id, true);
+    }
+  }
+
+  Widget _mini(String label, VoidCallback onTap) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: OutlinedButton(
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFF5A4032)),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              minimumSize: const Size(0, 34),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+            ),
+            child: Text(label, style: const TextStyle(fontSize: 12.5)),
+          ),
+        ),
+      );
+
+  Widget _backLine(String left, String title, String? done, List<Widget> actions) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(12, 10, 9, 10),
+        decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            SizedBox(width: 46, child: Text(left, style: const TextStyle(fontSize: 13, color: _text3, fontFeatures: [FontFeature.tabularFigures()]))),
+            Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            if (done != null) _pill(done, const Color(0xFF5FE0C8)) else _pill('passé', _amber),
+          ]),
+          if (done == null) ...[
+            const SizedBox(height: 8),
+            Row(children: actions),
+          ],
+        ]),
+      );
+
+  /// « Pendant que tu étais dedans » : ce qui est passé sans toi, réglé sur place, puis on replonge.
+  Widget _back() {
+    final now = DateTime.now();
+    final running = logic.state.sessions.where((x) => x.endAt == null).firstOrNull;
+    final fixed = nextFixed(logic.todayBlocks, now, logic.dayStartMin, sessionTaskIds: _sessionTasks);
+    final acts = {for (final a in logic.state.activities) a.id: a};
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _header('OFFENSIVE · REPRISE', trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
+      Expanded(
+        child: ListView(children: [
+          const SizedBox(height: 6),
+          const Text('Pendant que tu étais dedans', style: TextStyle(fontSize: 27, height: 1.15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 10),
+          if (_awayNote case final note?)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: kOffensiveAccent.withValues(alpha: .14), borderRadius: BorderRadius.circular(12)),
+              child: Text(note, style: const TextStyle(fontSize: 13.5, height: 1.35, color: _text2)),
+            ),
+          if (_missed.isNotEmpty) ...[
+            _label('PASSÉ SANS TOI'),
+            for (final b in _missed)
+              _backLine(b.startTime, b.title, _handled[b.id], [
+                _mini('Fait', () => _settleBlock(b, 'fait')),
+                if (b.gcalEventId == null) _mini('Demain', () => _settleBlock(b, 'demain')),
+                _mini('Je lâche', () => _settleBlock(b, 'lâché')),
+              ]),
+          ],
+          if (_backRisk.isNotEmpty) ...[
+            _label('SE PERD CE SOIR SI RIEN'),
+            for (final r in _backRisk)
+              _backLine('🔥', '${r.name} · ${r.count} / ${r.target}', _handled[r.id], [
+                if (acts[r.id] case final a?)
+                  _mini('+1', () {
+                    routinePlus(logic, a);
+                    final c = routineTodayCount(logic, a);
+                    setState(() {
+                      if (c >= r.target) _handled[r.id] = 'atteinte';
+                      _backRisk = [for (final x in _backRisk) x.id == r.id ? SeriesAtRisk(x.name, c, x.target, x.streak, id: x.id) : x];
+                    });
+                  }),
+                _mini('Plus tard', () => setState(() => _handled[r.id] = 'plus tard')),
+              ]),
+          ],
+          if (fixed != null) ...[
+            _label('ENCORE À VENIR'),
+            _li(fixed.block.startTime, fixed.block.title, inLabel(fixed.inMin), _pill('daté', _sky)),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 10),
+      _primary(running == null ? 'Reprendre l’offensive' : 'Reprendre l’offensive · le chrono tourne', () => _startCoup(endsAt: _resumeEndsAt)),
     ]);
   }
 
