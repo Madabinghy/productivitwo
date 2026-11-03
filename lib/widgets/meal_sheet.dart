@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/utils/meal_day.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
+import 'package:productivitwo_v1/utils/meals.dart' show sortDishes;
 import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show showPantrySheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent, showDishesSheet;
 import 'package:productivitwo_v1/utils/groceries.dart' show PantryState;
@@ -24,7 +25,7 @@ const _letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 const kRuleMeals = GameRule('Les repas', [
   RuleCard('✅', 'Équilibré', 'Un +1 de ta routine Repas équilibré (ou « ✓ Mangé, équilibré » ici) dans le moment : avant 16 h c’est le midi, après le soir.'),
-  RuleCard('🍝', 'Autre chose', 'Un repas noté sans le +1 : « Autre chose », un chrono Manger, ou « Dehors ». Il compte comme mangé, pas comme équilibré.'),
+  RuleCard('🍝', 'Autre chose', '« Autre chose… » demande ce que tu as mangé (un de tes plats, un mot ou dehors) et si c’était équilibré. Équilibré = le +1 de ta routine ; sinon il compte comme mangé, pas comme équilibré.'),
   RuleCard('🥡', 'Les restes', 'Un plat de plusieurs portions remplit tout seul les midis suivants dans le menu de la semaine.'),
   RuleCard('🛒', 'Les courses', 'La liste additionne les ingrédients des plats posés dans la semaine, et dit d’où vient chaque ligne.'),
 ]);
@@ -89,6 +90,101 @@ class _MealSheetState extends State<MealSheet> {
         } catch (_) {}
         await _askFinished(slot.recipeId!);
       }
+    }
+  }
+
+  /// « Autre chose… » (retour user 2026-11-03 : le bouton notait « autre
+  /// chose » sans rien demander) : on dit ce qu'on a mangé — un plat de la
+  /// bibliothèque, un mot, ou dehors — et si c'était équilibré.
+  Future<void> _otherMeal(String key, {PlannedMeal? current}) async {
+    final ctrl = TextEditingController(text: current?.ate != null && current!.title != 'Autre chose' ? current.title : '');
+    Recipe? dish = current?.recipeId == null ? null : _all.where((r) => r.id == current!.recipeId).firstOrNull;
+    var out = current?.out ?? false;
+    var balanced = current?.ate == 'ok';
+    final dishes = sortDishes(_all, DateTime.now());
+    final suggestions = [...dishes.often, ...dishes.stale, ...dishes.fresh].take(8).toList();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final cs = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                const Text('Qu’as-tu mangé ?', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const Key('meal-other-text'),
+                  controller: ctrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(hintText: 'Pizza, sandwich, restes…', isDense: true),
+                  onChanged: (_) => setS(() => dish = null),
+                ),
+                if (suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('UN DE TES PLATS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurface.withValues(alpha: .55))),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final r in suggestions)
+                      ChoiceChip(
+                        label: Text(r.title),
+                        selected: dish?.id == r.id,
+                        onSelected: (v) => setS(() {
+                          dish = v ? r : null;
+                          if (v) {
+                            ctrl.text = r.title;
+                            out = false;
+                          }
+                        }),
+                      ),
+                  ]),
+                ],
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: out,
+                  onChanged: (v) => setS(() => out = v),
+                  title: const Text('Dehors, au restaurant', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                SwitchListTile(
+                  key: const Key('meal-other-balanced'),
+                  contentPadding: EdgeInsets.zero,
+                  value: balanced,
+                  onChanged: (v) => setS(() => balanced = v),
+                  title: const Text('C’était équilibré', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('compte pour ta routine Repas équilibré'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  key: const Key('meal-other-save'),
+                  style: FilledButton.styleFrom(backgroundColor: kMealAccent, foregroundColor: const Color(0xFF0F1A0C), minimumSize: const Size.fromHeight(48)),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Noter ce repas', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }),
+    );
+    if (ok != true || !mounted) return;
+    final title = ctrl.text.trim().isEmpty ? (out ? 'Dehors' : 'Autre chose') : ctrl.text.trim();
+    final monday = ymdOf(_monday);
+    final wasBalanced = current?.ate == 'ok';
+    await logic.setMeal(monday, key, PlannedMeal(recipeId: dish?.id, title: title, portions: current?.portions ?? 1, out: out).withAte(balanced ? 'ok' : 'other'));
+    if (balanced && !wasBalanced) {
+      final r = logic.state.activities.where(isBalancedMealRoutine).firstOrNull;
+      if (r != null) routinePlus(logic, r);
+    }
+    if (dish != null && !out) {
+      try {
+        await widget.sync.recordMealCooked(dish!.title);
+      } catch (_) {}
     }
   }
 
@@ -223,7 +319,17 @@ class _MealSheetState extends State<MealSheet> {
               if (heroSub.isNotEmpty) Text(heroSub, style: TextStyle(fontSize: 13, color: mute)),
               const SizedBox(height: 10),
               if (done)
-                Text(v.cells[key] == MealCell.ok ? '✓ Mangé, équilibré' : '✓ Noté : autre chose', style: const TextStyle(fontWeight: FontWeight.w700, color: kMealAccent))
+                Row(children: [
+                  Expanded(
+                    child: Text(
+                      v.cells[key] == MealCell.ok
+                          ? '✓ Mangé, équilibré${slot != null && slot.ate != null && slot.title != 'Repas équilibré' ? ' · ${slot.title}' : ''}'
+                          : '✓ Noté : ${slot?.title.isNotEmpty == true ? slot!.title : 'autre chose'}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: kMealAccent),
+                    ),
+                  ),
+                  TextButton(onPressed: () => _otherMeal(key, current: slot), child: const Text('Changer')),
+                ])
               else
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   if (cook != null)
@@ -237,7 +343,7 @@ class _MealSheetState extends State<MealSheet> {
                       label: const Text('Cuisiner'),
                     ),
                   OutlinedButton(onPressed: () => _eaten(key, slot ?? fromSlot, balanced: true), child: const Text('✓ Mangé, équilibré')),
-                  OutlinedButton(onPressed: () => _eaten(key, slot, balanced: false), child: const Text('Autre chose')),
+                  OutlinedButton(key: const Key('meal-other'), onPressed: () => _otherMeal(key), child: const Text('Autre chose…')),
                 ]),
             ]),
           ),

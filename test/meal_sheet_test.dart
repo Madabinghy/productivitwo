@@ -22,4 +22,36 @@ void main() {
     expect(st.habitHits.where((h) => h.habitId == 'r').length, 1);
     expect(find.text('✓ Mangé, équilibré'), findsOneWidget);
   });
+
+  testWidgets('« Autre chose… » demande ce qu\'on a mangé et si c\'était équilibré', (tester) async {
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final rep = Activity(id: 'r', domainId: 'd', name: 'Repas équilibré', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 2, createdAt: DateTime(2026));
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [rep], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final pizza = Recipe(title: 'Pizza maison', ingredients: [ShoppingItem(label: 'Pâte')]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealSheet(logic: logic, sync: FirestoreSync(), recipes: Stream.value([pizza])))));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('meal-other')));
+    await tester.pumpAndSettle();
+    expect(find.text('Qu’as-tu mangé ?'), findsOneWidget);
+    // Rien n'est noté tant qu'on n'a pas validé.
+    expect(st.habitHits, isEmpty);
+    await tester.enterText(find.byKey(const Key('meal-other-text')), 'Sandwich');
+    await tester.tap(find.byKey(const Key('meal-other-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('✓ Noté : Sandwich'), findsOneWidget);
+    expect(st.habitHits, isEmpty);
+    // Changer : un de ses plats, équilibré → le +1 de la routine.
+    await tester.tap(find.text('Changer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pizza maison'));
+    await tester.tap(find.byKey(const Key('meal-other-balanced')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('meal-other-save')));
+    await tester.pumpAndSettle();
+    expect(st.habitHits.where((h) => h.habitId == 'r').length, 1);
+    expect(find.textContaining('Pizza maison'), findsWidgets);
+  });
 }
