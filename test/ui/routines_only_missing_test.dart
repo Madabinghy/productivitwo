@@ -42,4 +42,24 @@ void main() {
     expect(find.text('0 / 6'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('Fiche Routines : mêmes lignes, + / −, appui long = gestes rares, faites repliées', (tester) async {
+    Activity r(String id, int target) => Activity(
+        id: id, domainId: 'd', name: id, role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: target, createdAt: DateTime(2026, 1, 1));
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [r('Eau', 6), r('Lecture', 1)], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.incHabit('Lecture', 1, logic.livedToday);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: RoutinesDayView(logic: logic)))));
+    await tester.pumpAndSettle();
+    expect(find.text('ROUTINE DU MOMENT'), findsNothing);
+    expect(find.textContaining('Faites · 1'), findsOneWidget);
+    await tester.tap(find.text('+').first);
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 6'), findsOneWidget);
+    await tester.longPress(find.text('Eau'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pas aujourd\'hui'), findsOneWidget);
+    expect(find.text('Fiche de la routine'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
