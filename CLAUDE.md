@@ -1511,7 +1511,7 @@ rond = fait (`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnAction
 ## Ma vie (2026-11-01, maquette validée « Onglet Ma vie »)
 
 Retour user : « une page avec des widgets de ce que je gère dans ma vie », comme Aujourd'hui pour ce que je fais maintenant.
-L'onglet **Ma vie** (`widgets/life_view.dart`, `LifeView`, construit par `_buildObjectivesBody` de main.dart) remplace Objectifs et
+L'onglet **Ma vie** (`widgets/life_view.dart`, `LifeView`, construit par `_buildObjectivesBody` de main.dart ; icône = la mosaïque `Icons.space_dashboard_outlined` / `_rounded` depuis le 2026-11-03, à la place de la fleur) remplace Objectifs et
 Domaines : titre + « Gérer » (domaines), **Ta semaine en une phrase** (`lifeSentence`, `utils/life_natures.dart` : contrat k / n
 au rythme, nuits courtes / bien dormi, séances de sport, repas à surveiller, domaines à < 70 % de l'attendu — hors nuit et repas),
 MES MODES (lanceurs Guérilla · Offensive — reprise d'une session en attente, point —,
