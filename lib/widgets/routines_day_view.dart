@@ -9,17 +9,11 @@ import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
-import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/moment_card.dart';
-import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
-import 'package:productivitwo_v1/utils/badges_logic.dart' show routineBadge;
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
-import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredSection;
 
@@ -256,24 +250,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     if (mounted) setState(() {});
   }
 
-  /// Coche : atteint la cible d'un coup ; déjà atteinte : remet à zéro.
-  void _toggleReach(RoutineSlot s) {
-    final a = s.activity;
-    if (s.reached) {
-      final n = s.todo.dayTarget != null ? _todayCount(a) : 1;
-      for (var i = 0; i < n; i++) {
-        _minus(a);
-      }
-      return;
-    }
-    final missing = s.todo.dayTarget != null ? s.todo.dayTarget! - s.todo.dayDone : s.todo.weekTarget - s.todo.weekDone;
-    HapticFeedback.lightImpact();
-    for (var i = 0; i < (missing < 1 ? 1 : missing); i++) {
-      logic.incHabit(a.id, 1, livedDate(DateTime.now(), logic.dayStartMin));
-    }
-    setState(() {});
-  }
-
   void _defer(Activity a) {
     final ymd = _ymd;
     final list = [...(logic.state.nowSkippedByYmd[ymd] ?? const <String>[])]..remove(a.id);
@@ -359,7 +335,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     // Journée parfaite (maquette validée 2026-11-03 « Journée parfaite, revue ») :
     // une liste courte, une ligne par routine, saisie directe − / +.
     if (widget.onlyMissing) return _missingList(pal, day);
-    _defaultId = (_heldSlot(day) ?? day.queue.firstOrNull)?.id;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!widget.onlyMissing) Row(children: [
         Expanded(
@@ -381,121 +356,13 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ),
       ]),
       if (!widget.onlyMissing) const SizedBox(height: 10),
-      for (final m in logic.allMoments)
-        if (_rowsOf(day, m.key).isNotEmpty || (!widget.onlyMissing && m.key == day.current.key)) ...[
-          _momentSection(pal, day, m),
-          const SizedBox(height: 10),
-        ],
+      // Fiche Routines (2026-11-03) : mêmes lignes courtes que la feuille Journée parfaite.
+      _missingList(pal, day),
+      const SizedBox(height: 10),
       if (!widget.onlyMissing) _doneSection(pal, day),
       // Routines acquises (2026-10-30) : cochables, hors journée parfaite.
       if (!widget.onlyMissing) AcquiredSection(logic: logic, onPlus: (a) => _plus(a)),
     ]);
-  }
-
-  String _domainName(Activity a) =>
-      logic.state.domains.where((d) => d.id == a.domainId).map((d) => d.name).firstOrNull ?? '';
-
-  Widget _icon(Activity a, {double size = 26, Color? color}) => Icon(
-        a.iconCode != null ? IconData(a.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded,
-        size: size,
-        color: color ?? kRoutineAccent,
-      );
-
-  Widget _tag(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: kBAttention.withOpacity(.14), borderRadius: BorderRadius.circular(6)),
-        child: Text(text, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: kBAttention)),
-      );
-
-  /// « Une liste, un seul bloc ouvert » : la routine en avant (file du moment)
-  /// est l'item ouvert par défaut ; chaque ligne s'ouvre à sa place.
-  final _openItem = OpenItem();
-  String? _defaultId;
-
-  /// Bloc ouvert d'une routine ([slot]) : ne parle QUE de cette routine
-  /// (retour user 2026-10-30) — le moment, sa fenêtre, son compte et
-  /// « Enchaîner » vivent dans l'en-tête de la section.
-  Widget _momentCard(NowPalette pal, RoutineDay day, RoutineSlot slot) {
-    final cur = day.current;
-    final q = day.queue;
-    final heldSlot = _heldSlot(day);
-    final isMoment = slot.id == (heldSlot ?? q.firstOrNull)?.id;
-    final RoutineSlot? first = slot;
-    final held = heldSlot != null && heldSlot.id == slot.id && heldSlot.reached;
-    final todayN = _todayCount(slot.activity);
-    final restee = slot.moment != cur.key && !slot.reached ? 'restée ${momentOf(slot.moment).of}' : null;
-    final linked = RoutineChronoPill.linkedOf(logic, slot.activity);
-    final chronoRunning = linked != null && RoutineChronoPill.isRunning(logic, linked);
-    // Anneau = la progression de CETTE routine : sa part du moment si elle est
-    // répartie, sinon le jour (quotidienne) ou les 7 jours.
-    final t = slot.todo;
-    final share = slot.reached ? null : slot.share;
-    final int ringDone, ringTarget;
-    final String ringWhen;
-    if (share != null) {
-      ringDone = share.done;
-      ringTarget = share.target;
-      ringWhen = momentOf(share.moment).thisOne;
-    } else if (t.dayTarget != null) {
-      ringDone = t.dayDone;
-      ringTarget = t.dayTarget!;
-      ringWhen = 'aujourd\'hui';
-    } else {
-      ringDone = t.weekDone;
-      ringTarget = t.weekTarget;
-      ringWhen = 'sur 7 j';
-    }
-    final ring = ringTarget <= 0 ? 0.0 : (ringDone / ringTarget).clamp(0.0, 1.0).toDouble();
-    return MomentCard(
-      accent: kRoutineAccent,
-      eyebrow: isMoment ? 'ROUTINE DU MOMENT' : 'ROUTINE',
-      pill: slot.reached ? 'atteinte' : null,
-      ring: ring,
-      ringBig: '${slot.reached ? '✓ ' : ''}$ringDone / $ringTarget',
-      ringSmall: ringWhen,
-      context_: [_domainName(slot.activity), if (restee != null) restee].where((x) => x.isNotEmpty).join(' · '),
-      contextIcon: slot.activity.iconCode != null ? IconData(slot.activity.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded,
-      title: slot.activity.name,
-      sub: [
-        if (share != null && t.dayTarget != null) '${t.dayDone} / ${t.dayTarget} aujourd\'hui',
-        if (todayMark(slot.activity.habitFreq, todayN) case final mark?) mark,
-      ].join(' · '),
-      detail: chronoRunning ? RoutineChronoPill(logic: logic, routine: slot.activity, onChanged: () => setState(() {})) : null,
-      primaryLabel: first == null ? 'Tout est fait' : (held ? 'Suivante' : '+1'),
-      primaryIcon: first == null ? Icons.check_rounded : (held ? Icons.skip_next_rounded : null),
-      onPrimary: first == null
-          ? null
-          : held
-              ? () => setState(() {
-                    _held = null;
-                  })
-              : () => _plus(first.activity, hold: true),
-      moreTitle: slot.activity.name,
-      moreActions: first == null
-          ? const []
-          : [
-              if (held) MomentAction('+1 encore', icon: Icons.add, onTap: () => _plus(first.activity, hold: true)),
-              if (todayN > 0) MomentAction('−1', icon: Icons.remove, hint: 'retirer la dernière occurrence', onTap: () => _minus(first.activity)),
-              if (linked != null)
-                MomentAction(chronoRunning ? 'Arrêter le chrono' : 'Chrono',
-                    icon: chronoRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                    hint: linked.name,
-                    onTap: () {
-                      RoutineChronoPill.toggleChrono(logic, linked);
-                      setState(() {});
-                    }),
-              if (widget.onStartTimed != null)
-                MomentAction((first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
-                    icon: Icons.timer_outlined, onTap: () => _timer(first.activity)),
-              MomentAction('Plus tard ${cur.thisOne}', icon: Icons.schedule_rounded, onTap: () => _defer(first.activity)),
-              if (slot.pushed)
-                MomentAction('Annuler le report', icon: Icons.undo_rounded, hint: 'revient ${momentOf(slot.home).of}', onTap: () => _clearPush(first.activity)),
-              for (final m in day.laterMoments)
-                MomentAction('Reporter à ${m.thisOne}', icon: Icons.arrow_forward_rounded, hint: m.window, onTap: () => _pushTo(first.activity, m)),
-              MomentAction('Pas aujourd\'hui', icon: Icons.block_rounded, onTap: () => _dismiss(first.activity)),
-              MomentAction('Réglages de la routine', icon: Icons.tune_rounded, onTap: () => _openSheet(first.activity)),
-            ],
-    );
   }
 
   Widget _round(NowPalette pal, String label, VoidCallback? onTap,
@@ -556,108 +423,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ),
         ),
         if (_doneOpen)
-          for (final s in done) _row(pal, day, s),
+          for (final s in done) _missingLine(pal, day, s, first: false),
       ]),
     );
   }
-
-  Widget _momentSection(NowPalette pal, RoutineDay day, Moment m) {
-    final isCur = m.key == day.current.key;
-    final always = m.key == kMomentAllDay;
-    final open = always || (_open[m.key] ?? (isCur || widget.onlyMissing));
-    final c = day.countOf(m.key);
-    final left = day.leftoverCountOf(m.key);
-    final rows = _rowsOf(day, m.key);
-    return Container(
-      decoration: BoxDecoration(
-        color: isCur ? pal.track : pal.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isCur ? kRoutineAccent.withOpacity(.45) : kBLine),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: always ? null : () => setState(() => _open[m.key] = !open),
-          child: SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(children: [
-                Text(m.label.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: isCur ? kRoutineAccent : pal.text3)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      // Tap sur les horaires = régler les bornes des moments.
-                      onTap: always ? null : () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
-                      child: Text(m.window, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text4)),
-                    ),
-                  ),
-                ),
-                if (left > 0) ...[_tag('$left restée${left > 1 ? 's' : ''}'), const SizedBox(width: 10)],
-
-                Text(widget.onlyMissing ? '${rows.length} à faire' : '${c.done} / ${c.total}',
-                    style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700, color: pal.text2, fontFeatures: const [FontFeature.tabularFigures()])),
-                if (!always) ...[
-                  const SizedBox(width: 6),
-                  Icon(open ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text4),
-                ],
-              ]),
-            ),
-          ),
-        ),
-        // « Enchaîner » sur sa propre ligne : dans l'en-tête, il écrasait la
-        // fenêtre du moment (« 14 h → 1… »).
-        if (isCur && open && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => widget.onChain!(day),
-                style: TextButton.styleFrom(
-                  foregroundColor: kRoutineAccent,
-                  visualDensity: VisualDensity.compact,
-                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                ),
-                icon: const Icon(Icons.playlist_play_rounded, size: 20),
-                label: Text(day.queue.length == 1 ? 'Enchaîner la routine ${m.of}' : 'Enchaîner les ${day.queue.length} routines ${m.of}'),
-              ),
-            ),
-          ),
-        if (open)
-          for (final s in rows) _row(pal, day, s),
-      ]),
-    );
-  }
-
-  Widget _row(NowPalette pal, RoutineDay day, RoutineSlot s) {
-    final key = '${s.moment}/${s.id}';
-    return MomentItem(
-      key: _openItem.keyFor(key),
-      padding: EdgeInsets.zero,
-      open: _openItem.isOpen(key, _defaultKey(day)),
-      collapsed: _line(pal, day, s),
-      expanded: Padding(padding: const EdgeInsets.all(6), child: _momentCard(pal, day, s)),
-      onToggle: () => _openItem.settle(key, () => setState(() => _openItem.toggle(key, _defaultKey(day)))),
-      onLongPress: () => _openSheet(s.activity),
-    );
-  }
-
-  String? _defaultKey(RoutineDay day) {
-    final id = _defaultId;
-    if (id == null) return null;
-    for (final x in day.slots) {
-      if (x.id == id) return '${x.moment}/${x.id}';
-    }
-    return null;
-  }
-
-  // ── Journée parfaite : ce qui manque, dans la grammaire du lanceur ─────────
 
   Color _domainColorOf(Activity a) => domainColor(a.domainId, logic.state.domains) ?? kRoutineAccent;
 
@@ -666,7 +435,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final out = <Widget>[];
     for (final m in logic.allMoments) {
       final rows = _rowsOf(day, m.key);
-      if (rows.isEmpty) continue;
+      if (rows.isEmpty && (widget.onlyMissing || m.key != cur.key)) continue;
       final past = m.timed && cur.timed && m.endMin <= cur.startMin;
       final isCur = m.key == cur.key;
       final always = m.key == kMomentAllDay;
@@ -686,9 +455,20 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               Container(width: 7, height: 7, decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle)),
               const SizedBox(width: 7),
             ],
+            Text(label.toUpperCase(),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: hot ? kRoutineAccent : pal.text3)),
+            const SizedBox(width: 8),
             Expanded(
-              child: Text(label.toUpperCase(),
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: hot ? kRoutineAccent : pal.text3)),
+              child: widget.onlyMissing || !m.timed
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        // Tap sur les horaires = régler les bornes des moments.
+                        onTap: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
+                        child: Text(m.window, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text4)),
+                      ),
+                    ),
             ),
             Text('${rows.length}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: pal.text3)),
             const SizedBox(width: 4),
@@ -696,6 +476,27 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ]),
         ),
       ));
+      if (isCur && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty)
+        out.add(Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => widget.onChain!(day),
+            style: TextButton.styleFrom(
+              foregroundColor: kRoutineAccent,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+            icon: const Icon(Icons.playlist_play_rounded, size: 20),
+            label: Text(day.queue.length == 1 ? 'Enchaîner la routine ${m.of}' : 'Enchaîner les ${day.queue.length} routines ${m.of}'),
+          ),
+        ));
+      if (rows.isEmpty) {
+        out.add(Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 4),
+          child: Text('Rien à faire ${m.thisOne}.', style: TextStyle(fontSize: 13, color: pal.text3)),
+        ));
+        continue;
+      }
       out.add(Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(color: pal.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
@@ -716,6 +517,23 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: out);
   }
 
+  /// Appui long sur une ligne : les gestes rares (reporter, pas aujourd'hui,
+  /// réglages), qui vivaient dans l'ancienne carte « Routine du moment ».
+  void _rowActions(RoutineDay day, RoutineSlot s) {
+    final a = s.activity;
+    final cur = day.current;
+    showMomentActions(context, title: a.name, actions: [
+      MomentAction('Fiche de la routine', icon: Icons.tune_rounded, onTap: () => _openSheet(a)),
+      if (!s.reached) MomentAction('Plus tard ${cur.thisOne}', icon: Icons.schedule_rounded, onTap: () => _defer(a)),
+      if (s.pushed) MomentAction('Annuler le report', icon: Icons.undo_rounded, hint: 'revient ${momentOf(s.home).of}', onTap: () => _clearPush(a)),
+      if (!s.reached)
+        for (final m in day.laterMoments)
+          MomentAction('Reporter à ${m.thisOne}', icon: Icons.arrow_forward_rounded, hint: m.window, onTap: () => _pushTo(a, m)),
+      if (!day.dismissed.contains(a.id) && !s.reached)
+        MomentAction('Pas aujourd\'hui', icon: Icons.block_rounded, onTap: () => _dismiss(a)),
+    ]);
+  }
+
   /// Une routine qui manque : anneau à la couleur du domaine, nom, UNE ligne
   /// d'infos, lanceur seulement s'il lance quelque chose, puis − / +.
   Widget _missingLine(NowPalette pal, RoutineDay day, RoutineSlot s, {required bool first}) {
@@ -729,8 +547,11 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final linked = _linkedOf(a);
     final running = linked != null && _isRunning(linked);
     final timed = (a.timerMin ?? 0) > 0 && widget.onStartTimed != null;
+    final done = s.reached;
+    final dismissed = day.dismissed.contains(a.id);
     final infos = <InlineSpan>[
-      TextSpan(text: s.share?.label ?? (timed ? '${a.timerMin} min' : '$count / $target'), style: TextStyle(color: c)),
+      if (dismissed) TextSpan(text: 'pas aujourd\'hui · ', style: TextStyle(color: pal.text4)),
+      TextSpan(text: done ? '✓ $count / $target' : (s.share?.label ?? (timed ? '${a.timerMin} min' : '$count / $target')), style: TextStyle(color: c)),
       if (streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
       if (linked != null) TextSpan(text: ' · ${linked.name}'),
     ];
@@ -744,7 +565,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ),
         );
     return InkWell(
-      onLongPress: () => _openSheet(a),
+      onLongPress: () => _rowActions(day, s),
       child: Container(
         decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: Colors.white.withOpacity(.05)))),
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
@@ -753,17 +574,26 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             width: 36,
             height: 36,
             child: Stack(alignment: Alignment.center, children: [
-              CustomPaint(
-                size: const Size(36, 36),
-                painter: RingPainter(progress: progress, color: c, stroke: 3.5, trackColor: pal.track, cap: StrokeCap.round),
-              ),
-              Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
+              if (done)
+                Container(decoration: BoxDecoration(color: c, shape: BoxShape.circle))
+              else
+                CustomPaint(
+                  size: const Size(36, 36),
+                  painter: RingPainter(progress: progress, color: c, stroke: 3.5, trackColor: pal.track, cap: StrokeCap.round),
+                ),
+              if (done)
+                Icon(Icons.check_rounded, size: 20, color: pal.surface)
+              else
+                Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
             ]),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: pal.text)),
+              Text(a.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: done || dismissed ? pal.text3 : pal.text)),
               const SizedBox(height: 1),
               Text.rich(TextSpan(children: infos),
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pal.text3)),
@@ -789,144 +619,4 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     );
   }
 
-  Widget _line(NowPalette pal, RoutineDay day, RoutineSlot s) {
-    final a = s.activity;
-    final done = s.reached;
-    final dismissed = day.dismissed.contains(a.id);
-    final n = _todayCount(a);
-    return Container(
-      decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.white.withOpacity(.05)))),
-      child: Opacity(
-        opacity: dismissed ? .45 : 1,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
-          child: Row(children: [
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => _toggleReach(s),
-                child: Center(child: _ringCheck(pal, s, done: done)),
-              ),
-            ),
-            _rowLauncher(pal, a, done: done),
-            if (a.habitFreq == HabitFreq.daily) ...[
-              const SizedBox(width: 6),
-              _seriesBadge(a),
-            ],
-            const SizedBox(width: 10),
-            Expanded(
-              child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                    // Nom sur trois lignes au plus : le compte vit dans l'anneau
-                    // et le ▶ dans l'icône, la ligne ne porte que − / + à droite.
-                    Text(a.name,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w600,
-                            color: done ? pal.text3 : pal.text,
-                            decoration: done ? TextDecoration.lineThrough : null,
-                            decorationColor: pal.text3)),
-                    if (todayMark(a.habitFreq, n) case final mark?)
-                      Text('$mark · ${s.todo.progressLabel}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
-                    if (s.share case final share? when !done)
-                      Text(share.label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
-                    if (s.pushed)
-                      GestureDetector(
-                        onTap: () => _clearPush(a),
-                        child: Text('reportée · revenir ${momentOf(s.home).of}',
-                            style: const TextStyle(fontSize: 11, color: kBAttention, decoration: TextDecoration.underline, decorationColor: kBAttention)),
-                      ),
-                    if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
-                  ]),
-              ),
-            ),
-            _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
-            const SizedBox(width: 6),
-            _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  /// Coche d'une ligne = anneau de progression (comme la carte du moment) :
-  /// se remplit avec les occurrences, « 2/3 » au centre quand la cible dépasse
-  /// 1 ; atteinte = disque plein avec ✓, ou le compte « 7/1 » quand on a
-  /// dépassé (la série de pompes reste lisible).
-  Widget _ringCheck(NowPalette pal, RoutineSlot s, {required bool done}) {
-    final target = s.todo.dayTarget ?? s.todo.weekTarget;
-    final count = s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone;
-    final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
-    final over = count > target;
-    final String? center = done ? (over ? '$count/$target' : null) : (target > 1 && count > 0 ? '$count/$target' : null);
-    const size = 30.0;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(alignment: Alignment.center, children: [
-        if (done)
-          Container(decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle))
-        else
-          CustomPaint(
-            size: const Size(size, size),
-            painter: RingPainter(
-                progress: progress, color: kRoutineAccent, stroke: 2.5, trackColor: pal.track, cap: StrokeCap.round),
-          ),
-        if (center != null)
-          Text(center,
-              style: TextStyle(
-                  fontSize: center.length > 3 ? 8 : 9.5,
-                  fontWeight: FontWeight.w800,
-                  color: done ? kBBg : pal.text2,
-                  fontFeatures: const [FontFeature.tabularFigures()]))
-        else if (done)
-          const Icon(Icons.check_rounded, size: 16, color: kBBg),
-      ]),
-    );
-  }
-
-  /// Icône de la routine ; avec une activité liée, elle devient le lanceur :
-  /// ▶ dans un rond orange (■ rouge si le chrono tourne dessus), appui long =
-  /// changer l'activité via la fiche.
-  /// Le badge de série de la routine (36 px) ; tap = sa fiche (paliers, bande
-  /// des 30 derniers jours, comment l'obtenir).
-  Widget _seriesBadge(Activity a) {
-    final b = routineBadge(a, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin, bridged: logic.bridgedOf(a.id), frozen: logic.frozenOf(a.id));
-    return InkWell(
-      customBorder: const CircleBorder(),
-      onTap: () => showBadgeSheet(context, b, logic: logic),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Opacity(opacity: b.acquired ? 1 : .6, child: BadgeView(state: b, size: 36)),
-      ),
-    );
-  }
-
-  Widget _rowLauncher(NowPalette pal, Activity a, {required bool done}) {
-    final linked = _linkedOf(a);
-    if (linked == null) {
-      return SizedBox(width: 32, child: Center(child: _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent)));
-    }
-    final running = _isRunning(linked);
-    final color = running ? kBAttention : kRoutineAccent;
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: Material(
-        color: color.withOpacity(running ? .18 : .14),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: () => _toggleChrono(linked),
-          onLongPress: () => _openSheet(a),
-          child: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 19, color: color),
-        ),
-      ),
-    );
-  }
 }
