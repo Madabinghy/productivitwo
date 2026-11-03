@@ -24,8 +24,10 @@ const _kPlanned = Color(0xFF9DB8FF);
 const _letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 const kRuleMeals = GameRule('Les repas', [
-  RuleCard('✅', 'Équilibré', 'Un +1 de ta routine Repas équilibré (ou « ✓ Mangé, équilibré » ici) dans le moment : avant 16 h c’est le midi, après le soir.'),
-  RuleCard('🍝', 'Autre chose', '« Autre chose… » demande ce que tu as mangé (un de tes plats, un mot ou dehors) et si c’était équilibré. Équilibré = le +1 de ta routine ; sinon il compte comme mangé, pas comme équilibré.'),
+  RuleCard('✅', 'Équilibré, ce qui compte', '« ✓ Mangé, équilibré » (ou un +1 de ta routine Repas équilibré) fait avancer ta routine : sa série, la Journée parfaite et le Métronome. Avant 16 h c’est le midi, après le soir.'),
+  RuleCard('🍝', 'Autre chose…', 'Tu dis ce que tu as mangé : un de tes plats, un mot, ou dehors. Coche « C’était équilibré » s’il l’était : il compte alors comme le bouton vert. Sinon il est noté mangé, mais ta routine n’avance pas.'),
+  RuleCard('↩️', 'Te tromper n’est pas grave', '« Changer » corrige ce que tu as noté. « Effacer » remet la case comme avant et retire le +1 s’il y en avait un.'),
+  RuleCard('📌', 'Le plat prévu reste', 'Noter que tu as mangé autre chose ne retire pas le plat du menu : ses restes et ses courses restent en place.'),
   RuleCard('🥡', 'Les restes', 'Un plat de plusieurs portions remplit tout seul les midis suivants dans le menu de la semaine.'),
   RuleCard('🛒', 'Les courses', 'La liste additionne les ingrédients des plats posés dans la semaine, et dit d’où vient chaque ligne.'),
 ]);
