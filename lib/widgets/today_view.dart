@@ -40,11 +40,9 @@ import 'package:productivitwo_v1/widgets/focus_screen.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
-import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart';
-import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore;
@@ -1074,24 +1072,7 @@ class TodayViewState extends State<TodayView> {
 
   // ── En parallèle : Routines · Objectifs (« une carte, une fiche », lot 4) ──
 
-  RoutineDay _routineDay() {
-    final ymd = widget.logic.livedYmdNow;
-    return buildRoutineDay(
-      activities: widget.logic.state.activeActivities,
-      hits: widget.logic.state.habitHits,
-      now: DateTime.now(),
-      pushed: widget.logic.routinePushed(ymd),
-      deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
-      dismissed: widget.logic.nowDoneSet(ymd),
-      dayStartMin: widget.logic.dayStartMin,
-      moments: widget.logic.moments,
-      exclude: widget.logic.acquiredIds,
-    );
-  }
-
   List<Widget> _parallelSection(ColorScheme cs, StakeBoard? stakes) {
-    final day = _routineDay();
-    final all = day.countAll;
     final st = widget.logic.state;
     final now = DateTime.now();
     final days = buildObjectiveDays(
@@ -1115,7 +1096,6 @@ class TodayViewState extends State<TodayView> {
       // tête en l'ouvrant.
       mode: widget.logic.mode,
     );
-    final current = day.of(day.current.key).where((x) => !x.reached && !day.dismissed.contains(x.id)).map((x) => x.activity.name).toList();
     final bc = widget.badges;
     final board = stakes ?? StakeBoard.empty;
     final today = DateTime(now.year, now.month, now.day);
@@ -1124,9 +1104,6 @@ class TodayViewState extends State<TodayView> {
       DashboardTiles(
         program: programTile(_liveBlocks, widget.logic.livedNowMinNow) ??
             const ProgramTile(value: 'Rien de prévu', sub: 'touche pour voir le programme et ajouter un bloc', strip: []),
-        routines: day.slots.isEmpty
-            ? null
-            : routinesTile(done: all.done, total: all.total, toDoNow: current, momentLabel: day.current.thisOne, seriesRunning: bc?.deck?.seriesRunning ?? 0),
         objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: badgesTile(bc?.deck, board),
@@ -1134,7 +1111,9 @@ class TodayViewState extends State<TodayView> {
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
         projects: projectTile,
         onProgram: _openProgramSheet,
-        onRoutines: _openRoutinesFiche,
+        // La tuile Routines est retirée (2026-11-03) : Journée parfaite dit ce qui manque
+        // aujourd'hui, le lanceur (FAB) montre toutes les routines.
+        perfectWide: true,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         // La tuile Collection ouvre l'album (ce qui se joue ce soir y est en tête, 2026-11-01).
         onBadges: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
@@ -1288,6 +1267,7 @@ class TodayViewState extends State<TodayView> {
               RoutinesDayView(
                 logic: widget.logic,
                 onlyMissing: true,
+                onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
                 onStartTimed: widget.onStartTimed,
                 onChanged: () {
                   if (ctx.mounted) setLocal(() {});
@@ -1662,37 +1642,6 @@ class TodayViewState extends State<TodayView> {
       await sync.updateOwnActions(e.owner!.id, e.owner!.ownActions);
     }
     widget.logic.onChange();
-  }
-
-  void _openRoutinesFiche() {
-    showFiche<void>(context, builder: (ctx, scroll) {
-      return StatefulBuilder(builder: (ctx, setLocal) {
-        final day = _routineDay();
-        final all = day.countAll;
-        return ListView(
-          controller: scroll,
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
-          children: [
-            FicheHeader(
-              title: 'Routines',
-              info: const InfoDot(kRuleSeries),
-              chip: '${all.done} / ${all.total}',
-              chipColor: kRoutineAccent,
-              kpi: day.shortLine,
-            ),
-            const SizedBox(height: 14),
-            RoutinesDayView(
-              logic: widget.logic,
-              onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
-              onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
-              onStartTimed: widget.onStartTimed,
-            ),
-          ],
-        );
-      });
-    }).then((_) {
-      if (mounted) setState(() {});
-    });
   }
 
   void _openObjectivesFiche() {
