@@ -40,6 +40,8 @@ exports.AISLE_KEYWORDS = [
             "steak", "viande", "hache", "poisson", "saumon", "dinde", "porc", "saucisse", "emmental", "mozzarella", "skyr", "feta",
             "chevre", "comte", "gruyere", "parmesan", "ricotta", "tofu", "pate feuilletee", "pate brisee", "cabillaud", "crevette",
             "escalope", "merguez", "chorizo",
+            "ribs", "travers", "cote", "bacon", "filet", "roti", "cuisse", "aiguillette", "nugget", "cordon bleu",
+            "veau", "agneau", "canard", "gigot", "blanc de poulet", "escargot",
         ]],
     ["Fruits et légumes", [
             "banane", "pomme", "poire", "orange", "citron", "tomate", "salade", "carotte", "oignon", "ail", "pomme de terre", "patate",

@@ -2038,6 +2038,33 @@ class AppLogic implements HuntStore {
     await sync?.setGroceryItem(id, y.toJson());
   }
 
+  /// Retire un ingrédient du menu de la liste pour cette semaine (le plat ne change pas).
+  Future<void> skipMenuLine(String monday, String key, {bool skip = true}) async {
+    final set = {...?groceries.skippedMenu[monday]};
+    skip ? set.add(key) : set.remove(key);
+    groceries = groceries.copyWith(skippedMenu: {...groceries.skippedMenu, monday: set});
+    onChange();
+    await sync?.setGroceriesFields({
+      'skipped': {monday: set.toList()..sort()}
+    });
+  }
+
+  /// Un ingrédient du menu devient une ligne libre de la liste (qu'on modifie,
+  /// retire, met au panier comme les autres) ; il quitte la partie « menu » de
+  /// la semaine. Renvoie la nouvelle ligne.
+  Future<GroceryItem> detachMenuRow(GroceryRow r, String monday) async {
+    final x = await addGrocery(label: r.label, qty: r.qty, domainId: r.domainId, projectId: r.projectId, store: r.store, source: 'menu', aisle: r.aisle);
+    if (r.inBasket && !x.inBasket) await setGroceryInBasket(x.id, true);
+    if (r.menuKey != null) await skipMenuLine(monday, r.menuKey!);
+    return groceries.items[x.id] ?? x;
+  }
+
+  /// « J'en ai déjà » : le produit passe « J'en ai » au placard et quitte la liste.
+  Future<void> alreadyHave(GroceryRow r, String monday) async {
+    await setPantryState(r.label, PantryState.have, aisle: r.aisle);
+    if (r.itemId != null) await removeGrocery(r.itemId!);
+  }
+
   /// Ligne proposée par le placard mise dans le panier : elle devient une
   /// ligne de la liste (pour passer en caisse avec le reste).
   Future<void> basketPantryRow(GroceryRow r) async {

@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
+import 'package:productivitwo_v1/utils/pantry.dart' show aisleFor;
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart';
 
 void main() {
@@ -59,5 +60,44 @@ void main() {
     await tester.pump();
     expect(find.text('DANS LE PANIER · 1'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Ingrédient du menu : glisser = retiré, appui long = ligne libre modifiable', (tester) async {
+    tester.view.physicalSize = const Size(800, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'sante', name: 'Santé')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final t = logic.livedToday;
+    final m = ymdOf(DateTime(t.year, t.month, t.day - (t.weekday - 1)));
+    final ribs = Recipe(title: 'Ribs BBQ', portions: 2, ingredients: [ShoppingItem(label: 'Ribs', qty: '1 kg'), ShoppingItem(label: 'Escargots', qty: '12')]);
+    await logic.setMeal(m, mealKey(m, 'soir'), PlannedMeal(recipeId: ribs.id, title: ribs.title, portions: 2));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GroceriesSheet(logic: logic, sync: FirestoreSync(), recipes: Stream.value([ribs])))));
+    await tester.pump();
+    expect(find.text('Ribs'), findsOneWidget);
+    // Glisser : retiré de la liste pour la semaine.
+    await tester.drag(find.text('Ribs'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Ribs'), findsNothing);
+    expect(logic.groceries.skippedMenu[m], {'ribs'});
+    await tester.pump(const Duration(seconds: 5));
+    // Appui long sur un inconnu : ligne libre, éditeur ouvert, rayon choisi.
+    await tester.longPress(find.text('Escargots'));
+    await tester.pumpAndSettle();
+    final item = logic.groceries.items.values.single;
+    expect(item.label, 'Escargots');
+    expect(item.qty, '12');
+    expect(logic.groceries.skippedMenu[m], {'ribs', 'escargots'});
+    expect(find.text('QUEL RAYON ?'), findsOneWidget);
+    await tester.tap(find.text('J’en ai déjà'));
+    await tester.pumpAndSettle();
+    expect(logic.groceries.items, isEmpty);
+    expect(logic.groceries.pantry['escargots']?.state, PantryState.have);
+  });
+
+  test('les viandes vont en Frais', () {
+    for (final l in ['Ribs', 'Travers de porc', 'Côtes d\'agneau', 'Bacon', 'Rôti de veau', 'Cuisses de poulet', 'Escargots']) {
+      expect(aisleFor(const Groceries(), l), 'Frais', reason: l);
+    }
   });
 }
