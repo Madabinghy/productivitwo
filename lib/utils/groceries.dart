@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/utils/finances.dart' show Expense, Finances, monthOf;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show ShoppingLine;
+import 'package:productivitwo_v1/utils/pantry.dart' show aisleFor, pantryNeeds;
 
 /// Courses générales (maquette validée 2026-11-02 « Courses générales ») —
 /// logique pure. UNE liste : les ingrédients du menu de la semaine (dérivés,
@@ -439,6 +440,12 @@ class GroceryRow {
   final bool inBasket;
   final String? itemId;
   final String? menuKey;
+  /// Rayon (placards, 2026-11-03).
+  final String aisle;
+  /// Ligne proposée par le placard (bientôt fini / plus rien) : la clé du produit.
+  final String? pantryKey;
+  /// État au placard d'une ligne proposée par lui.
+  final PantryState? pantryState;
   const GroceryRow({
     required this.label,
     this.qty = '',
@@ -450,15 +457,21 @@ class GroceryRow {
     this.inBasket = false,
     this.itemId,
     this.menuKey,
+    this.aisle = kOtherAisle,
+    this.pantryKey,
+    this.pantryState,
   });
-  String get key => itemId ?? 'menu:$menuKey';
+  String get key => itemId ?? (pantryKey != null ? 'pantry:$pantryKey' : 'menu:$menuKey');
 }
 
 /// Fond les ingrédients du menu de la semaine ([menuLines], cochés dans
-/// [menuChecked]) et les lignes à la main. Un ingrédient prend le domaine
-/// retenu pour son mot, sinon [menuDomainId] ; son endroit retenu, sinon le
-/// supermarché. Un mot à la main qui est aussi un ingrédient du menu n'est
-/// montré qu'une fois (la ligne du menu, qui dit d'où il vient).
+/// [menuChecked]), les lignes à la main et ce que le placard demande de
+/// racheter. Un ingrédient prend le domaine retenu pour son mot, sinon
+/// [menuDomainId] ; son endroit retenu, sinon le supermarché. Un mot à la main
+/// qui est aussi un ingrédient du menu n'est montré qu'une fois (la ligne du
+/// menu). Placards (2026-11-03) : un ingrédient du menu qu'on a (« J'en ai »)
+/// n'est pas listé (`menuCoveredByPantry`) ; un produit « Bientôt fini » ou
+/// « Plus rien » qui n'est pas déjà sur la liste arrive (`source: pantry`).
 List<GroceryRow> groceryRows({
   required List<ShoppingLine> menuLines,
   required Set<String> menuChecked,
@@ -470,12 +483,17 @@ List<GroceryRow> groceryRows({
   final menuWords = <String>{};
   final bought = monday == null ? const <String>{} : (g.boughtMenu[monday] ?? const <String>{});
   for (final l in menuLines) {
+    final w = normLabel(l.label);
     if (bought.contains(l.key)) {
-      menuWords.add(normLabel(l.label));
+      menuWords.add(w);
       continue;
     }
-    final m = g.memory[normLabel(l.label)];
-    menuWords.add(normLabel(l.label));
+    if (g.pantry[w]?.state == PantryState.have && !menuChecked.contains(l.key)) {
+      menuWords.add(w);
+      continue;
+    }
+    final m = g.memory[w];
+    menuWords.add(w);
     out.add(GroceryRow(
       label: l.label,
       qty: l.qty,
@@ -486,6 +504,8 @@ List<GroceryRow> groceryRows({
       from: l.from,
       inBasket: menuChecked.contains(l.key),
       menuKey: l.key,
+      aisle: aisleFor(g, l.label),
+      pantryState: g.pantry[w]?.state,
     ));
   }
   for (final x in g.items.values) {
@@ -499,9 +519,45 @@ List<GroceryRow> groceryRows({
       source: x.source,
       inBasket: x.inBasket,
       itemId: x.id,
+      aisle: x.aisle ?? aisleFor(g, x.label),
+      pantryState: g.pantry[normLabel(x.label)]?.state,
+    ));
+  }
+  for (final p in pantryNeeds(g)) {
+    if (menuWords.contains(p.key)) continue;
+    final m = g.memory[p.key];
+    out.add(GroceryRow(
+      label: p.label,
+      domainId: m?.domainId,
+      projectId: m?.projectId,
+      store: m?.store ?? kMenuStore,
+      source: 'pantry',
+      aisle: p.aisle,
+      pantryKey: p.key,
+      pantryState: p.state,
     ));
   }
   return out;
+}
+
+/// Les ingrédients du menu de la semaine qu'on a déjà au placard (« J'en ai »).
+List<ShoppingLine> menuCoveredByPantry(List<ShoppingLine> menuLines, Groceries g, {Set<String> menuChecked = const {}}) => [
+      for (final l in menuLines)
+        if (g.pantry[normLabel(l.label)]?.state == PantryState.have && !menuChecked.contains(l.key)) l,
+    ];
+
+/// Les lignes d'un endroit groupées par rayon, dans l'ordre des rayons ; dans
+/// un rayon, par libellé.
+List<MapEntry<String, List<GroceryRow>>> rowsByAisle(List<GroceryRow> rows, List<String> aisles) {
+  final by = <String, List<GroceryRow>>{};
+  for (final r in rows) {
+    by.putIfAbsent(r.aisle, () => []).add(r);
+  }
+  for (final l in by.values) {
+    l.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+  }
+  final order = [...aisles.where(by.containsKey), ...by.keys.where((k) => !aisles.contains(k))];
+  return [for (final k in order) MapEntry(k, by[k]!)];
 }
 
 /// Les lignes groupées par endroit, dans l'ordre des endroits connus, puis

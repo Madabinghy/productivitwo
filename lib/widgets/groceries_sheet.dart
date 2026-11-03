@@ -5,11 +5,12 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/groceries.dart';
+import 'package:productivitwo_v1/utils/pantry.dart' show aisleFor;
 import 'package:productivitwo_v1/utils/meal_day.dart' show isBalancedMealRoutine, isCookActivity;
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/grocery_shop_screen.dart' show showGroceryShop;
-import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show showPantrySheet;
+import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show aisleColor, showPantrySheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
 /// Feuille « Courses » (maquette validée 2026-11-02 « Courses générales »,
@@ -106,6 +107,10 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
   }
 
   void _toggle(GroceryRow r) {
+    if (r.pantryKey != null) {
+      logic.basketPantryRow(r);
+      return;
+    }
     if (r.itemId != null) {
       logic.setGroceryInBasket(r.itemId!, !r.inBasket);
       return;
@@ -129,6 +134,7 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
         final toBuy = rows.where((r) => !r.inBasket).toList();
         final basket = rows.where((r) => r.inBasket).toList();
         final menuCount = rows.where((r) => r.source == 'menu').length;
+        final covered = menuCoveredByPantry(shoppingFor(week, _all), logic.groceries, menuChecked: week.checked);
         final groups = rowsByStore(toBuy, logic.groceries.stores);
         return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(20, 8, 20, 32), children: [
           Row(children: [
@@ -174,6 +180,14 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
                 TextSpan(text: ' · $menuCount ingrédient${menuCount > 1 ? 's' : ''} arrivé${menuCount > 1 ? 's' : ''} tout seuls'),
               ]), style: const TextStyle(fontSize: 12.5)),
             ),
+          if (covered.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '${covered.length} ingrédient${covered.length > 1 ? 's' : ''} du menu déjà au placard : ${covered.take(4).map((l) => l.label).join(', ')}${covered.length > 4 ? '…' : ''}',
+                style: TextStyle(fontSize: 12, color: mute),
+              ),
+            ),
           if (toBuy.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 18),
@@ -192,7 +206,17 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
                   ),
               ]),
             ),
-            for (final r in g.value) _row(cs, mute, r),
+            for (final a in rowsByAisle(g.value, logic.groceries.aisles)) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Row(children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: aisleColor(logic.groceries.aisles, a.key), borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(width: 6),
+                  Text('${a.key} · ${a.value.length}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: mute)),
+                ]),
+              ),
+              for (final r in a.value) _row(cs, mute, r),
+            ],
           ],
           if (basket.isNotEmpty) ...[
             InkWell(
@@ -232,7 +256,11 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
           decoration: BoxDecoration(color: c.withValues(alpha: .15), borderRadius: BorderRadius.circular(20)),
           child: Text(t, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c)),
         );
-    final sub = r.source == 'menu' ? 'pour ${r.from.join(', ')}' : (dom?.name ?? 'sans domaine');
+    final sub = switch (r.source) {
+      'menu' => 'pour ${r.from.join(', ')}${r.pantryState == PantryState.low ? ' · bientôt fini au placard' : ''}',
+      'pantry' => r.pantryState == PantryState.out ? 'plus rien au placard' : 'bientôt fini au placard',
+      _ => dom?.name ?? 'sans domaine',
+    };
     final tile = InkWell(
       onTap: () => _toggle(r),
       onLongPress: r.itemId == null ? null : () => showGroceryEditor(context, logic: logic, item: logic.groceries.items[r.itemId]),
@@ -269,6 +297,7 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
                 if (r.source == 'menu') tag('menu', _kMenu),
                 if (project != null) tag(project.title.length > 22 ? '${project.title.substring(0, 21)}…' : project.title, _kProject),
                 if (r.source == 'claude') tag('via Claude', _kClaude),
+                if (r.source == 'pantry' && (logic.groceries.pantry[r.pantryKey]?.staple ?? false)) tag('habituel', kGroceryAccent),
               ]),
             ]),
           ),
@@ -327,6 +356,7 @@ class _GroceryEditorState extends State<_GroceryEditor> {
   late String? _domain = widget.item?.domainId ?? _guess.domainId;
   late String? _project = widget.item?.projectId ?? _guess.projectId;
   late String _store = widget.item?.store ?? _guess.store ?? kMenuStore;
+  late String _aisle = widget.item?.aisle ?? aisleFor(widget.logic.groceries, widget.label);
 
   @override
   void dispose() {
@@ -350,9 +380,10 @@ class _GroceryEditorState extends State<_GroceryEditor> {
         store: _store,
         source: it.source,
         inBasket: it.inBasket,
+        aisle: _aisle,
       ));
     } else {
-      await logic.addGrocery(label: l, qty: _qty.text, domainId: _domain, projectId: _project, store: _store);
+      await logic.addGrocery(label: l, qty: _qty.text, domainId: _domain, projectId: _project, store: _store, aisle: _aisle);
     }
     if (mounted) Navigator.of(context).pop();
   }
@@ -416,6 +447,7 @@ class _GroceryEditorState extends State<_GroceryEditor> {
                 _store = g.store ?? _store;
               });
             }
+            setState(() => _aisle = aisleFor(logic.groceries, v));
           },
         ),
         TextField(controller: _qty, decoration: const InputDecoration(labelText: 'Combien', hintText: 'facultatif · ×3, 1 kg', isDense: true)),
@@ -436,6 +468,10 @@ class _GroceryEditorState extends State<_GroceryEditor> {
               }),
           ]),
         ],
+        label('QUEL RAYON ?'),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final a in logic.groceries.aisles) chip(a, a == _aisle, () => setState(() => _aisle = a), dot: aisleColor(logic.groceries.aisles, a)),
+        ]),
         label('OÙ ÇA S’ACHÈTE ?'),
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final s in logic.groceries.stores) chip(s, s == _store, () => setState(() => _store = s)),

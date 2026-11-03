@@ -244,6 +244,12 @@ class _CategoryPageState extends State<_CategoryPage> {
             ]),
           ),
       ],
+      if (aislesOf(items).isNotEmpty) ...[
+        const SizedBox(height: 16),
+        section('COURSES PAR RAYON'),
+        const SizedBox(height: 6),
+        Text(aislesOf(items).map((e) => '${e.key} ${euros(e.value)}').join('  ·  '), style: TextStyle(fontSize: 13, color: mute, height: 1.4)),
+      ],
       if (items.isNotEmpty) ...[
         const SizedBox(height: 16),
         section(categoryId == kFixedKey ? 'LES FIXES' : 'TICKETS ET DÉPENSES'),

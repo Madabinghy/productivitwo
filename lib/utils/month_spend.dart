@@ -143,3 +143,15 @@ String shiftMonth(String month, int delta) {
 
 const kMonthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 String monthName(String month) => kMonthNames[(int.parse(month.substring(5, 7)) - 1).clamp(0, 11)];
+
+/// Les courses d'une catégorie par rayon (dépenses d'un ticket ou d'une caisse
+/// qui portent `byAisle`), du plus gros au plus petit ; vide sinon.
+List<MapEntry<String, int>> aislesOf(List<SpendItem> items) {
+  final by = <String, int>{};
+  for (final i in items) {
+    for (final e in (i.expense?.byAisle ?? const <String, int>{}).entries) {
+      by[e.key] = (by[e.key] ?? 0) + e.value;
+    }
+  }
+  return by.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+}
