@@ -158,6 +158,9 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
   final parts = <String>[];
   if (tonight.isNotEmpty) {
     value = '${tonight.length} carte${tonight.length > 1 ? 's' : ''} ce soir';
+    // Lesquelles (retour user 2026-11-03 : « 4 cartes ce soir », mais lesquelles ?).
+    final names = tonightCardNames(deck, tonight);
+    if (names.isNotEmpty) parts.add(names.length <= 2 ? names.join(', ') : '${names.take(2).join(', ')} +${names.length - 2}');
     if (best != null) parts.add('jusqu’à ${rarityLabel(best).toLowerCase()}');
     if (losing.isNotEmpty) parts.add('${losing.length} série${losing.length > 1 ? 's' : ''} à sauver');
   } else if (losing.isNotEmpty) {
@@ -176,6 +179,13 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     sub: parts.join(' · '),
   );
 }
+
+/// « Lecture 10 fois », « Pompes 7 j » : les cartes qui peuvent passer un palier ce soir.
+List<String> tonightCardNames(BadgeDeck deck, Iterable<String> ids) => [
+      for (final id in ids)
+        if (deck.byId(id) case final b?)
+          [b.def.name, if (b.nextTarget != null) '${fmtInt(b.nextTarget!)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}'].join(' '),
+    ];
 
 /// La carte que donnerait le palier de ce soir (null sans badge).
 CardRarity? tonightRarity(BadgeState? b) {
