@@ -28,7 +28,11 @@ void main() {
     );
     final a = accountNow(g, '2026-11-03')!;
     expect(a.sinceYmd, '2026-11-02');
-    expect(a.balance, 150000 - 2000 - 1000 - 2000 + 80000);
+    // « sans » (pas d'heure) est désormais compté après le solde ; « avant » reste dedans.
+    expect(a.balance, 150000 - 999 - 2000 - 1000 - 2000 + 80000);
+    expect(a.spentSince, 999 + 2000 + 1000);
+    expect(a.before.map((x) => x.id), ['avant']);
+    expect(a.sinceAt, 1000);
     expect(a.fixedLeft, 65000);
     expect(a.incomeLeft, 30000);
     expect(a.remaining, a.balance + 30000 - 65000);
@@ -38,6 +42,27 @@ void main() {
     expect(balanceCheck(g, '2026-11-03').paidInSince, 80000);
     expect(parseFinances(g.toJson()).incomes['f1']!.from, 'Client A');
     expect(parseFinances(g.toJson()).checksAt['2026-11-02'], 1000);
+  });
+
+  test('une dépense notée avant le solde : « pas encore dedans » la retranche', () async {
+    final st = AppState(domains: [], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final today = logic.livedTodayYmd;
+    final id = (await logic.logExpense(amount: 13500, envelopeId: 'imprevus'))!;
+    final x = logic.finances.expenses[id]!;
+    logic.finances = logic.finances.copyWith(
+      expenses: {id: Expense(id: id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, at: 1000)},
+      checks: {today: 26263},
+      checksAt: {today: 5000},
+    );
+    final before = accountNow(logic.finances, today)!;
+    expect(before.balance, 26263);
+    expect(before.before.single.id, id);
+    await logic.expenseAfterBalance(id);
+    final after = accountNow(logic.finances, today)!;
+    expect(after.balance, 26263 - 13500);
+    expect(after.before, isEmpty);
+    expect(after.spentSince, 13500);
   });
 
   testWidgets('Finances : poser son solde, une rentrée, la mise à jour dit l\'écart', (tester) async {
