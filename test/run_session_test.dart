@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/run_session.dart';
+import 'package:productivitwo_v1/models.dart' show Session;
 
 void main() {
   final started = DateTime(2026, 10, 30, 15, 30);
@@ -44,5 +45,28 @@ void main() {
     expect(expiredRunOf(run(done: 0)), isNull);
     expect(expiredRunOf(run(kind: kOffensiveKind, done: 4, extra: {'total': 2}))!.total, 2);
     expect(pendingRunLabel(run(), name: 'Guérilla'), 'Guérilla en cours · 2 coups');
+  });
+
+  test('Offensive restée vivante par son chrono : même jour, chrono de la session encore ouvert sur l’action en cours', () {
+    final start = DateTime(2026, 11, 3, 9);
+    final p = PendingRun(kind: kOffensiveKind, runId: 'r', date: '2026-11-03', startedAt: start, lastActiveAt: start, done: 1,
+        extra: {'own': true, 'cur': 'a1'});
+    final open = Session(id: 's', activityId: 'act', startAt: start.add(const Duration(minutes: 1)), actionId: 'a1');
+    expect(p.isLive(start.add(const Duration(minutes: 55)), '2026-11-03'), isFalse);
+    expect(chronoKeepsAlive(p, [open], '2026-11-03'), isTrue);
+    expect(chronoKeepsAlive(p, [open], '2026-11-04'), isFalse, reason: 'autre jour vécu');
+    final closed = Session(id: 's', activityId: 'act', startAt: open.startAt, endAt: start.add(const Duration(minutes: 20)), actionId: 'a1');
+    expect(chronoKeepsAlive(p, [closed], '2026-11-03'), isFalse);
+    final other = Session(id: 's', activityId: 'act', startAt: open.startAt, actionId: 'autre');
+    expect(chronoKeepsAlive(p, [other], '2026-11-03'), isFalse, reason: 'chrono lancé à la main sur autre chose');
+    final notOwn = PendingRun(kind: kOffensiveKind, runId: 'r', date: '2026-11-03', startedAt: start, lastActiveAt: start, done: 1, extra: {'cur': 'a1'});
+    expect(chronoKeepsAlive(notOwn, [open], '2026-11-03'), isFalse);
+  });
+
+  test('coups gagnés pendant l’absence : les tranches pleines au-delà du coup en cours', () {
+    final end = DateTime(2026, 11, 3, 9, 30);
+    expect(overtimeCoups(end, end.subtract(const Duration(minutes: 3)), 10), 0);
+    expect(overtimeCoups(end, end.add(const Duration(minutes: 1)), 10), 1);
+    expect(overtimeCoups(end, end.add(const Duration(minutes: 25)), 10), 3);
   });
 }
