@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart';
+import 'package:productivitwo_v1/widgets/finance_year_sheet.dart';
 import 'package:productivitwo_v1/utils/finance_charts.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 
@@ -49,5 +52,71 @@ void main() {
       await t.pump();
       expect(t.takeException(), isNull);
     }
+  });
+
+  test('Mon année : par mois, par enveloppe, par domaine, par fixe', () {
+    final f = Finances(
+      envelopes: const [Envelope(id: 'courses', name: 'Courses', monthly: 45000), Envelope(id: 'sorties', name: 'Sorties', monthly: 15000)],
+      recurring: const [Recurring(id: 'loyer', name: 'Loyer', amount: 70000), Recurring(id: 'sal', name: 'Salaire', amount: 200000, income: true)],
+      paid: const {
+        '2026-10': {'loyer': Paid(70000, '2026-10-02'), 'sal': Paid(200000, '2026-10-28')},
+        '2026-11': {'loyer': Paid(70000, '2026-11-02')},
+      },
+      expenses: const {
+        'a': Expense(id: 'a', ymd: '2026-10-05', amount: 20000, envelopeId: 'sorties', domainId: 'd1'),
+        'b': Expense(id: 'b', ymd: '2026-11-02', amount: 4280, envelopeId: 'courses'),
+        'c': Expense(id: 'c', ymd: '2025-12-30', amount: 999, envelopeId: 'courses'),
+      },
+    );
+    final y = yearSummary(f, 2026, '2026-11-03');
+    expect(y.firstMonth, 10);
+    expect(y.lastMonth, 11);
+    expect(y.spent[9], 90000);
+    expect(y.spent[10], 74280);
+    expect(y.incomeTotal, 200000);
+    expect(y.kept, 200000 - 164280);
+    expect(y.perMonth, 82140);
+    expect(financeYears(f, 2026), [2026, 2025]);
+    final env = yearCategories(f, 2026, YearBy.envelope);
+    expect(env.map((c) => c.name), ['Courses', 'Sorties']);
+    expect(monthsOverCap(env[1], 11), 1);
+    final dom = yearCategories(f, 2026, YearBy.domain, domainNames: const {'d1': 'Famille'});
+    expect(dom.map((c) => c.name), ['Famille', 'Sans domaine']);
+    final fx = yearCategories(f, 2026, YearBy.fixed);
+    expect(fx.single.total, 140000);
+    expect(biggestOf(f, 'courses', 2026).single.id, 'b');
+  });
+
+  test('tendance : 3 derniers mois clos contre les 3 d’avant', () {
+    final m = [0, 0, 0, 100, 100, 100, 80, 80, 80, 0, 0, 0];
+    expect(trend3(m, 10), -20);
+    expect(trend3(m, 10, firstMonth: 6), isNull);
+    expect(trend3(m, 5), isNull);
+  });
+
+  testWidgets('Mon année et la page d’une enveloppe se dessinent', (t) async {
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {})..dayStartMin = 0;
+    final today = logic.livedTodayYmd;
+    logic.finances = Finances(
+      envelopes: const [Envelope(id: 'courses', name: 'Courses', monthly: 45000)],
+      expenses: {'a': Expense(id: 'a', ymd: today, amount: 4280, envelopeId: 'courses', note: 'Marché')},
+    );
+    await t.pumpWidget(MaterialApp(
+      theme: ThemeData.dark(),
+      home: Scaffold(body: Builder(builder: (c) => TextButton(onPressed: () => showFinanceYearSheet(c, logic: logic), child: const Text('ouvrir')))),
+    ));
+    await t.tap(find.text('ouvrir'));
+    await t.pumpAndSettle();
+    expect(find.text('Mon année'), findsOneWidget);
+    await t.tap(find.text('Par domaine'));
+    await t.pump();
+    await t.tap(find.text('Fixes'));
+    await t.pump();
+    await t.tap(find.text('Par enveloppe'));
+    await t.pump();
+    await t.tap(find.text('Courses'));
+    await t.pumpAndSettle();
+    expect(find.text('CE QUE ÇA DIT'), findsOneWidget);
+    expect(t.takeException(), isNull);
   });
 }

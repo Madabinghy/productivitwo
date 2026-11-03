@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart';
+import 'package:productivitwo_v1/widgets/finance_year_sheet.dart' show showFinanceYearSheet;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -39,6 +40,13 @@ String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toStr
 String _dayLabel(String ymd) {
   final d = DateTime.parse(ymd);
   return '${_days[d.weekday - 1]} ${d.day} ${_mShort[d.month - 1]}';
+}
+
+/// Changer le plafond d'une enveloppe (feuille Finances, Mon année).
+Future<void> editEnvelopeCap(BuildContext context, AppLogic logic, Envelope e) async {
+  final r = await _askAmount(context, title: 'Plafond · ${e.name}', hint: 'par mois · vide = pas de plafond', initial: e.monthly, allowEmpty: true);
+  if (r == null) return;
+  await logic.saveEnvelopes([for (final x in logic.finances.envelopes) x.id == e.id ? Envelope(id: x.id, name: x.name, monthly: r) : x]);
 }
 
 Future<void> showFinanceSheet(BuildContext context, {required AppLogic logic}) {
@@ -100,11 +108,7 @@ class _FinanceSheetState extends State<FinanceSheet> {
     if (deleted == true && mounted) _removeExpense(x);
   }
 
-  Future<void> _editEnvelope(Envelope e) async {
-    final r = await _askAmount(context, title: 'Plafond · ${e.name}', hint: 'par mois · vide = pas de plafond', initial: e.monthly, allowEmpty: true);
-    if (r == null) return;
-    await logic.saveEnvelopes([for (final x in logic.finances.envelopes) x.id == e.id ? Envelope(id: x.id, name: x.name, monthly: r) : x]);
-  }
+  Future<void> _editEnvelope(Envelope e) => editEnvelopeCap(context, logic, e);
 
   Future<void> _togglePaid(Recurring r, bool paid) async {
     if (paid) {
@@ -159,6 +163,10 @@ class _FinanceSheetState extends State<FinanceSheet> {
       // La courbe du compte et ce qui est entré / sorti (2026-11-03, « Finances, en courbes »).
       const SizedBox(height: 10),
       FinanceFlowCard(finances: f, todayYmd: today, accent: kMoneyAccent),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(onPressed: () => showFinanceYearSheet(context, logic: logic), child: const Text('Mon année ›')),
+      ),
       title('AUJOURD’HUI', _dayLabel(today)),
       Container(
         padding: const EdgeInsets.all(12),
