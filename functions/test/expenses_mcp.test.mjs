@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { expensesIn, expenseLine, planDelete } from "../lib/expenses_mcp.js";
+import { expensesIn, expenseLine, planDelete, planReceiptUpdate, planExpenseUpdate, noteForStore } from "../lib/expenses_mcp.js";
 
 const expenses = {
   a: { ymd: "2026-11-03", amount: 1267, envelopeId: "courses", note: "Courses", domainId: "s", items: ["Pomme de terre 1,35 kg", "Lardons"], at: 1 },
@@ -31,4 +31,29 @@ test("retirer des dépenses, un ticket entier, signaler les inconnues", () => {
   assert.deepEqual(part.receiptIds, []);
   const whole = planDelete(expenses, receipts, ["t-1"], [], true);
   assert.deepEqual(whole.expenseIds.sort(), ["t-0", "t-1"]);
+});
+
+test("corriger un ticket : magasin, heure, date ; les dépenses suivent", () => {
+  const exp = {
+    "t-0": { ymd: "2026-11-03", amount: 1000, note: "Courses", receiptId: "t" },
+    "t-1": { ymd: "2026-11-03", amount: 434, note: "pour Julie", receiptId: "t" },
+    x: { ymd: "2026-11-03", amount: 167, note: "Courses" },
+  };
+  const p = planReceiptUpdate("t", { ymd: "2026-11-03", total: 1434 }, exp, { store: " K-Market ", time: "9:05", date: "2026-11-02", ref: "" });
+  assert.deepEqual(p.errors, []);
+  assert.deepEqual(p.receipt, { store: "K-Market", ref: null, time: "09:05", ymd: "2026-11-02" });
+  assert.deepEqual(p.expenses, { "t-0": { note: "Courses · K-Market", ymd: "2026-11-02" }, "t-1": { ymd: "2026-11-02" } });
+  assert.match(planReceiptUpdate("zz", undefined, exp, { store: "A" }).errors[0], /introuvable/);
+  assert.match(planReceiptUpdate("t", {}, exp, { time: "9h" }).errors[0], /HH:MM/);
+  assert.equal(noteForStore("Courses · Lidl", null), "Courses");
+});
+
+test("corriger une dépense seule ; une part de ticket garde son montant", () => {
+  const p = planExpenseUpdate({ ymd: "2026-11-03", amount: 167, note: "Courses" }, { note: "Courses · K-Market", amount: 199, domainId: "", date: "2026-11-02" });
+  assert.deepEqual(p.errors, []);
+  assert.deepEqual(p.set, { note: "Courses · K-Market", amount: 199, ymd: "2026-11-02" });
+  assert.deepEqual(p.remove, ["domainId"]);
+  const r = planExpenseUpdate({ ymd: "2026-11-03", amount: 100, receiptId: "t" }, { amount: 50 });
+  assert.match(r.errors[0], /part de ticket/);
+  assert.match(planExpenseUpdate(undefined, {}).errors[0], /introuvable/);
 });

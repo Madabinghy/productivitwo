@@ -39,6 +39,8 @@ exports.executeUpdatePantry = executeUpdatePantry;
 exports.executeManageAisles = executeManageAisles;
 exports.executeListExpenses = executeListExpenses;
 exports.executeDeleteExpenses = executeDeleteExpenses;
+exports.executeUpdateReceipt = executeUpdateReceipt;
+exports.executeUpdateExpense = executeUpdateExpense;
 exports.executeAddShoppingItem = executeAddShoppingItem;
 exports.executeCheckShoppingItem = executeCheckShoppingItem;
 exports.executeRestoreItem = executeRestoreItem;
@@ -1421,7 +1423,7 @@ async function executeListExpenses(uid, args = {}) {
         `Dépenses du ${from} au ${to} : ${list.length} · ${(total / 100).toFixed(2).replace(".", ",")} €`,
         ...list.map(([id, x]) => (0, expenses_mcp_1.expenseLine)(id, x, { domain: (d) => domains.get(d), envelope: (e) => envs.get(e) })),
         "",
-        "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false.",
+        "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false. Pour corriger : update_expense (une dépense) ou update_receipt (magasin, lieu, heure, n°, date d'un ticket).",
     ].join("\n");
 }
 /** delete_expenses : retirer des dépenses (ou un ticket entier). apply:false = ce qui partirait. */
@@ -1455,6 +1457,71 @@ async function executeDeleteExpenses(uid, args) {
         finances: Object.assign({ expenses: Object.fromEntries(plan.expenseIds.map((id) => [id, db_1.FieldValue.delete()])) }, (plan.receiptIds.length ? { receipts: Object.fromEntries(plan.receiptIds.map((r) => [r, db_1.FieldValue.delete()])) } : {})),
     }, { merge: true });
     return `✅ Retiré : ${head}`;
+}
+/** update_receipt : corriger magasin, lieu, heure, référence, date d'un ticket conservé. */
+async function executeUpdateReceipt(uid, args) {
+    var _a, _b, _c, _d, _e, _f;
+    const rid = String((_a = args.receiptId) !== null && _a !== void 0 ? _a : "").trim();
+    if (!rid)
+        return "❌ receiptId requis (list_expenses donne « ticket … »).";
+    const ref = db_1.db.doc(`users/${uid}/data/meta`);
+    const meta = ((_b = (await ref.get()).data()) !== null && _b !== void 0 ? _b : {});
+    const expenses = ((_d = (_c = meta.finances) === null || _c === void 0 ? void 0 : _c.expenses) !== null && _d !== void 0 ? _d : {});
+    const receipt = (_f = (_e = meta.finances) === null || _e === void 0 ? void 0 : _e.receipts) === null || _f === void 0 ? void 0 : _f[rid];
+    const plan = (0, expenses_mcp_1.planReceiptUpdate)(rid, receipt, expenses, args);
+    if (plan.errors.length)
+        return `❌ ${plan.errors.join(" ")}`;
+    if (!plan.changes.length)
+        return "Rien à changer : donne store, place, time, ref ou date.";
+    const finances = {
+        expenses: Object.fromEntries(Object.entries(plan.expenses).map(([id, p]) => [id, p])),
+    };
+    if (receipt) {
+        finances.receipts = { [rid]: Object.fromEntries(Object.entries(plan.receipt).map(([k, v]) => [k, v === null ? db_1.FieldValue.delete() : v])) };
+    }
+    await ref.set({ finances }, { merge: true });
+    const n = Object.keys(plan.expenses).length;
+    return `✅ Ticket ${rid} corrigé : ${plan.changes.join(" · ")}${n ? ` (${n} dépense(s) mise(s) à jour)` : ""}.${receipt ? "" : "\n⚠️ Pas de ticket conservé : seules ses dépenses ont changé."}`;
+}
+/** update_expense : corriger une dépense (note, montant, enveloppe, domaine, projet, date). */
+async function executeUpdateExpense(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const id = String((_a = args.expenseId) !== null && _a !== void 0 ? _a : "").trim();
+    if (!id)
+        return "❌ expenseId requis (list_expenses).";
+    const ref = db_1.db.doc(`users/${uid}/data/meta`);
+    const meta = ((_b = (await ref.get()).data()) !== null && _b !== void 0 ? _b : {});
+    const x = ((_d = (_c = meta.finances) === null || _c === void 0 ? void 0 : _c.expenses) !== null && _d !== void 0 ? _d : {})[id];
+    let envelopeId;
+    if (args.envelope !== undefined && args.envelope.trim()) {
+        const envs = ((_f = (_e = meta.finances) === null || _e === void 0 ? void 0 : _e.envelopes) !== null && _f !== void 0 ? _f : []);
+        const f = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+        envelopeId = (_g = envs.find((e) => { var _a; return f((_a = e.name) !== null && _a !== void 0 ? _a : "") === f(args.envelope) || e.id === args.envelope; })) === null || _g === void 0 ? void 0 : _g.id;
+        if (!envelopeId)
+            return `❌ Enveloppe « ${args.envelope} » inconnue (${envs.map((e) => e.name).join(", ")}).`;
+    }
+    let domainId = args.domain === undefined ? undefined : "";
+    if (args.domain && args.domain.trim()) {
+        const snap = await db_1.db.collection(`users/${uid}/domains`).get();
+        const doms = snap.docs.filter((d) => d.data().deleted !== true).map((d) => { var _a; return ({ id: d.id, name: String((_a = d.data().name) !== null && _a !== void 0 ? _a : "") }); });
+        domainId = (_h = (0, groceries_1.resolveDomain)(args.domain, doms)) !== null && _h !== void 0 ? _h : undefined;
+        if (!domainId)
+            return `❌ Domaine « ${args.domain} » inconnu (${doms.map((d) => d.name).join(", ")}).`;
+    }
+    const plan = (0, expenses_mcp_1.planExpenseUpdate)(x, {
+        note: args.note,
+        amount: args.amount === undefined ? undefined : Math.round(Number(args.amount) * 100),
+        envelopeId,
+        domainId,
+        projectId: args.projectId,
+        date: args.date,
+    });
+    if (plan.errors.length)
+        return `❌ ${plan.errors.join(" ")}`;
+    if (!plan.changes.length)
+        return "Rien à changer.";
+    await ref.set({ finances: { expenses: { [id]: Object.assign(Object.assign({}, plan.set), Object.fromEntries(plan.remove.map((k) => [k, db_1.FieldValue.delete()]))) } } }, { merge: true });
+    return `✅ Dépense ${id} corrigée : ${plan.changes.join(" · ")}.`;
 }
 async function executeGetArchives(uid) {
     const [domainsSnap, activitiesSnap] = await Promise.all([
