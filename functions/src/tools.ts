@@ -1675,6 +1675,41 @@ const MANAGE_AISLES_TOOL = {
   },
 };
 
+// ── Dépenses (finances.expenses, 2026-11-03) ───────────────────────────────
+
+const LIST_EXPENSES_TOOL = {
+  name: "list_expenses",
+  description:
+    "Liste les dépenses notées dans Finances sur une période (défaut : le mois en cours jusqu'à aujourd'hui), les plus " +
+    "récentes d'abord, chacune avec son id, son montant, sa note, son enveloppe, son domaine de vie, ses articles et son " +
+    "ticket conservé s'il y en a un. Sert avant delete_expenses (doublon, erreur de saisie).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      from: { type: "string", description: "YYYY-MM-DD (défaut : le 1er du mois de to)" },
+      to: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+    },
+  },
+};
+
+const DELETE_EXPENSES_TOOL = {
+  name: "delete_expenses",
+  description:
+    "Retire des dépenses de Finances, à la demande de l'utilisateur seulement (doublon, erreur). Par ids (list_expenses) " +
+    "ou par ticket entier (receiptIds : le ticket conservé et toutes ses dépenses). Une dépense d'un ticket retirée seule " +
+    "laisse le ticket ; wholeReceipt:true retire le ticket entier. apply:false (défaut) = montre ce qui partirait, " +
+    "apply:true = retire. Retrait définitif : nomme bien ce qui part avant d'appliquer.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      expenseIds: { type: "array", items: { type: "string" }, description: "Ids des dépenses (list_expenses)" },
+      receiptIds: { type: "array", items: { type: "string" }, description: "Ids de tickets conservés à retirer entiers" },
+      wholeReceipt: { type: "boolean", description: "Une dépense d'un ticket emporte tout le ticket" },
+      apply: { type: "boolean", description: "false (défaut) = aperçu ; true = retirer" },
+    },
+  },
+};
+
 const CHECK_SHOPPING_ITEM_TOOL = {
   name: "check_shopping_item",
   description:
@@ -1763,6 +1798,8 @@ RECORD_RECEIPT_TOOL,
 GET_PANTRY_TOOL,
 UPDATE_PANTRY_TOOL,
 MANAGE_AISLES_TOOL,
+LIST_EXPENSES_TOOL,
+DELETE_EXPENSES_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {
