@@ -16,7 +16,7 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineMinus, routinePlus;
 
 const _kAmber = Color(0xFFF0B44C);
 const _kCook = Color(0xFFF0A35C);
@@ -78,9 +78,14 @@ class _MealSheetState extends State<MealSheet> {
 
   List<String> get _days => [for (var i = 0; i < 7; i++) ymdOf(DateTime(_monday.year, _monday.month, _monday.day + i))];
 
-  Future<void> _eaten(String key, PlannedMeal? slot, {required bool balanced}) async {
+  Future<void> _eaten(String key, PlannedMeal? slot, {required bool balanced, PlannedMeal? leftover}) async {
     final monday = ymdOf(_monday);
-    await logic.setMeal(monday, key, (slot ?? PlannedMeal(title: balanced ? 'Repas équilibré' : 'Autre chose')).withAte(balanced ? 'ok' : 'other'));
+    // Sans plat prévu dans la case (rien, ou les restes d'un autre jour) : une case « notée », que « Effacer » vide.
+    final base = slot ??
+        (leftover != null
+            ? PlannedMeal(title: '$kLeftoverPrefix${leftover.title}', noted: true)
+            : PlannedMeal(title: balanced ? 'Repas équilibré' : 'Autre chose', noted: true));
+    await logic.setMeal(monday, key, base.withAte(balanced ? 'ok' : 'other'));
     if (balanced) {
       final r = logic.state.activities.where(isBalancedMealRoutine).firstOrNull;
       if (r != null) routinePlus(logic, r);
@@ -97,7 +102,7 @@ class _MealSheetState extends State<MealSheet> {
   /// chose » sans rien demander) : on dit ce qu'on a mangé — un plat de la
   /// bibliothèque, un mot, ou dehors — et si c'était équilibré.
   Future<void> _otherMeal(String key, {PlannedMeal? current}) async {
-    final ctrl = TextEditingController(text: current?.ate != null && current!.title != 'Autre chose' ? current.title : '');
+    final ctrl = TextEditingController(text: current?.ateWhat ?? (current != null && current.noted && current.title != 'Autre chose' ? current.title : ''));
     Recipe? dish = current?.recipeId == null ? null : _all.where((r) => r.id == current!.recipeId).firstOrNull;
     var out = current?.out ?? false;
     var balanced = current?.ate == 'ok';
@@ -173,18 +178,33 @@ class _MealSheetState extends State<MealSheet> {
       }),
     );
     if (ok != true || !mounted) return;
-    final title = ctrl.text.trim().isEmpty ? (out ? 'Dehors' : 'Autre chose') : ctrl.text.trim();
+    final what = ctrl.text.trim().isEmpty ? (out ? 'Dehors' : 'Autre chose') : ctrl.text.trim();
     final monday = ymdOf(_monday);
     final wasBalanced = current?.ate == 'ok';
-    await logic.setMeal(monday, key, PlannedMeal(recipeId: dish?.id, title: title, portions: current?.portions ?? 1, out: out).withAte(balanced ? 'ok' : 'other'));
-    if (balanced && !wasBalanced) {
-      final r = logic.state.activities.where(isBalancedMealRoutine).firstOrNull;
-      if (r != null) routinePlus(logic, r);
-    }
+    final ate = balanced ? 'ok' : 'other';
+    // Un plat prévu reste prévu (restes, courses) : on note seulement ce qu'on a mangé à la place.
+    final meal = current != null && !current.noted
+        ? current.withAte(ate, what: what)
+        : PlannedMeal(recipeId: dish?.id, title: what, out: out, noted: true).withAte(ate);
+    await logic.setMeal(monday, key, meal);
+    final routine = logic.state.activities.where(isBalancedMealRoutine).firstOrNull;
+    if (routine != null && balanced && !wasBalanced) routinePlus(logic, routine);
+    if (routine != null && !balanced && wasBalanced) routineMinus(logic, routine);
     if (dish != null && !out) {
       try {
         await widget.sync.recordMealCooked(dish!.title);
       } catch (_) {}
+    }
+  }
+
+  /// Effacer un repas noté : la case revient à « prévu » (ou se vide si rien
+  /// n'était prévu) ; un repas équilibré rend son +1.
+  Future<void> _clearMeal(String key, PlannedMeal slot) async {
+    final monday = ymdOf(_monday);
+    await logic.setMeal(monday, key, slot.noted ? null : slot.withAte(null));
+    if (slot.ate == 'ok') {
+      final routine = logic.state.activities.where(isBalancedMealRoutine).firstOrNull;
+      if (routine != null) routineMinus(logic, routine);
     }
   }
 
@@ -323,12 +343,14 @@ class _MealSheetState extends State<MealSheet> {
                   Expanded(
                     child: Text(
                       v.cells[key] == MealCell.ok
-                          ? '✓ Mangé, équilibré${slot != null && slot.ate != null && slot.title != 'Repas équilibré' ? ' · ${slot.title}' : ''}'
-                          : '✓ Noté : ${slot?.title.isNotEmpty == true ? slot!.title : 'autre chose'}',
+                          ? '✓ Mangé, équilibré${slot?.ateWhat != null ? ' · ${slot!.ateWhat}' : (slot != null && slot.noted && slot.title != 'Repas équilibré' ? ' · ${slot.title}' : '')}'
+                          : '✓ Noté : ${slot?.ateWhat ?? (slot != null && slot.noted ? slot.title : 'autre chose')}',
                       style: const TextStyle(fontWeight: FontWeight.w700, color: kMealAccent),
                     ),
                   ),
                   TextButton(onPressed: () => _otherMeal(key, current: slot), child: const Text('Changer')),
+                  if (slot != null && slot.ate != null)
+                    TextButton(key: const Key('meal-clear'), onPressed: () => _clearMeal(key, slot), child: const Text('Effacer')),
                 ])
               else
                 Wrap(spacing: 8, runSpacing: 8, children: [
@@ -342,8 +364,8 @@ class _MealSheetState extends State<MealSheet> {
                       icon: const Icon(Icons.play_arrow_rounded, size: 18),
                       label: const Text('Cuisiner'),
                     ),
-                  OutlinedButton(onPressed: () => _eaten(key, slot ?? fromSlot, balanced: true), child: const Text('✓ Mangé, équilibré')),
-                  OutlinedButton(key: const Key('meal-other'), onPressed: () => _otherMeal(key), child: const Text('Autre chose…')),
+                  OutlinedButton(onPressed: () => _eaten(key, slot, balanced: true, leftover: fromSlot), child: const Text('✓ Mangé, équilibré')),
+                  OutlinedButton(key: const Key('meal-other'), onPressed: () => _otherMeal(key, current: slot), child: const Text('Autre chose…')),
                 ]),
             ]),
           ),

@@ -16,9 +16,15 @@ class PlannedMeal {
   final bool out; // dehors / libre
   /// Ce qui a été mangé (feuille Repas) : `ok` équilibré · `other` autre chose.
   final String? ate;
-  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false, this.ate});
+  /// Ce qu'on a vraiment mangé quand ce n'est pas le plat prévu (« Autre chose… », 2026-11-03).
+  final String? ateWhat;
+  /// Case créée seulement pour noter un repas (rien n'était prévu) : l'effacer la vide.
+  final bool noted;
+  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false, this.ate, this.ateWhat, this.noted = false});
 
-  PlannedMeal withAte(String? v) => PlannedMeal(recipeId: recipeId, title: title, portions: portions, out: out, ate: v);
+  /// Le repas noté (ou effacé avec null) ; [what] = ce qu'on a mangé à la place du plat prévu.
+  PlannedMeal withAte(String? v, {String? what}) =>
+      PlannedMeal(recipeId: recipeId, title: title, portions: portions, out: out, ate: v, ateWhat: v == null ? null : what, noted: noted);
 
   Map<String, dynamic> toJson() => {
         if (recipeId != null) 'recipeId': recipeId,
@@ -26,6 +32,8 @@ class PlannedMeal {
         'portions': portions,
         if (out) 'out': true,
         if (ate != null) 'ate': ate,
+        if (ateWhat != null) 'ateWhat': ateWhat,
+        if (noted) 'noted': true,
       };
 
   static PlannedMeal? from(Object? raw) {
@@ -36,6 +44,8 @@ class PlannedMeal {
       portions: ((raw['portions'] as num?)?.toInt() ?? 1).clamp(1, 12),
       out: raw['out'] == true,
       ate: raw['ate'] as String?,
+      ateWhat: raw['ateWhat'] as String?,
+      noted: raw['noted'] == true,
     );
   }
 }
@@ -77,18 +87,23 @@ Map<String, MealWeek> parseMeals(Object? raw) {
 /// Les restes : un plat de n portions posé sur un repas remplit les n − 1
 /// midis suivants restés vides. Clé du repas
 /// rempli → clé du repas qui cuisine.
+/// Titre d'une case de restes notée (« ✓ Mangé » sur des restes, 2026-11-03) : elle consomme une portion
+/// au lieu de pousser les restes au midi suivant.
+const kLeftoverPrefix = 'les restes · ';
+bool _isNotedLeftover(PlannedMeal? p) => p != null && p.noted && p.title.startsWith(kLeftoverPrefix);
+
 Map<String, String> leftoversOf(Map<String, PlannedMeal> slots, List<String> days) {
   final order = [for (final d in days) for (final m in kMealMoments) mealKey(d, m)];
   final out = <String, String>{};
   for (var i = 0; i < order.length; i++) {
     final p = slots[order[i]];
-    if (p == null || p.out || p.portions <= 1) continue;
+    if (p == null || p.out || p.portions <= 1 || p.noted) continue;
     var left = p.portions - 1;
     // Les restes vont aux midis suivants (ils s'emportent), jamais sur un
     // repas déjà occupé.
     for (var j = i + 1; j < order.length && left > 0; j++) {
       final k = order[j];
-      if (!k.endsWith('|midi') || slots[k] != null || out.containsKey(k)) continue;
+      if (!k.endsWith('|midi') || (slots[k] != null && !_isNotedLeftover(slots[k])) || out.containsKey(k)) continue;
       out[k] = order[i];
       left--;
     }
