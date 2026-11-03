@@ -27,4 +27,12 @@ void main() {
     expect(v.cookMin, 40);
     expect(v.lunchClock, 12 * 60);
   });
+
+  test('les restes d\'un plat apparaissent comme prévus dans la grille', () {
+    final days = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08'];
+    final week = MealWeek(slots: {mealKey('2026-11-03', 'soir'): const PlannedMeal(title: 'Pâtes fruits de mer', portions: 2)});
+    final v = mealWeekView(days: days, week: week, activities: const [], hits: const [], sessions: const [], now: DateTime(2026, 11, 3, 20), dayStartMin: 0);
+    expect(v.cells[mealKey('2026-11-04', 'midi')], MealCell.planned);
+    expect(v.cells[mealKey('2026-11-05', 'midi')], MealCell.empty);
+  });
 }
