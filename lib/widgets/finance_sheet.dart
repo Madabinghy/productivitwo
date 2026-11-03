@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
+import 'package:productivitwo_v1/widgets/finance_flow_card.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -155,6 +156,9 @@ class _FinanceSheetState extends State<FinanceSheet> {
       const SizedBox(height: 10),
       // Le compte (dès qu'un solde est posé), sinon le reste à vivre du mois.
       _hero(m, monthName, today),
+      // La courbe du compte et ce qui est entré / sorti (2026-11-03, « Finances, en courbes »).
+      const SizedBox(height: 10),
+      FinanceFlowCard(finances: f, todayYmd: today, accent: kMoneyAccent),
       title('AUJOURD’HUI', _dayLabel(today)),
       Container(
         padding: const EdgeInsets.all(12),
