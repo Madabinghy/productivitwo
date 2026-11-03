@@ -30,6 +30,26 @@ import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+/// Monde d'Enchaîner (maquette validée 2026-11-03 « Enchaîner, refait ») : fond sarcelle profond, accent menthe,
+/// même grammaire que Sniper et Guérilla. Les routines gardent leur orange.
+const kChainAccent = Color(0xFF5FE0C8);
+const kChainInk = Color(0xFF05211C);
+const _cBg = Color(0xFF071416);
+const _cCard = Color(0xFF0F2226);
+const _cCard2 = Color(0xFF16302F);
+const _cLine = Color(0xFF1E3A3B);
+const _chainPal = NowPalette(
+  surface: _cCard,
+  primary: kChainAccent,
+  onPrimary: kChainInk,
+  track: _cCard2,
+  chip: Color(0x14FFFFFF),
+  text: Color(0xFFE6F2EF),
+  text2: Color(0xFFB2CCC6),
+  text3: Color(0xFF7F9A94),
+  text4: Color(0xFF5E7671),
+);
+
 /// Mode « Enchaîner » (2026-10) : une seule chose à l'écran, celle à faire
 /// maintenant ; « Fait » amène la suivante. La file vient du programme du
 /// jour (`buildChain`), le chrono suit le bloc affiché. Plein écran, sans
@@ -492,7 +512,7 @@ class _ChainScreenState extends State<_ChainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pal = NowPalette.of(context);
+    const pal = _chainPal;
     final items = _ordered();
     final cur = items.firstOrNull;
     final showSummary = _summary || (_loaded && cur == null && _between == null);
@@ -506,44 +526,90 @@ class _ChainScreenState extends State<_ChainScreen> {
           if (mounted) Navigator.of(context).maybePop();
         });
       }
-      return Scaffold(backgroundColor: Theme.of(context).scaffoldBackgroundColor, body: const SizedBox.shrink());
+      return const Scaffold(backgroundColor: _cBg, body: SizedBox.shrink());
     }
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: !_loaded
-            ? const Center(child: CircularProgressIndicator())
-            : _between != null
-                    ? _transition(pal, _between!, cur)
-                    : _focus(pal, cur!, items),
+    return Theme(
+      data: ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: _cBg,
+        colorScheme: const ColorScheme.dark(primary: kChainAccent, onPrimary: kChainInk, surface: _cCard),
+      ),
+      child: Scaffold(
+        backgroundColor: _cBg,
+        body: SafeArea(
+          child: !_loaded
+              ? const Center(child: CircularProgressIndicator(color: kChainAccent))
+              : _between != null
+                  ? _transition(pal, _between!, cur, items)
+                  : _focus(pal, cur!, items),
+        ),
       ),
     );
   }
 
-  Widget _progress(NowPalette pal) {
+  /// En-tête du mode (comme Sniper / Guérilla) : « ⛓ ENCHAÎNER · k / n » et « Je m'arrête ».
+  Widget _header(NowPalette pal, {String? label}) {
     final total = _totalAtStart <= 0 ? 1 : _totalAtStart;
-    final v = (_doneCount / total).clamp(0.0, 1.0);
-    return Row(children: [
-      Expanded(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(value: v, minHeight: 5, backgroundColor: pal.track, color: pal.primary),
+    final pos = (_doneCount + 1).clamp(1, total < _doneCount + 1 ? _doneCount + 1 : total);
+    return SizedBox(
+      height: 44,
+      child: Row(children: [
+        const Icon(Icons.link_rounded, color: kChainAccent, size: 20),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(label ?? 'ENCHAÎNER · $pos / ${total < pos ? pos : total}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, letterSpacing: 1.5, fontWeight: FontWeight.w900, color: pal.text2)),
         ),
-      ),
-      const SizedBox(width: 10),
-      Text('$_doneCount / $total',
-          style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w700, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
-      IconButton(
-        tooltip: 'Sortir',
-        icon: Icon(Icons.close_rounded, color: pal.text3),
-        onPressed: () => setState(() {
-          _exited = true;
-          _summary = true;
-        }),
-      ),
-    ]);
+        TextButton(
+          onPressed: () => setState(() {
+            _exited = true;
+            _summary = true;
+          }),
+          child: Text('Je m’arrête', style: TextStyle(fontSize: 14, color: pal.text2)),
+        ),
+      ]),
+    );
   }
+
+  /// La piste : un segment par chose — faites, en cours, à venir —, regroupées par bloc, routines en orange.
+  Widget _track(List<ChainItem> items) {
+    final segs = <Widget>[];
+    Widget seg(Color c, {double flex = 1}) => Expanded(
+          flex: (flex * 4).round(),
+          child: Container(height: 6, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+        );
+    for (var k = 0; k < _doneCount && k < 30; k++) {
+      segs.add(seg(kChainAccent.withValues(alpha: .55)));
+    }
+    String? lastBlock;
+    for (var k = 0; k < items.length && k < 40; k++) {
+      final it = items[k];
+      if (lastBlock != null && it.block.id != lastBlock) segs.add(const Expanded(flex: 1, child: SizedBox()));
+      lastBlock = it.block.id;
+      final routine = it.kind == ChainKind.routine;
+      final cur = k == 0 && _between == null;
+      segs.add(seg(cur ? (routine ? kRoutineAccent : kChainAccent) : (routine ? const Color(0xFF4A3424) : _cCard2)));
+    }
+    if (segs.isEmpty) return const SizedBox(height: 6);
+    final spaced = <Widget>[];
+    for (var k = 0; k < segs.length; k++) {
+      if (k > 0) spaced.add(const SizedBox(width: 3));
+      spaced.add(segs[k]);
+    }
+    return Row(children: spaced);
+  }
+
+  Widget _label(NowPalette pal, String text) => Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 6),
+        child: Text(text, style: TextStyle(fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w800, color: pal.text3)),
+      );
+
+  Widget _box(Widget child) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(color: _cCard, borderRadius: BorderRadius.circular(16)),
+        child: child,
+      );
 
   Widget _chip(NowPalette pal, String text, {Color? color}) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -609,7 +675,11 @@ class _ChainScreenState extends State<_ChainScreen> {
   Widget _primary(String label, VoidCallback onTap, {IconData? icon, Color? color}) => SizedBox(
         height: 56,
         child: FilledButton.icon(
-          style: color == null ? null : FilledButton.styleFrom(backgroundColor: color),
+          style: FilledButton.styleFrom(
+            backgroundColor: color ?? kChainAccent,
+            foregroundColor: color == null ? kChainInk : const Color(0xFF1E0E03),
+            shape: const StadiumBorder(),
+          ),
           onPressed: onTap,
           icon: Icon(icon ?? Icons.check_rounded),
           label: Text(label,
@@ -622,26 +692,36 @@ class _ChainScreenState extends State<_ChainScreen> {
   Widget _secondary(String label, VoidCallback onTap) => Expanded(
         child: OutlinedButton(
           onPressed: onTap,
-          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            foregroundColor: _chainPal.text2,
+            side: const BorderSide(color: _cLine),
+            shape: const StadiumBorder(),
+            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+          ),
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       );
 
   Widget _ensuite(NowPalette pal, List<ChainItem> items) {
     final next = items.length > 1 ? items[1] : null;
+    final other = next != null && next.block.id != items.first.block.id && !next.synthetic;
     return Container(
-      padding: const EdgeInsets.only(top: 12),
-      decoration: BoxDecoration(border: Border(top: BorderSide(color: pal.track))),
+      padding: EdgeInsets.zero,
       child: Row(children: [
-        Text('Ensuite', style: TextStyle(fontSize: 12, color: pal.text3)),
-        const SizedBox(width: 10),
+        if (other)
+          SizedBox(
+            width: 50,
+            child: Text(_clock(blockStartMin(next.block)),
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kChainAccent, fontFeatures: [FontFeature.tabularFigures()])),
+          ),
         Expanded(
           child: Text(
             next == null
                 ? 'Rien d\'autre : c\'est la dernière.'
-                : next.block.id == items.first.block.id
+                : next.block.id == items.first.block.id || next.synthetic
                     ? next.title
-                    : '${next.block.title} · ${_clock(blockStartMin(next.block))}',
+                    : next.block.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: pal.text2),
@@ -702,7 +782,8 @@ class _ChainScreenState extends State<_ChainScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _progress(pal),
+        _header(pal),
+        _track(items),
         RunningChronoBar(logic: logic),
         const SizedBox(height: 6),
         Row(children: [
@@ -726,18 +807,18 @@ class _ChainScreenState extends State<_ChainScreen> {
               const SizedBox(height: 18),
               if (i.kind != ChainKind.routine)
                 SizedBox(
-                  width: 150,
-                  height: 150,
+                  width: 200,
+                  height: 200,
                   child: Stack(alignment: Alignment.center, children: [
                     CustomPaint(
-                      size: const Size(150, 150),
+                      size: const Size(200, 200),
                       painter: RingPainter(
-                          progress: ringProgress, color: ringColor, stroke: 10, trackColor: pal.track, cap: StrokeCap.round),
+                          progress: ringProgress, color: ringColor, stroke: 12, trackColor: pal.track, cap: StrokeCap.round),
                     ),
                     Column(mainAxisSize: MainAxisSize.min, children: [
                       Text(center,
                           style: TextStyle(
-                              fontSize: 26,
+                              fontSize: 40,
                               fontWeight: FontWeight.w800,
                               letterSpacing: -.5,
                               color: pal.text,
@@ -767,23 +848,32 @@ class _ChainScreenState extends State<_ChainScreen> {
                 const SizedBox(height: 14),
                 RoutineChronoPill(logic: logic, routine: i.activity!, centered: true, onChanged: () => setState(() {})),
               ],
-              const SizedBox(height: 22),
+              const SizedBox(height: 18),
               if (i.context != null)
-                Text(i.context!,
+                Text(i.context!.toUpperCase(),
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13.5, color: pal.text3)),
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w800,
+                        color: i.kind == ChainKind.routine ? kRoutineAccent : kChainAccent)),
               const SizedBox(height: 6),
               Text(i.title,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.2, color: pal.text)),
-              if (i.kind == ChainKind.step && i.action!.estimatedMin != null)
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, height: 1.2, color: pal.text)),
+              if (_subLine(i, onBlock) case final sub?)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text('Action estimée ${fmtMin(i.action!.estimatedMin!)}',
-                      textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: pal.text4)),
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(sub, textAlign: TextAlign.center, style: TextStyle(fontSize: 13.5, color: pal.text2)),
                 ),
+              if (i.kind == ChainKind.step && i.action!.checklist.length > 1) ...[
+                _label(pal, 'LES ÉTAPES'),
+                _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (final st in i.action!.checklist) _stepLine(pal, st, current: st.id == i.step?.id),
+                ])),
+              ],
               if (over > 0 && !_overrunIgnored.contains(b.id)) ...[
                 const SizedBox(height: 18),
                 Container(
@@ -814,22 +904,60 @@ class _ChainScreenState extends State<_ChainScreen> {
                   ]),
                 ),
               ],
+              _label(pal, 'ENSUITE'),
+              _box(_ensuite(pal, items)),
+              const SizedBox(height: 8),
             ]),
           ),
         ),
         const SizedBox(height: 12),
         ..._buttons(pal, i),
-        const SizedBox(height: 14),
-        _ensuite(pal, items),
       ]),
     );
   }
+
+  /// « étape 2 sur 4 · chrono sur Formation IA » sous le titre.
+  String? _subLine(ChainItem i, bool onBlock) {
+    final chrono = onBlock ? logic.runningActivity()?.name : null;
+    final parts = <String>[
+      if (i.kind == ChainKind.step) 'étape ${i.index} sur ${i.total}',
+      if (i.kind == ChainKind.step && i.action!.estimatedMin != null) 'action ≈ ${fmtMin(i.action!.estimatedMin!)}',
+      if (chrono != null) 'chrono sur $chrono',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  Widget _stepLine(NowPalette pal, ChecklistItem st, {required bool current}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: st.done ? kChainAccent : null,
+              border: Border.all(color: st.done || current ? kChainAccent : _cLine, width: 2),
+            ),
+            child: st.done ? const Icon(Icons.check, size: 12, color: kChainInk) : null,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(st.title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: current ? FontWeight.w800 : FontWeight.w500,
+                  color: st.done ? pal.text3 : pal.text,
+                  decoration: st.done ? TextDecoration.lineThrough : null,
+                )),
+          ),
+        ]),
+      );
 
   List<Widget> _buttons(NowPalette pal, ChainItem i) {
     switch (i.kind) {
       case ChainKind.step:
         return [
-          _primary(i.index == i.total ? 'Fait — dernière étape' : 'Fait — étape suivante', () => _done(i)),
+          _primary(i.index == i.total ? 'Dernière étape faite' : 'Étape faite', () => _done(i)),
           const SizedBox(height: 8),
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
@@ -839,7 +967,7 @@ class _ChainScreenState extends State<_ChainScreen> {
         ];
       case ChainKind.action:
         return [
-          _primary('Action faite — suivant', () => _done(i)),
+          _primary('Action faite', () => _done(i)),
           const SizedBox(height: 8),
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
@@ -854,9 +982,9 @@ class _ChainScreenState extends State<_ChainScreen> {
         final reached = r?.reached ?? false;
         return [
           if (reached)
-            _primary('Cible atteinte — suivante', () => _done(i), color: kRoutineAccent)
+            _primary('Cible atteinte · suivante', () => _done(i), color: kRoutineAccent)
           else if (count > 0)
-            _primary('Garder $count / $target — suivante', () => _done(i),
+            _primary('Garder $count / $target · suivante', () => _done(i),
                 icon: Icons.arrow_forward_rounded, color: kRoutineAccent.withOpacity(.55))
           else
             SizedBox(
@@ -886,7 +1014,7 @@ class _ChainScreenState extends State<_ChainScreen> {
         ];
       case ChainKind.block:
         return [
-          _primary('Fait — suivant', () => _done(i)),
+          _primary('Fait', () => _done(i)),
           const SizedBox(height: 8),
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
@@ -898,32 +1026,57 @@ class _ChainScreenState extends State<_ChainScreen> {
     }
   }
 
-  Widget _transition(NowPalette pal, ScheduleBlock finished, ChainItem? next) {
+  Widget _transition(NowPalette pal, ScheduleBlock finished, ChainItem? next, List<ChainItem> items) {
     final nowMin = _nowMin;
     final nb = next?.block;
     final startsIn = nb == null ? 0 : blockStartMin(nb) - nowMin;
+    Widget stat(String big, String small) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(color: _cCard, borderRadius: BorderRadius.circular(12)),
+            child: Column(children: [
+              Text(big, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
+              Text(small, style: TextStyle(fontSize: 11.5, color: pal.text3)),
+            ]),
+          ),
+        );
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _progress(pal),
+        _header(pal),
+        _track(items),
         RunningChronoBar(logic: logic),
-        const Spacer(),
-        Icon(Icons.check_circle_rounded, size: 56, color: pal.primary),
-        const SizedBox(height: 14),
-        Text('BLOC TERMINÉ',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: pal.primary)),
-        const SizedBox(height: 6),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const SizedBox(height: 18),
+        Center(
+          child: Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: kChainAccent.withValues(alpha: .13),
+              border: Border.all(color: kChainAccent, width: 3),
+            ),
+            child: const Icon(Icons.check_rounded, size: 38, color: kChainAccent),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text('Bloc fait', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: pal.text)),
+        const SizedBox(height: 2),
         Text(finished.title,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: pal.text)),
-        if (_betweenMin > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('${fmtMin(_betweenMin)} de chrono',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: pal.text3)),
-          ),
-        const SizedBox(height: 18),
+            style: TextStyle(fontSize: 14, color: pal.text2)),
+        const SizedBox(height: 14),
+        Row(children: [
+          stat(_betweenMin > 0 ? fmtMin(_betweenMin) : '—', 'tenues'),
+          const SizedBox(width: 6),
+          stat('$_doneCount', _doneCount > 1 ? 'faites' : 'faite'),
+          const SizedBox(width: 6),
+          stat('${items.length}', 'à suivre'),
+        ]),
+        const SizedBox(height: 14),
         ChipRow(
           question: 'C\u2019était ?',
           labels: kEffortLabels,
@@ -939,16 +1092,13 @@ class _ChainScreenState extends State<_ChainScreen> {
         const SizedBox(height: 10),
         if (nb != null)
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: pal.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: pal.track),
-            ),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: _cCard2, borderRadius: BorderRadius.circular(16)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Suivant', style: TextStyle(fontSize: 12, color: pal.text3)),
+              Text(startsIn > 1 ? 'BLOC SUIVANT · DANS ${fmtMin(startsIn).toUpperCase()}' : 'BLOC SUIVANT',
+                  style: const TextStyle(fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w800, color: kChainAccent)),
               const SizedBox(height: 4),
-              Text(nb.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: pal.text)),
+              Text(nb.title, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: pal.text)),
               const SizedBox(height: 2),
               Text(
                 '${_clock(blockStartMin(nb))} → ${_clock(blockEndMin(nb))}'
@@ -975,7 +1125,10 @@ class _ChainScreenState extends State<_ChainScreen> {
               raised: pal.track,
             ),
           ),
-        const Spacer(),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
         if (nb != null) ...[
           if (_waitUntil case final w?)
             Padding(
@@ -992,20 +1145,25 @@ class _ChainScreenState extends State<_ChainScreen> {
           Row(children: [
             if (_waitUntil != null)
               _secondary('Annuler l\'attente', () => setState(() => _waitUntil = null))
-            else if (startsIn > 1)
-              _secondary('Attendre ${_clock(blockStartMin(nb))}', () {
-                final n = DateTime.now();
-                final s = blockStartMin(nb);
-                _waitFor(DateTime(n.year, n.month, n.day, s ~/ 60, s % 60));
-              })
-            else
+            else ...[
               _secondary('Souffler 5 min', () => _waitFor(DateTime.now().add(const Duration(minutes: 5)))),
-            const SizedBox(width: 8),
-            _secondary('Sortir', () => setState(() {
+              if (startsIn > 5) ...[
+                const SizedBox(width: 8),
+                _secondary('Attendre ${_clock(blockStartMin(nb))}', () {
+                  final n = DateTime.now();
+                  final s = blockStartMin(nb);
+                  _waitFor(DateTime(n.year, n.month, n.day, s ~/ 60, s % 60));
+                }),
+              ],
+            ],
+          ]),
+          TextButton(
+            onPressed: () => setState(() {
               _exited = true;
               _summary = true;
-            })),
-          ]),
+            }),
+            child: Text('Terminer l’enchaînement', style: TextStyle(fontSize: 13.5, color: pal.text3)),
+          ),
         ] else
           _primary('Terminer', () => setState(() => _summary = true), icon: Icons.flag_rounded),
       ]),
