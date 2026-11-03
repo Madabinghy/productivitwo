@@ -410,7 +410,7 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   nommées non atteintes, blocs à faire, pointer l'élan, minutes du rythme, reprise d'Enchaîner, relevés dus, notes de marge).
   Faits du jour vécu composés par `BadgeCenter.todayFacts()` ; section AUJOURD'HUI de la fiche badge (`showBadgeSheet(facts:,
   actions: BadgeTodayActions)` : +1 routine, Pointer, Ouvrir le bloc). Les compteurs restent sur les jours clos (`scoreDays`
-  jusqu'à hier vécu) : la journée en cours n'est montrée que « pour l'instant ». `badgesInPlay(deck, facts)` = suites en jeu.
+  jusqu'à hier vécu) : la journée en cours n'est montrée que « pour l'instant ». `badgesInPlay(deck, facts)` = suites en jeu. **Fiche en direct** (2026-11-03, bug user : un +1 de la section AUJOURD'HUI incrémentait sans mettre la fiche à jour) : `showBadgeSheet(factsOf:)` relit les faits du jour à chaque dessin et la fiche écoute `AppLogic` (un « Annuler » du +1 la redessine aussi) ; album et feuille du mode passent `BadgeCenter.todayFacts`.
   **Impact du jour sur la jauge** : `BadgeToday.gain` (+1 des journées solides, dont le compteur ne voit que les jours clos)
   → trait jaune « atteignable ce soir » sur la jauge du badge (`BadgeView(todayGain:, todaySecured:)`, `BadgePainter.tick` /
   `provisional`) et segment jaune jusqu'au trait quand la journée tient (`gainSecured`) ; `dayDone / dayTotal` = « faisable

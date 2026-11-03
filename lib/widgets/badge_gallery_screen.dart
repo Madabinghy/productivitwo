@@ -863,6 +863,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         deck: _deck,
         logic: widget.logic,
         facts: widget.center?.todayFacts(),
+        factsOf: widget.center == null ? null : () => widget.center!.todayFacts(),
         actions: BadgeTodayActions(
           routinePlus: (id) {
             final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
@@ -908,8 +909,12 @@ Future<void> _shareCard(BuildContext context, GlobalKey key, BadgeState b) async
   } catch (_) {}
 }
 
-Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic, TodayFacts? facts, BadgeTodayActions? actions, BadgeDeck? deck}) {
+/// [factsOf] = faits du jour relus à chaque dessin (bug user 2026-11-03 : un +1 de la section AUJOURD'HUI
+/// incrémentait sans mettre la fiche à jour) ; à défaut, [facts] reste l'instantané de l'ouverture.
+Future<void> showBadgeSheet(BuildContext context, BadgeState b,
+    {HuntStore? logic, TodayFacts? facts, TodayFacts Function()? factsOf, BadgeTodayActions? actions, BadgeDeck? deck}) {
   final cardKey = GlobalKey();
+  final live = logic is Listenable ? logic as Listenable : Listenable.merge(const []);
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
@@ -919,8 +924,9 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       expand: false,
       initialChildSize: .9,
       maxChildSize: .95,
-      builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setSheet) {
-        final today = facts == null ? null : badgeToday(b, facts);
+      builder: (ctx, scroll) => ListenableBuilder(listenable: live, builder: (ctx, _) => StatefulBuilder(builder: (ctx, setSheet) {
+        final facts0 = factsOf?.call() ?? facts;
+        final today = facts0 == null ? null : badgeToday(b, facts0);
         return ListView(
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
@@ -946,7 +952,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           for (final (cb, note) in cardFeeds(b, deck))
             InkWell(
               onTap: () => showCollectionBadgeSheet(context, cb,
-                  cards: cardsOfCollection(cb, deck), onCard: (c) => showBadgeSheet(context, c, logic: logic, facts: facts, actions: actions, deck: deck)),
+                  cards: cardsOfCollection(cb, deck), onCard: (c) => showBadgeSheet(context, c, logic: logic, facts: facts, factsOf: factsOf, actions: actions, deck: deck)),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(children: [
@@ -995,8 +1001,8 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
         ],
         if (today != null) _todayBlock(ctx, b, today, actions, () => setSheet(() {})),
-        if (facts != null && b.def.id == 'montre-suisse' && facts.pace.isNotEmpty)
-          WatchPaceView(pace: facts.pace, onChrono: actions?.startChrono, logic: logic is AppLogic ? logic : null),
+        if (facts0 != null && b.def.id == 'montre-suisse' && facts0.pace.isNotEmpty)
+          WatchPaceView(pace: facts0.pace, onChrono: actions?.startChrono, logic: logic is AppLogic ? logic : null),
         if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
@@ -1064,7 +1070,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
         const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
       ],
       );
-      }),
+      })),
     ),
   );
 }

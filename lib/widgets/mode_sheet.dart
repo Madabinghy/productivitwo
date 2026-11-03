@@ -629,7 +629,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         chip = b.nextTarget == null ? '${b.value}' : '${b.value} / ${b.nextTarget}';
     }
     return InkWell(
-      onTap: () => showBadgeSheet(context, b, logic: widget.logic, facts: widget.badges?.todayFacts()),
+      onTap: () => showBadgeSheet(context, b, logic: widget.logic, facts: widget.badges?.todayFacts(), factsOf: widget.badges?.todayFacts),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
