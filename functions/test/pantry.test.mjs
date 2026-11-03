@@ -103,3 +103,9 @@ test("ticket conservé : lignes avec prix payé, nom simple, domaine, rayon", ()
   assert.equal(p.lines[1].name, undefined);
   assert.equal(p.lines.reduce((a, l) => a + l.price, 0), 900);
 });
+
+test("les viandes vont en Frais (mêmes réponses que l'app)", () => {
+  for (const l of ["Ribs", "Travers de porc", "Côtes d'agneau", "Bacon", "Rôti de veau", "Cuisses de poulet", "Escargots"]) {
+    assert.equal(guessAisle(l), "Frais", l);
+  }
+});

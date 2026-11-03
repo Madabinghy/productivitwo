@@ -180,6 +180,8 @@ class Groceries {
   final List<String> stores;
   /// Ingrédients du menu déjà passés en caisse, par lundi : ils quittent la liste.
   final Map<String, Set<String>> boughtMenu;
+  /// Ingrédients du menu retirés de la liste (ou détachés en ligne libre), par lundi (2026-11-03).
+  final Map<String, Set<String>> skippedMenu;
   /// Mes placards (2026-11-03) : ce qu'on a chez soi, par `normLabel`.
   final Map<String, PantryItem> pantry;
   /// Rayons, dans l'ordre d'affichage.
@@ -189,6 +191,7 @@ class Groceries {
     this.memory = const {},
     this.stores = kDefaultStores,
     this.boughtMenu = const {},
+    this.skippedMenu = const {},
     this.pantry = const {},
     this.aisles = kDefaultAisles,
   });
@@ -198,6 +201,7 @@ class Groceries {
     Map<String, GroceryMemory>? memory,
     List<String>? stores,
     Map<String, Set<String>>? boughtMenu,
+    Map<String, Set<String>>? skippedMenu,
     Map<String, PantryItem>? pantry,
     List<String>? aisles,
   }) =>
@@ -206,6 +210,7 @@ class Groceries {
         memory: memory ?? this.memory,
         stores: stores ?? this.stores,
         boughtMenu: boughtMenu ?? this.boughtMenu,
+        skippedMenu: skippedMenu ?? this.skippedMenu,
         pantry: pantry ?? this.pantry,
         aisles: aisles ?? this.aisles,
       );
@@ -215,6 +220,7 @@ class Groceries {
         'memory': memory.map((k, v) => MapEntry(k, v.toJson())),
         'stores': stores,
         'bought': boughtMenu.map((k, v) => MapEntry(k, v.toList()..sort())),
+        'skipped': skippedMenu.map((k, v) => MapEntry(k, v.toList()..sort())),
         'pantry': {for (final p in pantry.values) p.key: p.toJson()},
         'aisles': aisles,
       };
@@ -242,6 +248,12 @@ Groceries parseGroceries(Object? raw) {
       if (e.value is List) bought['${e.key}'] = {for (final k in e.value as List) '$k'};
     }
   }
+  final skipped = <String, Set<String>>{};
+  if (raw['skipped'] is Map) {
+    for (final e in (raw['skipped'] as Map).entries) {
+      if (e.value is List) skipped['${e.key}'] = {for (final k in e.value as List) '$k'};
+    }
+  }
   final pantry = <String, PantryItem>{};
   if (raw['pantry'] is Map) {
     for (final e in (raw['pantry'] as Map).entries) {
@@ -255,6 +267,7 @@ Groceries parseGroceries(Object? raw) {
     memory: memory,
     stores: stores.isEmpty ? kDefaultStores : stores,
     boughtMenu: bought,
+    skippedMenu: skipped,
     pantry: pantry,
     aisles: aisles.isEmpty ? kDefaultAisles : aisles,
   );
@@ -481,7 +494,9 @@ List<GroceryRow> groceryRows({
 }) {
   final out = <GroceryRow>[];
   final menuWords = <String>{};
-  final bought = monday == null ? const <String>{} : (g.boughtMenu[monday] ?? const <String>{});
+  final bought = monday == null
+      ? const <String>{}
+      : {...?g.boughtMenu[monday], ...?g.skippedMenu[monday]};
   for (final l in menuLines) {
     final w = normLabel(l.label);
     if (bought.contains(l.key)) {

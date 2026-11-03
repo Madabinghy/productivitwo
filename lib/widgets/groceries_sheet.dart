@@ -257,13 +257,20 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
           child: Text(t, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c)),
         );
     final sub = switch (r.source) {
-      'menu' => 'pour ${r.from.join(', ')}${r.pantryState == PantryState.low ? ' · bientôt fini au placard' : ''}',
+      'menu' when r.itemId == null => 'pour ${r.from.join(', ')}${r.pantryState == PantryState.low ? ' · bientôt fini au placard' : ''}',
       'pantry' => r.pantryState == PantryState.out ? 'plus rien au placard' : 'bientôt fini au placard',
       _ => dom?.name ?? 'sans domaine',
     };
     final tile = InkWell(
       onTap: () => _toggle(r),
-      onLongPress: r.itemId == null ? null : () => showGroceryEditor(context, logic: logic, item: logic.groceries.items[r.itemId]),
+      onLongPress: r.itemId != null
+          ? () => showGroceryEditor(context, logic: logic, item: logic.groceries.items[r.itemId], monday: _monday)
+          : r.menuKey != null
+              ? () async {
+                  final x = await logic.detachMenuRow(r, _monday);
+                  if (mounted) await showGroceryEditor(context, logic: logic, item: x, monday: _monday);
+                }
+              : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -305,6 +312,25 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
         ]),
       ),
     );
+    if (r.itemId == null && r.menuKey != null) {
+      // Ingrédient du menu (2026-11-03) : glisser = retiré de la liste cette
+      // semaine ; appui long = devient une ligne libre qu'on modifie.
+      return Dismissible(
+        key: ValueKey('gm-${r.menuKey}'),
+        direction: DismissDirection.endToStart,
+        background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 12), child: const Icon(Icons.delete_outline, color: Color(0xFFF07A6A))),
+        onDismissed: (_) {
+          final m = _monday;
+          logic.skipMenuLine(m, r.menuKey!);
+          ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+            content: Text('${r.label} retiré de la liste'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(label: 'Annuler', onPressed: () => logic.skipMenuLine(m, r.menuKey!, skip: false)),
+          ));
+        },
+        child: tile,
+      );
+    }
     if (r.itemId == null) return tile;
     return Dismissible(
       key: ValueKey('gr-${r.itemId}'),
@@ -326,7 +352,7 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
 }
 
 /// Ajouter ou modifier une ligne : quantité, domaine, projet, endroit.
-Future<void> showGroceryEditor(BuildContext context, {required AppLogic logic, String? label, GroceryItem? item}) {
+Future<void> showGroceryEditor(BuildContext context, {required AppLogic logic, String? label, GroceryItem? item, String? monday}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -334,7 +360,7 @@ Future<void> showGroceryEditor(BuildContext context, {required AppLogic logic, S
     useSafeArea: true,
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-      child: _GroceryEditor(logic: logic, label: label ?? item?.label ?? '', item: item),
+      child: _GroceryEditor(logic: logic, label: label ?? item?.label ?? '', item: item, monday: monday),
     ),
   );
 }
@@ -343,7 +369,8 @@ class _GroceryEditor extends StatefulWidget {
   final AppLogic logic;
   final String label;
   final GroceryItem? item;
-  const _GroceryEditor({required this.logic, required this.label, this.item});
+  final String? monday;
+  const _GroceryEditor({required this.logic, required this.label, this.item, this.monday});
 
   @override
   State<_GroceryEditor> createState() => _GroceryEditorState();
@@ -484,13 +511,25 @@ class _GroceryEditorState extends State<_GroceryEditor> {
           child: Text(widget.item == null ? 'Ajouter à la liste' : 'Enregistrer', style: const TextStyle(fontWeight: FontWeight.w800)),
         ),
         if (widget.item != null)
-          TextButton(
-            onPressed: () async {
-              await logic.removeGrocery(widget.item!.id);
-              if (context.mounted) Navigator.of(context).pop();
-            },
-            child: const Text('Retirer de la liste', style: TextStyle(color: Color(0xFFF07A6A))),
-          ),
+          Wrap(alignment: WrapAlignment.center, children: [
+            TextButton(
+              key: const Key('grocery-have'),
+              onPressed: () async {
+                final it = widget.item!;
+                await logic.alreadyHave(
+                    GroceryRow(label: it.label, store: it.store, source: it.source, itemId: it.id, aisle: _aisle), widget.monday ?? '');
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: const Text('J’en ai déjà'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await logic.removeGrocery(widget.item!.id);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: const Text('Retirer de la liste', style: TextStyle(color: Color(0xFFF07A6A))),
+            ),
+          ]),
       ]),
     );
   }
