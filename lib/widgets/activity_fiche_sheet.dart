@@ -322,7 +322,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
         _trendBox(cs, now),
 
         // ── Ce que ça fait avancer : cartes d'heures, l'année, le chemin des 10 000 h ──
-        GainsSection(activityId: a.id, state: widget.logic.state, title: (_) => const FicheTitle('CE QUE ÇA FAIT AVANCER')),
+        GainsSection(activityId: a.id, state: widget.logic.state, objectiveIds: [for (final e in engaged) e.o.id], title: (_) => const FicheTitle('CE QUE ÇA FAIT AVANCER')),
 
         // ── Engagements ────────────────────────────────────────────────────
         FicheTitle('ENGAGEMENTS', trailing: engaged.isEmpty ? null : FicheDelta('${engaged.length} objectif${engaged.length > 1 ? 's' : ''}', color: cs.onSurface.withValues(alpha: .6))),
