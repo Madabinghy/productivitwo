@@ -1541,7 +1541,7 @@ les montrent plus), la récolte du matin et les retournements comme les autres. 
 (`routinePlusLabel`). Textes `badge_texts.dart`.
 **Ce que ça fait avancer** (2026-11-02, retour user : voir le prochain gain hors de l'album) : `widgets/gains_section.dart` — `gainsFor(deck,
 activityId)` (série, compteur de coches, heures de l'activité, l'année, le chemin des 10 000 h ; deck de `WidgetService.badges`),
-`GainRow` (libellé, « 152,4 / 250 h », prochain cadre, petite jauge à sa couleur ; tap = fiche de la carte), `GainsSection`. Branché :
+`GainRow` (libellé, « 152,4 / 250 h », prochain cadre, petite jauge à sa couleur ; tap = fiche de la carte), `GainsSection`. **En cartes** (2026-11-03, retour user) : `GainsSection` = une rangée défilante de mini cartes `GainCard` (`BadgeCardView` 92 px, libellé, « 152,4 / 250 h », jauge et « vers argent » à la couleur du prochain cadre ; tap = fiche) ; la fiche d'activité y ajoute les cartes « temps investi » des objectifs qui l'engagent (`gainsFor(objectiveIds:)` → `temps-<objectif>`). `GainRow` ne sert plus qu'à la carte EN COURS du lanceur. Branché :
 fiche d'activité (section CE QUE ÇA FAIT AVANCER avant ENGAGEMENTS), fiche routine (série + compteur, sous les paliers), carte EN COURS du
 lanceur d'activités (heures de l'activité + l'année, jauges fines). Compteurs (heures, coches) recalculés EN DIRECT depuis `AppState` (`gainsFor(state:)` → `longHaulBadges`), la série reste au deck (bug 2026-11-02 : « 152,4 h » ne bougeait qu'à la relance).
 
