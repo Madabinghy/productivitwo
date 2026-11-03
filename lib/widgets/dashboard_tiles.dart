@@ -104,14 +104,7 @@ class DashboardTiles extends StatelessWidget {
                   ConstrainedBox(constraints: const BoxConstraints(minHeight: 104), child: SizedBox(width: 104, child: modeTile)),
                 ]),
               ),
-      for (var i = 0; i < small.length; i += 2)
-        IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _tile(small[i])),
-            const SizedBox(width: 8),
-            Expanded(child: i + 1 < small.length ? _tile(small[i + 1]) : const SizedBox()),
-          ]),
-        ),
+      ..._smallRows(small),
       if (projects != null) _Tile(tile: projects!, onTap: onProjects),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
@@ -126,6 +119,59 @@ class DashboardTiles extends StatelessWidget {
 }
 
 extension on DashboardTiles {
+  /// Les petites tuiles deux par deux. Sur mobile (`perfectWide`), Collection
+  /// prend la gauche et les deux suivantes (Objectifs, Recul…) s'empilent à
+  /// droite, à sa hauteur (retour user 2026-11-03) ; une tuile seule restante
+  /// prend toute la largeur.
+  List<Widget> _smallRows(List<(DashTile, VoidCallback?)> small) {
+    final rows = <Widget>[];
+    var rest = small;
+    final i = badges == null ? -1 : small.indexWhere((t) => identical(t.$1, badges));
+    if (perfectWide && i >= 0 && small.length >= 3) {
+      final others = [for (var k = 0; k < small.length; k++) if (k != i) small[k]];
+      final right = [
+        if (objectives != null && others.any((t) => identical(t.$1, objectives))) others.firstWhere((t) => identical(t.$1, objectives)),
+        if (review != null && others.any((t) => identical(t.$1, review))) others.firstWhere((t) => identical(t.$1, review)),
+      ];
+      for (final t in others) {
+        if (right.length >= 2) break;
+        if (!right.contains(t)) right.add(t);
+      }
+      rows.add(IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: _tile(small[i])),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: _tile(right[0])),
+              const SizedBox(height: 8),
+              Expanded(child: _tile(right[1])),
+            ]),
+          ),
+        ]),
+      ));
+      rest = [for (final t in others) if (!right.contains(t)) t];
+    }
+    for (var k = 0; k < rest.length; k += 2) {
+      rows.add(k + 1 < rest.length
+          ? IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: _tile(rest[k])),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(rest[k + 1])),
+              ]),
+            )
+          : (perfectWide ? _tile(rest[k]) : IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: _tile(rest[k])),
+                const SizedBox(width: 8),
+                const Expanded(child: SizedBox()),
+              ]),
+            )));
+    }
+    return rows;
+  }
+
   Widget _tile((DashTile, VoidCallback?) t) => _Tile(tile: t.$1, onTap: t.$2, onBadgeTap: identical(t.$1, badges) ? onBadgesGallery : null);
 }
 
