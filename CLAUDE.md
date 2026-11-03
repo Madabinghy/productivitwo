@@ -1009,7 +1009,7 @@ solde horodaté, un mouvement du même jour SANS heure compte après lui (`_afte
 Le calcul se lit sous le montant (`_accountDetail` : « solde du … à HH:MM · depuis : −… de dépenses, −… de fixes, +… reçus », champs
 `AccountNow.sinceAt` / `spentSince` / `outSince` / `inSince`) ; une dépense du jour notée AVANT le solde (`AccountNow.before`) est dite
 « supposée déjà dedans » avec le lien « Pas encore dedans · la retrancher » (`AppLogic.expenseAfterBalance` : son heure passe juste après
-le solde).
+le solde ; un ancien solde sans heure est d'abord horodaté juste avant cette dépense).
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 

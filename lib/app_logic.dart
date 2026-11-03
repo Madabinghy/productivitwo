@@ -1886,8 +1886,16 @@ class AppLogic implements HuntStore {
   /// « Pas encore dans le solde » : une dépense notée avant le solde recopié du même jour passe après lui, donc est retranchée.
   Future<void> expenseAfterBalance(String id) async {
     final x = finances.expenses[id];
-    final cAt = x == null ? null : finances.checksAt[x.ymd];
-    if (x == null || cAt == null) return;
+    final balance = x == null ? null : finances.checks[x.ymd];
+    if (x == null || balance == null) return;
+    var cAt = finances.checksAt[x.ymd];
+    if (cAt == null) {
+      // Ancien solde sans heure (bug user 2026-11-03 : le lien ne faisait rien) :
+      // on l'horodate juste avant cette dépense, qui passe ainsi après lui.
+      cAt = (x.at ?? 1) - 1;
+      finances = finances.copyWith(checksAt: {...finances.checksAt, x.ymd: cAt});
+      await sync?.setFinanceCheck(x.ymd, balance, at: cAt);
+    }
     final y = Expense(
         id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1);
     finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});

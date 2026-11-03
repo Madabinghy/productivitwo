@@ -65,6 +65,27 @@ void main() {
     expect(after.spentSince, 13500);
   });
 
+  test('ancien solde sans heure : « pas encore dedans » le date et retranche', () async {
+    final st = AppState(domains: [], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final today = logic.livedTodayYmd;
+    final a = (await logic.logExpense(amount: 13500, envelopeId: 'imprevus'))!;
+    final b = (await logic.logExpense(amount: 500, envelopeId: 'courses'))!;
+    final xa = logic.finances.expenses[a]!, xb = logic.finances.expenses[b]!;
+    logic.finances = logic.finances.copyWith(
+      expenses: {
+        a: Expense(id: a, ymd: xa.ymd, amount: xa.amount, envelopeId: xa.envelopeId, at: 3000),
+        b: Expense(id: b, ymd: xb.ymd, amount: xb.amount, envelopeId: xb.envelopeId, at: 1000),
+      },
+      checks: {today: 26263},
+    );
+    expect(accountNow(logic.finances, today)!.balance, 26263);
+    await logic.expenseAfterBalance(a);
+    final after = accountNow(logic.finances, today)!;
+    expect(after.balance, 26263 - 13500);
+    expect(after.before.map((x) => x.id), [b]);
+  });
+
   testWidgets('Finances : poser son solde, une rentrée, la mise à jour dit l\'écart', (tester) async {
     tester.view.physicalSize = const Size(800, 6000);
     tester.view.devicePixelRatio = 2;
