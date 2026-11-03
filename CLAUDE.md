@@ -449,7 +449,13 @@ affiché (`onLaunch` du bloc à l'entrée, arrêt à sa sortie) ; bloc épuisé 
 transition (« Commencer », « Attendre HH:MM » / « Souffler 5 min » → reprise auto, « Sortir ») ; bloc qui déborde →
 bandeau « Décaler la suite de N min » (`overrunMin`, `shiftFollowing` : jamais un miroir agenda) / « Laisser » ; « Sortir »
 ou file vide → la session s'enregistre et l'écran se ferme (l'écran récap « SESSION TERMINÉE » est retiré le 2026-10-30, retour user : il ne servait à rien ; le bouton de fin s'appelle « Terminer ») ; l'écran reste allumé (`wakelock_plus`). **Session reprenable** (2026-10, `utils/chain_session.dart` ↔ `chain_session_store.dart`, SharedPreferences `chain_pending`) : sortir de l'écran met la session EN ATTENTE (`PendingChain` : compteur, faits, reportés, écartés, blocs épuisés, id de la `ChainRun`) ; MAINTENANT affiche « Reprendre l'enchaînement · n faites » tant que la journée vécue est la même et l'inactivité < 45 min (`isLive`) ; à la reprise, les blocs passés faits et les routines atteintes pendant la pause entrent dans le compte (`resumedDoneAts`) ; la `ChainRun` est réécrite avec le même id (`recordChainRun` upsert). Fin réelle = « Terminer la session » dans le récap, file vide, 45 min ou bascule. **Badge Enchaîneur** : une session compte dès 3 choses faites, sortie ou pas (`chainRunCounts`, paliers 5 / 20 / 50 `kChainTiers`) ; « Plein jour » garde seul la file vidée du premier au dernier bloc ; le récap dit « Session comptée · n choses » / « Encore k … ».
-Complément d'Aujourd'hui, pas un remplacement.
+Complément d'Aujourd'hui, pas un remplacement. **Habillage refait** (maquette validée 2026-11-03 « Enchaîner, refait ») : monde à
+lui comme Sniper et Guérilla — fond sarcelle `_cBg`, accent menthe `kChainAccent`, palette `_chainPal` ; en-tête « ⛓ ENCHAÎNER · k / n »
++ « Je m'arrête » (`_header`), piste en segments (`_track` : faites, en cours, à venir, groupées par bloc, routines en orange), anneau
+200 px du reste du bloc, contexte en capitales menthe, titre 26 px, sous-ligne « étape k sur n · chrono sur … » (`_subLine`), cartes
+LES ÉTAPES (`_stepLine`) et ENSUITE, UN gros bouton (« Étape faite », « Action faite »…) ; transition « Bloc fait » (coche, trois chiffres
+tenues · faites · à suivre, carte BLOC SUIVANT · DANS n MIN, « Commencer maintenant », Souffler 5 min · Attendre HH:MM, lien « Terminer
+l'enchaînement »). Fonctionnement inchangé.
 **Segment « Actions · Routines »** (mobile, 2026-10, handoff Claude Design « Segment Routines Aujourd'hui », lot 1 — ⚠️ la pilule a été RETIRÉE au lot 4 « une carte, une fiche » : Routines et Objectifs sont deux lignes EN PARALLÈLE sous le programme, dont la fiche héberge les vues décrites ici) :
 pilule en tête d'Aujourd'hui (`_segmentBar`, persistée `today_view_segment_routines`). Actions = l'onglet tel quel, où
 « Le meilleur à faire » est remplacé par la ligne courte « Routines · 5 / 18 · 3 à faire ce matin → » (`_routinesLine`,
