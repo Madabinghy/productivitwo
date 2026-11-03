@@ -37,4 +37,34 @@ void main() {
     expect(find.text('Noter · 12,50 € Courses'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
   });
+
+  testWidgets('Finances : toucher une dépense la corrige, ou la supprime', (tester) async {
+    tester.view.physicalSize = const Size(800, 5000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final id = (await logic.logExpense(amount: 2340, envelopeId: 'courses', note: 'Lidl'))!;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: FinanceSheet(logic: logic))));
+    await tester.tap(find.textContaining('Lidl'));
+    await tester.pumpAndSettle();
+    expect(find.text('Corriger la dépense'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '20');
+    await tester.pump();
+    await tester.tap(find.textContaining('Enregistrer ·'));
+    await tester.pumpAndSettle();
+    expect(logic.finances.expenses[id]!.amount, 2000);
+    expect(logic.finances.expenses[id]!.note, 'Lidl');
+
+    await tester.tap(find.textContaining('Lidl'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Supprimer cette dépense'));
+    await tester.pumpAndSettle();
+    expect(logic.finances.expenses, isEmpty);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Annuler'));
+    await tester.pump();
+    expect(logic.finances.expenses[id]!.amount, 2000);
+    await tester.pump(const Duration(seconds: 5));
+  });
 }

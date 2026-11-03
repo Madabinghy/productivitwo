@@ -984,7 +984,7 @@ glisser = retirer, « Annuler » —, « + Dépense » · « ✓ Rien dépensé 
 ENVELOPPES DU MOIS (barre + trait blanc de l'attendu, ambre en avance, rouge au-delà du plafond ; tap = plafond), LES FIXES (revenus ↓
 puis fixes par jour du mois ; tap = coché avec le montant réel / décoché ; ambre si la date est passée), grille des 90 JOURS SUIVIS
 (plein = dépense, clair = rien dépensé). `showExpenseSheet` (montant clavier ouvert, enveloppe = la dernière utilisée, note, Aujourd'hui
-· Hier), `showEnvelopesSheet` (renommer, plafond, ajouter, retirer), `showRecurringSheet` (revenus et fixes : nom, montant, jour). Ma vie :
+· Hier) — **corriger une dépense** (2026-11-03, retour user : le glisser pour retirer était introuvable) : tap sur une dépense = la même feuille déjà remplie (`showExpenseSheet(edit:)` → `AppLogic.updateExpense`, id et heure gardés), « Enregistrer » · « Supprimer cette dépense » (« Annuler » = `restoreExpense`, domaine et heure compris) ; les dépenses d'HIER sont aussi listées sous AUJOURD'HUI, avec l'aide « Touche une dépense pour la corriger ou la supprimer », `showEnvelopesSheet` (renommer, plafond, ajouter, retirer), `showRecurringSheet` (revenus et fixes : nom, montant, jour). Ma vie :
 nature `DomainNature.money` (devinée pour financ · budget · argent · compta), tuile FINANCES = reste à vivre · k / 90 jours suivis.
 **Lot 3 livré (le point de la semaine)** : `widgets/balance_check_sheet.dart` (`showBalanceCheck`) — « Ton compte dit ? » (solde recopié,
 case « À découvert »), interrupteur « Chrono Budget » (activité-temps du nom budget, `budgetTimeActivity`, jamais lancé sans geste) ;

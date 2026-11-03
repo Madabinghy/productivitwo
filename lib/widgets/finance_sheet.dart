@@ -82,14 +82,21 @@ class _FinanceSheetState extends State<FinanceSheet> {
   Future<void> _removeExpense(Expense x) async {
     await logic.removeExpense(x.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    messenger.showClosingSnackBar(SnackBar(
       content: Text('${euros(x.amount)} retirés'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(
         label: 'Annuler',
-        onPressed: () => logic.logExpense(amount: x.amount, envelopeId: x.envelopeId, note: x.note, ymd: x.ymd),
+        onPressed: () => logic.restoreExpense(x),
       ),
     ));
+  }
+
+  /// Corriger une dépense : la même feuille, déjà remplie, avec « Supprimer ».
+  Future<void> _editExpense(Expense x) async {
+    final deleted = await showExpenseSheet(context, logic: logic, edit: x);
+    if (deleted == true && mounted) _removeExpense(x);
   }
 
   Future<void> _editEnvelope(Envelope e) async {
@@ -118,6 +125,7 @@ class _FinanceSheetState extends State<FinanceSheet> {
     final m = monthSummary(f, today);
     final streak = trackingStreak(f, today);
     final todayList = f.expenses.values.where((x) => x.ymd == today).toList();
+    final yesterdayList = f.expenses.values.where((x) => x.ymd == yesterday).toList();
     final nothingToday = f.nothing.contains(today);
     final yesterdayTracked = isTracked(f, yesterday);
     final paidNow = f.paid[m.month] ?? const {};
@@ -159,6 +167,18 @@ class _FinanceSheetState extends State<FinanceSheet> {
               TextButton(onPressed: () => logic.setNothingSpent(today, false), child: const Text('Retirer')),
             ]),
           for (final x in todayList) _expenseRow(cs, mute, f, x),
+          if (todayList.isNotEmpty || yesterdayList.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('Touche une dépense pour la corriger ou la supprimer.', style: TextStyle(fontSize: 11.5, color: mute)),
+            ),
+          if (yesterdayList.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 2),
+              child: Text('HIER', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute)),
+            ),
+            for (final x in yesterdayList) _expenseRow(cs, mute, f, x),
+          ],
           const SizedBox(height: 8),
           Row(children: [
             Expanded(
@@ -417,17 +437,23 @@ class _FinanceSheetState extends State<FinanceSheet> {
       direction: DismissDirection.endToStart,
       background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 12), child: const Icon(Icons.delete_outline, color: _kRed)),
       onDismissed: (_) => _removeExpense(x),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(children: [
-          Expanded(
-            child: Text.rich(TextSpan(children: [
-              TextSpan(text: env, style: const TextStyle(fontWeight: FontWeight.w700)),
-              if (x.note != null && x.note!.isNotEmpty) TextSpan(text: ' · ${x.note}', style: TextStyle(color: mute)),
-            ]), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-          Text(euros(x.amount), style: const TextStyle(fontWeight: FontWeight.w800)),
-        ]),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _editExpense(x),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(children: [
+            Expanded(
+              child: Text.rich(TextSpan(children: [
+                TextSpan(text: env, style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (x.note != null && x.note!.isNotEmpty) TextSpan(text: ' · ${x.note}', style: TextStyle(color: mute)),
+              ]), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            Text(euros(x.amount), style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(width: 6),
+            Icon(Icons.edit_outlined, size: 16, color: mute),
+          ]),
+        ),
       ),
     );
   }
@@ -593,15 +619,16 @@ Future<int?> _askAmount(BuildContext context, {required String title, String? hi
 
 /// Saisie d'une dépense en cinq secondes : montant (clavier ouvert), enveloppe
 /// (la dernière utilisée en avant), note facultative, aujourd'hui ou hier.
-Future<void> showExpenseSheet(BuildContext context, {required AppLogic logic, String? ymd}) {
-  return showModalBottomSheet<void>(
+/// [edit] = corriger une dépense existante ; renvoie true quand elle doit être supprimée.
+Future<bool?> showExpenseSheet(BuildContext context, {required AppLogic logic, String? ymd, Expense? edit}) {
+  return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     useSafeArea: true,
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-      child: _ExpenseEntry(logic: logic, ymd: ymd, host: context),
+      child: _ExpenseEntry(logic: logic, ymd: ymd ?? edit?.ymd, host: context, edit: edit),
     ),
   );
 }
@@ -610,18 +637,22 @@ class _ExpenseEntry extends StatefulWidget {
   final AppLogic logic;
   final String? ymd;
   final BuildContext host;
-  const _ExpenseEntry({required this.logic, this.ymd, required this.host});
+  final Expense? edit;
+  const _ExpenseEntry({required this.logic, this.ymd, required this.host, this.edit});
 
   @override
   State<_ExpenseEntry> createState() => _ExpenseEntryState();
 }
 
 class _ExpenseEntryState extends State<_ExpenseEntry> {
-  final _amount = TextEditingController();
-  final _note = TextEditingController();
+  late final _amount = TextEditingController(text: widget.edit == null ? '' : _plainEuros(widget.edit!.amount));
+  late final _note = TextEditingController(text: widget.edit?.note ?? '');
   late String _ymd = widget.ymd ?? widget.logic.livedTodayYmd;
-  late String _env = _lastEnvelope();
-  String? _domain;
+  late String _env = widget.edit?.envelopeId ?? _lastEnvelope();
+  late String? _domain = widget.edit?.domainId;
+
+  /// « 12,50 » sans le symbole, pour le champ du montant.
+  static String _plainEuros(int cents) => cents % 100 == 0 ? '${cents ~/ 100}' : '${cents ~/ 100},${(cents % 100).toString().padLeft(2, '0')}';
 
   String _lastEnvelope() {
     final f = widget.logic.finances;
@@ -643,6 +674,17 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
     final v = parseEuros(_amount.text);
     if (v == null) return;
     final logic = widget.logic;
+    final e = widget.edit;
+    if (e != null) {
+      final ok = await logic.updateExpense(Expense(
+          id: e.id, ymd: _ymd, amount: v, envelopeId: _env, note: _note.text, domainId: _domain, projectId: e.projectId, items: e.items, at: e.at));
+      if (!mounted) return;
+      Navigator.of(context).pop(false);
+      if (ok && widget.host.mounted) {
+        ScaffoldMessenger.of(widget.host).showClosingSnackBar(SnackBar(content: Text('Dépense corrigée · ${euros(v)}'), duration: const Duration(seconds: 3)));
+      }
+      return;
+    }
     final first = !isTracked(logic.finances, _ymd);
     final id = await logic.logExpense(amount: v, envelopeId: _env, note: _note.text, ymd: _ymd, domainId: _domain);
     if (!mounted || id == null) return;
@@ -661,7 +703,7 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        const Text('Une dépense', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(widget.edit == null ? 'Une dépense' : 'Corriger la dépense', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
         TextField(
           controller: _amount,
           autofocus: true,
@@ -723,8 +765,17 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: kMoneyAccent, foregroundColor: kMoneyInk, minimumSize: const Size.fromHeight(50)),
           onPressed: v == null ? null : _save,
-          child: Text(v == null ? 'Noter' : 'Noter · ${euros(v)} $envName', style: const TextStyle(fontWeight: FontWeight.w800)),
+          child: Text(
+              widget.edit != null ? (v == null ? 'Enregistrer' : 'Enregistrer · ${euros(v)} $envName') : (v == null ? 'Noter' : 'Noter · ${euros(v)} $envName'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
         ),
+        if (widget.edit != null)
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: _kRed),
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Supprimer cette dépense'),
+          ),
       ]),
     );
   }
