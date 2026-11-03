@@ -1,3 +1,4 @@
+import { expenseLine, expensesIn, planDelete, type ExpenseDoc } from "./expenses_mcp";
 import { addAisle, aisleFor, DEFAULT_AISLES, foldWords, OTHER_AISLE, pantryText, parseState, removeAisle, renameAisle, resolveAisle, STATE_LABEL, type PantryDoc } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
@@ -1567,6 +1568,68 @@ async function executeManageAisles(uid: string, args: { action?: string; aisle?:
   await ref.set({ groceries: { aisles: next.aisles, pantry: next.pantry, items: next.items, memory: next.memory } }, { merge: true });
   const verb = action === "rename" ? `renommé en « ${next.aisles.find((a) => foldWords(a) === foldWords(args.newName!)) ?? args.newName} »` : `retiré (${count(from)} produit(s) passent dans « ${OTHER_AISLE} »)`;
   return `✅ Rayon « ${from} » ${verb}.\n${listText(next.aisles)}`;
+}
+
+/** list_expenses : les dépenses d'une période, avec leur id (pour delete_expenses). */
+async function executeListExpenses(uid: string, args: { from?: string; to?: string } = {}): Promise<string> {
+  const ok = (d?: string) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d);
+  const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+  const meta = (metaSnap.data() ?? {}) as Record<string, any>;
+  const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+  const today = todayParis(new Date(Date.now() - dayStartMin * 60000));
+  const to = ok(args.to) ? args.to! : today;
+  const from = ok(args.from) ? args.from! : `${to.slice(0, 7)}-01`;
+  if (from > to) return "❌ from après to.";
+  const expenses = (meta.finances?.expenses ?? {}) as Record<string, ExpenseDoc>;
+  const domainsSnap = await db.collection(`users/${uid}/domains`).get();
+  const domains = new Map(domainsSnap.docs.map((d) => [d.id, String(d.data().name ?? "")]));
+  const envs = new Map(((meta.finances?.envelopes ?? []) as { id: string; name: string }[]).map((e) => [e.id, e.name]));
+  const list = expensesIn(expenses, from, to);
+  if (!list.length) return `Aucune dépense du ${from} au ${to}.`;
+  const total = list.reduce((s, [, x]) => s + (x.amount ?? 0), 0);
+  return [
+    `Dépenses du ${from} au ${to} : ${list.length} · ${(total / 100).toFixed(2).replace(".", ",")} €`,
+    ...list.map(([id, x]) => expenseLine(id, x, { domain: (d) => domains.get(d), envelope: (e) => envs.get(e) })),
+    "",
+    "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false.",
+  ].join("\n");
+}
+
+/** delete_expenses : retirer des dépenses (ou un ticket entier). apply:false = ce qui partirait. */
+async function executeDeleteExpenses(
+  uid: string,
+  args: { expenseIds?: string[]; receiptIds?: string[]; wholeReceipt?: boolean; apply?: boolean },
+): Promise<string> {
+  const ids = (args.expenseIds ?? []).map(String).filter(Boolean);
+  const rids = (args.receiptIds ?? []).map(String).filter(Boolean);
+  if (!ids.length && !rids.length) return "❌ expenseIds ou receiptIds (list_expenses donne les ids).";
+  const ref = db.doc(`users/${uid}/data/meta`);
+  const meta = ((await ref.get()).data() ?? {}) as Record<string, any>;
+  const expenses = (meta.finances?.expenses ?? {}) as Record<string, ExpenseDoc>;
+  const receipts = (meta.finances?.receipts ?? {}) as Record<string, unknown>;
+  const plan = planDelete(expenses, receipts, ids, rids, args.wholeReceipt === true);
+  const eur = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
+  const lines = plan.expenseIds.map((id) => {
+    const x = expenses[id];
+    return `• [${id}] ${x.ymd} · ${eur(x.amount)} · ${x.note || "sans note"}${x.items?.length ? ` — ${x.items.slice(0, 4).join(", ")}` : ""}`;
+  });
+  const head = [
+    `${plan.expenseIds.length} dépense(s) · ${eur(plan.total)}${plan.receiptIds.length ? ` · ${plan.receiptIds.length} ticket(s) conservé(s)` : ""}`,
+    ...lines,
+    ...(plan.missing.length ? [`⚠️ Introuvable(s) : ${plan.missing.join(", ")}`] : []),
+  ].join("\n");
+  if (!plan.expenseIds.length && !plan.receiptIds.length) return `Rien à retirer.\n${head}`;
+  if (args.apply !== true) return `${head}\n\nRien n'est retiré : montre-le à l'utilisateur, puis rappelle delete_expenses avec apply:true.`;
+  await ref.set(
+    {
+      finances: {
+        expenses: Object.fromEntries(plan.expenseIds.map((id) => [id, FieldValue.delete()])),
+        ...(plan.receiptIds.length ? { receipts: Object.fromEntries(plan.receiptIds.map((r) => [r, FieldValue.delete()])) } : {}),
+      },
+    },
+    { merge: true },
+  );
+  return `✅ Retiré : ${head}`;
 }
 
 async function executeGetArchives(uid: string): Promise<string> {
@@ -5315,7 +5378,7 @@ export {
   executeSaveDocument,
   executeGetDocuments,
   executeGetArchives,
-  executeGetShoppingList, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles,
+  executeGetShoppingList, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses,
   executeAddShoppingItem,
   executeCheckShoppingItem,
   executeRestoreItem,

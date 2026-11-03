@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIGRATE_FOCUS_DATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MANAGE_AISLES_TOOL = exports.UPDATE_PANTRY_TOOL = exports.GET_PANTRY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.DELETE_EXPENSES_TOOL = exports.LIST_EXPENSES_TOOL = exports.MANAGE_AISLES_TOOL = exports.UPDATE_PANTRY_TOOL = exports.GET_PANTRY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
@@ -1589,6 +1589,38 @@ const MANAGE_AISLES_TOOL = {
     },
 };
 exports.MANAGE_AISLES_TOOL = MANAGE_AISLES_TOOL;
+// ── Dépenses (finances.expenses, 2026-11-03) ───────────────────────────────
+const LIST_EXPENSES_TOOL = {
+    name: "list_expenses",
+    description: "Liste les dépenses notées dans Finances sur une période (défaut : le mois en cours jusqu'à aujourd'hui), les plus " +
+        "récentes d'abord, chacune avec son id, son montant, sa note, son enveloppe, son domaine de vie, ses articles et son " +
+        "ticket conservé s'il y en a un. Sert avant delete_expenses (doublon, erreur de saisie).",
+    inputSchema: {
+        type: "object",
+        properties: {
+            from: { type: "string", description: "YYYY-MM-DD (défaut : le 1er du mois de to)" },
+            to: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+        },
+    },
+};
+exports.LIST_EXPENSES_TOOL = LIST_EXPENSES_TOOL;
+const DELETE_EXPENSES_TOOL = {
+    name: "delete_expenses",
+    description: "Retire des dépenses de Finances, à la demande de l'utilisateur seulement (doublon, erreur). Par ids (list_expenses) " +
+        "ou par ticket entier (receiptIds : le ticket conservé et toutes ses dépenses). Une dépense d'un ticket retirée seule " +
+        "laisse le ticket ; wholeReceipt:true retire le ticket entier. apply:false (défaut) = montre ce qui partirait, " +
+        "apply:true = retire. Retrait définitif : nomme bien ce qui part avant d'appliquer.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            expenseIds: { type: "array", items: { type: "string" }, description: "Ids des dépenses (list_expenses)" },
+            receiptIds: { type: "array", items: { type: "string" }, description: "Ids de tickets conservés à retirer entiers" },
+            wholeReceipt: { type: "boolean", description: "Une dépense d'un ticket emporte tout le ticket" },
+            apply: { type: "boolean", description: "false (défaut) = aperçu ; true = retirer" },
+        },
+    },
+};
+exports.DELETE_EXPENSES_TOOL = DELETE_EXPENSES_TOOL;
 const CHECK_SHOPPING_ITEM_TOOL = {
     name: "check_shopping_item",
     description: "Met un article de la liste de courses dans le panier (ou l'en sort avec " +

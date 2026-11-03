@@ -37,6 +37,8 @@ exports.executeRecordReceipt = executeRecordReceipt;
 exports.executeGetPantry = executeGetPantry;
 exports.executeUpdatePantry = executeUpdatePantry;
 exports.executeManageAisles = executeManageAisles;
+exports.executeListExpenses = executeListExpenses;
+exports.executeDeleteExpenses = executeDeleteExpenses;
 exports.executeAddShoppingItem = executeAddShoppingItem;
 exports.executeCheckShoppingItem = executeCheckShoppingItem;
 exports.executeRestoreItem = executeRestoreItem;
@@ -96,6 +98,7 @@ exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
+const expenses_mcp_1 = require("./expenses_mcp");
 const pantry_1 = require("./pantry");
 const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
@@ -1393,6 +1396,65 @@ async function executeManageAisles(uid, args) {
     await ref.set({ groceries: { aisles: next.aisles, pantry: next.pantry, items: next.items, memory: next.memory } }, { merge: true });
     const verb = action === "rename" ? `renommé en « ${(_f = next.aisles.find((a) => (0, pantry_1.foldWords)(a) === (0, pantry_1.foldWords)(args.newName))) !== null && _f !== void 0 ? _f : args.newName} »` : `retiré (${count(from)} produit(s) passent dans « ${pantry_1.OTHER_AISLE} »)`;
     return `✅ Rayon « ${from} » ${verb}.\n${listText(next.aisles)}`;
+}
+/** list_expenses : les dépenses d'une période, avec leur id (pour delete_expenses). */
+async function executeListExpenses(uid, args = {}) {
+    var _a, _b, _c, _d, _e;
+    const ok = (d) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d);
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const meta = ((_a = metaSnap.data()) !== null && _a !== void 0 ? _a : {});
+    const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+    const today = (0, push_rules_1.todayParis)(new Date(Date.now() - dayStartMin * 60000));
+    const to = ok(args.to) ? args.to : today;
+    const from = ok(args.from) ? args.from : `${to.slice(0, 7)}-01`;
+    if (from > to)
+        return "❌ from après to.";
+    const expenses = ((_c = (_b = meta.finances) === null || _b === void 0 ? void 0 : _b.expenses) !== null && _c !== void 0 ? _c : {});
+    const domainsSnap = await db_1.db.collection(`users/${uid}/domains`).get();
+    const domains = new Map(domainsSnap.docs.map((d) => { var _a; return [d.id, String((_a = d.data().name) !== null && _a !== void 0 ? _a : "")]; }));
+    const envs = new Map(((_e = (_d = meta.finances) === null || _d === void 0 ? void 0 : _d.envelopes) !== null && _e !== void 0 ? _e : []).map((e) => [e.id, e.name]));
+    const list = (0, expenses_mcp_1.expensesIn)(expenses, from, to);
+    if (!list.length)
+        return `Aucune dépense du ${from} au ${to}.`;
+    const total = list.reduce((s, [, x]) => { var _a; return s + ((_a = x.amount) !== null && _a !== void 0 ? _a : 0); }, 0);
+    return [
+        `Dépenses du ${from} au ${to} : ${list.length} · ${(total / 100).toFixed(2).replace(".", ",")} €`,
+        ...list.map(([id, x]) => (0, expenses_mcp_1.expenseLine)(id, x, { domain: (d) => domains.get(d), envelope: (e) => envs.get(e) })),
+        "",
+        "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false.",
+    ].join("\n");
+}
+/** delete_expenses : retirer des dépenses (ou un ticket entier). apply:false = ce qui partirait. */
+async function executeDeleteExpenses(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const ids = ((_a = args.expenseIds) !== null && _a !== void 0 ? _a : []).map(String).filter(Boolean);
+    const rids = ((_b = args.receiptIds) !== null && _b !== void 0 ? _b : []).map(String).filter(Boolean);
+    if (!ids.length && !rids.length)
+        return "❌ expenseIds ou receiptIds (list_expenses donne les ids).";
+    const ref = db_1.db.doc(`users/${uid}/data/meta`);
+    const meta = ((_c = (await ref.get()).data()) !== null && _c !== void 0 ? _c : {});
+    const expenses = ((_e = (_d = meta.finances) === null || _d === void 0 ? void 0 : _d.expenses) !== null && _e !== void 0 ? _e : {});
+    const receipts = ((_g = (_f = meta.finances) === null || _f === void 0 ? void 0 : _f.receipts) !== null && _g !== void 0 ? _g : {});
+    const plan = (0, expenses_mcp_1.planDelete)(expenses, receipts, ids, rids, args.wholeReceipt === true);
+    const eur = (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
+    const lines = plan.expenseIds.map((id) => {
+        var _a;
+        const x = expenses[id];
+        return `• [${id}] ${x.ymd} · ${eur(x.amount)} · ${x.note || "sans note"}${((_a = x.items) === null || _a === void 0 ? void 0 : _a.length) ? ` — ${x.items.slice(0, 4).join(", ")}` : ""}`;
+    });
+    const head = [
+        `${plan.expenseIds.length} dépense(s) · ${eur(plan.total)}${plan.receiptIds.length ? ` · ${plan.receiptIds.length} ticket(s) conservé(s)` : ""}`,
+        ...lines,
+        ...(plan.missing.length ? [`⚠️ Introuvable(s) : ${plan.missing.join(", ")}`] : []),
+    ].join("\n");
+    if (!plan.expenseIds.length && !plan.receiptIds.length)
+        return `Rien à retirer.\n${head}`;
+    if (args.apply !== true)
+        return `${head}\n\nRien n'est retiré : montre-le à l'utilisateur, puis rappelle delete_expenses avec apply:true.`;
+    await ref.set({
+        finances: Object.assign({ expenses: Object.fromEntries(plan.expenseIds.map((id) => [id, db_1.FieldValue.delete()])) }, (plan.receiptIds.length ? { receipts: Object.fromEntries(plan.receiptIds.map((r) => [r, db_1.FieldValue.delete()])) } : {})),
+    }, { merge: true });
+    return `✅ Retiré : ${head}`;
 }
 async function executeGetArchives(uid) {
     const [domainsSnap, activitiesSnap] = await Promise.all([
