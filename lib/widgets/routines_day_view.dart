@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
@@ -355,6 +356,9 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   Widget build(BuildContext context) {
     final pal = NowPalette.of(context);
     final day = _day();
+    // Journée parfaite (maquette validée 2026-11-03 « Journée parfaite, revue ») :
+    // une liste courte, une ligne par routine, saisie directe − / +.
+    if (widget.onlyMissing) return _missingList(pal, day);
     _defaultId = (_heldSlot(day) ?? day.queue.firstOrNull)?.id;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!widget.onlyMissing) Row(children: [
@@ -651,6 +655,138 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
       if (x.id == id) return '${x.moment}/${x.id}';
     }
     return null;
+  }
+
+  // ── Journée parfaite : ce qui manque, dans la grammaire du lanceur ─────────
+
+  Color _domainColorOf(Activity a) => domainColor(a.domainId, logic.state.domains) ?? kRoutineAccent;
+
+  Widget _missingList(NowPalette pal, RoutineDay day) {
+    final cur = day.current;
+    final out = <Widget>[];
+    for (final m in logic.allMoments) {
+      final rows = _rowsOf(day, m.key);
+      if (rows.isEmpty) continue;
+      final past = m.timed && cur.timed && m.endMin <= cur.startMin;
+      final isCur = m.key == cur.key;
+      final always = m.key == kMomentAllDay;
+      final open = _open[m.key] ?? (past || isCur || always);
+      final label = past
+          ? 'Restées ${m.of}'
+          : isCur
+              ? m.label
+              : (m.timed ? '${m.thisOne[0].toUpperCase()}${m.thisOne.substring(1)}' : m.label);
+      final hot = past || isCur;
+      out.add(InkWell(
+        onTap: () => setState(() => _open[m.key] = !open),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(2, 10, 2, 8),
+          child: Row(children: [
+            if (hot) ...[
+              Container(width: 7, height: 7, decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle)),
+              const SizedBox(width: 7),
+            ],
+            Expanded(
+              child: Text(label.toUpperCase(),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: hot ? kRoutineAccent : pal.text3)),
+            ),
+            Text('${rows.length}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: pal.text3)),
+            const SizedBox(width: 4),
+            Icon(open ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text4),
+          ]),
+        ),
+      ));
+      out.add(Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: pal.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
+        child: open
+            ? Column(children: [
+                for (var i = 0; i < rows.length; i++) _missingLine(pal, day, rows[i], first: i == 0),
+              ])
+            : InkWell(
+                onTap: () => setState(() => _open[m.key] = true),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Text(rows.map((r) => r.activity.name).join(' · '),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: pal.text3)),
+                ),
+              ),
+      ));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: out);
+  }
+
+  /// Une routine qui manque : anneau à la couleur du domaine, nom, UNE ligne
+  /// d'infos, lanceur seulement s'il lance quelque chose, puis − / +.
+  Widget _missingLine(NowPalette pal, RoutineDay day, RoutineSlot s, {required bool first}) {
+    final a = s.activity;
+    final c = _domainColorOf(a);
+    final t = s.todo;
+    final target = t.dayTarget ?? t.weekTarget;
+    final count = t.dayTarget != null ? t.dayDone : t.weekDone;
+    final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
+    final streak = a.habitFreq == HabitFreq.daily ? logic.habitCurrentStreak(a.id) : 0;
+    final linked = _linkedOf(a);
+    final running = linked != null && _isRunning(linked);
+    final timed = (a.timerMin ?? 0) > 0 && widget.onStartTimed != null;
+    final infos = <InlineSpan>[
+      TextSpan(text: s.share?.label ?? (timed ? '${a.timerMin} min' : '$count / $target'), style: TextStyle(color: c)),
+      if (streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
+      if (linked != null) TextSpan(text: ' · ${linked.name}'),
+    ];
+    Widget btn(IconData icon, VoidCallback onTap, {Color? color}) => SizedBox(
+          width: 34,
+          height: 34,
+          child: Material(
+            color: (color ?? c).withOpacity(.18),
+            shape: const CircleBorder(),
+            child: InkWell(customBorder: const CircleBorder(), onTap: onTap, child: Icon(icon, size: 18, color: color ?? c)),
+          ),
+        );
+    return InkWell(
+      onLongPress: () => _openSheet(a),
+      child: Container(
+        decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: Colors.white.withOpacity(.05)))),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        child: Row(children: [
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Stack(alignment: Alignment.center, children: [
+              CustomPaint(
+                size: const Size(36, 36),
+                painter: RingPainter(progress: progress, color: c, stroke: 3.5, trackColor: pal.track, cap: StrokeCap.round),
+              ),
+              Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: pal.text)),
+              const SizedBox(height: 1),
+              Text.rich(TextSpan(children: infos),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pal.text3)),
+              if (s.pushed)
+                GestureDetector(
+                  onTap: () => _clearPush(a),
+                  child: Text('reportée · revenir ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
+                ),
+            ]),
+          ),
+          if (linked != null) ...[
+            btn(running ? Icons.stop_rounded : Icons.play_arrow_rounded, () => _toggleChrono(linked), color: running ? kBAttention : null),
+            const SizedBox(width: 6),
+          ] else if (timed) ...[
+            btn(Icons.timer_outlined, () => _timer(a)),
+            const SizedBox(width: 6),
+          ],
+          _round(pal, '−', count > 0 ? () => _minus(a) : null, size: 40),
+          const SizedBox(width: 6),
+          _round(pal, '+', () => _plus(a), size: 40, bg: c.withOpacity(.2), fg: c),
+        ]),
+      ),
+    );
   }
 
   Widget _line(NowPalette pal, RoutineDay day, RoutineSlot s) {

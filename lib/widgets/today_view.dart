@@ -1277,10 +1277,14 @@ class TodayViewState extends State<TodayView> {
               chipColor: missing == 0 && total > 0 ? kPalierGreen : kPalierAmber,
               kpi: 'routines ${facts.routinesReached} / ${facts.routines.length} · blocs ${facts.blocksDone} / ${facts.countedBlocks.length}',
             ),
+            if (total > 0) ...[
+              const SizedBox(height: 4),
+              _perfectCells(ctx, [for (final r in facts.routines) r.reached], [for (final b in facts.countedBlocks) b.status == 'done']),
+            ],
             if (routines.isNotEmpty) ...[
-              FicheTitle('ROUTINES À ATTEINDRE · ${routines.length}'),
-              const SizedBox(height: 6),
-              // Même vue que la fiche Routines, filtrée sur ce qui manque.
+              const SizedBox(height: 4),
+              // Même logique que la fiche Routines, en lignes courtes avec − / +
+              // (maquette validée 2026-11-03 « Journée parfaite, revue »).
               RoutinesDayView(
                 logic: widget.logic,
                 onlyMissing: true,
@@ -1292,18 +1296,7 @@ class TodayViewState extends State<TodayView> {
             ],
             if (blocks.isNotEmpty) ...[
               FicheTitle('BLOCS À FAIRE · ${blocks.length}'),
-              // Même liste que le programme du jour, sans les blocs faits.
-              DailyScheduleView(
-                key: ValueKey('perfect-${widget.logic.livedTodayYmd}'),
-                date: widget.logic.livedTodayYmd,
-                logic: widget.logic,
-                visible: true,
-                onlyToDo: true,
-                title: '',
-                onLaunch: widget.onLaunch,
-                onLaunchTimed: widget.onNowLaunchTimed,
-                onOpenSource: widget.onOpenSource,
-              ),
+              _perfectBlocks(ctx, blocks),
             ],
             if (total > 0 && missing == 0)
               FicheNote(ledger.stock >= kEmberCap
@@ -1328,6 +1321,93 @@ class TodayViewState extends State<TodayView> {
     }).then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  /// Une case par chose à tenir : routines pleines, blocs en contour ;
+  /// vert = tenu.
+  Widget _perfectCells(BuildContext ctx, List<bool> routines, List<bool> blocks) {
+    final track = Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .12);
+    Widget cell(bool on, {bool block = false}) => Container(
+          width: 15,
+          height: 13,
+          decoration: BoxDecoration(
+            color: on ? kPalierGreen : (block ? null : track),
+            borderRadius: BorderRadius.circular(4),
+            border: block ? Border.all(color: on ? kPalierGreen : track, width: 2) : null,
+          ),
+        );
+    return Wrap(spacing: 4, runSpacing: 4, children: [
+      for (final r in routines) cell(r),
+      for (final b in blocks) cell(b, block: true),
+    ]);
+  }
+
+  /// Les blocs qui manquent, dans la grammaire des lignes de routine :
+  /// heure, titre, durée, ▶ quand il y a quelque chose à lancer.
+  Widget _perfectBlocks(BuildContext ctx, List<ScheduleBlock> blocks) {
+    final cs = Theme.of(ctx).colorScheme;
+    final mute = cs.onSurface.withValues(alpha: .55);
+    final launch = widget.onNowLaunch ?? widget.onLaunch;
+    String dur(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} h' : '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}');
+    Color colorOf(ScheduleBlock b) {
+      final act = widget.logic.state.activities.where((a) => a.id == b.activityId).firstOrNull;
+      return domainColor(act?.domainId, widget.logic.state.domains) ?? kRoutineAccent;
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .3), borderRadius: BorderRadius.circular(16)),
+      child: Column(children: [
+        for (var i = 0; i < blocks.length; i++)
+          () {
+            final b = blocks[i];
+            final c = colorOf(b);
+            final hasSource = b.activityId != null || b.projectId != null || b.taskId != null || b.timeBlock != null;
+            final mode = switch (b.timeBlock) { 'deep' => ' · offensive', 'small' => ' · guérilla', _ => '' };
+            return InkWell(
+              onTap: hasSource && widget.onOpenSource != null
+                  ? () {
+                      Navigator.of(ctx).pop();
+                      widget.onOpenSource!(b);
+                    }
+                  : null,
+              child: Container(
+                decoration: BoxDecoration(border: i == 0 ? null : Border(top: BorderSide(color: cs.onSurface.withValues(alpha: .06)))),
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                child: Row(children: [
+                  SizedBox(
+                    width: 48,
+                    child: Text(b.startTime, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: mute, fontFeatures: const [FontFeature.tabularFigures()])),
+                  ),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(b.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      Text('${dur(b.durationMin)}$mode', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: mute)),
+                    ]),
+                  ),
+                  if (hasSource && launch != null)
+                    SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: Material(
+                        color: c.withValues(alpha: .18),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            launch(b);
+                          },
+                          child: Icon(Icons.play_arrow_rounded, size: 20, color: c),
+                        ),
+                      ),
+                    ),
+                ]),
+              ),
+            );
+          }(),
+      ]),
+    );
   }
 
   /// Tuile ACTIONS (2026-10-30, retour user) : une feuille des actions visées

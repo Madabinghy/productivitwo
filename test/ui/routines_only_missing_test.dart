@@ -24,4 +24,22 @@ void main() {
     expect(find.text('LA JOURNÉE PAR MOMENTS'), findsNothing);
     expect(changes, 0);
   });
+
+  testWidgets('Journée parfaite : lignes courtes, + compte directement, pas de carte du moment', (tester) async {
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [
+      Activity(id: 'eau', domainId: 'd', name: 'Eau', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 6, createdAt: DateTime(2026, 1, 1)),
+    ], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: RoutinesDayView(logic: logic, onlyMissing: true)))));
+    await tester.pumpAndSettle();
+    expect(find.text('ROUTINE DU MOMENT'), findsNothing);
+    expect(find.text('0 / 6'), findsOneWidget);
+    await tester.tap(find.text('+'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 6'), findsOneWidget);
+    await tester.tap(find.text('−'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 / 6'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
