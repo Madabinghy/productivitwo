@@ -110,6 +110,29 @@ void main() {
     expect(opened, 'routines');
   });
 
+  testWidgets('mobile : Journée parfaite en pleine largeur, quatre petites tuiles en deux rangées', (t) async {
+    var opened = '';
+    const small = DashTile(label: 'X', value: 'v', sub: 's');
+    await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: DashboardTiles(
+      perfect: const DashTile(label: 'JOURNÉE PARFAITE', value: 'Il manque 3', sub: 'routines'),
+      perfectWide: true,
+      badges: small,
+      objectives: small,
+      actions: small,
+      review: small,
+      onPerfect: () => opened = 'perfect',
+    )))));
+    final perfectBox = t.getSize(find.ancestor(of: find.text('JOURNÉE PARFAITE'), matching: find.byType(Material)).first);
+    final smallBox = t.getSize(find.ancestor(of: find.text('X'), matching: find.byType(Material)).first);
+    expect(perfectBox.width, greaterThan(smallBox.width * 1.8));
+    expect(find.text('X'), findsNWidgets(4));
+    await t.tap(find.text('JOURNÉE PARFAITE'));
+    expect(opened, 'perfect');
+  });
+
   testWidgets('« Badges en jeu » en feuille : en-tête des fiches, pas de Scaffold', (t) async {
     final scroll = ScrollController();
     await t.pumpWidget(MaterialApp(

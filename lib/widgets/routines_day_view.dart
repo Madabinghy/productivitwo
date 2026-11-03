@@ -476,7 +476,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ]),
         ),
       ));
-      if (isCur && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty)
+      if (isCur && widget.onChain != null && day.queue.isNotEmpty)
         out.add(Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(

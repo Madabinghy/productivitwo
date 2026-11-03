@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/widgets/routines_organize_screen.dart' show showRoutinesOrganizeScreen;
 import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -177,6 +178,14 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       children: [
         Row(children: [
           const Expanded(child: Text('Routines', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+          // Organiser (moments, ordre) : vivait dans la fiche Routines d'Aujourd'hui, retirée le 2026-11-03.
+          IconButton(
+            tooltip: 'Organiser les routines',
+            icon: const Icon(Icons.low_priority_rounded, size: 20),
+            color: kRoutineAccent,
+            visualDensity: VisualDensity.compact,
+            onPressed: () => showRoutinesOrganizeScreen(context, logic: logic),
+          ),
           TextButton.icon(
             onPressed: widget.onNew,
             icon: const Icon(Icons.add, size: 18),
