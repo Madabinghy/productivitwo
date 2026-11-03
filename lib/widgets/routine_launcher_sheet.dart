@@ -11,6 +11,8 @@ import 'package:productivitwo_v1/widgets/activity_picker.dart' show ActivityDoma
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show kRoutineAccent;
 import 'package:productivitwo_v1/widgets/task_schedule.dart' show toggleRoutineTodayAndSchedule;
+import 'package:productivitwo_v1/widgets/moment_card.dart' show showMomentActions, MomentAction;
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 /// Lanceur de routines du FAB (maquette validée 2026-10-30) : rangé par
 /// domaine, ce qui reste à faire d'abord, « Faites · n » replié en bas.
@@ -290,8 +292,10 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
         ),
       ]);
 
-  /// Ligne (retour user 2026-10-31) : l'anneau « + » compte une occurrence
-  /// tout de suite, tap sur la ligne = le compteur, appui long = la fiche.
+  /// Ligne (2026-11-03, même grammaire que Journée parfaite et la fiche
+  /// Routines) : anneau à la couleur du domaine, nom, UNE ligne d'infos,
+  /// lanceur seulement s'il lance quelque chose, puis − / + pour saisir
+  /// directement. Tap = le compteur, appui long = les gestes rares.
   Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s) {
     final a = s.activity;
     final t = s.todo;
@@ -300,93 +304,155 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final hasTimer = (a.timerMin ?? 0) > 0;
     final streak = a.habitFreq == HabitFreq.daily ? logic.habitCurrentStreak(a.id) : 0;
     final dc = _colorOf(a);
-    final meta = <InlineSpan>[];
-    void add(String text, {Color? color}) {
-      if (meta.isNotEmpty) meta.add(const TextSpan(text: ' · '));
-      meta.add(TextSpan(text: text, style: color == null ? null : TextStyle(color: color)));
-    }
-
-    if (dismissed) {
-      add('pas aujourd\'hui');
-    } else if (t.dayTarget != null) {
-      if (t.dayTarget! > 1 || t.dayDone > 1) add('${t.dayDone} / ${t.dayTarget} aujourd\'hui');
-      if (!s.reached) {
-        final share = s.share;
-        add(share != null ? share.label : momentOf(s.moment).thisOne, color: dc);
-      }
-    } else {
-      add(t.progressLabel);
-      if (!s.reached && s.moment != kMomentAllDay && s.moment != kMomentAny) add(momentOf(s.moment).thisOne, color: dc);
-    }
-    if (streak > 0) add('🔥 $streak j', color: dc);
-
+    final target = t.dayTarget ?? t.weekTarget;
+    final count = t.dayTarget != null ? t.dayDone : t.weekDone;
+    final done = s.reached;
+    final muted = cs.onSurface.withValues(alpha: .5);
+    final infos = <InlineSpan>[
+      if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
+      TextSpan(
+          text: done
+              ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}'
+              : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
+          style: TextStyle(color: dc)),
+      if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)
+        TextSpan(text: ' · ${momentOf(s.moment).thisOne}'),
+      if (streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
+      if (linked != null) TextSpan(text: ' · ${linked.name}'),
+    ];
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _openCounter(a),
-      onLongPress: () => _openFiche(a),
+      onLongPress: () => _rowActions(day, s),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Row(children: [
-          Tooltip(
-            message: s.reached ? 'Compteur' : '+1',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: s.reached
-                  ? () => _openCounter(a)
-                  : () {
-                      HapticFeedback.lightImpact();
-                      _bump(a, 1);
-                    },
-              child: _ring(cs, s, dc, dismissed: dismissed),
-            ),
-          ),
+          _ring(cs, s, dc),
           const SizedBox(width: 12),
           Expanded(
             child: Opacity(
               opacity: dismissed ? .5 : 1,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
-                if (meta.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text.rich(TextSpan(children: meta),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .5))),
+                Text(a.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w800, height: 1.2, color: done ? cs.onSurface.withValues(alpha: .6) : null)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text.rich(TextSpan(children: infos),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
+                ),
+                if (s.pushed)
+                  GestureDetector(
+                    onTap: () => _clearPush(a),
+                    child: Text('reportée · revenir ${momentOf(s.home).of}',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFE0A030))),
                   ),
               ]),
             ),
           ),
-          // Routine faite (retour user 2026-10-30) : − / + sur la ligne pour
-          // corriger ou en ajouter sans ouvrir la fiche ni le compteur.
-          if (s.reached && !dismissed) ...[
+          if (!done && !dismissed && (linked != null || hasTimer)) ...[
             const SizedBox(width: 6),
-            _miniBtn(cs, dc, Icons.remove_rounded, t.dayDone > 0 ? () => _bump(a, -1) : null),
-            const SizedBox(width: 6),
-            _miniBtn(cs, dc, Icons.add_rounded, () => _bump(a, 1), accent: true),
-          ],
-          if (!s.reached && !dismissed && (linked != null || hasTimer)) ...[
-            const SizedBox(width: 8),
             Tooltip(
               message: linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min',
-              child: Material(
-                color: dc.withValues(alpha: .14),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () => linked != null ? widget.onChrono(linked) : widget.onTimer(a),
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: Icon(linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined, size: 20, color: dc),
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: Material(
+                  color: dc.withValues(alpha: .16),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => linked != null ? widget.onChrono(linked) : widget.onTimer(a),
+                    child: Icon(linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined, size: 18, color: dc),
                   ),
                 ),
               ),
             ),
           ],
+          const SizedBox(width: 6),
+          _miniBtn(cs, dc, Icons.remove_rounded, t.dayDone > 0 ? () => _bump(a, -1) : null),
+          const SizedBox(width: 6),
+          _miniBtn(cs, dc, Icons.add_rounded, () {
+            HapticFeedback.lightImpact();
+            _bump(a, 1);
+          }, accent: true),
         ]),
       ),
     );
+  }
+
+  /// Gestes rares (appui long), comme dans Journée parfaite.
+  void _rowActions(RoutineDay day, RoutineSlot s) {
+    final a = s.activity;
+    final cur = day.current;
+    showMomentActions(context, title: a.name, actions: [
+      MomentAction('Fiche de la routine', icon: Icons.tune_rounded, onTap: () => _openFiche(a)),
+      MomentAction('Compteur', icon: Icons.exposure_rounded, hint: 'chrono, minuteur, programme', onTap: () => _openCounter(a)),
+      if (!s.reached) MomentAction('Plus tard ${cur.thisOne}', icon: Icons.schedule_rounded, onTap: () => _defer(a)),
+      if (s.pushed) MomentAction('Annuler le report', icon: Icons.undo_rounded, hint: 'revient ${momentOf(s.home).of}', onTap: () => _clearPush(a)),
+      if (!s.reached)
+        for (final m in day.laterMoments)
+          MomentAction('Reporter à ${m.thisOne}', icon: Icons.arrow_forward_rounded, hint: m.window, onTap: () => _pushTo(a, m)),
+      if (!day.dismissed.contains(a.id) && !s.reached)
+        MomentAction('Pas aujourd\'hui', icon: Icons.block_rounded, onTap: () => _dismiss(a)),
+      if (day.dismissed.contains(a.id))
+        MomentAction('Remettre aujourd\'hui', icon: Icons.undo_rounded, onTap: () => _undismiss(a)),
+    ]);
+  }
+
+  String get _ymd => logic.livedYmdNow;
+
+  void _defer(Activity a) {
+    final ymd = _ymd;
+    final list = [...(logic.state.nowSkippedByYmd[ymd] ?? const <String>[])]..remove(a.id);
+    list.add(a.id);
+    logic.setNowSkipped(ymd, list.toSet());
+    logic.state.nowSkippedByYmd[ymd] = list;
+    final day = _day();
+    final slot = day.slots.where((s) => s.id == a.id).firstOrNull;
+    if (slot != null && momentOf(slot.moment).timed && slot.moment != day.current.key) {
+      logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[a.id] = day.current.key);
+    }
+    _changed();
+  }
+
+  void _pushTo(Activity a, Moment m) {
+    final ymd = _ymd;
+    logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[a.id] = m.key);
+    _changed();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showClosingSnackBar(SnackBar(
+        content: Text('${a.name} : ${m.thisOne}'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(label: 'Annuler', onPressed: () => _clearPush(a)),
+      ));
+  }
+
+  void _clearPush(Activity a) {
+    logic.clearRoutinePushed(_ymd, a.id);
+    _changed();
+  }
+
+  void _dismiss(Activity a) {
+    final ymd = _ymd;
+    logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
+    _changed();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showClosingSnackBar(SnackBar(
+        content: Text('Pas aujourd\'hui : ${a.name}'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(label: 'Annuler', onPressed: () => _undismiss(a)),
+      ));
+  }
+
+  void _undismiss(Activity a) {
+    final ymd = _ymd;
+    logic.setNowDone(ymd, logic.nowDoneSet(ymd)..remove(a.id));
+    _changed();
   }
 
   void _bump(Activity a, int d) {
@@ -398,31 +464,26 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   Color _colorOf(Activity a) => domainColor(a.domainId, logic.state.activeDomains) ?? kRoutineAccent;
 
   Widget _miniBtn(ColorScheme cs, Color dc, IconData icon, VoidCallback? onTap, {bool accent = false}) => Material(
-        color: accent ? dc.withValues(alpha: .14) : cs.onSurface.withValues(alpha: .07),
+        color: accent ? dc.withValues(alpha: .18) : cs.onSurface.withValues(alpha: .07),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: SizedBox(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             child: Icon(icon, size: 19, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? dc : cs.onSurface.withValues(alpha: .7))),
           ),
         ),
       );
 
-  Widget _ring(ColorScheme cs, RoutineSlot s, Color dc, {required bool dismissed}) {
+  Widget _ring(ColorScheme cs, RoutineSlot s, Color dc) {
     final on = ThemeData.estimateBrightnessForColor(dc) == Brightness.dark ? Colors.white : const Color(0xFF0D1A12);
     final t = s.todo;
     final target = t.dayTarget ?? t.weekTarget;
     final count = t.dayTarget != null ? t.dayDone : t.weekDone;
     final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
-    const size = 40.0;
-    final label = s.reached
-        ? (count > target ? '$count' : null)
-        : count == 0
-            ? null
-            : (target <= 9 ? '$count/$target' : '$count');
+    const size = 36.0;
     return SizedBox(
       width: size,
       height: size,
@@ -435,23 +496,17 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
             height: size,
             child: CircularProgressIndicator(
               value: progress,
-              strokeWidth: 4,
+              strokeWidth: 3.5,
               strokeCap: StrokeCap.round,
               color: dc,
               backgroundColor: cs.onSurface.withValues(alpha: .1),
             ),
           ),
-        if (label != null)
-          Text(label,
-              style: TextStyle(
-                  fontSize: label.length > 3 ? 9.5 : 11,
-                  fontWeight: FontWeight.w900,
-                  color: s.reached ? on : cs.onSurface,
-                  fontFeatures: const [FontFeature.tabularFigures()]))
-        else if (s.reached)
+        if (s.reached)
           Icon(Icons.check_rounded, size: 20, color: on)
         else
-          Icon(Icons.add_rounded, size: 20, color: dismissed ? cs.onSurface.withValues(alpha: .3) : dc),
+          Text('$count',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: dc, fontFeatures: const [FontFeature.tabularFigures()])),
       ]),
     );
   }
