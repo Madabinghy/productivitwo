@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
 import 'package:productivitwo_v1/utils/landing.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
@@ -84,6 +85,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   String? _landedFor;
   /// « Je finis ce coup, puis j'y vais » : l'offensive s'arrête au bout du coup.
   bool _leaveAfterCoup = false;
+  /// Point d'étape : « Je souffle 3 min » a arrêté le chrono.
+  bool _breathing = false;
   final _passed = <String>{};
   final _asked = <String>{}; // actions sans activité déjà questionnées
   final _actionsDone = <String, List<String>>{}; // projet → titres
@@ -196,8 +199,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         'chronoSec': _chronoSec + (_chronoFrom == null ? 0 : now.difference(_chronoFrom!).inSeconds),
         'chronoBase': _chronoSec,
         if (_chronoFrom case final f?) 'chronoFrom': f.millisecondsSinceEpoch,
-        if (_phase == _Phase.coup && _cur != null) 'cur': _cur!.action.id,
-        if (_phase == _Phase.coup && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
+        if (_phase != _Phase.setup && _phase != _Phase.end && _cur != null) 'cur': _cur!.action.id,
+        if (_phase != _Phase.setup && _phase != _Phase.end && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
         'own': _ownChrono,
         'passed': _passed.toList(),
         'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
@@ -350,7 +353,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       return;
     }
     if (offensivePauseDue(_won)) {
-      _stopOwnChrono();
+      // Le point d'étape n'arrête plus le chrono (« Plongé, pas perdu », lot 2) : on lève la tête, on replonge.
+      _breathing = false;
+      _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) setState(() {});
+      });
       setState(() => _phase = _Phase.pause);
     } else {
       _startCoup();
@@ -861,38 +868,100 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     return parts.isEmpty ? 'Le temps passé compte : les coups sont gagnés.' : parts.join(' · ');
   }
 
-  Widget _pause() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _header('OFFENSIVE', trailing: Text('$_won coups · ${fmtOffensiveMin(_elapsedMin())}', style: const TextStyle(fontSize: 13, color: _text2))),
-      Expanded(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('POINT D’ÉTAPE · 3 MIN', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: _text3)),
-          const SizedBox(height: 14),
-          const Text('Lève-toi, bois,\nregarde au loin.', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+  /// Séries qui se perdent ce soir si rien : routines quotidiennes pas atteintes, série ≥ 2 j jusqu'à hier.
+  List<SeriesAtRisk> _atRisk() {
+    final today = logic.livedToday;
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
+    final ymd = logic.livedTodayYmd;
+    return seriesAtRisk([
+      for (final a in logic.state.activeActivities)
+        if (a.isHabit && a.habitFreq == HabitFreq.daily && !logic.isAcquired(a.id) && !logic.frozenOf(a.id).contains(ymd))
+          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday)),
+    ]);
+  }
+
+  Widget _pill(String t, Color c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(color: c.withValues(alpha: .15), borderRadius: BorderRadius.circular(99)),
+        child: Text(t, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600)),
+      );
+
+  Widget _li(String left, String title, String? sub, Widget pill) => Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          SizedBox(width: 46, child: Text(left, style: const TextStyle(fontSize: 13, color: _text3, fontFeatures: [FontFeature.tabularFigures()]))),
+          Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('DÉJÀ GAGNÉ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
-              const SizedBox(height: 6),
-              Text(_gainedLine(), style: const TextStyle(fontSize: 14, height: 1.5)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              if (sub != null) Text(sub, style: const TextStyle(fontSize: 11.5, color: _text3)),
             ]),
           ),
-          const SizedBox(height: 16),
-          const Text('Toujours à fond ?', textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: _text2)),
+          pill,
+        ]),
+      );
+
+  Widget _pause() {
+    final now = DateTime.now();
+    final running = _ownChrono ? logic.state.sessions.where((x) => x.endAt == null).firstOrNull : null;
+    final actName = running == null ? null : logic.state.activities.where((a) => a.id == running.activityId).firstOrNull?.name;
+    final upcoming = upcomingBlocks(logic.todayBlocks, now, logic.dayStartMin, sessionTaskIds: _sessionTasks);
+    final risk = _atRisk();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _header('OFFENSIVE · $_won COUPS GAGNÉS', trailing: Text(fmtOffensiveMin(_elapsedMin()), style: const TextStyle(fontSize: 13, color: _text2))),
+      Expanded(
+        child: ListView(children: [
+          const SizedBox(height: 8),
+          if (running != null)
+            Row(children: [
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF5FE0C8), shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Le chrono continue · ${fmtOffensiveMin(now.difference(running.startAt).inMinutes)}${actName == null ? '' : ' sur $actName'}',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF5FE0C8))),
+              ),
+            ])
+          else if (_breathing)
+            const Text('Chrono en pause · reprends quand tu veux', style: TextStyle(fontSize: 13, color: _text3)),
           const SizedBox(height: 10),
-          _outline('À fond · 3 coups de plus', _startCoup, strong: true, left: true),
-          const SizedBox(height: 10),
-          _outline('Je ralentis · coups de 10 min', () {
-            _duration = 10;
-            _startCoup();
-          }, left: true),
-          const SizedBox(height: 10),
-          _outline('C’est bon pour aujourd’hui', () => _end(), left: true),
+          Text(_breathing ? 'Lève-toi, bois,\nregarde au loin.' : 'Lève la tête\n20 secondes', style: const TextStyle(fontSize: 28, height: 1.15, fontWeight: FontWeight.w800)),
+          _label('CE QUI ARRIVE'),
+          if (upcoming.isEmpty)
+            const Padding(padding: EdgeInsets.only(bottom: 6), child: Text('Plus rien de prévu aujourd’hui.', style: TextStyle(fontSize: 13.5, color: _text2)))
+          else
+            for (final u in upcoming)
+              _li(u.block.startTime, u.block.title, inLabel((u.at.difference(now).inSeconds / 60).ceil()),
+                  u.fixed ? _pill('daté', _sky) : _pill('souple', _text3)),
+          if (risk.isNotEmpty) ...[
+            _label('SE PERD CE SOIR SI RIEN'),
+            for (final r in risk) _li('🔥', '${r.name} · série de ${r.streak} j', '${r.count} / ${r.target} aujourd’hui', _pill('ce soir', const Color(0xFFFF6B6B))),
+          ],
+          _label('DÉJÀ GAGNÉ'),
+          Text(_gainedLine(), style: const TextStyle(fontSize: 14, height: 1.5)),
         ]),
       ),
-      TextButton(onPressed: _startCoup, child: const Text('Passer la pause', style: TextStyle(color: _text3))),
+      const SizedBox(height: 10),
+      _primary('Je continue', _startCoup),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(
+          child: _outline(_breathing ? 'Je souffle…' : 'Je souffle 3 min', () {
+            if (_breathing) return;
+            _stopOwnChrono();
+            setState(() => _breathing = true);
+          }),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _outline('Coups de 10 min', () {
+            _duration = 10;
+            _startCoup();
+          }),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: _outline('C’est bon', () => _end())),
+      ]),
     ]);
   }
 
