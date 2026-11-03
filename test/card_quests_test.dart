@@ -85,4 +85,16 @@ void main() {
     expect(t.kind, SniperKind.routine);
     expect(t.amount, 1);
   });
+
+  test('Chasseur de cartes : prise si tous les tirs pleins et le palier tombe aujourd’hui', () {
+    final q = cardQuestOf(b('fois-aspi', 'Passer l’aspirateur', kRoutineCountTiers, 0, 9, subject: 'aspi'), activities: acts)!;
+    expect(q.fallsToday, isTrue);
+    expect(cardTakenBy(q, {'routine:aspi'}), isTrue);
+    expect(cardTakenBy(q, {}), isFalse);
+    final metro = cardQuestOf(b('metronome', 'Métronome', const [5, 20, 50, 100], 0, 3, f: BadgeFamily.days),
+        activities: acts, facts: TodayFacts(ymd: '2026-11-02', now: now, routines: [RoutineToday(lecture, 0, 1)]))!;
+    expect(metro.fallsToday, isFalse, reason: 'encore 2 jours');
+    final run = ChainRun(date: '2026-11-02', startedAt: now, endedAt: now, doneCount: 1, total: 1, completed: true, kind: 'sniper', cardId: 'fois-aspi', cardTaken: true);
+    expect(cardHunterCounts(ChainRun.from(run.toJson())), isTrue);
+  });
 }
