@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/groceries.dart' show spentByProject;
+import 'package:productivitwo_v1/utils/income_clients.dart';
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
@@ -1110,6 +1111,8 @@ class _IncomeEntryState extends State<_IncomeEntry> {
   late String _ymd = widget.logic.livedTodayYmd;
   late String? _domain = defaultIncomeDomain(widget.logic.state.activeDomains);
   String? _project;
+  /// Le client choisi (clé `IncomeClient.key`) ; null = aucun ou un nom tapé.
+  IncomeClient? _client;
 
   @override
   void dispose() {
@@ -1121,13 +1124,15 @@ class _IncomeEntryState extends State<_IncomeEntry> {
   Future<void> _save() async {
     final v = parseEuros(_amount.text);
     if (v == null) return;
-    final id = await widget.logic.addIncome(amount: v, ymd: _ymd, from: _from.text, domainId: _domain, projectId: _project);
+    final id = await widget.logic.addIncome(amount: v, ymd: _ymd, from: _client?.name ?? _from.text, domainId: _domain, projectId: _project, clientId: _client?.id);
     if (!mounted || id == null) return;
     Navigator.of(context).pop();
     if (widget.host.mounted) {
-      ScaffoldMessenger.of(widget.host).showClosingSnackBar(SnackBar(content: Text('↓ ${euros(v)} rentrés${_from.text.trim().isEmpty ? '' : ' · ${_from.text.trim()}'}'), duration: const Duration(seconds: 3)));
+      ScaffoldMessenger.of(widget.host).showClosingSnackBar(SnackBar(content: Text('↓ ${euros(v)} rentrés${_whoText.isEmpty ? '' : ' · $_whoText'}'), duration: const Duration(seconds: 3)));
     }
   }
+
+  String get _whoText => (_client?.name ?? _from.text).trim();
 
   @override
   Widget build(BuildContext context) {
@@ -1136,7 +1141,14 @@ class _IncomeEntryState extends State<_IncomeEntry> {
     final logic = widget.logic;
     final today = logic.livedTodayYmd;
     final domains = logic.state.activeDomains;
-    final projects = logic.currentProjects.where((p) => p.status == 'active' && !p.paused && (_domain == null || p.domainId == _domain)).take(8).toList();
+    final all = logic.currentProjects;
+    final clients = incomeClients(all, logic.finances.incomes.values);
+    final clientId = _client?.id;
+    final projects = (clientId != null
+            ? projectsOfClient(clientId, all)
+            : all.where((p) => p.status == 'active' && !p.paused && (_domain == null || p.domainId == _domain)))
+        .take(8)
+        .toList();
     final v = parseEuros(_amount.text);
     final other = _ymd != today && _ymd != prevYmd(today);
     ChoiceChip chip(String t, bool on, VoidCallback tap, {Color? dot}) => ChoiceChip(
@@ -1166,10 +1178,32 @@ class _IncomeEntryState extends State<_IncomeEntry> {
           decoration: InputDecoration(hintText: '0', prefixText: '+ ', suffixText: '€', suffixStyle: TextStyle(fontSize: 22, color: mute), border: InputBorder.none),
           onChanged: (_) => setState(() {}),
         ),
+        label('DE QUI ?  facultatif'),
+        if (clients.isNotEmpty)
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final c in clients)
+              chip(c.name.length > 28 ? '${c.name.substring(0, 27)}…' : c.name, _client?.key == c.key, () => setState(() {
+                    final off = _client?.key == c.key;
+                    _client = off ? null : c;
+                    _project = null;
+                    if (!off) _from.clear();
+                    if (!off && c.id != null) {
+                      final dom = all.where((p) => p.id == c.id).map((p) => p.domainId).firstOrNull;
+                      if (dom != null && domains.any((d) => d.id == dom)) _domain = dom;
+                    }
+                  })),
+          ]),
         TextField(
+          key: const ValueKey('income-from'),
           controller: _from,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(labelText: 'De qui ?', hintText: 'facultatif · client, facture n°…', isDense: true),
+          decoration: InputDecoration(
+              labelText: clients.isEmpty ? 'De qui ?' : 'Un autre client',
+              hintText: clients.isEmpty ? 'facultatif · client, facture n°…' : 'nom du client, facture n°…',
+              isDense: true),
+          onChanged: (t) {
+            if (t.trim().isNotEmpty && _client != null) setState(() => _client = null);
+          },
         ),
         label('POUR QUEL DOMAINE ?'),
         Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1179,7 +1213,7 @@ class _IncomeEntryState extends State<_IncomeEntry> {
               }), dot: domainColor(d.id, domains)),
         ]),
         if (projects.isNotEmpty) ...[
-          label('POUR UN PROJET ?  facultatif'),
+          label(clientId != null ? 'POUR QUEL PROJET DE ${_client!.name.toUpperCase()} ?  facultatif' : 'POUR UN PROJET ?  facultatif'),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final p in projects) chip(p.title.length > 28 ? '${p.title.substring(0, 27)}…' : p.title, p.id == _project, () => setState(() => _project = p.id == _project ? null : p.id)),
           ]),

@@ -1039,7 +1039,7 @@ Finances (`checkDue` : jamais fait ou ≥ 7 jours, `lastCheckYmd`). **Les 3 lots
 from?, domainId?, projectId?, at?}` (`finances.incomes`, `AppLogic.addIncome` / `removeIncome` / `restoreIncome`,
 `FirestoreSync.setFinanceIncome`) — « + Rentrée » à côté de « + Dépense » (`showIncomeSheet` : montant, De qui ?, domaine — un domaine de
 travail par défaut, `defaultIncomeDomain` —, projet, Aujourd'hui · Hier · un autre jour jusqu'à 90 j), section RENTRÉES CE MOIS (glisser =
-retirer, « Annuler »). Les rentrées comptent dans le revenu du mois (`monthSummary`) et dans le point de la semaine. Chaque mouvement porte
+retirer, « Annuler »). **Client d'une rentrée** (2026-11-03, retour user) : DE QUI ? = puces des clients (`incomeClients`, logique pure `utils/income_clients.dart` : dossiers de projets vivants, puis noms déjà tapés sur des rentrées, récents d'abord) + champ « Un autre client » ; un dossier choisi pose `Income.clientId`, son domaine et limite POUR QUEL PROJET DE … à ses projets (`projectsOfClient`) ; `incomeByClient` prêt pour un « par client ». Types de clients (organisme / individuel) : plus tard. Les rentrées comptent dans le revenu du mois (`monthSummary`) et dans le point de la semaine. Chaque mouvement porte
 son heure (`Expense.at`, `Income.at`, `Paid.at`) et chaque solde recopié la sienne (`finances.checksAt`) : le même jour, seul ce qui est
 noté APRÈS le solde s'y ajoute (`_after`, sans heure = déjà dans le solde). **Le compte en direct** (`accountNow` → `AccountNow`) : dernier
 solde recopié (aujourd'hui compris) − dépenses − fixes passés + rentrées et revenus reçus depuis ; reste à vivre = compte + revenus

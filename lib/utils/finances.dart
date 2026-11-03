@@ -192,7 +192,9 @@ class Income {
   final String? domainId;
   final String? projectId;
   final int? at;
-  const Income({required this.id, required this.ymd, required this.amount, this.from, this.domainId, this.projectId, this.at});
+  /// Le client (dossier racine des projets) quand la rentrée vient d'un client connu (2026-11-03).
+  final String? clientId;
+  const Income({required this.id, required this.ymd, required this.amount, this.from, this.domainId, this.projectId, this.at, this.clientId});
 
   Map<String, dynamic> toJson() => {
         'ymd': ymd,
@@ -201,6 +203,7 @@ class Income {
         if (domainId != null) 'domainId': domainId,
         if (projectId != null) 'projectId': projectId,
         if (at != null) 'at': at,
+        if (clientId != null) 'clientId': clientId,
       };
   static Income? fromJson(String id, Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
@@ -212,6 +215,7 @@ class Income {
       domainId: raw['domainId'] as String?,
       projectId: raw['projectId'] as String?,
       at: (raw['at'] as num?)?.toInt(),
+      clientId: raw['clientId'] as String?,
     );
   }
 }

@@ -2176,10 +2176,10 @@ class AppLogic implements HuntStore {
   }
 
   /// Une rentrée ponctuelle (facture encaissée…), n'importe quel jour passé.
-  Future<String?> addIncome({required int amount, String? ymd, String? from, String? domainId, String? projectId}) async {
+  Future<String?> addIncome({required int amount, String? ymd, String? from, String? domainId, String? projectId, String? clientId}) async {
     final day = ymd ?? livedTodayYmd;
     if (amount <= 0 || day.compareTo(livedTodayYmd) > 0) return null;
-    final x = Income(id: _newFinanceId(), ymd: day, amount: amount, from: from?.trim(), domainId: domainId, projectId: projectId, at: DateTime.now().millisecondsSinceEpoch);
+    final x = Income(id: _newFinanceId(), ymd: day, amount: amount, from: from?.trim(), domainId: domainId, projectId: projectId, at: DateTime.now().millisecondsSinceEpoch, clientId: clientId);
     finances = finances.copyWith(incomes: {...finances.incomes, x.id: x});
     onChange();
     await sync?.setFinanceIncome(x.id, x.toJson());
