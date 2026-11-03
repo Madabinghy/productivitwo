@@ -4963,8 +4963,8 @@ class _AppRootState extends State<AppRoot>
           for (final t in _visibleTabs)
             switch (t) {
               _Tab.dashboard => const BottomNavigationBarItem(
-                  icon: Icon(Icons.spa_outlined),
-                  activeIcon: Icon(Icons.spa),
+                  icon: Icon(Icons.space_dashboard_outlined),
+                  activeIcon: Icon(Icons.space_dashboard_rounded),
                   label: 'Ma vie'),
               _Tab.stats => const BottomNavigationBarItem(
                   icon: Icon(Icons.donut_small_outlined),
