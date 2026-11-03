@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/meal_day.dart' show currentMealMoment;
+import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/meal_sheet.dart';
 
 void main() {
@@ -21,5 +24,69 @@ void main() {
     await tester.pump();
     expect(st.habitHits.where((h) => h.habitId == 'r').length, 1);
     expect(find.text('✓ Mangé, équilibré'), findsOneWidget);
+  });
+
+  testWidgets('« Autre chose… » demande ce qu\'on a mangé et si c\'était équilibré', (tester) async {
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final rep = Activity(id: 'r', domainId: 'd', name: 'Repas équilibré', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 2, createdAt: DateTime(2026));
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [rep], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final pizza = Recipe(title: 'Pizza maison', ingredients: [ShoppingItem(label: 'Pâte')]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealSheet(logic: logic, sync: FirestoreSync(), recipes: Stream.value([pizza])))));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('meal-other')));
+    await tester.pumpAndSettle();
+    expect(find.text('Qu’as-tu mangé ?'), findsOneWidget);
+    // Rien n'est noté tant qu'on n'a pas validé.
+    expect(st.habitHits, isEmpty);
+    await tester.enterText(find.byKey(const Key('meal-other-text')), 'Sandwich');
+    await tester.tap(find.byKey(const Key('meal-other-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('✓ Noté : Sandwich'), findsOneWidget);
+    expect(st.habitHits, isEmpty);
+    // Changer : un de ses plats, équilibré → le +1 de la routine.
+    await tester.tap(find.text('Changer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pizza maison'));
+    await tester.tap(find.byKey(const Key('meal-other-balanced')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('meal-other-save')));
+    await tester.pumpAndSettle();
+    expect(st.habitHits.where((h) => h.habitId == 'r').length, 1);
+    expect(find.textContaining('Pizza maison'), findsWidgets);
+  });
+
+  testWidgets('Un repas noté s\'efface ; un plat prévu reste prévu', (tester) async {
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final rep = Activity(id: 'r', domainId: 'd', name: 'Repas équilibré', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 2, createdAt: DateTime(2026));
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [rep], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final now = DateTime.now();
+    final t = logic.livedToday;
+    final monday = DateTime(t.year, t.month, t.day - (t.weekday - 1));
+    final m = ymdOf(monday);
+    final key = mealKey(ymdOf(t), currentMealMoment(now));
+    await logic.setMeal(m, key, const PlannedMeal(title: 'Pâtes fruits de mer', portions: 2).withAte('other'));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealSheet(logic: logic, sync: FirestoreSync(), recipes: Stream.value(const [])))));
+    await tester.pump();
+    expect(find.text('✓ Noté : autre chose'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('meal-clear')));
+    await tester.pumpAndSettle();
+    expect(logic.mealWeek(m).slots[key]?.ate, isNull);
+    expect(logic.mealWeek(m).slots[key]?.title, 'Pâtes fruits de mer');
+    expect(find.byKey(const Key('meal-other')), findsOneWidget);
+    // « Autre chose… » sur le plat prévu : le plat reste, on note ce qu'on a mangé.
+    await tester.tap(find.byKey(const Key('meal-other')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('meal-other-text')), 'Kebab');
+    await tester.tap(find.byKey(const Key('meal-other-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('✓ Noté : Kebab'), findsOneWidget);
+    expect(logic.mealWeek(m).slots[key]?.title, 'Pâtes fruits de mer');
+    expect(logic.mealWeek(m).slots[key]?.portions, 2);
   });
 }
