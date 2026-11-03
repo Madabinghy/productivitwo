@@ -58,6 +58,17 @@ class _PendingRunCardState extends State<PendingRunCard> {
     if (mounted) setState(() {});
   }
 
+  /// Sniper quitté pendant un tir (« Faire ça dans l'app ») : le tir continue.
+  String _line(PendingRun p, bool sniper, String at) {
+    if (!sniper) return 'Quittée à $at. Elle reprend au coup suivant.';
+    if (p.extra['cur'] == null) return 'Quitté à $at. Il reprend au tir suivant.';
+    final ends = p.intOf('endsAt');
+    if (ends == null) return 'Tir en cours : fais-le dans l’app, puis reviens ici.';
+    final e = DateTime.fromMillisecondsSinceEpoch(ends);
+    final hm = '${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}';
+    return e.isAfter(DateTime.now()) ? 'Tir en cours · le minuteur continue jusqu’à $hm.' : 'Le minuteur est arrivé au bout à $hm : reviens valider le tir.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = RunSessionStore.current;
@@ -85,7 +96,7 @@ class _PendingRunCardState extends State<PendingRunCard> {
           ),
         ]),
         const SizedBox(height: 4),
-        Text(sniper ? 'Quitté à $at. Il reprend au tir suivant.' : 'Quittée à $at. Elle reprend au coup suivant.', style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
+        Text(_line(p, sniper, at), style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(
