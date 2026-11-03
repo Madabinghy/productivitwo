@@ -165,6 +165,9 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     if (losing.isNotEmpty) parts.add('${losing.length} série${losing.length > 1 ? 's' : ''} à sauver');
   } else if (losing.isNotEmpty) {
     value = '${losing.length} série${losing.length > 1 ? 's' : ''} à sauver';
+    // Lesquelles (retour user 2026-11-03) : « Lecture 12 j, Ranger 4 j ».
+    final names = losingSeriesNames(deck, losing);
+    if (names.isNotEmpty) parts.add(names.length <= 2 ? names.join(', ') : '${names.take(2).join(', ')} +${names.length - 2}');
   } else {
     value = '${album.won} carte${album.won > 1 ? 's' : ''}';
   }
@@ -185,6 +188,12 @@ List<String> tonightCardNames(BadgeDeck deck, Iterable<String> ids) => [
       for (final id in ids)
         if (deck.byId(id) case final b?)
           [b.def.name, if (b.nextTarget != null) '${fmtInt(b.nextTarget!)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}'].join(' '),
+    ];
+
+/// « Lecture 12 j » : les séries qui se perdent ce soir, avec leur longueur.
+List<String> losingSeriesNames(BadgeDeck deck, Iterable<String> ids) => [
+      for (final id in ids)
+        if (deck.byId(id) case final b?) b.value > 0 ? '${b.def.name} ${fmtInt(b.value)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}' : b.def.name,
     ];
 
 /// La carte que donnerait le palier de ce soir (null sans badge).

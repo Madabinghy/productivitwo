@@ -73,6 +73,17 @@ void main() {
     expect(d.near.map((b) => b.def.id), ['actions']); // Lecture est déjà en jeu
   });
 
+  test('COLLECTION : les séries à sauver sont nommées', () {
+    final a = BadgeDef(id: 'serie-L', family: BadgeFamily.routines, name: 'Lecture', symbol: 'flame', tiers: kRoutineTiers, unit: 'j', subjectId: 'L');
+    final b = BadgeDef(id: 'serie-R', family: BadgeFamily.routines, name: 'Ranger', symbol: 'flame', tiers: kRoutineTiers, unit: 'j', subjectId: 'R');
+    final deck = BadgeDeck([BadgeState(def: a, level: 2, value: 12), BadgeState(def: b, level: 1, value: 4)]);
+    Stake lose(String k, String id) => Stake(StakeGesture(key: k, kind: StakeGestureKind.routine, title: k, costMin: 5),
+        [StakeGain(kind: StakeGainKind.seriesTonight, label: 'se perd ce soir', losesTonight: true, weight: 32, sourceId: id)]);
+    final t = badgesTile(deck, StakeBoard(top: [lose('routine:L', 'serie-L'), lose('routine:R', 'serie-R')]))!;
+    expect(t.value, '2 séries à sauver');
+    expect(t.sub, startsWith('Lecture 12 j, Ranger 4 j · '));
+  });
+
   testWidgets('les tuiles s’affichent et ouvrent leur vue', (t) async {
     var opened = '';
     await t.pumpWidget(MaterialApp(
