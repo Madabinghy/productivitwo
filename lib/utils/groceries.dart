@@ -26,6 +26,8 @@ class GroceryItem {
   /// `hand` (à la main) · `claude` (via le connecteur).
   final String source;
   final bool inBasket;
+  /// Rayon (Épicerie, Frais…) ; null = deviné à l'affichage (`aisleFor`).
+  final String? aisle;
   const GroceryItem({
     required this.id,
     required this.label,
@@ -35,9 +37,10 @@ class GroceryItem {
     this.store = kMenuStore,
     this.source = 'hand',
     this.inBasket = false,
+    this.aisle,
   });
 
-  GroceryItem copyWith({String? label, String? qty, String? domainId, String? projectId, String? store, bool? inBasket, bool clearProject = false, bool clearDomain = false}) => GroceryItem(
+  GroceryItem copyWith({String? label, String? qty, String? domainId, String? projectId, String? store, bool? inBasket, String? aisle, bool clearProject = false, bool clearDomain = false}) => GroceryItem(
         id: id,
         label: label ?? this.label,
         qty: qty ?? this.qty,
@@ -46,6 +49,7 @@ class GroceryItem {
         store: store ?? this.store,
         source: source,
         inBasket: inBasket ?? this.inBasket,
+        aisle: aisle ?? this.aisle,
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +60,7 @@ class GroceryItem {
         'store': store,
         if (source != 'hand') 'source': source,
         if (inBasket) 'inBasket': true,
+        if (aisle != null) 'aisle': aisle,
       };
 
   static GroceryItem? from(String id, Object? raw) {
@@ -69,6 +74,7 @@ class GroceryItem {
       store: (raw['store'] as String?) ?? kMenuStore,
       source: (raw['source'] as String?) ?? 'hand',
       inBasket: raw['inBasket'] == true,
+      aisle: raw['aisle'] as String?,
     );
   }
 }
@@ -79,13 +85,16 @@ class GroceryMemory {
   final String? projectId;
   final String? store;
   final int? price;
-  const GroceryMemory({this.domainId, this.projectId, this.store, this.price});
+  /// Rayon retenu pour ce mot (placards, 2026-11-03).
+  final String? aisle;
+  const GroceryMemory({this.domainId, this.projectId, this.store, this.price, this.aisle});
 
-  GroceryMemory merge({String? domainId, String? projectId, String? store, int? price}) => GroceryMemory(
+  GroceryMemory merge({String? domainId, String? projectId, String? store, int? price, String? aisle}) => GroceryMemory(
         domainId: domainId ?? this.domainId,
         projectId: projectId ?? this.projectId,
         store: store ?? this.store,
         price: price ?? this.price,
+        aisle: aisle ?? this.aisle,
       );
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +102,7 @@ class GroceryMemory {
         if (projectId != null) 'projectId': projectId,
         if (store != null) 'store': store,
         if (price != null) 'price': price,
+        if (aisle != null) 'aisle': aisle,
       };
 
   static GroceryMemory from(Object? raw) {
@@ -102,6 +112,63 @@ class GroceryMemory {
       projectId: raw['projectId'] as String?,
       store: raw['store'] as String?,
       price: (raw['price'] as num?)?.toInt(),
+      aisle: raw['aisle'] as String?,
+    );
+  }
+}
+
+/// Rayons par défaut (placards, maquette validée 2026-11-03). Ordre = ordre
+/// d'affichage ; « Autre » reçoit ce qu'aucun rayon ne reconnaît.
+const kDefaultAisles = ['Épicerie', 'Frais', 'Fruits et légumes', 'Surgelés', 'Boissons', 'Ménager', 'Hygiène', 'Autre'];
+const kOtherAisle = 'Autre';
+
+/// État d'un produit au placard : trois seulement, jamais de quantité.
+enum PantryState { have, low, out }
+
+PantryState pantryStateFrom(Object? raw) => switch (raw) {
+      'low' => PantryState.low,
+      'out' => PantryState.out,
+      _ => PantryState.have,
+    };
+
+/// Un produit de « Mes placards », clé = `normLabel(label)`.
+class PantryItem {
+  final String key;
+  final String label;
+  final String aisle;
+  final PantryState state;
+  /// Produit habituel : revient sur la liste dès qu'il n'y en a plus.
+  final bool staple;
+  /// Dernier achat (YYYY-MM-DD), posé par un ticket ou la caisse.
+  final String? boughtAt;
+  const PantryItem({required this.key, required this.label, required this.aisle, this.state = PantryState.have, this.staple = false, this.boughtAt});
+
+  PantryItem copyWith({String? label, String? aisle, PantryState? state, bool? staple, String? boughtAt}) => PantryItem(
+        key: key,
+        label: label ?? this.label,
+        aisle: aisle ?? this.aisle,
+        state: state ?? this.state,
+        staple: staple ?? this.staple,
+        boughtAt: boughtAt ?? this.boughtAt,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'aisle': aisle,
+        'state': state.name,
+        if (staple) 'staple': true,
+        if (boughtAt != null) 'boughtAt': boughtAt,
+      };
+
+  static PantryItem? from(String key, Object? raw) {
+    if (raw is! Map || raw['label'] == null) return null;
+    return PantryItem(
+      key: key,
+      label: '${raw['label']}',
+      aisle: (raw['aisle'] as String?) ?? kOtherAisle,
+      state: pantryStateFrom(raw['state']),
+      staple: raw['staple'] == true,
+      boughtAt: raw['boughtAt'] as String?,
     );
   }
 }
@@ -112,16 +179,43 @@ class Groceries {
   final List<String> stores;
   /// Ingrédients du menu déjà passés en caisse, par lundi : ils quittent la liste.
   final Map<String, Set<String>> boughtMenu;
-  const Groceries({this.items = const {}, this.memory = const {}, this.stores = kDefaultStores, this.boughtMenu = const {}});
+  /// Mes placards (2026-11-03) : ce qu'on a chez soi, par `normLabel`.
+  final Map<String, PantryItem> pantry;
+  /// Rayons, dans l'ordre d'affichage.
+  final List<String> aisles;
+  const Groceries({
+    this.items = const {},
+    this.memory = const {},
+    this.stores = kDefaultStores,
+    this.boughtMenu = const {},
+    this.pantry = const {},
+    this.aisles = kDefaultAisles,
+  });
 
-  Groceries copyWith({Map<String, GroceryItem>? items, Map<String, GroceryMemory>? memory, List<String>? stores, Map<String, Set<String>>? boughtMenu}) =>
-      Groceries(items: items ?? this.items, memory: memory ?? this.memory, stores: stores ?? this.stores, boughtMenu: boughtMenu ?? this.boughtMenu);
+  Groceries copyWith({
+    Map<String, GroceryItem>? items,
+    Map<String, GroceryMemory>? memory,
+    List<String>? stores,
+    Map<String, Set<String>>? boughtMenu,
+    Map<String, PantryItem>? pantry,
+    List<String>? aisles,
+  }) =>
+      Groceries(
+        items: items ?? this.items,
+        memory: memory ?? this.memory,
+        stores: stores ?? this.stores,
+        boughtMenu: boughtMenu ?? this.boughtMenu,
+        pantry: pantry ?? this.pantry,
+        aisles: aisles ?? this.aisles,
+      );
 
   Map<String, dynamic> toJson() => {
         'items': {for (final x in items.values) x.id: x.toJson()},
         'memory': memory.map((k, v) => MapEntry(k, v.toJson())),
         'stores': stores,
         'bought': boughtMenu.map((k, v) => MapEntry(k, v.toList()..sort())),
+        'pantry': {for (final p in pantry.values) p.key: p.toJson()},
+        'aisles': aisles,
       };
 }
 
@@ -147,7 +241,22 @@ Groceries parseGroceries(Object? raw) {
       if (e.value is List) bought['${e.key}'] = {for (final k in e.value as List) '$k'};
     }
   }
-  return Groceries(items: items, memory: memory, stores: stores.isEmpty ? kDefaultStores : stores, boughtMenu: bought);
+  final pantry = <String, PantryItem>{};
+  if (raw['pantry'] is Map) {
+    for (final e in (raw['pantry'] as Map).entries) {
+      final p = PantryItem.from('${e.key}', e.value);
+      if (p != null) pantry[p.key] = p;
+    }
+  }
+  final aisles = raw['aisles'] is List ? [for (final s in raw['aisles'] as List) '$s'] : const <String>[];
+  return Groceries(
+    items: items,
+    memory: memory,
+    stores: stores.isEmpty ? kDefaultStores : stores,
+    boughtMenu: bought,
+    pantry: pantry,
+    aisles: aisles.isEmpty ? kDefaultAisles : aisles,
+  );
 }
 
 /// Les réglages proposés pour un mot tapé : ce que l'app en a retenu, sinon

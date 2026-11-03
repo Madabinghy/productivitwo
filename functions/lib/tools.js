@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIGRATE_FOCUS_DATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.MANAGE_AISLES_TOOL = exports.UPDATE_PANTRY_TOOL = exports.GET_PANTRY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
@@ -1478,6 +1478,7 @@ const ADD_SHOPPING_ITEM_TOOL = {
             domain: { type: "string", description: "Domaine de vie : nom (ou id) d'un domaine existant" },
             projectId: { type: "string", description: "Projet servi (optionnel, id via list_projects)" },
             store: { type: "string", description: "Où ça s'achète : Supermarché (défaut), Bricolage, Pharmacie, Marché…" },
+            aisle: { type: "string", description: "Rayon (Épicerie, Frais, Fruits et légumes, Surgelés, Boissons, Ménager, Hygiène, Autre, ou un rayon ajouté) ; sinon retenu pour le mot ou deviné" },
         },
     },
 };
@@ -1489,7 +1490,10 @@ const RECORD_RECEIPT_TOOL = {
         "(coût des plats) ; les articles de la liste de courses couverts quittent la liste ; la journée compte comme " +
         "suivie. Workflow : 1) lis chaque ligne et son prix (en euros), donne à chaque ligne un domaine de vie (nom " +
         "d'un domaine existant : alimentation → Santé, ménage → Intendance…) et, si elle correspond à un article de la " +
-        "liste (get_shopping_list), son libellé exact en listLabel ; 2) appelle avec apply:false et MONTRE la " +
+        "liste (get_shopping_list), son libellé exact en listLabel ; donne aussi un nom simple (name : « Pâtes » pour « PATES " +
+        "FARFALLE 500G ») et un rayon (aisle : Épicerie, Frais, Fruits et légumes, Surgelés, Boissons, Ménager, Hygiène, Autre " +
+        "ou un rayon ajouté, voir manage_aisles) — à l'enregistrement chaque produit passe « j'en ai » dans les placards " +
+        "(get_pantry) et la dépense garde son montant par rayon ; 2) appelle avec apply:false et MONTRE la " +
         "répartition ; 3) après accord, rappelle avec apply:true. Ne devine pas un prix illisible : demande-le.",
     inputSchema: {
         type: "object",
@@ -1507,6 +1511,8 @@ const RECORD_RECEIPT_TOOL = {
                         domain: { type: "string", description: "Domaine de vie (nom ou id)" },
                         projectId: { type: "string", description: "Projet servi (optionnel)" },
                         listLabel: { type: "string", description: "Libellé exact de l'article de la liste de courses couvert (optionnel)" },
+                        name: { type: "string", description: "Nom simple du produit pour les placards (ex. « Pâtes », « Lait »)" },
+                        aisle: { type: "string", description: "Rayon du produit (ex. Épicerie, Frais, Ménager)" },
                     },
                 },
             },
@@ -1519,6 +1525,66 @@ const RECORD_RECEIPT_TOOL = {
     },
 };
 exports.RECORD_RECEIPT_TOOL = RECORD_RECEIPT_TOOL;
+// ── Mes placards (data/meta.groceries.pantry, 2026-11-03) ──────────────────
+const GET_PANTRY_TOOL = {
+    name: "get_pantry",
+    description: "Lit « Mes placards » : ce que l'utilisateur a chez lui, rangé par rayon, avec l'état de chaque produit (j'en ai · " +
+        "bientôt fini · plus rien) et ce qui est habituel. À utiliser pour « qu'est-ce que j'ai pour cuisiner ce soir ? », " +
+        "« il me reste du riz ? », ou avant de proposer un menu.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            aisle: { type: "string", description: "Un seul rayon (ex. Épicerie)" },
+            state: { type: "string", description: "have · low · out (filtre)" },
+        },
+    },
+};
+exports.GET_PANTRY_TOOL = GET_PANTRY_TOOL;
+const UPDATE_PANTRY_TOOL = {
+    name: "update_pantry",
+    description: "Met à jour « Mes placards » quand l'utilisateur DIT ce qu'il a ou ce qui manque (« plus de lait », « il reste peu de " +
+        "riz », « j'ai acheté des œufs ») : état, rayon, produit habituel (revient sur la liste dès qu'il n'y en a plus), ou " +
+        "retrait. Un produit inconnu est créé. « Bientôt fini » et « Plus rien » sont proposés sur la liste de courses dans " +
+        "l'app. Un ticket de caisse passe par record_receipt, pas par cet outil.",
+    inputSchema: {
+        type: "object",
+        required: ["items"],
+        properties: {
+            items: {
+                type: "array",
+                description: "Produits (60 au plus)",
+                items: {
+                    type: "object",
+                    required: ["label"],
+                    properties: {
+                        label: { type: "string", description: "Le produit (ex. « Lait »)" },
+                        state: { type: "string", description: "have (j'en ai) · low (bientôt fini) · out (plus rien)" },
+                        aisle: { type: "string", description: "Rayon (existant, voir manage_aisles)" },
+                        staple: { type: "boolean", description: "Produit habituel" },
+                        remove: { type: "boolean", description: "true = le retirer du placard" },
+                    },
+                },
+            },
+        },
+    },
+};
+exports.UPDATE_PANTRY_TOOL = UPDATE_PANTRY_TOOL;
+const MANAGE_AISLES_TOOL = {
+    name: "manage_aisles",
+    description: "Gère les rayons des courses et des placards (Épicerie, Frais, Fruits et légumes, Surgelés, Boissons, Ménager, " +
+        "Hygiène, Autre par défaut) : list (avec le nombre de produits), add (nouveau rayon, placé avant « Autre »), rename " +
+        "(partout : placards, liste, mots retenus ; un nom existant = fusion), delete (ses produits passent dans « Autre » ; " +
+        "« Autre » ne se retire pas). N'ajoute, ne renomme ou ne retire un rayon que si l'utilisateur le demande.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            action: { type: "string", enum: ["list", "add", "rename", "delete"], description: "Défaut : list" },
+            aisle: { type: "string", description: "Le rayon visé (add : son nom)" },
+            newName: { type: "string", description: "rename : le nouveau nom" },
+        },
+    },
+};
+exports.MANAGE_AISLES_TOOL = MANAGE_AISLES_TOOL;
 const CHECK_SHOPPING_ITEM_TOOL = {
     name: "check_shopping_item",
     description: "Met un article de la liste de courses dans le panier (ou l'en sort avec " +

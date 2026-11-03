@@ -34,6 +34,9 @@ exports.executeGetDocuments = executeGetDocuments;
 exports.executeGetArchives = executeGetArchives;
 exports.executeGetShoppingList = executeGetShoppingList;
 exports.executeRecordReceipt = executeRecordReceipt;
+exports.executeGetPantry = executeGetPantry;
+exports.executeUpdatePantry = executeUpdatePantry;
+exports.executeManageAisles = executeManageAisles;
 exports.executeAddShoppingItem = executeAddShoppingItem;
 exports.executeCheckShoppingItem = executeCheckShoppingItem;
 exports.executeRestoreItem = executeRestoreItem;
@@ -93,6 +96,7 @@ exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
+const pantry_1 = require("./pantry");
 const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
@@ -1103,10 +1107,10 @@ async function legacyMenuText(uid) {
     return `Ancienne liste du menu du ${at} :\n${lines.join("\n")}`;
 }
 async function groceriesState(uid) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
     const g = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.groceries) !== null && _b !== void 0 ? _b : {});
-    return { items: (_c = g.items) !== null && _c !== void 0 ? _c : {}, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {} };
+    return { items: (_c = g.items) !== null && _c !== void 0 ? _c : {}, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {}, pantry: (_e = g.pantry) !== null && _e !== void 0 ? _e : {}, aisles: ((_f = g.aisles) === null || _f === void 0 ? void 0 : _f.length) ? g.aisles : pantry_1.DEFAULT_AISLES };
 }
 async function executeGetShoppingList(uid) {
     const [{ items }, domainsSnap, projectsSnap, legacy] = await Promise.all([
@@ -1125,7 +1129,10 @@ async function executeAddShoppingItem(uid, label, qty, opts = {}) {
     const clean = (label !== null && label !== void 0 ? label : "").trim();
     if (!clean)
         return "❌ label vide.";
-    const { items, memory } = await groceriesState(uid);
+    const { items, memory, pantry, aisles } = await groceriesState(uid);
+    const givenAisle = (0, pantry_1.resolveAisle)(opts.aisle, aisles);
+    if (opts.aisle && !givenAisle)
+        return `❌ Rayon inconnu : « ${opts.aisle} ». Rayons : ${aisles.join(", ")} (manage_aisles pour en ajouter un).`;
     const dup = (0, groceries_1.existingItem)(items, clean);
     if (dup)
         return `Déjà sur la liste : « ${dup[1].label} ».`;
@@ -1135,7 +1142,7 @@ async function executeAddShoppingItem(uid, label, qty, opts = {}) {
     if (opts.domain && !domainId) {
         return `❌ Domaine introuvable : « ${opts.domain} ». Domaines : ${domains.map((d) => d.name).join(", ")}.`;
     }
-    const item = (0, groceries_1.newGroceryItem)({ label: clean, qty, domainId, projectId: (_a = opts.projectId) !== null && _a !== void 0 ? _a : null, store: (_b = opts.store) !== null && _b !== void 0 ? _b : null }, memory);
+    const item = (0, groceries_1.newGroceryItem)({ label: clean, qty, domainId, projectId: (_a = opts.projectId) !== null && _a !== void 0 ? _a : null, store: (_b = opts.store) !== null && _b !== void 0 ? _b : null, aisle: givenAisle !== null && givenAisle !== void 0 ? givenAisle : (0, pantry_1.aisleFor)(clean, memory, pantry) }, memory);
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const mem = Object.assign({}, ((_c = memory[(0, groceries_1.groceryKey)(clean)]) !== null && _c !== void 0 ? _c : {}));
     if (item.domainId)
@@ -1144,10 +1151,12 @@ async function executeAddShoppingItem(uid, label, qty, opts = {}) {
         mem.projectId = item.projectId;
     if (item.store)
         mem.store = item.store;
+    if (givenAisle)
+        mem.aisle = givenAisle;
     await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: { items: { [id]: item }, memory: { [(0, groceries_1.groceryKey)(clean)]: mem } } }, { merge: true });
     const dom = item.domainId ? (_d = domains.find((d) => d.id === item.domainId)) === null || _d === void 0 ? void 0 : _d.name : undefined;
     const left = Object.values(items).filter((x) => x.inBasket !== true).length + 1;
-    return `✅ Ajouté à la liste de courses : ${clean}${item.qty ? ` ${item.qty}` : ""} · ${[dom !== null && dom !== void 0 ? dom : "sans domaine", item.store].join(" · ")} (${left} à prendre).` +
+    return `✅ Ajouté à la liste de courses : ${clean}${item.qty ? ` ${item.qty}` : ""} · ${[item.aisle, dom !== null && dom !== void 0 ? dom : "sans domaine", item.store].filter(Boolean).join(" · ")} (${left} à prendre).` +
         (item.domainId ? "" : " Précise un domaine de vie (paramètre domain) pour que la dépense soit rangée au passage en caisse.");
 }
 async function executeCheckShoppingItem(uid, label, checked) {
@@ -1190,7 +1199,7 @@ async function executeCheckShoppingItem(uid, label, checked) {
  * `apply:false` (défaut) = la répartition proposée, rien n'est écrit.
  */
 async function executeRecordReceipt(uid, args) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
     const lines = ((_a = args.lines) !== null && _a !== void 0 ? _a : []).filter((l) => { var _a; return l && String((_a = l.label) !== null && _a !== void 0 ? _a : "").trim() && Number(l.price) > 0; });
     if (!lines.length)
         return "❌ Aucune ligne lisible (label + price en euros).";
@@ -1209,14 +1218,38 @@ async function executeRecordReceipt(uid, args) {
     const domains = domainsSnap.docs.filter((d) => d.data().deleted !== true).map((d) => { var _a; return ({ id: d.id, name: String((_a = d.data().name) !== null && _a !== void 0 ? _a : "") }); });
     const projects = new Map(projectsSnap.docs.map((d) => { var _a; return [d.id, String((_a = d.data().title) !== null && _a !== void 0 ? _a : "")]; }));
     const g = ((_c = meta.groceries) !== null && _c !== void 0 ? _c : {});
-    const plan = (0, groceries_1.planReceipt)(lines, args.total, { domains, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {}, items: (_e = g.items) !== null && _e !== void 0 ? _e : {} });
-    const envs = ((_g = (_f = meta.finances) === null || _f === void 0 ? void 0 : _f.envelopes) !== null && _g !== void 0 ? _g : []);
-    const env = (_p = (_m = (_j = (args.envelope ? (_h = envs.find((e) => { var _a; return ((_a = e.name) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === args.envelope.toLowerCase(); })) === null || _h === void 0 ? void 0 : _h.id : undefined)) !== null && _j !== void 0 ? _j : (_l = envs.find((e) => e.id === "courses")) === null || _l === void 0 ? void 0 : _l.id) !== null && _m !== void 0 ? _m : (_o = envs[0]) === null || _o === void 0 ? void 0 : _o.id) !== null && _p !== void 0 ? _p : "courses";
+    const aisles = ((_d = g.aisles) === null || _d === void 0 ? void 0 : _d.length) ? g.aisles : pantry_1.DEFAULT_AISLES;
+    const unknownAisles = new Set();
+    const aisleOf = (label, given) => {
+        var _a, _b;
+        if (given) {
+            const r = (0, pantry_1.resolveAisle)(given, aisles);
+            if (r)
+                return r;
+            unknownAisles.add(given);
+        }
+        return (0, pantry_1.aisleFor)(label, (_a = g.memory) !== null && _a !== void 0 ? _a : {}, (_b = g.pantry) !== null && _b !== void 0 ? _b : {});
+    };
+    const plan = (0, groceries_1.planReceipt)(lines, args.total, { domains, memory: (_e = g.memory) !== null && _e !== void 0 ? _e : {}, items: (_f = g.items) !== null && _f !== void 0 ? _f : {}, aisleOf });
+    if (unknownAisles.size)
+        plan.warnings.push(`Rayon(s) inconnu(s) : ${[...unknownAisles].join(", ")} — rangé(s) selon le mot. Crée-les avec manage_aisles si l'utilisateur le veut.`);
+    const envs = ((_h = (_g = meta.finances) === null || _g === void 0 ? void 0 : _g.envelopes) !== null && _h !== void 0 ? _h : []);
+    const env = (_q = (_o = (_l = (args.envelope ? (_j = envs.find((e) => { var _a; return ((_a = e.name) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === args.envelope.toLowerCase(); })) === null || _j === void 0 ? void 0 : _j.id : undefined)) !== null && _l !== void 0 ? _l : (_m = envs.find((e) => e.id === "courses")) === null || _m === void 0 ? void 0 : _m.id) !== null && _o !== void 0 ? _o : (_p = envs[0]) === null || _p === void 0 ? void 0 : _p.id) !== null && _q !== void 0 ? _q : "courses";
     const dn = (id) => { var _a, _b; return (id ? (_b = (_a = domains.find((d) => d.id === id)) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : "domaine retiré" : "Sans domaine"); };
     const eur = (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
     const summary = [
         `Ticket${args.store ? ` ${args.store}` : ""} du ${ymd} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
         ...plan.shares.map((s) => { var _a; return `• ${dn(s.domainId)}${s.projectId ? ` · ${(_a = projects.get(s.projectId)) !== null && _a !== void 0 ? _a : "projet"}` : ""} : ${eur(s.amount)} (${s.labels.join(", ")})`; }),
+        ...(() => {
+            var _a;
+            const by = {};
+            for (const s of plan.shares)
+                for (const [a, c] of Object.entries(s.byAisle))
+                    by[a] = ((_a = by[a]) !== null && _a !== void 0 ? _a : 0) + c;
+            const list = Object.entries(by).sort((a, b) => b[1] - a[1]);
+            return list.length ? [`Par rayon : ${list.map(([a, c]) => `${a} ${eur(c)}`).join(" · ")}`] : [];
+        })(),
+        ...(Object.keys(plan.bought).length ? [`Mes placards : ${Object.keys(plan.bought).length} produit(s) passent « j'en ai ».`] : []),
         ...(plan.removeItemIds.length || plan.menuKeys.length ? [`Liste de courses : ${plan.removeItemIds.length + plan.menuKeys.length} article(s) couvert(s), retirés de la liste.`] : []),
         ...plan.warnings.map((w) => `⚠️ ${w}`),
     ].join("\n");
@@ -1229,21 +1262,133 @@ async function executeRecordReceipt(uid, args) {
         if (s.amount <= 0)
             return;
         const id = `${at.toString(36)}r${i}`;
-        expenses[id] = Object.assign(Object.assign(Object.assign({ ymd, amount: s.amount, envelopeId: env, note: args.store ? `Courses · ${args.store}` : "Courses" }, (s.domainId ? { domainId: s.domainId } : {})), (s.projectId ? { projectId: s.projectId } : {})), { items: s.labels, at });
+        expenses[id] = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ ymd, amount: s.amount, envelopeId: env, note: args.store ? `Courses · ${args.store}` : "Courses" }, (s.domainId ? { domainId: s.domainId } : {})), (s.projectId ? { projectId: s.projectId } : {})), { items: s.labels }), (Object.keys(s.byAisle).length ? { byAisle: s.byAisle } : {})), { at });
     });
+    const pantry = {};
+    for (const [k, b] of Object.entries(plan.bought)) {
+        pantry[k] = Object.assign(Object.assign({}, ((_s = (_r = g.pantry) === null || _r === void 0 ? void 0 : _r[k]) !== null && _s !== void 0 ? _s : {})), { label: (_v = (_u = (_t = g.pantry) === null || _t === void 0 ? void 0 : _t[k]) === null || _u === void 0 ? void 0 : _u.label) !== null && _v !== void 0 ? _v : b.label, aisle: b.aisle, state: "have", boughtAt: ymd });
+    }
     const memory = {};
     for (const [k, v] of Object.entries(plan.prices))
-        memory[k] = Object.assign(Object.assign({}, ((_r = (_q = g.memory) === null || _q === void 0 ? void 0 : _q[k]) !== null && _r !== void 0 ? _r : {})), v);
+        memory[k] = Object.assign(Object.assign({}, ((_x = (_w = g.memory) === null || _w === void 0 ? void 0 : _w[k]) !== null && _x !== void 0 ? _x : {})), v);
     const items = {};
     for (const id of plan.removeItemIds)
         items[id] = db_1.FieldValue.delete();
-    const nothing = ((_t = (_s = meta.finances) === null || _s === void 0 ? void 0 : _s.nothing) !== null && _t !== void 0 ? _t : []).filter((d) => d !== ymd);
+    const nothing = ((_z = (_y = meta.finances) === null || _y === void 0 ? void 0 : _y.nothing) !== null && _z !== void 0 ? _z : []).filter((d) => d !== ymd);
     const patch = {
-        finances: Object.assign({ expenses }, (nothing.length !== ((_v = (_u = meta.finances) === null || _u === void 0 ? void 0 : _u.nothing) !== null && _v !== void 0 ? _v : []).length ? { nothing } : {})),
-        groceries: Object.assign(Object.assign({ memory }, (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
+        finances: Object.assign({ expenses }, (nothing.length !== ((_1 = (_0 = meta.finances) === null || _0 === void 0 ? void 0 : _0.nothing) !== null && _1 !== void 0 ? _1 : []).length ? { nothing } : {})),
+        groceries: Object.assign(Object.assign(Object.assign({ memory }, (Object.keys(pantry).length ? { pantry } : {})), (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
     };
     await metaRef.set(patch, { merge: true });
     return `✅ Enregistré : ${Object.keys(expenses).length} dépense(s) dans Finances.\n${summary}`;
+}
+/** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
+async function executeGetPantry(uid, args = {}) {
+    const { pantry, aisles } = await groceriesState(uid);
+    const aisle = args.aisle ? (0, pantry_1.resolveAisle)(args.aisle, aisles) : null;
+    if (args.aisle && !aisle)
+        return `❌ Rayon inconnu : « ${args.aisle} ». Rayons : ${aisles.join(", ")}.`;
+    const state = args.state ? (0, pantry_1.parseState)(args.state) : null;
+    if (args.state && !state)
+        return "❌ state : have (j'en ai) · low (bientôt fini) · out (plus rien).";
+    return `Rayons : ${aisles.join(" · ")}\n\n${(0, pantry_1.pantryText)(pantry, aisles, { aisle, state })}`;
+}
+/** update_pantry : poser l'état, le rayon, « habituel », ou retirer des produits du placard. */
+async function executeUpdatePantry(uid, args) {
+    var _a, _b, _c, _d, _e;
+    const list = ((_a = args.items) !== null && _a !== void 0 ? _a : []).filter((x) => { var _a; return x && String((_a = x.label) !== null && _a !== void 0 ? _a : "").trim(); });
+    if (!list.length)
+        return "❌ items vide (au moins un {label}).";
+    if (list.length > 60)
+        return "❌ 60 produits au plus par appel.";
+    const { pantry, memory, aisles } = await groceriesState(uid);
+    const patch = {};
+    const mem = {};
+    const done = [];
+    const errors = [];
+    for (const x of list) {
+        const label = String(x.label).trim();
+        const k = (0, groceries_1.groceryKey)(label);
+        const old = pantry[k];
+        if (x.remove === true) {
+            if (!old) {
+                errors.push(`« ${label} » n'est pas au placard.`);
+                continue;
+            }
+            patch[k] = db_1.FieldValue.delete();
+            done.push(`🗑 ${old.label} retiré`);
+            continue;
+        }
+        const state = x.state != null ? (0, pantry_1.parseState)(x.state) : null;
+        if (x.state != null && !state) {
+            errors.push(`« ${label} » : état inconnu « ${x.state} » (have · low · out).`);
+            continue;
+        }
+        const aisle = x.aisle ? (0, pantry_1.resolveAisle)(x.aisle, aisles) : null;
+        if (x.aisle && !aisle) {
+            errors.push(`« ${label} » : rayon inconnu « ${x.aisle} » (rayons : ${aisles.join(", ")} ; manage_aisles pour en ajouter).`);
+            continue;
+        }
+        const next = Object.assign(Object.assign({}, (old !== null && old !== void 0 ? old : {})), { label: (_b = old === null || old === void 0 ? void 0 : old.label) !== null && _b !== void 0 ? _b : label, aisle: (_c = aisle !== null && aisle !== void 0 ? aisle : old === null || old === void 0 ? void 0 : old.aisle) !== null && _c !== void 0 ? _c : (0, pantry_1.aisleFor)(label, memory, pantry), state: (_d = state !== null && state !== void 0 ? state : old === null || old === void 0 ? void 0 : old.state) !== null && _d !== void 0 ? _d : "have" });
+        if (x.staple != null)
+            next.staple = x.staple === true;
+        patch[k] = next;
+        if (aisle)
+            mem[k] = Object.assign(Object.assign({}, ((_e = memory[k]) !== null && _e !== void 0 ? _e : {})), { aisle });
+        done.push(`${next.state === "have" ? "✓" : next.state === "low" ? "!" : "✕"} ${next.label} — ${pantry_1.STATE_LABEL[next.state]} · ${next.aisle}${next.staple ? " · habituel" : ""}${old ? "" : " (nouveau)"}`);
+    }
+    if (Object.keys(patch).length) {
+        await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: Object.assign({ pantry: patch }, (Object.keys(mem).length ? { memory: mem } : {})) }, { merge: true });
+    }
+    return [
+        done.length ? `✅ Placards mis à jour :\n${done.join("\n")}` : "Rien n'a changé.",
+        ...(errors.length ? [`⚠️ ${errors.join("\n⚠️ ")}`] : []),
+    ].join("\n");
+}
+/** manage_aisles : lister, ajouter, renommer ou retirer un rayon. */
+async function executeManageAisles(uid, args) {
+    var _a, _b, _c, _d, _e, _f;
+    const st = await groceriesState(uid);
+    const action = (_a = args.action) !== null && _a !== void 0 ? _a : "list";
+    const count = (a) => Object.values(st.pantry).filter((p) => p.aisle === a).length + Object.values(st.items).filter((x) => x.aisle === a && x.inBasket !== true).length;
+    const listText = (aisles) => aisles.map((a) => `• ${a} (${count(a)})`).join("\n");
+    if (action === "list")
+        return `Rayons (produits au placard + à prendre) :\n${listText(st.aisles)}`;
+    const ref = db_1.db.doc(`users/${uid}/data/meta`);
+    if (action === "add") {
+        const name = ((_b = args.aisle) !== null && _b !== void 0 ? _b : "").trim();
+        if (!name)
+            return "❌ aisle : le nom du nouveau rayon.";
+        const next = (0, pantry_1.addAisle)(st.aisles, name);
+        if (next === st.aisles)
+            return `Le rayon « ${(_c = (0, pantry_1.resolveAisle)(name, st.aisles)) !== null && _c !== void 0 ? _c : name} » existe déjà.`;
+        await ref.set({ groceries: { aisles: next } }, { merge: true });
+        return `✅ Rayon ajouté : ${name}.\n${listText(next)}`;
+    }
+    const from = (0, pantry_1.resolveAisle)(args.aisle, st.aisles);
+    if (!from)
+        return `❌ Rayon inconnu : « ${(_d = args.aisle) !== null && _d !== void 0 ? _d : ""} ». Rayons : ${st.aisles.join(", ")}.`;
+    let next = st;
+    if (action === "rename") {
+        const to = ((_e = args.newName) !== null && _e !== void 0 ? _e : "").trim();
+        if (!to)
+            return "❌ newName : le nouveau nom.";
+        const existing = (0, pantry_1.resolveAisle)(to, st.aisles);
+        next = (0, pantry_1.renameAisle)(st, from, existing !== null && existing !== void 0 ? existing : to);
+        if (next === st)
+            return "Rien n'a changé.";
+    }
+    else if (action === "delete") {
+        if (from === pantry_1.OTHER_AISLE)
+            return "❌ « Autre » reste : il reçoit ce qu'aucun rayon ne reconnaît.";
+        next = (0, pantry_1.removeAisle)(st, from);
+    }
+    else {
+        return "❌ action : list · add · rename · delete.";
+    }
+    await ref.set({ groceries: { aisles: next.aisles, pantry: next.pantry, items: next.items, memory: next.memory } }, { merge: true });
+    const verb = action === "rename" ? `renommé en « ${(_f = next.aisles.find((a) => (0, pantry_1.foldWords)(a) === (0, pantry_1.foldWords)(args.newName))) !== null && _f !== void 0 ? _f : args.newName} »` : `retiré (${count(from)} produit(s) passent dans « ${pantry_1.OTHER_AISLE} »)`;
+    return `✅ Rayon « ${from} » ${verb}.\n${listText(next.aisles)}`;
 }
 async function executeGetArchives(uid) {
     const [domainsSnap, activitiesSnap] = await Promise.all([

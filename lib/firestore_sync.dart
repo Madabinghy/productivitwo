@@ -3212,6 +3212,22 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Mes placards (`data/meta.groceries.pantry`, 2026-11-03) : un produit (`null` = le retirer).
+  Future<void> setPantryItems(Map<String, Map<String, dynamic>?> items) async {
+    if (uid == null || items.isEmpty) return;
+    await _meta().set({
+      'groceries': {
+        'pantry': {for (final e in items.entries) e.key: e.value ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  /// Champs entiers des courses (rayons, et ce qu'un renommage de rayon touche).
+  Future<void> setGroceriesFields(Map<String, dynamic> fields) async {
+    if (uid == null || fields.isEmpty) return;
+    await _meta().set({'groceries': fields}, SetOptions(merge: true));
+  }
+
   Future<void> setGroceryStores(List<String> stores) async {
     if (uid == null) return;
     await _meta().set({

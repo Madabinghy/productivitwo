@@ -934,6 +934,27 @@ couvertes (`groceries.items`) et marque les ingrédients du menu achetés (`groc
 Côté app, `AppLogic.onFinancesFromServer` (flux meta de main.dart, hors premier chargement) : un jour devenu suivi (aujourd'hui ou hier)
 coche « Suivre mon budget ». La photo prise dans l'app elle-même (lecture côté serveur) reste à faire.
 
+## Mes placards (2026-11-03, maquette validée « Mes placards », 4 lots)
+
+La liste de courses devient un suivi de ce qu'on a chez soi : le ticket scanné range chaque produit dans un RAYON (Épicerie · Frais ·
+Fruits et légumes · Surgelés · Boissons · Ménager · Hygiène · Autre, `kDefaultAisles`, réglables) et le passe « J'en ai » au placard ;
+trois états seulement (J'en ai · Bientôt fini · Plus rien, `PantryState`, jamais de quantité) ; un produit HABITUEL (`staple`) revient
+sur la liste dès qu'il n'y en a plus. Le magasin (`store`) reste une autre information. **Lot 1 livré (données + logique + Claude,
+rien de visible)** : `data/meta.groceries.pantry {<mot>: {label, aisle, state: have|low|out, staple?, boughtAt?}}`, `aisles: [..]`,
+`memory.<mot>.aisle`, `items.<id>.aisle`, `Expense.byAisle` (centimes par rayon d'une dépense de courses). Logique pure
+`utils/pantry.dart` ↔ `functions/src/pantry.ts` (**garder alignés** : `kAisleKeywords` / `AISLE_KEYWORDS`, même ordre — Ménager,
+Hygiène, Surgelés, Boissons, Épicerie prioritaire (sauce, conserve…), Frais, Fruits et légumes, Épicerie ; mots entiers sans accents,
+pluriel en s / x) : `guessAisle`, `aisleFor` (mot retenu → placard → deviné → Autre), `withPantryState`, `nextPantryState`,
+`afterPurchase`, `pantryByAisle`, `pantryNeeds` (bientôt fini / plus rien hors liste), `withAisleAdded` (avant Autre) /
+`withAisleRenamed` (partout ; nom existant = fusion) / `withAisleRemoved` (vers Autre, Autre reste), `aisleSplit`. `AppLogic` :
+`setPantryState`, `updatePantryItem`, `removePantryItem`, `addAisle` / `renameAisle` / `removeAisle` ; `addGrocery(aisle:)` ;
+`checkoutGroceries` pose `byAisle` et passe les produits achetés « J'en ai ». `FirestoreSync.setPantryItems` / `setGroceriesFields`.
+MCP (⚠️ `firebase deploy --only functions`) : `record_receipt` lignes `{name, aisle}` (nom simple du produit, rayon) → placard « j'en
+ai » daté, dépense `byAisle`, résumé « Par rayon » ; `get_pantry(aisle?, state?)` ; `update_pantry(items:[{label, state?, aisle?,
+staple?, remove?}])` (quand l'utilisateur DIT ce qu'il a) ; `manage_aisles(action: list|add|rename|delete, aisle?, newName?)` (à la
+demande seulement) ; `add_shopping_item {aisle}` ; `get_shopping_list` montre le rayon. À venir : lot 2 écran Mes placards, lot 3 liste
+par rayon + menu qui n'ajoute que le manquant + Finances par rayon, lot 4 plats « ce que j'ai » / « Avec ce que tu as ».
+
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 
 Une feuille « Repas » comme Sommeil et Sport ; le plat est la seule chose à saisir, une fois (nom, portions, temps, ingrédients

@@ -1618,7 +1618,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
-                        tools_1.GET_SHOPPING_LIST_TOOL, tools_1.ADD_SHOPPING_ITEM_TOOL, tools_1.CHECK_SHOPPING_ITEM_TOOL, tools_1.RECORD_RECEIPT_TOOL,
+                        tools_1.GET_SHOPPING_LIST_TOOL, tools_1.ADD_SHOPPING_ITEM_TOOL, tools_1.CHECK_SHOPPING_ITEM_TOOL, tools_1.RECORD_RECEIPT_TOOL, tools_1.GET_PANTRY_TOOL, tools_1.UPDATE_PANTRY_TOOL, tools_1.MANAGE_AISLES_TOOL,
                         tools_1.CREATE_DOMAIN_TOOL, tools_1.UPDATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL, tools_1.ADD_PREP_BLOCK_TOOL, tools_1.ADD_EVENT_TOOL,
@@ -1751,7 +1751,16 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeGetShoppingList)(uid);
                 }
                 else if (toolName === "add_shopping_item") {
-                    text = await (0, execute_1.executeAddShoppingItem)(uid, args.label, args.qty, { domain: args.domain, projectId: args.projectId, store: args.store });
+                    text = await (0, execute_1.executeAddShoppingItem)(uid, args.label, args.qty, { domain: args.domain, projectId: args.projectId, store: args.store, aisle: args.aisle });
+                }
+                else if (toolName === "get_pantry") {
+                    text = await (0, execute_1.executeGetPantry)(uid, args);
+                }
+                else if (toolName === "update_pantry") {
+                    text = await (0, execute_1.executeUpdatePantry)(uid, args);
+                }
+                else if (toolName === "manage_aisles") {
+                    text = await (0, execute_1.executeManageAisles)(uid, args);
                 }
                 else if (toolName === "record_receipt") {
                     text = await (0, execute_1.executeRecordReceipt)(uid, args);
