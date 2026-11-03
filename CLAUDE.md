@@ -1573,6 +1573,10 @@ viseur porte « Visée : … · carte bronze » et `need`, les tirs de la carte 
 (`questGain`, `StakeGainKind.hunt`) sur les enjeux du jour visés, et fabrique l'enjeu d'un tir absent (routine déjà atteinte, activité au
 rythme). Session reprenable : `PendingRun.extra.focus` = id du badge, la quête est recalculée à la reprise (`_resumedFocus`). Quête de
 mode : « Lancer une guérilla / une offensive / le Sniper ».
+**Lot 4 livré (badge Chasseur de cartes, idée user)** : `chasseur-cartes` (Discipline, symbole `crosshair`, paliers `kCardHunterTiers`
+1 · 5 · 15 · 50) = cartes prises d'un seul Sniper ciblé : `CardQuest.fallsToday` (le palier peut tomber aujourd'hui en tirant tous les
+`steps` en entier) et chaque tir touché à son montant (`cardTakenBy`) ; la session porte `ChainRun.cardId` / `cardTaken`
+(`cardHunterCounts`). Bilan du Sniper ciblé : « Carte prise : … · Chasseur de cartes +1 » / « pas encore, un tir manque » / « avance ».
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 

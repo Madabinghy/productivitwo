@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/utils/long_haul.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/card_quests.dart' show kCardHunterTiers, cardHunterCounts;
 import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
@@ -995,6 +996,20 @@ BadgeDeck computeBadges({
       ('Sessions sans cible manquée', '${snipers.length}'),
       ('Cibles touchées', '${chainRuns.where(isSniperRun).fold(0, (s, r) => s + r.doneCount)}'),
       if (snipers.isNotEmpty) ('La dernière', _fmtDate(snipers.last.endedAt)),
+    ],
+  ));
+
+  // Chasseur de cartes (2026-11-03) : une carte prise d'un seul Sniper ciblé.
+  final hunts = chainRuns.where(cardHunterCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'chasseur-cartes', family: BadgeFamily.discipline, name: 'Chasseur de cartes', symbol: 'crosshair', tiers: kCardHunterTiers, unit: 'cartes', unitLong: 'cartes prises d’un seul Sniper ciblé'),
+    level: _levelOf(kCardHunterTiers, hunts.length),
+    value: hunts.length,
+    tierDates: [for (final t in kCardHunterTiers) t <= hunts.length ? _day(hunts[t - 1].endedAt) : null],
+    facts: [
+      ('Cartes prises d’un coup', '${hunts.length}'),
+      ('Sniper ciblés', '${chainRuns.where((r) => r.kind == 'sniper' && r.cardId != null).length}'),
+      if (hunts.isNotEmpty) ('La dernière', _fmtDate(hunts.last.endedAt)),
     ],
   ));
 

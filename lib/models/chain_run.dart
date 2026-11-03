@@ -22,6 +22,8 @@ class ChainRun {
   int? bodyBefore; // guérilla : le corps avant, 1 → 5
   int? bodyAfter; // guérilla : le corps après
   int? fullCount; // sniper : cibles touchées EN ENTIER (sans les mini-tirs)
+  String? cardId; // sniper ciblé : la carte visée (id du badge)
+  bool? cardTaken; // sniper ciblé : tous ses tirs pleins, son palier tombe (badge Chasseur de cartes)
 
   ChainRun({
     String? id,
@@ -39,6 +41,8 @@ class ChainRun {
     this.bodyBefore,
     this.bodyAfter,
     this.fullCount,
+    this.cardId,
+    this.cardTaken,
   }) : id = id ?? _uuid.v4();
 
   /// Un Enchaîner du premier au dernier bloc du programme, mené au bout.
@@ -66,6 +70,8 @@ class ChainRun {
         if (bodyBefore != null) 'bodyBefore': bodyBefore,
         if (bodyAfter != null) 'bodyAfter': bodyAfter,
         if (fullCount != null) 'fullCount': fullCount,
+        if (cardId != null) 'cardId': cardId,
+        if (cardTaken != null) 'cardTaken': cardTaken,
       };
 
   static ChainRun from(Map j) => ChainRun(
@@ -84,5 +90,7 @@ class ChainRun {
         bodyBefore: (j['bodyBefore'] as num?)?.toInt(),
         bodyAfter: (j['bodyAfter'] as num?)?.toInt(),
         fullCount: (j['fullCount'] as num?)?.toInt(),
+        cardId: j['cardId'] as String?,
+        cardTaken: j['cardTaken'] as bool?,
       );
 }

@@ -52,6 +52,8 @@ class CardQuest {
   final List<QuestStep> steps;
   /// Mode à lancer (Guérilla, Offensive, Sniper) pour une quête de mode.
   final String? modeKind;
+  /// Le palier peut tomber aujourd'hui en tirant tous les [steps] en entier.
+  final bool fallsToday;
   const CardQuest({
     required this.badge,
     required this.kind,
@@ -62,6 +64,7 @@ class CardQuest {
     this.strategy = const [],
     this.steps = const [],
     this.modeKind,
+    this.fallsToday = false,
   });
 
   bool get sniperable => steps.isNotEmpty;
@@ -117,6 +120,7 @@ CardQuest? cardQuestOf(BadgeState b, {required List<Activity> activities, TodayF
         m > step ? '${_dur(step)} aujourd’hui, le reste demain' : '${_dur(m)} de chrono sur ${a.name}, en une fois ou en deux',
       ],
       steps: [QuestStep('activity:${a.id}', a, step, minutes: true)],
+      fallsToday: m <= step,
     );
   }
 
@@ -135,6 +139,7 @@ CardQuest? cardQuestOf(BadgeState b, {required List<Activity> activities, TodayF
       effortMin: n * per,
       strategy: ['$n ${_plural(n, 'coche', 'coches')} de ${a.name}, même au-delà de la cible du jour'],
       steps: [QuestStep('routine:${a.id}', a, n, minutes: false)],
+      fallsToday: true,
     );
   }
 
@@ -157,6 +162,7 @@ CardQuest? cardQuestOf(BadgeState b, {required List<Activity> activities, TodayF
         if (n > 1) 'Puis chaque jour jusqu’au palier ($n j au total)',
       ],
       steps: [if (left > 0) QuestStep('routine:${a.id}', a, left, minutes: false)],
+      fallsToday: n == 1 && left > 0,
     );
   }
 
@@ -194,6 +200,7 @@ CardQuest? cardQuestOf(BadgeState b, {required List<Activity> activities, TodayF
       effortMin: effort,
       strategy: [today, if (n > 1) 'Puis $n jours au total'],
       steps: steps,
+      fallsToday: n == 1 && steps.isNotEmpty && steps.every((s) => !s.minutes || s.amount < kQuestStepMaxMin),
     );
   }
 
@@ -274,3 +281,12 @@ List<Stake> focusStakes(List<Stake> stakes, CardQuest q) {
   }
   return out;
 }
+
+/// Badge Chasseur de cartes (2026-11-03, idée user) : une carte prise d'un seul
+/// Sniper ciblé = tous ses tirs touchés en entier, et son palier tombait aujourd'hui.
+const kCardHunterTiers = [1, 5, 15, 50];
+
+bool cardHunterCounts(ChainRun r) => r.kind == 'sniper' && r.cardTaken == true;
+
+/// La carte est-elle prise ? [hitFull] = clés des tirs touchés en entier.
+bool cardTakenBy(CardQuest q, Set<String> hitFull) => q.fallsToday && q.steps.every((s) => hitFull.contains(s.key));

@@ -568,6 +568,18 @@ class _SniperScreenState extends State<SniperScreen> {
 
   int get _firedTotal => _fired.values.fold(0, (s, v) => s + v);
 
+  /// Sniper ciblé : la carte est prise si chacun de ses tirs est touché à son montant.
+  bool get _cardTaken {
+    final q = _focus;
+    if (q == null) return false;
+    final byKey = {for (final t in _aimed) t.key: t};
+    final full = <String>{
+      for (final st in q.steps)
+        if (_hit.contains(st.key) && (byKey[st.key] == null || byKey[st.key]!.amount >= st.amount)) st.key,
+    };
+    return cardTakenBy(q, full);
+  }
+
   void _save() {
     _saved = true;
     final now = DateTime.now();
@@ -581,6 +593,8 @@ class _SniperScreenState extends State<SniperScreen> {
       completed: _nextIndex(_index) == null,
       kind: kSniperKind,
       fullCount: _fullHits,
+      cardId: _focus?.badge.def.id,
+      cardTaken: _focus == null ? null : _cardTaken,
     );
     logic.recordChainRun(run);
     logic.sync?.saveChainRun(run);
@@ -1105,6 +1119,23 @@ class _SniperScreenState extends State<SniperScreen> {
           Text(hitN == 0 ? 'Aucune cible cette fois' : '$hitN / $_totalAimed cible${_totalAimed > 1 ? 's' : ''} touchée${hitN > 1 ? 's' : ''}',
               style: const TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w800)),
           Text('${fmtMin(_firedTotal)} tirées pour ${fmtMin(aimedHitMin)} visées · ${sniperCountLine(hitN, _totalAimed, full: _fullHits)}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+          if (_focus case final q?) ...[
+            const SizedBox(height: 10),
+            _box(Row(children: [
+              Icon(_cardTaken ? Icons.style : Icons.style_outlined, color: _cardTaken ? kSniperAccent : _text3),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _cardTaken
+                      ? 'Carte prise : ${q.badge.def.name} · ${rarityLabel(q.nextRarity).toLowerCase()} · Chasseur de cartes +1'
+                      : q.fallsToday
+                          ? '${q.badge.def.name} : pas encore, un tir manque'
+                          : '${q.badge.def.name} avance · ${q.need.toLowerCase()}',
+                  style: const TextStyle(fontSize: 14, height: 1.35, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ])),
+          ],
           const SizedBox(height: 14),
           Row(children: [
             for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.where((t) => !t.isMini).fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[
