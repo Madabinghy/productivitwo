@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/money_month_card.dart' show MoneyMonthCard;
 import 'package:productivitwo_v1/widgets/receipt_sheet.dart' show showReceiptSheet;
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
@@ -12,7 +13,7 @@ import 'package:productivitwo_v1/widgets/finance_year_sheet.dart' show showFinan
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
-import 'package:productivitwo_v1/utils/groceries.dart' show spentByDomain, spentByProject;
+import 'package:productivitwo_v1/utils/groceries.dart' show spentByProject;
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
@@ -173,6 +174,9 @@ class _FinanceSheetState extends State<FinanceSheet> {
         alignment: Alignment.centerRight,
         child: TextButton(onPressed: () => showFinanceYearSheet(context, logic: logic), child: const Text('Mon année ›')),
       ),
+      // Le mois par domaine, enveloppe ou magasin, jusqu'au ticket (2026-11-03, « Où va mon argent »).
+      MoneyMonthCard(logic: logic, todayYmd: today),
+      const SizedBox(height: 6),
       title('AUJOURD’HUI', _dayLabel(today)),
       Container(
         padding: const EdgeInsets.all(12),
@@ -413,13 +417,10 @@ class _FinanceSheetState extends State<FinanceSheet> {
     );
   }
 
-  /// CE MOIS · PAR DOMAINE DE VIE, puis les projets qui ont coûté quelque chose.
+  /// PROJETS CE MOIS (la répartition par domaine vit dans « Où va mon argent », 2026-11-03).
   List<Widget> _byDomain(ColorScheme cs, Color mute, Finances f, String today) {
-    final by = spentByDomain(f, today);
-    if (by.isEmpty || (by.length == 1 && by.first.key.isEmpty)) return const [];
-    final domains = logic.state.activeDomains;
-    final total = by.fold<int>(0, (s, e) => s + e.value);
     final projects = spentByProject(f, today);
+    if (projects.isEmpty) return const [];
     Widget head(String t, String? r) => Padding(
           padding: const EdgeInsets.only(top: 20, bottom: 8),
           child: Row(children: [
@@ -428,33 +429,7 @@ class _FinanceSheetState extends State<FinanceSheet> {
           ]),
         );
     return [
-      head('CE MOIS · PAR DOMAINE DE VIE', euros(total)),
-      for (final e in by)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Container(width: 9, height: 9, decoration: BoxDecoration(color: domainColor(e.key, domains) ?? mute, shape: BoxShape.circle)),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(e.key.isEmpty ? 'Sans domaine' : (domains.where((d) => d.id == e.key).firstOrNull?.name ?? 'Domaine retiré'),
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: e.key.isEmpty ? mute : null)),
-              ),
-              Text(euros(e.value), style: TextStyle(fontSize: 12.5, color: mute)),
-            ]),
-            const SizedBox(height: 5),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: total == 0 ? 0 : e.value / total,
-                minHeight: 6,
-                color: domainColor(e.key, domains) ?? mute,
-                backgroundColor: cs.onSurface.withValues(alpha: .08),
-              ),
-            ),
-          ]),
-        ),
-      if (projects.isNotEmpty) ...[
+      ...[
         head('PROJETS CE MOIS', null),
         for (final e in projects)
           Padding(

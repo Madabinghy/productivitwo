@@ -16,8 +16,9 @@ void main() {
     await logic.logExpense(amount: 770, envelopeId: 'courses', domainId: 'int', projectId: 'p');
     await logic.logExpense(amount: 500, envelopeId: 'sorties');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: FinanceSheet(logic: logic))));
-    expect(find.text('CE MOIS · PAR DOMAINE DE VIE'), findsOneWidget);
-    expect(find.text(euros(5390)), findsOneWidget);
+    // La répartition par domaine vit dans « Où va mon argent » (2026-11-03).
+    expect(find.byKey(const Key('money-month')), findsOneWidget);
+    expect(find.text(euros(5390)), findsWidgets);
     expect(find.text('Sans domaine'), findsOneWidget);
     expect(find.text('PROJETS CE MOIS'), findsOneWidget);
     expect(find.text('Liste de courses ›'), findsOneWidget);
