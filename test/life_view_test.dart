@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/finances.dart' show euros;
 import 'package:productivitwo_v1/widgets/life_view.dart';
 
 void main() {
@@ -49,5 +50,24 @@ void main() {
     expect(opened, 'Business');
     await tester.tap(find.text('SOMMEIL'));
     expect(opened, 'sleep');
+  });
+
+  testWidgets('Ma vie : la tuile Finances montre le solde du compte', (tester) async {
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'f', name: 'Finances')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await logic.recordBalance(184260);
+    await logic.logExpense(amount: 1260, envelopeId: 'courses');
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: LifeView(logic: logic, sync: FirestoreSync(), projects: const [], onOpenDomain: (d) async => null, onOpenSleep: () {}, onManageDomains: () {}),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('FINANCES'), findsOneWidget);
+    expect(find.text(euros(183000)), findsOneWidget);
+    expect(find.textContaining('sur ton compte'), findsOneWidget);
   });
 }
