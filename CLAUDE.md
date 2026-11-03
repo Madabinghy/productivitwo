@@ -1022,7 +1022,13 @@ le solde ; un ancien solde sans heure est d'abord horodaté juste avant cette d�
 journée = `accountNow(f, ymd)` d'après le dernier solde recopié jusqu'à ce jour, null avant le premier (courbe non tracée), `checked`,
 libellés ; `flowTotals`). Carte `widgets/finance_flow_card.dart` (`FinanceFlowCard`) sous « Sur ton compte » : 30 j · 90 j, courbe du
 solde (points = soldes recopiés), barres par jour entré ↑ / sorti ↓ (échelle racine), tap / glisser = détail du jour, trois chiffres
-rentré · sorti · net. Lot 2 à venir : « Mon année » (par enveloppe, par domaine, fixes) et la page d'une enveloppe.
+rentré · sorti · net. **Lot 2 livré (Mon année)** : lien « Mon année › » sous la carte → `widgets/finance_year_sheet.dart`
+(`showFinanceYearSheet`) : choix de l'année (`financeYears`), rentré · dépensé (dépenses + fixes) · gardé et moyenne par mois
+(`yearSummary` : du premier mois suivi au mois en cours), Par enveloppe · Par domaine · Fixes (`yearCategories`, `YearBy`), une barre
+par mois empilée (palette catégorielle fixe, couleur du domaine en vue domaine ; tap = détail du mois), une ligne par catégorie (total,
+/ mois, plafond, 12 mini-barres, `trend3` = 3 derniers mois clos face aux 3 d'avant). Tap sur une enveloppe = son année : barres face
+au plafond en pointillés, `monthsOverCap`, LES PLUS GROSSES (`biggestOf`), CE QUE ÇA DIT, « Changer le plafond » (`editEnvelopeCap`,
+partagé avec la feuille Finances). **Les 2 lots sont livrés.**
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
