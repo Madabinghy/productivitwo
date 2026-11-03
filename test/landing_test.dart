@@ -63,4 +63,29 @@ void main() {
     ]);
     expect(l.map((r) => r.name), ['Pompes', 'Prière']);
   });
+
+  test('fin du bloc Deep work : continuer décale le souple, jamais le daté', () {
+    final deep = ScheduleBlock(startTime: '13:30', durationMin: 120, title: 'Deep work', timeBlock: 'deep');
+    final small = b('16:00', 'Petites choses', time: 'small');
+    final lecture = b('17:00', 'Lecture');
+    final reunion = b('18:30', 'Réunion parents', gcal: 'e');
+    final apres = b('20:00', 'Rangement');
+    final blocks = [deep, small, lecture, reunion, apres];
+    expect(currentDeepBlock(blocks, DateTime(2026, 11, 3, 15, 0), 300), same(deep));
+    expect(softFollowing(blocks, deep).map((x) => x.title), ['Petites choses', 'Lecture']);
+    expect(continueRoom(blocks, deep), 30);
+    final changed = extendDeep(blocks, deep, 30);
+    expect(changed.length, 3);
+    expect(deep.durationMin, 150);
+    expect(small.startTime, '16:30');
+    expect(lecture.startTime, '17:30');
+    expect(reunion.startTime, '18:30');
+    expect(apres.startTime, '20:00');
+  });
+
+  test('continuer : pas plus que ce que laisse le prochain rendez-vous', () {
+    final deep = ScheduleBlock(startTime: '13:30', durationMin: 120, title: 'Deep work', timeBlock: 'deep');
+    expect(continueRoom([deep, b('15:50', 'Cours', gcal: 'e')], deep), 10);
+    expect(continueRoom([deep, b('15:45', 'Cours', gcal: 'e')], deep), 0);
+  });
 }

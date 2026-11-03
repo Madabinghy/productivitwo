@@ -10,7 +10,8 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistI
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
 import 'package:productivitwo_v1/utils/landing.dart';
-import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
@@ -85,6 +86,10 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   String? _landedFor;
   /// « Je finis ce coup, puis j'y vais » : l'offensive s'arrête au bout du coup.
   bool _leaveAfterCoup = false;
+  /// Bloc Deep work dans lequel tourne l'offensive, et la fin déjà demandée (« On continue ? » une fois par fin).
+  String? _deepId;
+  String? _deepAsked;
+  bool _sheetOpen = false;
   /// Point d'étape : « Je souffle 3 min » a arrêté le chrono.
   bool _breathing = false;
   final _passed = <String>{};
@@ -276,6 +281,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   /// feuille « Atterrissage » quand on entre dans les 10 dernières minutes.
   void _refreshAhead() {
     final now = DateTime.now();
+    _checkDeepEnd(now);
     final a = nextFixed(logic.todayBlocks, now, logic.dayStartMin, sessionTaskIds: _sessionTasks);
     _ahead = a;
     if (a == null) {
@@ -288,7 +294,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _armedFor = key;
       CoupAlarm.scheduleLanding(logic, at: a.landingAt, title: '🔔 ${a.block.title} dans $kLandingLeadMin min', body: 'À ${a.block.startTime} · finis ton coup, prépare-toi.');
     }
-    if (_phase == _Phase.coup && !now.isBefore(a.landingAt) && _landedFor != key) {
+    if (_phase == _Phase.coup && !_sheetOpen && !now.isBefore(a.landingAt) && _landedFor != key) {
       _landedFor = key;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showLanding(a);
@@ -296,7 +302,70 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     }
   }
 
+  /// Fin du bloc Deep work pendant un coup : « Tu es lancé. On continue ? » (une fois par fin de bloc).
+  void _checkDeepEnd(DateTime now) {
+    if (_phase != _Phase.coup) return;
+    final blocks = logic.todayBlocks;
+    _deepId ??= currentDeepBlock(blocks, now, logic.dayStartMin)?.id;
+    final deep = _deepId == null ? null : blocks.where((b) => b.id == _deepId).firstOrNull;
+    if (deep == null || deep.status != 'pending' || _sheetOpen) return;
+    final end = blockEndMin(deep);
+    if (livedNowMin(now, logic.dayStartMin) < end) return;
+    final key = '${deep.id}@$end';
+    if (_deepAsked == key) return;
+    _deepAsked = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showDeepEnd(deep);
+    });
+  }
+
+  Future<void> _showDeepEnd(ScheduleBlock deep) async {
+    final blocks = logic.todayBlocks;
+    final room = continueRoom(blocks, deep, sessionTaskIds: _sessionTasks);
+    final soft = softFollowing(blocks, deep, sessionTaskIds: _sessionTasks);
+    final fixed = nextFixed(blocks, DateTime.now(), logic.dayStartMin, sessionTaskIds: _sessionTasks);
+    _sheetOpen = true;
+    final choice = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: const Color(0xFF221A10),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('TON BLOC DEEP WORK SE TERMINE · ${hmOf(blockEndMin(deep))}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+            const SizedBox(height: 6),
+            const Text('Tu es lancé. On continue ?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+            _label(fixed == null ? 'PLUS RIEN DE DATÉ AUJOURD’HUI' : 'RIEN DE DATÉ AVANT ${fixed.block.startTime}'),
+            for (final b in soft.take(3))
+              _li(b.startTime, b.title, room > 0 ? 'passerait à ${hmOf(blockStartMin(b) + room)}' : null, _pill('souple', _text3)),
+            if (fixed != null) _li(fixed.block.startTime, fixed.block.title, 'ne bouge pas', _pill('daté', _sky)),
+            const SizedBox(height: 12),
+            if (room > 0) ...[
+              _primary('Continuer $room min · la suite se décale', () => Navigator.pop(ctx, true)),
+              const SizedBox(height: 10),
+            ],
+            _outline('Passer à la suite', () => Navigator.pop(ctx, false), strong: room == 0),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Laisser tourner sans rien changer', style: TextStyle(color: _text3))),
+          ]),
+        ),
+      ),
+    );
+    _sheetOpen = false;
+    if (!mounted || choice == null) return;
+    if (!choice) return _end();
+    final changed = extendDeep(blocks, deep, room, sessionTaskIds: _sessionTasks);
+    for (final c in changed) {
+      logic.sync?.upsertScheduleBlock(c.docDate ?? logic.livedTodayYmd, c, rememberMirror: false);
+    }
+    final moved = changed.length - 1;
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+        content: Text('Deep work jusqu’à ${hmOf(blockEndMin(deep))}${moved > 0 ? ' · $moved bloc${moved > 1 ? 's' : ''} décalé${moved > 1 ? 's' : ''}' : ''}')));
+  }
+
   Future<void> _showLanding(FixedAhead a) async {
+    _sheetOpen = true;
     final leftMin = (_remaining / 60).ceil();
     final choice = await showModalBottomSheet<bool>(
       context: context,
@@ -319,6 +388,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         ),
       ),
     );
+    _sheetOpen = false;
     if (!mounted || choice == null) return;
     if (choice) {
       setState(() => _leaveAfterCoup = true);

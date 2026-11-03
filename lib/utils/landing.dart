@@ -1,8 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show isMilestoneTask;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 
 /// « Plongé, pas perdu » (maquette validée 2026-11-03) : pendant un deep work,
 /// seule une chose DATÉE peut déranger — un rendez-vous de l'agenda (miroir) ou
@@ -89,4 +91,77 @@ class SeriesAtRisk {
 List<SeriesAtRisk> seriesAtRisk(Iterable<SeriesAtRisk> routines, {int limit = 3}) {
   final l = routines.where((r) => r.count < r.target && r.streak >= 2).toList()..sort((a, b) => b.streak.compareTo(a.streak));
   return l.take(limit).toList();
+}
+
+/// Fin du bloc Deep work (lot 3) : le bloc Deep work à faire qui contient maintenant.
+ScheduleBlock? currentDeepBlock(List<ScheduleBlock> blocks, DateTime now, int dayStartMin) {
+  final nowMin = livedNowMin(now, dayStartMin);
+  for (final b in blocks) {
+    if (b.timeBlock == 'deep' && b.status == 'pending' && blockStartMin(b) <= nowMin && nowMin < blockEndMin(b)) return b;
+  }
+  return null;
+}
+
+/// Les blocs souples qui suivent [after] jusqu'au prochain bloc daté (exclu) :
+/// ce que « Continuer » décale. Jamais un daté, un besoin de base ni un bloc de nuit.
+List<ScheduleBlock> softFollowing(List<ScheduleBlock> blocks, ScheduleBlock after, {Set<String> sessionTaskIds = const {}}) {
+  final from = blockEndMin(after);
+  final fixedStarts = [
+    for (final b in blocks)
+      if (b.id != after.id && isFixedBlock(b, sessionTaskIds: sessionTaskIds) && blockStartMin(b) >= from) blockStartMin(b),
+  ]..sort();
+  final until = fixedStarts.isEmpty ? 24 * 60 : fixedStarts.first;
+  final l = blocks
+      .where((b) =>
+          b.id != after.id &&
+          b.status == 'pending' &&
+          b.dayOffset == 0 &&
+          !isFixedBlock(b, sessionTaskIds: sessionTaskIds) &&
+          b.gcalEventId == null &&
+          !isBasicNeedName(b.title) &&
+          blockStartMin(b) >= from &&
+          blockStartMin(b) < until)
+      .toList()
+    ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+  return l;
+}
+
+/// Minutes que « Continuer » peut ajouter sans entamer l'atterrissage du
+/// prochain daté : au plus [wanted], par 5 min ; 0 = pas la place (< 10 min).
+int continueRoom(List<ScheduleBlock> blocks, ScheduleBlock after, {Set<String> sessionTaskIds = const {}, int wanted = 30}) {
+  final from = blockEndMin(after);
+  var room = wanted;
+  for (final b in blocks) {
+    if (b.id == after.id || !isFixedBlock(b, sessionTaskIds: sessionTaskIds)) continue;
+    final s = blockStartMin(b);
+    if (s < from) continue;
+    final free = s - kLandingLeadMin - from;
+    if (free < room) room = free;
+  }
+  room = room - room % 5;
+  return room < 10 ? 0 : room;
+}
+
+/// « HH:MM » d'une minute de la journée vécue.
+String hmOf(int min) {
+  final m = min % (24 * 60);
+  return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+}
+
+/// « Continuer [delta] min » : le bloc Deep work s'allonge, les blocs souples
+/// qui le suivent jusqu'au prochain daté reculent d'autant (plafond minuit).
+/// Modifie en place et retourne tout ce qui a changé (le bloc compris).
+List<ScheduleBlock> extendDeep(List<ScheduleBlock> blocks, ScheduleBlock deep, int delta, {Set<String> sessionTaskIds = const {}}) {
+  if (delta <= 0) return const [];
+  final soft = softFollowing(blocks, deep, sessionTaskIds: sessionTaskIds);
+  deep.durationMin += delta;
+  final changed = <ScheduleBlock>[deep];
+  for (final b in soft) {
+    final start = blockStartMin(b);
+    final next = math.min(start + delta, 24 * 60 - b.durationMin);
+    if (next <= start) continue;
+    b.startTime = hmOf(next);
+    changed.add(b);
+  }
+  return changed;
 }
