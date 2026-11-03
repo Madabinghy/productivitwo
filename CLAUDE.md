@@ -1563,6 +1563,10 @@ steps, modeKind}` ou null hors de portée — `QuestKind` time (`heures-<activit
 manquent ; Montre suisse : activités en retard, ≤ 3 ; ≤ 3 j) · mode (Guérilla, Offensive, Sniper : ≤ 2 sessions, pas de tir) ;
 `QuestStep {key 'activity:<id>' | 'routine:<id>', activity, amount, minutes}` = mêmes clés que les enjeux ; `cardQuests(deck, …, limit:)`
 classe par jours, puis effort du jour, puis avancement. L'année et le chemin des 10 000 h ne sont jamais proposés.
+**Lot 2 livré (album)** : section « À ALLER CHERCHER » sous l'en-tête de l'album (`_questsSection`, `badge_gallery_screen.dart` : « n à
+portée aujourd'hui », trois lignes — mini carte, « carte bronze · 9 / 10 fois », jauge à la couleur du prochain cadre, `need` —, « Voir les
+n autres ») ; tap = feuille de la quête (`_openQuest` : la carte, LA STRATÉGIE, LES TIRS, CE QU'ELLE RAPPORTE = points de collection et
+Collectionneur après, « Fiche de la carte »).
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 

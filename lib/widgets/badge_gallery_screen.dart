@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/widgets/card_pile_view.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
+import 'package:productivitwo_v1/utils/card_quests.dart';
 import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/widgets/collection_badge_view.dart';
@@ -163,6 +164,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             )
           else ...[
             _deckHeader(deck),
+            // Les cartes à aller chercher (2026-11-03, maquette validée).
+            _questsSection(deck),
             _shelf(deck),
             // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
             if (_facts case final f?) _inPlayButton(deck, f),
@@ -329,6 +332,135 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       if (nLeft > 0) strip('À GAGNER · $nLeft', left, leftPiles),
     ];
   }
+
+  bool _allQuests = false;
+
+  /// « À ALLER CHERCHER » : les cartes que la journée peut faire avancer, ce
+  /// qui tombe le plus vite d'abord ; tap = la carte et sa stratégie.
+  Widget _questsSection(BadgeDeck deck) {
+    final all = cardQuests(deck, activities: widget.logic.state.activities, facts: _facts);
+    if (all.isEmpty) return const SizedBox.shrink();
+    final shown = _allQuests ? all : all.take(3).toList();
+    final today = all.where((q) => q.days == 1).length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          child: Row(children: [
+            const Text('À ALLER CHERCHER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBadgeBrass)),
+            const Spacer(),
+            Text(today > 0 ? '$today à portée aujourd’hui' : '${all.length} en route', style: const TextStyle(fontSize: 12.5, color: kBText4)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        for (final q in shown) _questRow(q),
+        if (all.length > 3)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _allQuests = !_allQuests),
+              child: Text(_allQuests ? 'Voir moins' : 'Voir les ${all.length - 3} autres ›', style: const TextStyle(color: kBText2)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  String _questTitleLine(CardQuest q) {
+    final b = q.badge;
+    final unit = b.def.unit.isEmpty ? '' : ' ${b.def.unit}';
+    return 'carte ${rarityLabel(q.nextRarity).toLowerCase()} · ${_num(b.value)} / ${fmtInt(b.nextTarget!)}$unit';
+  }
+
+  Widget _questRow(CardQuest q) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: kBSurface,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => _openQuest(q),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: kBLine)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                BadgeCardView(state: q.badge, width: 48),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(q.badge.def.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: kBText)),
+                    Text(_questTitleLine(q), style: const TextStyle(fontSize: 12.5, color: kBText3)),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(value: q.badge.progress ?? 0, minHeight: 5, backgroundColor: kBadgeGaugeTrack, color: rarityInk(q.nextRarity)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(q.need, style: const TextStyle(fontSize: 13, height: 1.3, color: kBText2)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  void _openQuest(CardQuest q) {
+    final b = q.badge;
+    final pts = cardPoints(q.nextRarity) - cardPoints(rarityOf(b));
+    final next = nextCollectionBadge(collectionBadges(_deck!));
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kBSurface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: .8,
+        minChildSize: .4,
+        maxChildSize: .95,
+        expand: false,
+        builder: (ctx, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(20, 0, 20, 24), children: [
+          Center(child: GestureDetector(onTap: () => _showFacts(b), child: BadgeCardView(state: b, width: 120))),
+          const SizedBox(height: 10),
+          Text('${b.def.name} · ${rarityLabel(q.nextRarity).toLowerCase()}',
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: kBText)),
+          Text(_questTitleLine(q).replaceFirst(RegExp(r'^carte \S+ · '), ''), textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: kBText3)),
+          const SizedBox(height: 18),
+          const Text('LA STRATÉGIE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kBText3)),
+          const SizedBox(height: 8),
+          for (final s in q.strategy) _questLine(s),
+          if (q.steps.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('LES TIRS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kBText3)),
+            const SizedBox(height: 8),
+            for (final st in q.steps) _questLine(st.activity.name, lead: st.label),
+          ],
+          const SizedBox(height: 10),
+          const Text('CE QU’ELLE RAPPORTE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kBText3)),
+          const SizedBox(height: 8),
+          _questLine(next == null || next.next == null
+              ? '+$pts pt${pts > 1 ? 's' : ''} de collection'
+              : '+$pts pt${pts > 1 ? 's' : ''} de collection · ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} ${next.value + pts} / ${next.next}'),
+          const SizedBox(height: 14),
+          TextButton(onPressed: () => _showFacts(b), child: const Text('Fiche de la carte', style: TextStyle(color: kBText2))),
+        ]),
+      ),
+    );
+  }
+
+  Widget _questLine(String text, {String? lead}) => Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: kBRaised, borderRadius: BorderRadius.circular(10)),
+        child: Row(children: [
+          if (lead != null) ...[
+            SizedBox(width: 56, child: Text(lead, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: kBadgeBrass))),
+          ],
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.3, color: kBText))),
+        ]),
+      );
 
   /// « MES BADGES » : les badges de collection, écusson sur plaque, deux par rangée.
   Widget _shelf(BadgeDeck deck) {
