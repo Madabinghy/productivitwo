@@ -1017,6 +1017,13 @@ Le calcul se lit sous le montant (`_accountDetail` : « solde du … à HH:MM ·
 « supposée déjà dedans » avec le lien « Pas encore dedans · la retrancher » (`AppLogic.expenseAfterBalance` : son heure passe juste après
 le solde ; un ancien solde sans heure est d'abord horodaté juste avant cette dépense).
 
+**Finances, en courbes** (maquette validée 2026-11-03, 2 lots). **Lot 1 livré (30 jours)** : logique pure `utils/finance_charts.dart`
+(`flowSeries` : un `DayFlow` par jour — rentrées (ponctuelles + revenus cochés), sorties (dépenses + fixes passés), solde de fin de
+journée = `accountNow(f, ymd)` d'après le dernier solde recopié jusqu'à ce jour, null avant le premier (courbe non tracée), `checked`,
+libellés ; `flowTotals`). Carte `widgets/finance_flow_card.dart` (`FinanceFlowCard`) sous « Sur ton compte » : 30 j · 90 j, courbe du
+solde (points = soldes recopiés), barres par jour entré ↑ / sorti ↓ (échelle racine), tap / glisser = détail du jour, trois chiffres
+rentré · sorti · net. Lot 2 à venir : « Mon année » (par enveloppe, par domaine, fixes) et la page d'une enveloppe.
+
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 
 Le coach voit ce que l'app mesure en plus des engagements : sommeil, parole tenue, Montre suisse, Métronome, journée posée la
