@@ -63,7 +63,7 @@ void main() {
     final t = badgesTile(deck, board)!;
     expect(t.label, 'COLLECTION');
     expect(t.value, '1 carte ce soir');
-    expect(t.sub, startsWith('jusqu’à bronze · 1 série à sauver · 0 pts'));
+    expect(t.sub, startsWith('Lecture 3 j · jusqu’à bronze · 1 série à sauver · 0 pts'));
     expect(t.badge, isNull);
     expect(t.fan, isEmpty);
     final d = badgesInPlay(board, deck);
