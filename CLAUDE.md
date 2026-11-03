@@ -968,7 +968,7 @@ recalcule ses dépenses. Fiche `widgets/receipt_sheet.dart` (`showReceiptSheet`)
 (barre + une ligne par domaine). Feuille Finances : tap sur une dépense d'un ticket conservé = sa fiche (au lieu de l'éditeur).
 MCP `record_receipt {store, place, time, ref}` conserve le ticket ligne par ligne (`ReceiptPlan.lines`) et pose `receiptId` sur ses
 dépenses (⚠️ `firebase deploy --only functions`). Les tickets d'avant n'ont pas de fiche (dépense « Courses · Lidl » + articles).
-À venir : lot 2 « Où va mon argent » (Domaines · Enveloppes · Magasins, ‹ › mois, page d'une catégorie avec ses tickets).
+**Lot 2 livré (le mois)** : logique pure `utils/month_spend.dart` — `monthSpends` (dépenses + parts de tickets + fixes passés hors revenus, jusqu'à aujourd'hui, les plus récentes d'abord ; `SpendItem.store` = magasin du ticket, sinon « Courses · X » → X, sinon la note), `MonthBy` domain · envelope · store, `monthCategories` (« Sans domaine » puis « Fixes » `kFixedKey` en fin), `categoryHint` (« 4 tickets · Courses, Maison »), `breakdown` (domaine → enveloppes, sinon → domaines), `shiftMonth`, `monthName`. Carte `widgets/money_month_card.dart` (`MoneyMonthCard`, sous « Mon année › » dans la feuille Finances, `money-month`) : OÙ VA MON ARGENT · MOIS ‹ ›, total, « dont n € en k tickets lus par Claude », Domaines · Enveloppes · Magasins, barre empilée, une ligne par catégorie (indice, montant, %) ; tap = `showSpendCategorySheet` : PAR ENVELOPPE / PAR DOMAINE, TICKETS ET DÉPENSES (magasin, « 3 nov. · ticket 4521 · 5 articles », « sur 62,40 » pour une part ; tap = fiche du ticket ou éditeur), OÙ, CE MOIS. L'ancien bloc « CE MOIS · PAR DOMAINE DE VIE » est retiré (restent PROJETS CE MOIS).
 
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 
