@@ -252,6 +252,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             borderRadius: BorderRadius.circular(5),
             child: LinearProgressIndicator(value: album.ratio, minHeight: 8, backgroundColor: kBadgeGaugeTrack, color: kBadgeBrass),
           ),
+          // Lesquelles (retour user 2026-11-03 : « 7 / 30 cartes », mais c'est quoi les 7, c'est quoi les 30 ?).
+          ..._cardStrips(deck),
           if (next != null && next.next != null) ...[
             const SizedBox(height: 8),
             Text('Prochain badge : ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} · ${next.value} / ${next.next} ${next.unit}',
@@ -264,6 +266,47 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         ]),
       ),
     );
+  }
+
+  /// Sous le compte de l'album : les cartes gagnées, puis celles qui restent à gagner (les plus
+  /// avancées d'abord), en mini cartes nommées ; tap = fiche de la carte.
+  List<Widget> _cardStrips(BadgeDeck deck) {
+    final ordered = albumOrder(deck.counted);
+    final won = [for (final b in ordered) if (faceOf(b) == CardFace.won) b];
+    final left = [for (final b in ordered) if (faceOf(b) != CardFace.won) b];
+    Widget strip(String label, List<BadgeState> cards) => Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: kBText3)),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (final b in cards)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _showFacts(b),
+                      child: SizedBox(
+                        width: 58,
+                        child: Column(children: [
+                          BadgeCardView(state: b, width: 58),
+                          const SizedBox(height: 4),
+                          Text(b.def.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 10, height: 1.15, color: kBText2)),
+                        ]),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+          ]),
+        );
+    return [
+      if (won.isNotEmpty) strip('TES ${won.length} CARTE${won.length > 1 ? 'S' : ''}', won),
+      if (left.isNotEmpty) strip('À GAGNER · ${left.length}', left),
+    ];
   }
 
   /// « MES BADGES » : les badges de collection, écusson sur plaque, deux par rangée.
