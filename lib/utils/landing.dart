@@ -85,7 +85,8 @@ class SeriesAtRisk {
   final int count;
   final int target;
   final int streak;
-  const SeriesAtRisk(this.name, this.count, this.target, this.streak);
+  final String id;
+  const SeriesAtRisk(this.name, this.count, this.target, this.streak, {this.id = ''});
 }
 
 List<SeriesAtRisk> seriesAtRisk(Iterable<SeriesAtRisk> routines, {int limit = 3}) {
@@ -164,4 +165,22 @@ List<ScheduleBlock> extendDeep(List<ScheduleBlock> blocks, ScheduleBlock deep, i
     changed.add(b);
   }
   return changed;
+}
+
+/// Reprise (lot 4) : les blocs à faire passés pendant qu'on était dedans —
+/// finis entre [since] (fin du coup en cours quand on a quitté l'écran) et
+/// maintenant ; ni bloc de temps, ni besoin de base.
+List<ScheduleBlock> missedWhileAway(List<ScheduleBlock> blocks, DateTime since, DateTime now, int dayStartMin) {
+  final nowMin = livedNowMin(now, dayStartMin);
+  final sinceMin = now.difference(since).inMinutes >= nowMin ? 0 : nowMin - now.difference(since).inMinutes;
+  final l = blocks
+      .where((b) =>
+          b.status == 'pending' &&
+          !b.isTimeBlock &&
+          !isBasicNeedName(b.title) &&
+          blockEndMin(b) > sinceMin &&
+          blockEndMin(b) <= nowMin)
+      .toList()
+    ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+  return l;
 }

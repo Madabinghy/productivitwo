@@ -1172,8 +1172,12 @@ work)** : l'offensive retient le bloc Deep work où elle tourne (`currentDeepBlo
 (`_checkDeepEnd`) : « Tu es lancé. On continue ? » — « Rien de daté avant HH:MM », les blocs souples qui suivent (`softFollowing` :
 jusqu'au prochain daté, hors besoins de base et nuit) avec « passerait à … », le daté « ne bouge pas » ; « Continuer n min · la suite
 se décale » (`continueRoom` : 30 min au plus, jamais dans les 10 min d'atterrissage du daté ; `extendDeep` allonge le bloc et recule le
-souple, écrit par `upsertScheduleBlock`) · « Passer à la suite » (fin de l'offensive) · « Laisser tourner sans rien changer ». Lot
-suivant : reprise « Pendant que tu étais dedans ».
+souple, écrit par `upsertScheduleBlock`) · « Passer à la suite » (fin de l'offensive) · « Laisser tourner sans rien changer ». **Lot 4 livré
+(reprise)** : rouverte après être resté dedans au-delà du coup (`overtimeCoups` > 0), l'offensive s'ouvre sur « Pendant que tu étais
+dedans » (`_Phase.back`, `_back`) avant de replonger : la note du chrono, PASSÉ SANS TOI (`missedWhileAway` : blocs à faire finis
+depuis la fin du coup, hors blocs de temps et besoins de base ; Fait · Demain (`reportBlockToTomorrow`, pas pour un miroir) · Je
+lâche (`setBlockLetGo`)), SE PERD CE SOIR SI RIEN (+1 · Plus tard), ENCORE À VENIR (prochain daté), « Reprendre l'offensive » ; le
+chrono continue pendant ce temps. Rien de passé ni de série en jeu = reprise directe. **Les 4 lots sont livrés.**
 
 ## Sniper (2026-11-01, maquette validée « Mode Sniper »)
 

@@ -88,4 +88,15 @@ void main() {
     expect(continueRoom([deep, b('15:50', 'Cours', gcal: 'e')], deep), 10);
     expect(continueRoom([deep, b('15:45', 'Cours', gcal: 'e')], deep), 0);
   });
+
+  test('reprise : ce qui est passé pendant qu’on était dedans', () {
+    final l = missedWhileAway([
+      b('15:00', 'Avant'),
+      b('16:00', 'Petites choses'),
+      b('16:30', 'Appel', gcal: 'e'),
+      b('17:00', 'Pas fini'),
+      ScheduleBlock(startTime: '15:30', durationMin: 60, title: 'Deep work', timeBlock: 'deep'),
+    ], DateTime(2026, 11, 3, 16, 10), DateTime(2026, 11, 3, 17, 40), 300);
+    expect(l.map((x) => x.title), ['Petites choses', 'Appel']);
+  });
 }
