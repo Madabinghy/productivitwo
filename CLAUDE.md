@@ -1167,8 +1167,13 @@ puis j'y vais » (l'offensive s'arrête au bout du coup, `_leaveAfterCoup`) · �
 tous les 3 coups, le chrono CONTINUE (« Le chrono continue · 47 min sur … ») ; « Lève la tête 20 secondes » : CE QUI ARRIVE
 (`upcomingBlocks` : 3 prochains blocs à faire, pastille daté / souple), SE PERD CE SOIR SI RIEN (`seriesAtRisk` : routines quotidiennes
 non atteintes, série ≥ 2 j jusqu'à hier, hors acquises et gelées), DÉJÀ GAGNÉ ; Je continue · Je souffle 3 min (arrête le chrono) ·
-Coups de 10 min · C'est bon. La session garde `cur` / `endsAt` pendant le point d'étape (resté dedans = coups comptés). Lots suivants : fin du bloc Deep work (continuer 30 min = la suite souple se
-décale), reprise « Pendant que tu étais dedans ».
+Coups de 10 min · C'est bon. La session garde `cur` / `endsAt` pendant le point d'étape (resté dedans = coups comptés). **Lot 3 livré (fin du bloc Deep
+work)** : l'offensive retient le bloc Deep work où elle tourne (`currentDeepBlock`) ; à sa fin, pendant un coup, UNE fois par fin
+(`_checkDeepEnd`) : « Tu es lancé. On continue ? » — « Rien de daté avant HH:MM », les blocs souples qui suivent (`softFollowing` :
+jusqu'au prochain daté, hors besoins de base et nuit) avec « passerait à … », le daté « ne bouge pas » ; « Continuer n min · la suite
+se décale » (`continueRoom` : 30 min au plus, jamais dans les 10 min d'atterrissage du daté ; `extendDeep` allonge le bloc et recule le
+souple, écrit par `upsertScheduleBlock`) · « Passer à la suite » (fin de l'offensive) · « Laisser tourner sans rien changer ». Lot
+suivant : reprise « Pendant que tu étais dedans ».
 
 ## Sniper (2026-11-01, maquette validée « Mode Sniper »)
 
