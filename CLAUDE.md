@@ -1506,7 +1506,7 @@ prochaine action cochable et lançable, `_nextActionRow` — sauf si elle est d�
 `ActionsView` complet en page (filtres J'ai · Je suis · Domaine · Pour, vue par urgence ou par projet). Ligne d'action (`_actionLine`) :
 rond = fait (`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnActions`, « Annuler »), tap = page focus
 (`showActionFocusScreen`, chrono = activité liée de l'action, sinon du projet, sinon la porteuse), glisser à droite = fait sans question,
-à gauche = viser demain (annulable). Pastille « en retard » sur l'onglet Projets ; la tuile Actions d'Aujourd'hui y mène.
+à gauche = viser demain (annulable). Plus de pastille « en retard » sur l'onglet Projets (retour user 2026-11-03) ; l'onglet Aujourd'hui porte un viseur (`Icons.gps_fixed`) au lieu du soleil ; la tuile Actions d'Aujourd'hui y mène.
 
 ## Ma vie (2026-11-01, maquette validée « Onglet Ma vie »)
 

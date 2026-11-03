@@ -4970,13 +4970,13 @@ class _AppRootState extends State<AppRoot>
                   icon: Icon(Icons.donut_small_outlined),
                   activeIcon: Icon(Icons.donut_small),
                   label: 'Domaines'),
-              _Tab.projets => BottomNavigationBarItem(
-                  icon: _overdueBadge(const Icon(Icons.account_tree_outlined)),
-                  activeIcon: _overdueBadge(const Icon(Icons.account_tree)),
+              _Tab.projets => const BottomNavigationBarItem(
+                  icon: Icon(Icons.account_tree_outlined),
+                  activeIcon: Icon(Icons.account_tree),
                   label: 'Projets'),
               _Tab.aujourdhui => const BottomNavigationBarItem(
-                  icon: Icon(Icons.wb_sunny_outlined),
-                  activeIcon: Icon(Icons.wb_sunny),
+                  icon: Icon(Icons.gps_not_fixed),
+                  activeIcon: Icon(Icons.gps_fixed),
                   label: 'Aujourd\'hui'),
               // Pastille = actions en retard (même règle que le groupe
               // « En retard » de l'onglet).
