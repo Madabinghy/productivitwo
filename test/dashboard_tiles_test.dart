@@ -122,16 +122,22 @@ void main() {
                 child: DashboardTiles(
       perfect: const DashTile(label: 'JOURNÉE PARFAITE', value: 'Il manque 3', sub: 'routines'),
       perfectWide: true,
-      badges: small,
-      objectives: small,
+      badges: const DashTile(label: 'COLLECTION', value: 'v', sub: 's\ns\ns\ns'),
+      objectives: const DashTile(label: 'OBJECTIFS', value: 'v', sub: 's'),
       actions: small,
-      review: small,
+      review: const DashTile(label: 'RECUL', value: 'v', sub: 's'),
       onPerfect: () => opened = 'perfect',
     )))));
     final perfectBox = t.getSize(find.ancestor(of: find.text('JOURNÉE PARFAITE'), matching: find.byType(Material)).first);
-    final smallBox = t.getSize(find.ancestor(of: find.text('X'), matching: find.byType(Material)).first);
+    final smallBox = t.getSize(find.ancestor(of: find.text('OBJECTIFS'), matching: find.byType(Material)).first);
     expect(perfectBox.width, greaterThan(smallBox.width * 1.8));
-    expect(find.text('X'), findsNWidgets(4));
+    // Collection à gauche, Objectifs et Recul empilés à droite, à sa hauteur ; la tuile restante en pleine largeur.
+    Rect box(String l) => t.getRect(find.ancestor(of: find.text(l), matching: find.byType(Material)).first);
+    expect(box('OBJECTIFS').left, greaterThan(box('COLLECTION').right));
+    expect(box('RECUL').top, greaterThan(box('OBJECTIFS').bottom));
+    expect(box('RECUL').bottom, closeTo(box('COLLECTION').bottom, 1));
+    expect(box('OBJECTIFS').top, closeTo(box('COLLECTION').top, 1));
+    expect(box('X').width, closeTo(perfectBox.width, 1));
     await t.tap(find.text('JOURNÉE PARFAITE'));
     expect(opened, 'perfect');
   });
