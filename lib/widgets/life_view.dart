@@ -22,6 +22,7 @@ import 'package:productivitwo_v1/utils/sleep_stats.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek, weekSummary;
 import 'package:productivitwo_v1/utils/budget_window.dart' show dailyMinutesByDomain;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
@@ -212,7 +213,7 @@ class _LifeViewState extends State<LifeView> {
     // Une seule tuile Sommeil / Sport / Repas, même si deux domaines en ont la nature.
     final seenSheet = <DomainNature>{};
 
-    Widget launcher(String label, IconData icon, Color c, VoidCallback onTap, {bool dot = false}) => Expanded(
+    Widget launcher(String label, Object icon, Color c, VoidCallback onTap, {bool dot = false}) => Expanded(
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: onTap,
@@ -224,7 +225,7 @@ class _LifeViewState extends State<LifeView> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(shape: BoxShape.circle, color: c.withValues(alpha: .14), border: Border.all(color: c.withValues(alpha: .7), width: 1.5)),
-                    child: Icon(icon, color: c, size: 22),
+                    child: icon is IconData ? Icon(icon, color: c, size: 22) : Center(child: ModeGlyph(kind: icon as String, size: 24, color: c)),
                   ),
                   if (dot) Positioned(right: 0, top: 0, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle))),
                 ]),
@@ -259,9 +260,9 @@ class _LifeViewState extends State<LifeView> {
         ),
         _section(mute, 'MES MODES'),
         Row(children: [
-          launcher('Guérilla', Icons.bolt_rounded, kGuerillaAccent, () => _run(kGuerillaKind), dot: live(kGuerillaKind)),
+          launcher('Guérilla', kGuerillaKind, kGuerillaAccent, () => _run(kGuerillaKind), dot: live(kGuerillaKind)),
           launcher('Sniper', Icons.gps_fixed, kSniperAccent, () => _run(kSniperKind), dot: live(kSniperKind)),
-          launcher('Offensive', Icons.north_east_rounded, kOffensiveAccent, () => _run(kOffensiveKind), dot: live(kOffensiveKind)),
+          launcher('Offensive', kOffensiveKind, kOffensiveAccent, () => _run(kOffensiveKind), dot: live(kOffensiveKind)),
           launcher('Planifier', Icons.explore_outlined, kPlanAccent, () => showPlanScreen(context, logic, badges: widget.badges)),
           launcher('Revue', Icons.event_repeat_rounded, kReviewAccent, () => showWeekReviewScreen(context, logic, badges: widget.badges)),
         ]),

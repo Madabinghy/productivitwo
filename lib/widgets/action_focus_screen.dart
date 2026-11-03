@@ -8,6 +8,8 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show OffensiveScreen;
 import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, showMomentActions;
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
@@ -466,7 +468,7 @@ class _FocusScreenState extends State<_FocusScreen> {
             opt(90, 'Deep work', 'bloc posé dans le programme à partir de maintenant · badge Deep work', deep: true),
             if (_project != null)
               ListTile(
-                leading: const SizedBox(width: 44, child: Icon(Icons.north_east_rounded, color: Color(0xFFFF8A4C))),
+                leading: const SizedBox(width: 44, child: Center(child: ModeGlyph(kind: kOffensiveKind, size: 24, color: Color(0xFFFF8A4C)))),
                 title: const Text('Offensive', style: TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text('enchaîner « ${_project!.title} » en coups de 10 à 25 min, à partir de cette action',
                     style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
@@ -530,7 +532,7 @@ class _FocusScreenState extends State<_FocusScreen> {
           if (!after && _project != null && _phase == _Phase.before)
             IconButton(
               tooltip: 'Offensive sur ce projet',
-              icon: const Icon(Icons.north_east_rounded, color: Color(0xFFFF8A4C)),
+              icon: const ModeGlyph(kind: kOffensiveKind, size: 24, color: Color(0xFFFF8A4C)),
               onPressed: _openOffensive,
             ),
           if (_canDelete || widget.moreActions.isNotEmpty)

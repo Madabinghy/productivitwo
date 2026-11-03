@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/routine_moments.dart' show buildRoutineDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 
@@ -310,7 +311,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   Widget _header({Widget? trailing}) => SizedBox(
         height: 48,
         child: Row(children: [
-          const Icon(Icons.bolt, color: kGuerillaAccent, size: 20),
+          const ModeGlyph(kind: kGuerillaKind, size: 20, color: kGuerillaAccent),
           const SizedBox(width: 6),
           const Text('GUÉRILLA', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: kGuerillaAccent)),
           const InfoDot(kRuleGuerilla),
@@ -588,7 +589,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
               border: Border.all(color: kGuerillaAccent.withValues(alpha: .45)),
             ),
             child: Row(children: [
-              const Icon(Icons.bolt, color: kGuerillaAccent, size: 36),
+              const ModeGlyph(kind: kGuerillaKind, size: 36, color: kGuerillaAccent),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

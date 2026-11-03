@@ -21,6 +21,8 @@ class DashboardTiles extends StatelessWidget {
   /// Journée parfaite sur toute la largeur, sous Programme (mobile, 2026-11-03 :
   /// la tuile Routines a disparu, doublon de Journée parfaite et du lanceur).
   final bool perfectWide;
+  /// Le mode du moment en tuile carrée, à droite de Journée parfaite (mobile, 2026-11-03).
+  final Widget? modeTile;
   /// « Recul » : résumé du jour + où on va (comble la case libre du mobile).
   final DashTile? review;
   final DashTile? actions;
@@ -57,6 +59,7 @@ class DashboardTiles extends StatelessWidget {
     this.onBadgesGallery,
     this.onPerfect,
     this.perfectWide = false,
+    this.modeTile,
     this.onActions,
     this.onProjects,
   });
@@ -91,7 +94,16 @@ class DashboardTiles extends StatelessWidget {
     }
     final rows = <Widget>[
       if (program != null) _Tile(tile: program!, onTap: onProgram),
-      if (perfectWide && perfect != null) _Tile(tile: perfect!, onTap: onPerfect),
+      if (perfectWide && perfect != null)
+        modeTile == null
+            ? _Tile(tile: perfect!, onTap: onPerfect)
+            : IntrinsicHeight(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Expanded(child: _Tile(tile: perfect!, onTap: onPerfect)),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(constraints: const BoxConstraints(minHeight: 104), child: SizedBox(width: 104, child: modeTile)),
+                ]),
+              ),
       for (var i = 0; i < small.length; i += 2)
         IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

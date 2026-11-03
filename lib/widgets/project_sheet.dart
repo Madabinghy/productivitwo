@@ -1,4 +1,6 @@
 import 'package:productivitwo_v1/utils/default_estimate.dart';
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -365,7 +367,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
           minimumSize: const Size.fromHeight(42),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        icon: const Icon(Icons.north_east_rounded, size: 18),
+        icon: const ModeGlyph(kind: kOffensiveKind, size: 18, color: Color(0xFFFF8A4C)),
         label: Text('Offensive sur ce projet · $ready action${ready > 1 ? 's' : ''} prête${ready > 1 ? 's' : ''}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
       ),

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
@@ -1187,7 +1188,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOffensiveAccent.withValues(alpha: .45))),
             child: Row(children: [
-              const Icon(Icons.north_east, color: kOffensiveAccent, size: 34),
+              const ModeGlyph(kind: kOffensiveKind, size: 34, color: kOffensiveAccent),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
