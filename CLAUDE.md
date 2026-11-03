@@ -952,7 +952,7 @@ Dehors / libre · Vider ; sur une case de RESTES (2026-11-02, retour user : vide
 `showShoppingSheet` (lignes à cocher avec provenance et quantité, « + Ajouter », DANS LE PANIER). **Lot 3 livré (feuille Repas)** : `PlannedMeal.ate`
 (`ok` équilibré · `other` autre chose, `withAte`) ; logique pure `utils/meal_day.dart` — `isBalancedMealRoutine` (routine « Repas »,
 « équilibré »), `isCookActivity` (« Cuisiner »), `isEatActivity` (« Manger », « Repas »…), `momentOfMeal` (avant 16 h = midi),
-`currentMealMoment` (midi jusqu'à 15 h), `mealWeekView` (case par repas : équilibré = +1 de la routine dans le moment ou `ate:ok` ;
+`currentMealMoment` (midi jusqu'à 15 h), `mealWeekView` (les restes d'un plat à plusieurs portions comptent comme « prévu », 2026-11-03 ; case par repas : équilibré = +1 de la routine dans le moment ou `ate:ok` ;
 autre chose = `ate:other`, chrono Manger ou Dehors ; rien noté ; prévu ; repas équilibrés / comptés, midis sans rien, chrono Cuisiner
 de la semaine, heures moyennes du déjeuner et du dîner d'après Manger). Écran `widgets/meal_sheet.dart` (`showMealSheet`, ⓘ
 `kRuleMeals`) : chip « k / n équilibrés », CE MIDI / CE SOIR (plat prévu ou restes, portions, temps ; ▶ Cuisiner = chrono Cuisiner ·

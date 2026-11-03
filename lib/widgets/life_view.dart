@@ -15,7 +15,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/life_natures.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/meal_day.dart' show mealWeekView, currentMealMoment;
-import 'package:productivitwo_v1/utils/meal_plan.dart' show mealKey;
+import 'package:productivitwo_v1/utils/meal_plan.dart' show PlannedMeal, leftoversOf, mealKey;
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sleep_stats.dart';
@@ -413,7 +413,10 @@ class _LifeViewState extends State<LifeView> {
         final week = logic.mealWeek(days.first);
         final v = mealWeekView(days: days, week: week, activities: st.activities, hits: st.habitHits, sessions: st.sessions, now: now, dayStartMin: logic.dayStartMin);
         final moment = currentMealMoment(now);
-        final next = week.slots[mealKey(ymdOf(t), moment)];
+        final nowKey = mealKey(ymdOf(t), moment);
+        final leftFrom = leftoversOf(week.slots, days)[nowKey];
+        final next = week.slots[nowKey] ??
+            (leftFrom == null || week.slots[leftFrom] == null ? null : PlannedMeal(title: 'les restes · ${week.slots[leftFrom]!.title}'));
         eyebrow = 'REPAS';
         value = v.counted == 0 ? 'Repas' : '${v.balanced} / ${v.counted}';
         sub = next != null ? '${moment == 'midi' ? 'ce midi' : 'ce soir'} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');

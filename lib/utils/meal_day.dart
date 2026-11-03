@@ -67,6 +67,9 @@ MealWeekView mealWeekView({
   final today = ymdOf(livedDate(now, dayStartMin));
   final curMoment = currentMealMoment(now);
   final cells = <String, MealCell>{};
+  // Les restes d'un plat à plusieurs portions comptent comme prévus (bug user
+  // 2026-11-03 : le midi rempli par les restes restait vide dans la grille).
+  final leftovers = leftoversOf(week.slots, days);
   var balanced = 0, counted = 0, skipped = 0;
   for (final y in days) {
     for (final m in kMealMoments) {
@@ -81,7 +84,7 @@ MealWeekView mealWeekView({
         c = MealCell.other;
       } else if (past) {
         c = MealCell.none;
-      } else if (slot != null) {
+      } else if (slot != null || leftovers.containsKey(k)) {
         c = MealCell.planned;
       } else {
         c = MealCell.empty;
