@@ -58,7 +58,9 @@ class Expense {
   final List<String> items;
   /// Moment de la saisie (ms) : départage une dépense et une mise à jour du solde du même jour.
   final int? at;
-  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const [], this.at});
+  /// Montant par rayon (Épicerie, Frais…) d'une dépense de courses, en centimes (placards, 2026-11-03).
+  final Map<String, int> byAisle;
+  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const [], this.at, this.byAisle = const {}});
 
   Map<String, dynamic> toJson() => {
         'ymd': ymd,
@@ -69,6 +71,7 @@ class Expense {
         if (projectId != null) 'projectId': projectId,
         if (items.isNotEmpty) 'items': items,
         if (at != null) 'at': at,
+        if (byAisle.isNotEmpty) 'byAisle': byAisle,
       };
   static Expense? from(String id, Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
@@ -82,6 +85,9 @@ class Expense {
       projectId: raw['projectId'] as String?,
       items: raw['items'] is List ? [for (final x in raw['items'] as List) '$x'] : const [],
       at: (raw['at'] as num?)?.toInt(),
+      byAisle: raw['byAisle'] is Map
+          ? {for (final e in (raw['byAisle'] as Map).entries) '${e.key}': (e.value as num?)?.toInt() ?? 0}
+          : const {},
     );
   }
 }

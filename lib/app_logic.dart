@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
+import 'package:productivitwo_v1/utils/pantry.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin, kFlemmeChronoMin;
@@ -1853,10 +1854,10 @@ class AppLogic implements HuntStore {
   }
 
   /// Note une dépense (aujourd'hui par défaut, ou hier) ; renvoie son id, null si refusée.
-  Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd, String? domainId, String? projectId, List<String> items = const []}) async {
+  Future<String?> logExpense({required int amount, required String envelopeId, String? note, String? ymd, String? domainId, String? projectId, List<String> items = const [], Map<String, int> byAisle = const {}}) async {
     final day = ymd ?? livedTodayYmd;
     if (amount <= 0 || !canLogOn(day, livedTodayYmd)) return null;
-    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim(), domainId: domainId, projectId: projectId, items: items, at: DateTime.now().millisecondsSinceEpoch);
+    final x = Expense(id: _newFinanceId(), ymd: day, amount: amount, envelopeId: envelopeId, note: note?.trim(), domainId: domainId, projectId: projectId, items: items, at: DateTime.now().millisecondsSinceEpoch, byAisle: byAisle);
     final wasNothing = finances.nothing.contains(day);
     finances = finances.copyWith(
       expenses: {...finances.expenses, x.id: x},
@@ -1875,7 +1876,7 @@ class AppLogic implements HuntStore {
     if (old == null || x.amount <= 0) return false;
     if (x.ymd != old.ymd && !canLogOn(x.ymd, livedTodayYmd)) return false;
     final y = Expense(
-        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note?.trim(), domainId: x.domainId, projectId: x.projectId, items: old.items, at: old.at);
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note?.trim(), domainId: x.domainId, projectId: x.projectId, items: old.items, at: old.at, byAisle: old.byAisle);
     finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
     if (y.ymd != old.ymd) _countTrackedDay(y.ymd);
     onChange();
@@ -1897,7 +1898,7 @@ class AppLogic implements HuntStore {
       await sync?.setFinanceCheck(x.ymd, balance, at: cAt);
     }
     final y = Expense(
-        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1);
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1, byAisle: x.byAisle);
     finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
     onChange();
     await sync?.setFinanceExpense(y.id, y.toJson());
@@ -1963,13 +1964,13 @@ class AppLogic implements HuntStore {
   void _rememberGrocery(GroceryItem x) {
     final key = normLabel(x.label);
     if (key.isEmpty) return;
-    final m = (groceries.memory[key] ?? const GroceryMemory()).merge(domainId: x.domainId, projectId: x.projectId, store: x.store);
+    final m = (groceries.memory[key] ?? const GroceryMemory()).merge(domainId: x.domainId, projectId: x.projectId, store: x.store, aisle: x.aisle);
     groceries = groceries.copyWith(memory: {...groceries.memory, key: m});
     sync?.setGroceryMemory({key: m.toJson()});
   }
 
   /// Ajoute une ligne ; un mot déjà sur la liste (hors panier) n'est pas doublé.
-  Future<GroceryItem> addGrocery({required String label, String qty = '', String? domainId, String? projectId, String? store, String source = 'hand'}) async {
+  Future<GroceryItem> addGrocery({required String label, String qty = '', String? domainId, String? projectId, String? store, String source = 'hand', String? aisle}) async {
     final key = normLabel(label);
     for (final x in groceries.items.values) {
       if (normLabel(x.label) == key && !x.inBasket) return x;
@@ -1983,6 +1984,7 @@ class AppLogic implements HuntStore {
       projectId: projectId ?? guess.projectId,
       store: store ?? guess.store ?? kMenuStore,
       source: source,
+      aisle: aisle ?? aisleFor(groceries, label),
     );
     groceries = groceries.copyWith(items: {...groceries.items, x.id: x});
     _rememberGrocery(x);
@@ -2022,12 +2024,57 @@ class AppLogic implements HuntStore {
     await sync?.setGroceryStores(groceries.stores);
   }
 
+  // ── Mes placards (`utils/pantry.dart`, 2026-11-03) ──
+
+  Future<void> _savePantry(Iterable<String> keys) async {
+    await sync?.setPantryItems({for (final k in keys) k: groceries.pantry[k]?.toJson()});
+  }
+
+  /// Pose l'état d'un produit (J'en ai · Bientôt fini · Plus rien) ; le crée au besoin.
+  Future<void> setPantryState(String label, PantryState state, {String? aisle}) async {
+    groceries = withPantryState(groceries, label, state, aisle: aisle);
+    onChange();
+    await _savePantry([normLabel(label)]);
+  }
+
+  Future<void> updatePantryItem(PantryItem p) async {
+    groceries = groceries.copyWith(pantry: {...groceries.pantry, p.key: p});
+    final m = (groceries.memory[p.key] ?? const GroceryMemory()).merge(aisle: p.aisle);
+    groceries = groceries.copyWith(memory: {...groceries.memory, p.key: m});
+    onChange();
+    await _savePantry([p.key]);
+    await sync?.setGroceryMemory({p.key: m.toJson()});
+  }
+
+  Future<void> removePantryItem(String key) async {
+    if (!groceries.pantry.containsKey(key)) return;
+    groceries = groceries.copyWith(pantry: {...groceries.pantry}..remove(key));
+    onChange();
+    await sync?.setPantryItems({key: null});
+  }
+
+  Future<void> _saveAisleChange(Groceries next) async {
+    groceries = next;
+    onChange();
+    await sync?.setGroceriesFields({
+      'aisles': next.aisles,
+      'pantry': {for (final p in next.pantry.values) p.key: p.toJson()},
+      'items': {for (final x in next.items.values) x.id: x.toJson()},
+      'memory': next.memory.map((k, v) => MapEntry(k, v.toJson())),
+    });
+  }
+
+  Future<void> addAisle(String name) => _saveAisleChange(withAisleAdded(groceries, name));
+  Future<void> renameAisle(String from, String to) => _saveAisleChange(withAisleRenamed(groceries, from, to));
+  Future<void> removeAisle(String name) => _saveAisleChange(withAisleRemoved(groceries, name));
+
   /// Passage en caisse : une dépense par part (domaine, projet) dans
   /// l'enveloppe Courses, les lignes à la main achetées quittent la liste,
   /// chaque mot retient son prix. Renvoie les ids des dépenses.
   Future<List<String>> checkoutGroceries({required List<CheckoutLine> lines, required List<TicketShare> shares, String? store, String? monday}) async {
     final env = finances.envelopeOf('courses')?.id ?? finances.envelopes.first.id;
     final ids = <String>[];
+    final prices = learnedPrices(lines, shares, groceries.memory);
     for (final sh in shares) {
       if (sh.amount <= 0) continue;
       final id = await logExpense(
@@ -2037,10 +2084,10 @@ class AppLogic implements HuntStore {
         domainId: sh.domainId,
         projectId: sh.projectId,
         items: sh.labels,
+        byAisle: aisleSplit(sh.amount, sh.labels, prices, groceries),
       );
       if (id != null) ids.add(id);
     }
-    final prices = learnedPrices(lines, shares, groceries.memory);
     final mem = {...groceries.memory};
     for (final e in prices.entries) {
       mem[e.key] = (mem[e.key] ?? const GroceryMemory()).merge(price: e.value);
@@ -2050,7 +2097,11 @@ class AppLogic implements HuntStore {
     final boughtMenu = {...groceries.boughtMenu};
     if (monday != null && menuKeys.isNotEmpty) boughtMenu[monday] = {...?boughtMenu[monday], ...menuKeys};
     groceries = groceries.copyWith(memory: mem, boughtMenu: boughtMenu, items: {...groceries.items}..removeWhere((k, _) => bought.contains(k)));
+    // Mes placards : ce qui vient d'être acheté passe « J'en ai ».
+    final aisles = {for (final l in lines) normLabel(l.label): aisleFor(groceries, l.label)};
+    groceries = afterPurchase(groceries, lines.map((l) => l.label), livedTodayYmd, aisles: aisles);
     onChange();
+    await sync?.setPantryItems({for (final k in aisles.keys) if (groceries.pantry[k] != null) k: groceries.pantry[k]!.toJson()});
     await sync?.setGroceryMemory({for (final k in prices.keys) k: mem[k]!.toJson()});
     if (monday != null && menuKeys.isNotEmpty) await sync?.setGroceryBought(monday, boughtMenu[monday]!.toList()..sort());
     for (final id in bought) {

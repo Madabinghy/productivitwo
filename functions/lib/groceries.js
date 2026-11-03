@@ -45,7 +45,7 @@ function existingItem(items, label) {
 }
 /** La ligne à écrire : domaine / projet / endroit donnés, sinon retenus pour ce mot. */
 function newGroceryItem(input, memory) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const m = (_a = memory[groceryKey(input.label)]) !== null && _a !== void 0 ? _a : {};
     const out = {
         label: input.label.trim(),
@@ -61,6 +61,9 @@ function newGroceryItem(input, memory) {
     const projectId = (_d = input.projectId) !== null && _d !== void 0 ? _d : m.projectId;
     if (projectId)
         out.projectId = projectId;
+    const aisle = (_e = input.aisle) !== null && _e !== void 0 ? _e : m.aisle;
+    if (aisle)
+        out.aisle = aisle;
     return out;
 }
 /** Candidats pour un libellé (exact, sinon fragment ; sans accents). */
@@ -88,6 +91,7 @@ function groceriesText(items, domainName, projectTitle) {
     }
     const line = (x, mark) => {
         const tags = [
+            x.aisle,
             x.domainId ? domainName(x.domainId) : undefined,
             x.projectId ? projectTitle(x.projectId) : undefined,
         ].filter(Boolean);
@@ -140,31 +144,38 @@ function planReceipt(lines, totalEuros, ctx) {
     const menuKeys = [];
     const groups = new Map();
     const prices = {};
+    const bought = {};
     lines.forEach((l, i) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel)) : undefined;
         const memKey = groceryKey(l.listLabel || l.label);
-        const mem = (_b = (_a = ctx.memory[memKey]) !== null && _a !== void 0 ? _a : ctx.memory[groceryKey(l.label)]) !== null && _b !== void 0 ? _b : {};
+        const mem = (_c = (_b = (_a = ctx.memory[memKey]) !== null && _a !== void 0 ? _a : (l.name ? ctx.memory[groceryKey(l.name)] : undefined)) !== null && _b !== void 0 ? _b : ctx.memory[groceryKey(l.label)]) !== null && _c !== void 0 ? _c : {};
         let domainId = l.domain ? resolveDomain(l.domain, ctx.domains) : null;
         if (l.domain && !domainId)
             warnings.push(`Domaine introuvable pour « ${l.label} » : « ${l.domain} ».`);
-        domainId = (_d = (_c = domainId !== null && domainId !== void 0 ? domainId : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].domainId) !== null && _c !== void 0 ? _c : mem.domainId) !== null && _d !== void 0 ? _d : null;
-        const projectId = (_g = (_f = (_e = l.projectId) !== null && _e !== void 0 ? _e : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].projectId) !== null && _f !== void 0 ? _f : mem.projectId) !== null && _g !== void 0 ? _g : null;
+        domainId = (_e = (_d = domainId !== null && domainId !== void 0 ? domainId : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].domainId) !== null && _d !== void 0 ? _d : mem.domainId) !== null && _e !== void 0 ? _e : null;
+        const projectId = (_h = (_g = (_f = l.projectId) !== null && _f !== void 0 ? _f : listMatch === null || listMatch === void 0 ? void 0 : listMatch[1].projectId) !== null && _g !== void 0 ? _g : mem.projectId) !== null && _h !== void 0 ? _h : null;
         if (listMatch)
             removeItemIds.push(listMatch[0]);
         else if (l.listLabel)
             menuKeys.push(l.listLabel.trim().toLowerCase());
         const k = `${domainId !== null && domainId !== void 0 ? domainId : ""}|${projectId !== null && projectId !== void 0 ? projectId : ""}`;
-        const g = (_h = groups.get(k)) !== null && _h !== void 0 ? _h : { domainId, projectId, amount: 0, labels: [] };
+        const g = (_j = groups.get(k)) !== null && _j !== void 0 ? _j : { domainId, projectId, amount: 0, labels: [], byAisle: {} };
         g.amount += paid[i];
-        g.labels.push(l.listLabel || l.label);
+        const product = (l.listLabel || l.name || l.label).trim();
+        g.labels.push(product);
+        const aisle = ctx.aisleOf ? ctx.aisleOf(product, l.aisle) : undefined;
+        if (aisle) {
+            g.byAisle[aisle] = ((_k = g.byAisle[aisle]) !== null && _k !== void 0 ? _k : 0) + paid[i];
+            bought[groceryKey(product)] = { label: product, aisle };
+        }
         groups.set(k, g);
-        prices[memKey] = Object.assign(Object.assign({ price: paid[i] }, (domainId ? { domainId } : {})), (projectId ? { projectId } : {}));
+        prices[groceryKey(product)] = Object.assign(Object.assign(Object.assign({ price: paid[i] }, (domainId ? { domainId } : {})), (projectId ? { projectId } : {})), (aisle ? { aisle } : {}));
     });
     const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
     if (shares.some((s) => s.domainId == null))
         warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
-    return { total, shares, prices, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+    return { total, shares, prices, bought, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
 }
 /** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */
 function mondayOfYmd(ymd) {

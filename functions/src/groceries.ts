@@ -11,9 +11,11 @@ export type GroceryItemDoc = {
   store?: string;
   source?: string;
   inBasket?: boolean;
+  /** Rayon (placards, 2026-11-03). */
+  aisle?: string;
 };
 
-export type GroceryMemoryDoc = { domainId?: string; projectId?: string; store?: string; price?: number };
+export type GroceryMemoryDoc = { domainId?: string; projectId?: string; store?: string; price?: number; aisle?: string };
 
 export const MENU_STORE = "Supermarché";
 
@@ -47,7 +49,7 @@ export function existingItem(items: Record<string, GroceryItemDoc>, label: strin
 
 /** La ligne à écrire : domaine / projet / endroit donnés, sinon retenus pour ce mot. */
 export function newGroceryItem(
-  input: { label: string; qty?: string; domainId?: string | null; projectId?: string | null; store?: string | null },
+  input: { label: string; qty?: string; domainId?: string | null; projectId?: string | null; store?: string | null; aisle?: string | null },
   memory: Record<string, GroceryMemoryDoc>,
 ): GroceryItemDoc {
   const m = memory[groceryKey(input.label)] ?? {};
@@ -62,6 +64,8 @@ export function newGroceryItem(
   if (domainId) out.domainId = domainId;
   const projectId = input.projectId ?? m.projectId;
   if (projectId) out.projectId = projectId;
+  const aisle = input.aisle ?? m.aisle;
+  if (aisle) out.aisle = aisle;
   return out;
 }
 
@@ -92,6 +96,7 @@ export function groceriesText(
   }
   const line = (x: GroceryItemDoc, mark: string) => {
     const tags = [
+      x.aisle,
       x.domainId ? domainName(x.domainId) : undefined,
       x.projectId ? projectTitle(x.projectId) : undefined,
     ].filter(Boolean);
@@ -120,15 +125,28 @@ export type ReceiptLineInput = {
   projectId?: string;
   /** Article de la liste de courses que cette ligne couvre (libellé exact de la liste). */
   listLabel?: string;
+  /** Nom simple du produit pour les placards (« Pâtes » pour « PATES FARFALLE 500G »). */
+  name?: string;
+  /** Rayon (Épicerie, Frais…) ; sinon retenu pour le mot ou deviné. */
+  aisle?: string;
 };
 
-export type ReceiptShare = { domainId: string | null; projectId: string | null; amount: number; labels: string[] };
+export type ReceiptShare = {
+  domainId: string | null;
+  projectId: string | null;
+  amount: number;
+  labels: string[];
+  /** Montant par rayon (centimes). */
+  byAisle: Record<string, number>;
+};
 
 export type ReceiptPlan = {
   total: number;
   shares: ReceiptShare[];
   /** Mot → prix (centimes), pour la mémoire. */
-  prices: Record<string, { price: number; domainId?: string; projectId?: string }>;
+  prices: Record<string, { price: number; domainId?: string; projectId?: string; aisle?: string }>;
+  /** Produits achetés pour les placards : mot → {label, aisle}. */
+  bought: Record<string, { label: string; aisle: string }>;
   /** Lignes de la liste couvertes (ids des lignes à la main à retirer). */
   removeItemIds: string[];
   /** Clés d'ingrédients du menu à marquer achetés (libellé de la liste, minuscules). */
@@ -161,6 +179,8 @@ export function planReceipt(
     domains: { id: string; name: string }[];
     memory: Record<string, GroceryMemoryDoc>;
     items: Record<string, GroceryItemDoc>;
+    /** Rayon d'un produit (donné, retenu, deviné) ; absent = pas de rayon. */
+    aisleOf?: (label: string, given?: string) => string;
   },
 ): ReceiptPlan {
   const warnings: string[] = [];
@@ -175,10 +195,11 @@ export function planReceipt(
   const menuKeys: string[] = [];
   const groups = new Map<string, ReceiptShare>();
   const prices: ReceiptPlan["prices"] = {};
+  const bought: ReceiptPlan["bought"] = {};
   lines.forEach((l, i) => {
     const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel!)) : undefined;
     const memKey = groceryKey(l.listLabel || l.label);
-    const mem = ctx.memory[memKey] ?? ctx.memory[groceryKey(l.label)] ?? {};
+    const mem = ctx.memory[memKey] ?? (l.name ? ctx.memory[groceryKey(l.name)] : undefined) ?? ctx.memory[groceryKey(l.label)] ?? {};
     let domainId = l.domain ? resolveDomain(l.domain, ctx.domains) : null;
     if (l.domain && !domainId) warnings.push(`Domaine introuvable pour « ${l.label} » : « ${l.domain} ».`);
     domainId = domainId ?? listMatch?.[1].domainId ?? mem.domainId ?? null;
@@ -186,15 +207,21 @@ export function planReceipt(
     if (listMatch) removeItemIds.push(listMatch[0]);
     else if (l.listLabel) menuKeys.push(l.listLabel.trim().toLowerCase());
     const k = `${domainId ?? ""}|${projectId ?? ""}`;
-    const g = groups.get(k) ?? { domainId, projectId, amount: 0, labels: [] };
+    const g = groups.get(k) ?? { domainId, projectId, amount: 0, labels: [], byAisle: {} };
     g.amount += paid[i];
-    g.labels.push(l.listLabel || l.label);
+    const product = (l.listLabel || l.name || l.label).trim();
+    g.labels.push(product);
+    const aisle = ctx.aisleOf ? ctx.aisleOf(product, l.aisle) : undefined;
+    if (aisle) {
+      g.byAisle[aisle] = (g.byAisle[aisle] ?? 0) + paid[i];
+      bought[groceryKey(product)] = { label: product, aisle };
+    }
     groups.set(k, g);
-    prices[memKey] = { price: paid[i], ...(domainId ? { domainId } : {}), ...(projectId ? { projectId } : {}) };
+    prices[groceryKey(product)] = { price: paid[i], ...(domainId ? { domainId } : {}), ...(projectId ? { projectId } : {}), ...(aisle ? { aisle } : {}) };
   });
   const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
   if (shares.some((s) => s.domainId == null)) warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
-  return { total, shares, prices, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+  return { total, shares, prices, bought, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
 }
 
 /** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */
