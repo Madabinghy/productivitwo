@@ -110,4 +110,25 @@ void main() {
     // Coché dans le panier, l'ingrédient du placard reste visible.
     expect(groceryRows(menuLines: menu, menuChecked: const {'pâtes'}, g: g).any((r) => r.label == 'Pâtes'), isTrue);
   });
+
+  test('plats : ce que j\'ai, ce qui manque, faisables, fini', () {
+    var g = afterPurchase(const Groceries(), ['Pâtes', 'Oignons', 'Thon', 'Œufs'], '2026-11-03');
+    g = withPantryState(g, 'Sauce tomate', PantryState.low);
+    g = withPantryState(g, 'Bœuf haché', PantryState.out);
+    final bolo = dishReadiness(['Pâtes', 'Oignons', 'Sauce tomate', 'Bœuf haché'], g);
+    expect(bolo.have, ['Pâtes', 'Oignons', 'Sauce tomate']);
+    expect(bolo.low, ['Sauce tomate']);
+    expect(bolo.missing, ['Bœuf haché']);
+    expect(bolo.ready, isFalse);
+    final dishes = {
+      'Bolognaise': ['Pâtes', 'Oignons', 'Sauce tomate', 'Bœuf haché'],
+      'Pâtes au thon': ['Pâtes', 'Thon', 'Sauce tomate'],
+      'Omelette': ['Œufs'],
+      'Riz cantonais': ['Riz', 'Petits pois', 'Œufs'],
+      'Vide': <String>[],
+    };
+    final doable = doableDishes(dishes.keys.toList(), (d) => dishes[d]!, g);
+    expect(doable.map((e) => e.$1), ['Pâtes au thon', 'Omelette', 'Bolognaise']);
+    expect(finishCandidates(['Pâtes', 'Sauce tomate', 'Bœuf haché', 'Sel'], g), ['Pâtes', 'Sauce tomate']);
+  });
 }

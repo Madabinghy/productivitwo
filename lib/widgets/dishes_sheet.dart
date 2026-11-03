@@ -1,6 +1,9 @@
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/utils/groceries.dart' show PantryState, normLabel;
+import 'package:productivitwo_v1/utils/pantry.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/meals.dart';
@@ -11,8 +14,8 @@ const kMealAccent = Color(0xFF7CC96A);
 /// « Mes plats » (maquette validée 2026-11-01 « Repas et menu », écran 4) :
 /// la bibliothèque, les plus faits d'abord, puis ceux pas faits depuis
 /// longtemps ; « + Nouveau » ; tap = la fiche du plat.
-Future<void> showDishesSheet(BuildContext context, {required FirestoreSync sync}) {
-  return showFiche<void>(context, builder: (ctx, scroll) => DishesSheet(sync: sync, scroll: scroll));
+Future<void> showDishesSheet(BuildContext context, {required FirestoreSync sync, AppLogic? logic}) {
+  return showFiche<void>(context, builder: (ctx, scroll) => DishesSheet(sync: sync, scroll: scroll, logic: logic));
 }
 
 class DishesSheet extends StatefulWidget {
@@ -20,7 +23,9 @@ class DishesSheet extends StatefulWidget {
   final ScrollController? scroll;
   /// Recevoir les plats sans Firestore (tests).
   final Stream<List<Recipe>>? recipes;
-  const DishesSheet({super.key, required this.sync, this.scroll, this.recipes});
+  /// Placards (2026-11-03) : « Avec ce que tu as » ; null = sans placard.
+  final AppLogic? logic;
+  const DishesSheet({super.key, required this.sync, this.scroll, this.recipes, this.logic});
 
   @override
   State<DishesSheet> createState() => _DishesSheetState();
@@ -67,7 +72,7 @@ class _DishesSheetState extends State<DishesSheet> {
                           style: TextStyle(fontSize: 12, color: mute),
                         ),
                         trailing: r.timesCooked > 0 ? Text('×${r.timesCooked}', style: TextStyle(color: mute, fontWeight: FontWeight.w700)) : null,
-                        onTap: () => showDishSheet(context, sync: widget.sync, recipe: r, all: all),
+                        onTap: () => showDishSheet(context, sync: widget.sync, recipe: r, all: all, logic: widget.logic),
                       ),
                     ],
                   ]),
@@ -77,7 +82,7 @@ class _DishesSheetState extends State<DishesSheet> {
           Row(children: [
             const Expanded(child: Text('Mes plats', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
             FilledButton.tonalIcon(
-              onPressed: () => showDishSheet(context, sync: widget.sync, all: all),
+              onPressed: () => showDishSheet(context, sync: widget.sync, all: all, logic: widget.logic),
               icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text('Nouveau'),
             ),
@@ -102,6 +107,7 @@ class _DishesSheetState extends State<DishesSheet> {
               padding: const EdgeInsets.only(top: 24),
               child: Text('Aucun plat pour l’instant. Commence par ceux que tu fais le plus souvent.', textAlign: TextAlign.center, style: TextStyle(color: mute)),
             ),
+          ..._withWhatYouHave(cs, mute, shown, all),
           section('LES PLUS FAITS', s.often),
           section('PAS FAITS DEPUIS LONGTEMPS', s.stale),
           section(s.often.isEmpty && s.stale.isEmpty ? 'TES PLATS' : 'PAS ENCORE CUISINÉS', s.fresh),
@@ -111,10 +117,50 @@ class _DishesSheetState extends State<DishesSheet> {
   }
 }
 
+extension on _DishesSheetState {
+  /// « Avec ce que tu as » : les plats faisables avec le placard (tout est là,
+  /// ou à un ingrédient près), 5 au plus.
+  List<Widget> _withWhatYouHave(ColorScheme cs, Color mute, List<Recipe> shown, List<Recipe> all) {
+    final logic = widget.logic;
+    if (logic == null || logic.groceries.pantry.isEmpty) return const [];
+    final doable = doableDishes<Recipe>(shown, (r) => [for (final i in r.ingredients) i.label], logic.groceries).take(5).toList();
+    if (doable.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 6),
+        child: Text('AVEC CE QUE TU AS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute)),
+      ),
+      Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: .35),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          for (final (i, d) in doable.indexed) ...[
+            if (i > 0) Divider(height: 1, color: cs.onSurface.withValues(alpha: .07)),
+            ListTile(
+              key: ValueKey('doable-${d.$1.id}'),
+              title: Text(d.$1.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                d.$2.missing.isEmpty
+                    ? 'tous les ingrédients au placard${d.$2.low.isNotEmpty ? ' · ${d.$2.low.first} bientôt fini' : ''}'
+                    : 'il manque ${d.$2.missing.join(', ')}',
+                style: TextStyle(fontSize: 12, color: mute),
+              ),
+              trailing: Text('${d.$2.have.length} / ${d.$2.total}',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: d.$2.missing.isEmpty ? kMealAccent : const Color(0xFFFAB219))),
+              onTap: () => showDishSheet(context, sync: widget.sync, recipe: d.$1, all: all, logic: logic),
+            ),
+          ],
+        ]),
+      ),
+    ];
+  }
+}
+
 /// La fiche d'un plat (écran 5) : portions, temps, ingrédients avec leurs
 /// quantités, suggestions tirées des autres plats. [recipe] null = nouveau.
-Future<void> showDishSheet(BuildContext context, {required FirestoreSync sync, Recipe? recipe, List<Recipe> all = const []}) {
-  return showFiche<void>(context, builder: (ctx, scroll) => DishSheet(sync: sync, recipe: recipe, all: all, scroll: scroll));
+Future<void> showDishSheet(BuildContext context, {required FirestoreSync sync, Recipe? recipe, List<Recipe> all = const [], AppLogic? logic}) {
+  return showFiche<void>(context, builder: (ctx, scroll) => DishSheet(sync: sync, recipe: recipe, all: all, scroll: scroll, logic: logic));
 }
 
 class DishSheet extends StatefulWidget {
@@ -122,7 +168,9 @@ class DishSheet extends StatefulWidget {
   final Recipe? recipe;
   final List<Recipe> all;
   final ScrollController? scroll;
-  const DishSheet({super.key, required this.sync, this.recipe, this.all = const [], this.scroll});
+  /// Placards (2026-11-03) : chaque ingrédient face au placard ; null = sans.
+  final AppLogic? logic;
+  const DishSheet({super.key, required this.sync, this.recipe, this.all = const [], this.scroll, this.logic});
 
   @override
   State<DishSheet> createState() => _DishSheetState();
@@ -217,6 +265,59 @@ class _DishSheetState extends State<DishSheet> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// ✓ j'en ai · ! bientôt fini · ✕ manque (placards, 2026-11-03).
+  Widget _pantryMark(String label) {
+    final st = pantryStateOf(widget.logic!.groceries, label);
+    final (t, c, tip) = switch (st) {
+      PantryState.have => ('✓', kMealAccent, 'j\'en ai'),
+      PantryState.low => ('!', const Color(0xFFFAB219), 'bientôt fini'),
+      _ => ('✕', const Color(0xFFE66767), st == PantryState.out ? 'plus rien' : 'pas au placard'),
+    };
+    return Tooltip(
+      message: tip,
+      child: SizedBox(width: 22, child: Text(t, style: TextStyle(fontWeight: FontWeight.w900, color: c))),
+    );
+  }
+
+  List<Widget> _missingButton() {
+    final logic = widget.logic;
+    if (logic == null || _ings.isEmpty || logic.groceries.pantry.isEmpty) return const [];
+    final r = dishReadiness([for (final i in _ings) i.label], logic.groceries);
+    final listed = {for (final x in logic.groceries.items.values) normLabel(x.label)};
+    final toAdd = [for (final i in _ings) if (r.missing.contains(i.label) && !listed.contains(normLabel(i.label))) i];
+    if (r.missing.isEmpty) {
+      return [
+        const SizedBox(height: 8),
+        Text('Tout est au placard.', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kMealAccent)),
+      ];
+    }
+    if (toAdd.isEmpty) {
+      return [
+        const SizedBox(height: 8),
+        Text('Ce qui manque est déjà sur la liste de courses.', style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))),
+      ];
+    }
+    return [
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        key: const Key('dish-add-missing'),
+        onPressed: () async {
+          for (final i in toAdd) {
+            await logic.addGrocery(label: i.label, qty: i.qty);
+          }
+          if (!mounted) return;
+          setState(() {});
+          ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+            content: Text('${toAdd.length == 1 ? toAdd.first.label : '${toAdd.length} ingrédients'} sur la liste de courses'),
+            duration: const Duration(seconds: 3),
+          ));
+        },
+        icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+        label: Text(toAdd.length == 1 ? 'Ajouter ${toAdd.first.label.toLowerCase()} à la liste' : 'Ajouter les ${toAdd.length} manquants à la liste'),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -266,6 +367,7 @@ class _DishSheetState extends State<DishSheet> {
           for (final (k, i) in _ings.indexed) ...[
             if (k > 0) Divider(height: 1, color: cs.onSurface.withValues(alpha: .07)),
             Row(children: [
+              if (widget.logic != null) _pantryMark(i.label),
               Expanded(child: Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(i.label, style: const TextStyle(fontSize: 14.5)))),
               InkWell(
                 onTap: () => _editQty(i),
@@ -290,6 +392,7 @@ class _DishSheetState extends State<DishSheet> {
           ),
         ]),
       ),
+      ..._missingButton(),
       if (sugg.isNotEmpty) ...[
         const SizedBox(height: 8),
         Wrap(spacing: 6, runSpacing: 6, children: [

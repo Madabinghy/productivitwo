@@ -162,7 +162,7 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
     } else if ((choice == 'less' || choice == 'more') && cur != null) {
       await logic.setMeal(monday, key, PlannedMeal(recipeId: cur.recipeId, title: cur.title, portions: (cur.portions + (choice == 'more' ? 1 : -1)).clamp(1, 12), out: cur.out, ate: cur.ate));
     } else if (choice == 'new') {
-      await showDishSheet(context, sync: widget.sync, all: _all);
+      await showDishSheet(context, sync: widget.sync, all: _all, logic: widget.logic);
     }
   }
 
@@ -253,7 +253,7 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
           ),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync), child: const Text('Mes plats ›')),
+            child: TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync, logic: widget.logic), child: const Text('Mes plats ›')),
           ),
         ]);
       },

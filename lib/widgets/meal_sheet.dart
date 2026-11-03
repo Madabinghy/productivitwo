@@ -9,6 +9,8 @@ import 'package:productivitwo_v1/utils/meal_day.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show showPantrySheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent, showDishesSheet;
+import 'package:productivitwo_v1/utils/groceries.dart' show PantryState;
+import 'package:productivitwo_v1/utils/pantry.dart' show finishCandidates;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
@@ -85,7 +87,55 @@ class _MealSheetState extends State<MealSheet> {
         try {
           await widget.sync.recordMealCooked(slot.title);
         } catch (_) {}
+        await _askFinished(slot.recipeId!);
       }
+    }
+  }
+
+  /// Après « Mangé » (placards, 2026-11-03) : « Tu as fini quelque chose ? »
+  /// — les ingrédients du plat qu'on a au placard ; ceux touchés passent « Plus rien ».
+  Future<void> _askFinished(String recipeId) async {
+    final r = _all.where((x) => x.id == recipeId).firstOrNull;
+    if (r == null || !mounted) return;
+    final cands = finishCandidates([for (final i in r.ingredients) i.label], logic.groceries);
+    if (cands.isEmpty) return;
+    final picked = <String>{};
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Tu as fini quelque chose ?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 4),
+              Text('Ce que tu touches passe « Plus rien » et va sur la liste de courses.',
+                  style: TextStyle(fontSize: 12.5, color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .55))),
+              const SizedBox(height: 12),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final c in cands)
+                  FilterChip(
+                    label: Text(c),
+                    selected: picked.contains(c),
+                    selectedColor: kMealAccent.withValues(alpha: .3),
+                    onSelected: (v) => setS(() => v ? picked.add(c) : picked.remove(c)),
+                  ),
+              ]),
+              const SizedBox(height: 14),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: kMealAccent, foregroundColor: const Color(0xFF0F1A0C)),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(picked.isEmpty ? 'Rien de fini' : 'C\'est fini · ${picked.length}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    for (final c in picked) {
+      await logic.setPantryState(c, PantryState.out);
     }
   }
 
@@ -267,7 +317,7 @@ class _MealSheetState extends State<MealSheet> {
             label: const Text('Les repas de la semaine', style: TextStyle(fontWeight: FontWeight.w800)),
           ),
           Wrap(alignment: WrapAlignment.spaceBetween, children: [
-            TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync), child: const Text('Mes plats ›')),
+            TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync, logic: logic), child: const Text('Mes plats ›')),
             TextButton(onPressed: () => showPantrySheet(context, logic: logic), child: const Text('Mes placards ›')),
             TextButton(
               onPressed: () => showGroceriesSheet(context, logic: logic, sync: widget.sync),

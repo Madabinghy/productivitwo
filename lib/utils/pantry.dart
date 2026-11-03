@@ -213,3 +213,59 @@ Map<String, int> aisleSplit(int amount, List<String> labels, Map<String, int> pr
   }
   return out;
 }
+
+// ── Cuisiner avec ce qu'on a (lot 4) ────────────────────────────────────────
+
+/// Un plat face au placard : ce qu'on a (J'en ai ou Bientôt fini), ce qui
+/// est bientôt fini, ce qui manque (Plus rien ou inconnu).
+class DishReadiness {
+  final List<String> have;
+  final List<String> low;
+  final List<String> missing;
+  const DishReadiness({required this.have, required this.low, required this.missing});
+  int get total => have.length + missing.length;
+  bool get ready => total > 0 && missing.isEmpty;
+}
+
+DishReadiness dishReadiness(List<String> ingredientLabels, Groceries g) {
+  final have = <String>[], low = <String>[], missing = <String>[];
+  for (final l in ingredientLabels) {
+    switch (pantryStateOf(g, l)) {
+      case PantryState.have:
+        have.add(l);
+      case PantryState.low:
+        have.add(l);
+        low.add(l);
+      case PantryState.out:
+      case null:
+        missing.add(l);
+    }
+  }
+  return DishReadiness(have: have, low: low, missing: missing);
+}
+
+/// Les plats faisables avec le placard : tout est là d'abord, puis ceux à un
+/// ingrédient près ([maxMissing]) ; à égalité, ceux qui utilisent le plus de
+/// produits du placard. Un plat sans ingrédient n'est jamais proposé.
+List<(T, DishReadiness)> doableDishes<T>(List<T> dishes, List<String> Function(T) ingredientsOf, Groceries g, {int maxMissing = 1}) {
+  final out = <(T, DishReadiness)>[];
+  for (final d in dishes) {
+    final ing = ingredientsOf(d);
+    if (ing.isEmpty) continue;
+    final r = dishReadiness(ing, g);
+    if (r.have.isEmpty || r.missing.length > maxMissing) continue;
+    out.add((d, r));
+  }
+  out.sort((a, b) {
+    final m = a.$2.missing.length.compareTo(b.$2.missing.length);
+    return m != 0 ? m : b.$2.have.length.compareTo(a.$2.have.length);
+  });
+  return out;
+}
+
+/// Après avoir mangé : les ingrédients du plat qu'on a au placard, à
+/// proposer « Tu as fini quelque chose ? ».
+List<String> finishCandidates(List<String> ingredientLabels, Groceries g) => [
+      for (final l in ingredientLabels)
+        if (pantryStateOf(g, l) case PantryState.have || PantryState.low) l,
+    ];
