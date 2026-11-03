@@ -170,6 +170,13 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     if (names.isNotEmpty) parts.add(names.length <= 2 ? names.join(', ') : '${names.take(2).join(', ')} +${names.length - 2}');
   } else {
     value = '${album.won} carte${album.won > 1 ? 's' : ''}';
+    // Lesquelles (retour user 2026-11-03 : « 7 cartes », mais on ne voit qu'un bout de carte) :
+    // les cartes de l'éventail, nommées avec leur cadre.
+    final best = bestCards(deck);
+    if (best.isNotEmpty) {
+      final more = album.won - best.length;
+      parts.add('${[for (final b in best) '${b.def.name} ${rarityLabel(rarityOf(b)).toLowerCase()}'].join(', ')}${more > 0 ? ' +$more' : ''}');
+    }
   }
   parts.add(next == null || next.next == null
       ? '$pts pts'

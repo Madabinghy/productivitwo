@@ -84,6 +84,16 @@ void main() {
     expect(t.sub, startsWith('Lecture 12 j, Ranger 4 j · '));
   });
 
+  test('COLLECTION : rien en jeu ce soir → les cartes de l’éventail sont nommées', () {
+    final a = BadgeDef(id: 'sniper', family: BadgeFamily.discipline, name: 'Sniper', symbol: 'crosshair', tiers: const [1, 5, 15]);
+    final b = BadgeDef(id: 'metro', family: BadgeFamily.days, name: 'Métronome', symbol: 'metronome', tiers: const [5, 20, 50, 100]);
+    final deck = BadgeDeck([BadgeState(def: a, level: 3, value: 15), BadgeState(def: b, level: 1, value: 6)]);
+    final t = badgesTile(deck, const StakeBoard(top: []))!;
+    expect(t.value, '2 cartes');
+    expect(t.sub, startsWith('Sniper '));
+    expect(t.sub, contains('Métronome '));
+  });
+
   testWidgets('les tuiles s’affichent et ouvrent leur vue', (t) async {
     var opened = '';
     await t.pumpWidget(MaterialApp(
