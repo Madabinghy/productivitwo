@@ -212,6 +212,9 @@ List<Map<String, int>> spreadWeek(List<WeekWant> wants, List<int> free, {int chu
 // ── Blocs de temps (2026-10-31, « Planifier du temps, pas des tâches ») ───────
 
 const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'buffer': 'Tampon'};
+
+/// Titre d'un Deep work visé (« Deep work · Formation IA », 2026-11-03).
+String deepWorkTitle(String target) => 'Deep work · $target';
 const kTimeBlockColors = {'deep': Color(0xFF6FC3FF), 'small': Color(0xFFF2C14E), 'buffer': Color(0xFF8FA89A)};
 const _kTimePrefix = '~time:';
 

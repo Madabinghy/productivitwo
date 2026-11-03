@@ -1327,7 +1327,12 @@ calculée AU LANCEMENT : PAROLE, SÉANCE PROCHE (prépa à 7 j), EN RETARD, VIS�
 vivant ; Petites choses = actions ≤ 20 min devant ; `QueueItem.activity` = chrono de l'action (liée, sinon projet, sinon porteuse),
 `QueueItem.reason` affiché) ; changer d'action sur place ; « Terminer le bloc » → BLOC TERMINÉ avec tout chrono du créneau
 (`blockOutcome(activityId: null)`), « Caser un bloc … demain » garde `timeBlock`. Tampon ou file vide → choix de l'activité du chrono.
-Badge Deep work : un bloc `deep` compte dès 60 min cumulées de chronos dans son créneau (`deepWorkSessions`). Serveur (⚠️ `firebase
+**Deep work visé** (2026-11-03, décision user : choisir un projet après Deep work en faisait un bloc d'activité) : un bloc `deep` peut
+porter `projectId` (sans tâche) ou `activityId` et reste un bloc de temps (tout chrono du créneau compte, 60 %, badge) ; « Nouveau bloc » /
+« Modifier » : ligne « Sur : n'importe quoi · Un projet… · Une activité… » sous la puce Deep work (`_deepTargetRow`, projets =
+`offensiveFronts`, titre `deepWorkTitle` « Deep work · … » ; la section BLOC D'ACTIVITÉ se cache) ; ▶ = Offensive avec ce projet en front,
+ou les projets de l'activité (`showOffensiveScreen(activityId:)`, `frontsForActivity`, tous si aucun). Petites choses ne se vise pas.
+MCP : `schedule_day` accepte `timeBlock:"deep"` + `projectId` / `activityId` (description et `BLOCK_RULES`). Badge Deep work : un bloc `deep` compte dès 60 min cumulées de chronos dans son créneau (`deepWorkSessions`). Serveur (⚠️ `firebase
 deploy --only functions`) : `schedule_day` accepte `timeBlock`, `BLOCK_RULES` dit « blocs de temps par défaut ». Web : un bloc de temps
 s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »). **Un bloc = un MODE** (2026-10-31, retour user : « programmer des modes de fonctionnement de temps ») :
 ▶ sur un Deep work lance l'**Offensive**, sur des Petites choses la **Guérilla** (`_launchTimeBlock`, reprise d'une session en attente du

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/block_queue.dart' show projectServesActivity;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask, workDate;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
@@ -83,6 +84,14 @@ List<OffensiveFront> offensiveFronts(List<Project> projects, DateTime now) {
     return b.ready.compareTo(a.ready);
   });
   return out;
+}
+
+/// Deep work visé sur une activité (2026-11-03) : les fronts qui la servent
+/// (`projectServesActivity`), dans le même ordre ; aucun → tous.
+List<OffensiveFront> frontsForActivity(List<OffensiveFront> fronts, String? activityId) {
+  if (activityId == null) return fronts;
+  final mine = [for (final f in fronts) if (projectServesActivity(f.project, activityId)) f];
+  return mine.isEmpty ? fronts : mine;
 }
 
 /// « 2 en retard · séance le 9 nov · 4 actions prêtes ».

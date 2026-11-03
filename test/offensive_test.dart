@@ -81,4 +81,14 @@ void main() {
     expect(deck.byId('guerilla')!.value, 1);
     expect(deck.byId('enchaineur')!.value, 0);
   });
+
+  test('Deep work visé sur une activité : seuls les projets qui la servent, tous sinon', () {
+    final a = _p('a', [_t('t', [_a('x')])], linked: 'redac');
+    final b = _p('b', [_t('t', [_a('y', linked: 'redac')])]);
+    final c = _p('c', [_t('t', [_a('z')])]);
+    final fronts = offensiveFronts([a, b, c], now);
+    expect(frontsForActivity(fronts, 'redac').map((f) => f.project.id).toSet(), {'a', 'b'});
+    expect(frontsForActivity(fronts, 'autre').length, 3);
+    expect(frontsForActivity(fronts, null).length, 3);
+  });
 }

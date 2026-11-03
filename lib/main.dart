@@ -3053,7 +3053,8 @@ class _AppRootState extends State<AppRoot>
       final kind = block.timeBlock == 'deep' ? kOffensiveKind : kGuerillaKind;
       final resume = pending != null && pending.kind == kind && pending.isLive(DateTime.now(), logic.livedTodayYmd) ? pending : null;
       if (block.timeBlock == 'deep') {
-        await showOffensiveScreen(context, logic, resume: resume);
+        // Deep work visé (2026-11-03) : le front = son projet, ou les projets de son activité.
+        await showOffensiveScreen(context, logic, resume: resume, projectId: block.projectId, activityId: block.projectId == null ? block.activityId : null);
       } else {
         await showGuerillaScreen(context, logic, resume: resume);
       }
