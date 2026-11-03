@@ -407,10 +407,12 @@ BalanceCheck balanceCheck(Finances f, String todayYmd) {
 }
 
 /// Un mouvement daté [ymd] / [at] est-il APRÈS le solde recopié le [cYmd] à
-/// [cAt] ? Un autre jour : par la date ; le même jour : par l'heure (sans
-/// heure, il est supposé déjà dans le solde).
+/// [cAt] ? Un autre jour : par la date ; le même jour : par l'heure. Un
+/// mouvement sans heure face à un solde horodaté est compté APRÈS (retour user
+/// 2026-11-03 : une dépense du soir n'était pas retranchée du solde posé le même
+/// soir) ; un ancien solde sans heure contient tout son jour.
 bool _after(String ymd, int? at, String cYmd, int? cAt) =>
-    ymd.compareTo(cYmd) > 0 || (ymd == cYmd && at != null && cAt != null && at > cAt);
+    ymd.compareTo(cYmd) > 0 || (ymd == cYmd && cAt != null && (at == null || at > cAt));
 
 ({int spent, int out, int inc}) _movesSince(Finances f, String cYmd, int? cAt, String todayYmd) {
   bool keep(String ymd, int? at) => _after(ymd, at, cYmd, cAt) && ymd.compareTo(todayYmd) <= 0;
@@ -441,7 +443,27 @@ class AccountNow {
   final int fixedLeft;
   final int incomeLeft;
   final int daysLeft;
-  const AccountNow({required this.sinceYmd, required this.base, required this.balance, required this.fixedLeft, required this.incomeLeft, required this.daysLeft});
+  /// Heure du solde recopié (ms), null si inconnue.
+  final int? sinceAt;
+  /// Ce qui a été retranché / ajouté depuis ce solde.
+  final int spentSince;
+  final int outSince;
+  final int inSince;
+  /// Dépenses du jour du solde notées AVANT lui : supposées déjà dedans.
+  final List<Expense> before;
+  const AccountNow({
+    required this.sinceYmd,
+    required this.base,
+    required this.balance,
+    required this.fixedLeft,
+    required this.incomeLeft,
+    required this.daysLeft,
+    this.sinceAt,
+    this.spentSince = 0,
+    this.outSince = 0,
+    this.inSince = 0,
+    this.before = const [],
+  });
   /// Reste à vivre jusqu'à la fin du mois = compte + revenus attendus − fixes à venir.
   int get remaining => balance + incomeLeft - fixedLeft;
   int get perDay => daysLeft <= 0 ? remaining : (remaining / daysLeft).floor();
@@ -463,6 +485,7 @@ AccountNow? accountNow(Finances f, String todayYmd) {
     r.income ? incomeLeft += r.amount : fixedLeft += r.amount;
   }
   final d = DateTime.parse(todayYmd);
+  final cAt = f.checksAt[last];
   return AccountNow(
     sinceYmd: last,
     base: base,
@@ -470,6 +493,11 @@ AccountNow? accountNow(Finances f, String todayYmd) {
     fixedLeft: fixedLeft,
     incomeLeft: incomeLeft,
     daysLeft: daysInMonth(d.year, d.month) - d.day + 1,
+    sinceAt: cAt,
+    spentSince: m.spent,
+    outSince: m.out,
+    inSince: m.inc,
+    before: [for (final x in f.expenses.values) if (x.ymd == last && !_after(x.ymd, x.at, last, cAt)) x],
   );
 }
 

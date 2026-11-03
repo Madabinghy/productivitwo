@@ -1004,6 +1004,12 @@ solde recopié (aujourd'hui compris) − dépenses − fixes passés + rentrées
 mensuels pas encore reçus − fixes du mois pas encore passés. En tête de la feuille : SUR TON COMPTE · d'après le solde du … (dès qu'un solde
 existe, sinon le reste à vivre « revenus − fixes − dépenses » et le bouton « Ton compte dit ? · Poser mon solde »), lien « Mettre à jour le
 solde » (`askBalance`, n'importe quand : le solde devient la base, SnackBar avec l'écart « une dépense oubliée ? »).
+**Solde et dépenses du même jour** (2026-11-03, bug user : une amende notée le soir après le solde n'était pas retranchée) : face à un
+solde horodaté, un mouvement du même jour SANS heure compte après lui (`_after` ; un ancien solde sans heure contient tout son jour).
+Le calcul se lit sous le montant (`_accountDetail` : « solde du … à HH:MM · depuis : −… de dépenses, −… de fixes, +… reçus », champs
+`AccountNow.sinceAt` / `spentSince` / `outSince` / `inSince`) ; une dépense du jour notée AVANT le solde (`AccountNow.before`) est dite
+« supposée déjà dedans » avec le lien « Pas encore dedans · la retrancher » (`AppLogic.expenseAfterBalance` : son heure passe juste après
+le solde).
 
 ## Cockpit coach · signaux de la semaine (2026-11-01, maquette validée « Cockpit coach »)
 

@@ -1883,6 +1883,18 @@ class AppLogic implements HuntStore {
     return true;
   }
 
+  /// « Pas encore dans le solde » : une dépense notée avant le solde recopié du même jour passe après lui, donc est retranchée.
+  Future<void> expenseAfterBalance(String id) async {
+    final x = finances.expenses[id];
+    final cAt = x == null ? null : finances.checksAt[x.ymd];
+    if (x == null || cAt == null) return;
+    final y = Expense(
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1);
+    finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
+    onChange();
+    await sync?.setFinanceExpense(y.id, y.toJson());
+  }
+
   /// Remet une dépense retirée (« Annuler »), avec son id, son domaine et son heure.
   Future<void> restoreExpense(Expense x) async {
     finances = finances.copyWith(expenses: {...finances.expenses, x.id: x});

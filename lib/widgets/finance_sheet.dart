@@ -263,6 +263,18 @@ class _FinanceSheetState extends State<FinanceSheet> {
     ]);
   }
 
+  /// « solde du lun. 2 nov. à 21:40 : 262,63 € · depuis : −135 € de dépenses ».
+  String _accountDetail(AccountNow acc) {
+    final at = acc.sinceAt == null ? null : DateTime.fromMillisecondsSinceEpoch(acc.sinceAt!);
+    final when = at == null ? _dayLabel(acc.sinceYmd) : '${_dayLabel(acc.sinceYmd)} à ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+    final moves = [
+      if (acc.spentSince > 0) '−${euros(acc.spentSince)} de dépenses',
+      if (acc.outSince > 0) '−${euros(acc.outSince)} de fixes',
+      if (acc.inSince > 0) '+${euros(acc.inSince)} reçus',
+    ];
+    return 'solde du $when : ${euros(acc.base)} · ${moves.isEmpty ? 'rien noté depuis' : 'depuis : ${moves.join(', ')}'}';
+  }
+
   Widget _hero(MonthSummary m, String monthName, String today) {
     final acc = accountNow(logic.finances, today);
     const sub = TextStyle(fontSize: 12.5, color: Color(0xFFB9CFC4));
@@ -277,6 +289,17 @@ class _FinanceSheetState extends State<FinanceSheet> {
         Text('SUR TON COMPTE · d’après le solde du ${_dayLabel(acc.sinceYmd)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kMoneyAccent)),
         const SizedBox(height: 2),
         Text(euros(acc.balance), style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: acc.balance < 0 ? _kRed : Colors.white)),
+        // Le calcul en clair (retour user 2026-11-03 : une dépense semblait ne pas être retranchée).
+        Text(_accountDetail(acc), style: sub),
+        for (final x in acc.before)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
+              Text('${logic.finances.envelopeOf(x.envelopeId)?.name ?? 'Dépense'} ${euros(x.amount)} · notée avant ce solde, supposée déjà dedans',
+                  style: sub.copyWith(color: _kAmber)),
+              link('Pas encore dedans · la retrancher', () => logic.expenseAfterBalance(x.id)),
+            ]),
+          ),
         Text(
           [
             'reste à vivre ce mois ${euros(acc.remaining)}',
