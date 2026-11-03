@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/widgets/card_reveal.dart';
+import 'package:productivitwo_v1/widgets/card_pile_view.dart';
 
 void main() {
   BadgeState st(List<int> tiers, int level, num value, {BadgeFamily f = BadgeFamily.discipline, String unitLong = ''}) =>
@@ -28,9 +29,28 @@ void main() {
     expect(cardHint(hidden), '1 sessions sans cible manquée');
     expect(albumOrder([hidden, started, won]).map(faceOf).toList(), [CardFace.won, CardFace.started, CardFace.hidden]);
     final album = cardAlbum(BadgeDeck([won, started, hidden, st(const [3, 7], 2, 7, f: BadgeFamily.routines)]));
-    expect(album.won, 1);
-    expect(album.total, 3);
+    // 1 carte + la pile « Séries légendaire » (dernier palier) ; 3 cartes + 8 piles.
+    expect(album.won, 2);
+    expect(album.total, 11);
     expect(album.byRarity[CardRarity.argent], 1);
+    expect(album.byRarity[CardRarity.legend], 1);
+    final piles = cardPiles(BadgeDeck([won, st(const [3, 7], 2, 7, f: BadgeFamily.routines)]));
+    expect(piles.length, 8);
+    expect(piles.where((p) => p.won).map((p) => p.name), ['Séries légendaire']);
+  });
+
+  testWidgets('une pile : le nombre de cartes et son cadre', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Row(children: [
+          CardPileView(kind: PileKind.series, rarity: CardRarity.or, count: 3),
+          CardPileView(kind: PileKind.counters, rarity: null, count: 0),
+        ]),
+      ),
+    ));
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('OR'), findsOneWidget);
+    expect(find.text('EN ROUTE'), findsOneWidget);
   });
 
   testWidgets('la carte : gagnée, commencée, de dos', (tester) async {

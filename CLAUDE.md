@@ -1545,6 +1545,16 @@ activityId)` (série, compteur de coches, heures de l'activité, l'année, le ch
 fiche d'activité (section CE QUE ÇA FAIT AVANCER avant ENGAGEMENTS), fiche routine (série + compteur, sous les paliers), carte EN COURS du
 lanceur d'activités (heures de l'activité + l'année, jauges fines). Compteurs (heures, coches) recalculés EN DIRECT depuis `AppState` (`gainsFor(state:)` → `longHaulBadges`), la série reste au deck (bug 2026-11-02 : « 152,4 h » ne bougeait qu'à la relance).
 
+## Piles : séries et compteurs à part (2026-11-03, retour user)
+
+« Je ne veux pas mélanger les cartes de badge avec les compteurs et les séries de routine » : l'album montre d'abord les badges (familles hors
+séries), puis deux rangées de PILES — SÉRIES DE ROUTINE et TES COMPTEURS — une pile par cadre (bronze · argent · or · légendaire) plus
+« En route » (commencées sans cadre, ne compte pas). Logique pure `utils/badge_cards.dart` : `cardPiles(deck)` (8 `CardPile {kind, rarity,
+cards}`, `won` = au moins une carte, `name` « Séries or »), `pileStarted`, et `cardAlbum` compte chaque pile gagnée comme UNE carte (total =
+badges + 8 piles). Widget `widgets/card_pile_view.dart` (`CardPileView` : dos décalés, cadre de la pile, icône flamme / sablier, nombre ;
+`showCardPileSheet` : les cartes de la pile en grille, tap = fiche). En-tête : TES n CARTES / À GAGNER y ajoutent les piles ; la ligne
+« séries de routine · hors compteur » est retirée. Tuile Collection : éventail et noms sur les badges seulement (`bestCards` sur `deck.counted`).
+
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
 Un catalogue composé par l'administrateur, que les utilisateurs activent ; chaque routine a sa carte illustrée. **Lot 1 livré** :

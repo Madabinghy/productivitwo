@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
+import 'package:productivitwo_v1/widgets/card_pile_view.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
@@ -165,8 +166,10 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             _shelf(deck),
             // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
             if (_facts case final f?) _inPlayButton(deck, f),
-            for (final f in BadgeFamily.values) _family(deck, f),
-            _counters(deck),
+            // Les badges d'abord ; séries de routine et compteurs en piles, une par cadre (2026-11-03).
+            for (final f in BadgeFamily.values)
+              if (f != BadgeFamily.routines) _family(deck, f),
+            _piles(deck),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
@@ -259,10 +262,6 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             Text('Prochain badge : ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} · ${next.value} / ${next.next} ${next.unit}',
                 style: const TextStyle(fontSize: 12.5, color: kBText2)),
           ],
-          if (deck.series.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(_seriesLine(deck).replaceAll('\n', ' · '), style: const TextStyle(fontSize: 12, height: 1.3, color: kBText4)),
-          ],
         ]),
       ),
     );
@@ -274,7 +273,26 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     final ordered = albumOrder(deck.counted);
     final won = [for (final b in ordered) if (faceOf(b) == CardFace.won) b];
     final left = [for (final b in ordered) if (faceOf(b) != CardFace.won) b];
-    Widget strip(String label, List<BadgeState> cards) => Padding(
+    final piles = cardPiles(deck);
+    final wonPiles = [for (final p in piles) if (p.won) p];
+    final leftPiles = [for (final p in piles) if (!p.won) p];
+    Widget pileMini(CardPile p) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _openPile(p),
+            child: SizedBox(
+              width: 58,
+              child: Column(children: [
+                CardPileView(kind: p.kind, rarity: p.rarity, count: p.cards.length, width: 50),
+                const SizedBox(height: 4),
+                Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 10, height: 1.15, color: kBText2)),
+              ]),
+            ),
+          ),
+        );
+    Widget strip(String label, List<BadgeState> cards, List<CardPile> extra) => Padding(
           padding: const EdgeInsets.only(top: 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: kBText3)),
@@ -299,13 +317,16 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                       ),
                     ),
                   ),
+                for (final p in extra) pileMini(p),
               ]),
             ),
           ]),
         );
+    final nWon = won.length + wonPiles.length;
+    final nLeft = left.length + leftPiles.length;
     return [
-      if (won.isNotEmpty) strip('TES ${won.length} CARTE${won.length > 1 ? 'S' : ''}', won),
-      if (left.isNotEmpty) strip('À GAGNER · ${left.length}', left),
+      if (nWon > 0) strip('TES $nWon CARTE${nWon > 1 ? 'S' : ''}', won, wonPiles),
+      if (nLeft > 0) strip('À GAGNER · $nLeft', left, leftPiles),
     ];
   }
 
@@ -335,11 +356,6 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             style: TextStyle(fontSize: 12, color: kBText4)),
       ]),
     );
-  }
-
-  String _seriesLine(BadgeDeck deck) {
-    final n = deck.series.length;
-    return '$n série${n > 1 ? 's' : ''} de routine, ${deck.seriesRunning} en cours\nhors compteur';
   }
 
   /// « EN JEU AUJOURD'HUI » (2026-10) : les suites en cours qui se perdent si
@@ -599,33 +615,60 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     );
   }
 
-  /// « Tes compteurs » (2026-11-02) : les cartes qui additionnent sans série ni
-  /// journée à tenir (heures par activité, l'année, le chemin des 10 000 h, coches
-  /// par routine). Pas d'écusson « au complet » : une activité de 5 min par jour
-  /// ne bloque rien.
-  Widget _counters(BadgeDeck deck) {
-    final cards = deck.badges.where((b) => isLongHaulId(b.def.id)).toList();
-    if (cards.isEmpty) return const SizedBox.shrink();
-    final total = cards.where((b) => b.def.id == 'heures-total' || b.def.id == 'heures-annee').toList()
-      ..sort((a, b) => a.def.id.compareTo(b.def.id));
-    final rest = albumOrder(cards.where((b) => !total.contains(b)).toList());
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
-          child: const Row(children: [
-            Text('TES COMPTEURS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
-            Spacer(),
-            Text('tout s’additionne, rien ne se perd', style: TextStyle(fontSize: 12, color: kBText4)),
+  /// Séries de routine et compteurs (2026-11-03, retour user : ils prenaient la
+  /// place des badges et s'y mélangeaient) : une pile par cadre, qui compte comme
+  /// une carte de l'album dès qu'elle en contient une ; tap = les cartes dedans.
+  /// « En route » = commencées sans cadre (ne compte pas).
+  Widget _piles(BadgeDeck deck) {
+    final piles = cardPiles(deck);
+    final w = ((MediaQuery.sizeOf(context).width - 32 - 4 * 8) / 5 - 8).clamp(40, 90).toDouble();
+    Widget row(PileKind k, String title, String right) {
+      final started = pileStarted(deck, k);
+      return Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+            child: Row(children: [
+              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
+              const Spacer(),
+              Flexible(child: Text(right, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, color: kBText4))),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 10, children: [
+            for (final p in piles)
+              if (p.kind == k)
+                GestureDetector(onTap: () => _openPile(p), child: CardPileView(kind: k, rarity: p.rarity, count: p.cards.length, width: w)),
+            GestureDetector(
+              onTap: () => showCardPileSheet(context,
+                  title: '${k == PileKind.series ? 'Séries' : 'Compteurs'} en route',
+                  subtitle: 'Commencées, pas encore de cadre : elles entrent dans la pile bronze à leur premier palier.',
+                  cards: albumOrder(started),
+                  onCard: _showFacts),
+              child: CardPileView(kind: k, rarity: null, count: started.length, width: w),
+            ),
           ]),
-        ),
-        const SizedBox(height: 10),
-        Wrap(spacing: 10, runSpacing: 12, children: [for (final b in [...total, ...rest]) _card(b)]),
-      ]),
-    );
+        ]),
+      );
+    }
+
+    final series = deck.series;
+    final counters = deck.badges.where((b) => isLongHaulId(b.def.id)).length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (series.isNotEmpty) row(PileKind.series, 'SÉRIES DE ROUTINE', '${series.length} · ${deck.seriesRunning} en cours'),
+      if (counters > 0) row(PileKind.counters, 'TES COMPTEURS', '$counters · tout s’additionne'),
+    ]);
   }
+
+  void _openPile(CardPile p) => showCardPileSheet(context,
+      title: '${p.name} · ${p.cards.length}',
+      subtitle: p.kind == PileKind.series
+          ? 'Les séries de routine au cadre ${rarityLabel(p.rarity).toLowerCase()}. La pile compte comme une carte dès qu’elle en contient une.'
+          : 'Les compteurs (heures, nombre de fois) au cadre ${rarityLabel(p.rarity).toLowerCase()}. La pile compte comme une carte dès qu’elle en contient une.',
+      cards: p.cards,
+      onCard: _showFacts);
 
   Widget _card(BadgeState b, {int? pocket}) {
     final width = (MediaQuery.sizeOf(context).width - 32 - 2 * 10) / 3;

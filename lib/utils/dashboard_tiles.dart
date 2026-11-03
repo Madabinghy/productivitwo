@@ -211,7 +211,8 @@ CardRarity? tonightRarity(BadgeState? b) {
 
 /// Les plus belles cartes gagnées : la plus rare d'abord, puis la plus récente.
 List<BadgeState> bestCards(BadgeDeck deck, {int n = 3}) {
-  final won = [for (final b in deck.badges) if (b.acquired) b]..sort((a, b) {
+  // Badges seulement : séries et compteurs vivent dans leurs piles (2026-11-03).
+  final won = [for (final b in deck.counted) if (b.acquired) b]..sort((a, b) {
       final r = rarityOf(b).index.compareTo(rarityOf(a).index);
       if (r != 0) return r;
       return (b.obtained ?? DateTime(0)).compareTo(a.obtained ?? DateTime(0));
