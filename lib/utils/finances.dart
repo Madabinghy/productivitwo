@@ -60,7 +60,9 @@ class Expense {
   final int? at;
   /// Montant par rayon (Épicerie, Frais…) d'une dépense de courses, en centimes (placards, 2026-11-03).
   final Map<String, int> byAisle;
-  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const [], this.at, this.byAisle = const {}});
+  /// Ticket de caisse d'où vient cette dépense (`Finances.receipts`, 2026-11-03).
+  final String? receiptId;
+  const Expense({required this.id, required this.ymd, required this.amount, required this.envelopeId, this.note, this.domainId, this.projectId, this.items = const [], this.at, this.byAisle = const {}, this.receiptId});
 
   Map<String, dynamic> toJson() => {
         'ymd': ymd,
@@ -72,6 +74,7 @@ class Expense {
         if (items.isNotEmpty) 'items': items,
         if (at != null) 'at': at,
         if (byAisle.isNotEmpty) 'byAisle': byAisle,
+        if (receiptId != null) 'receiptId': receiptId,
       };
   static Expense? from(String id, Object? raw) {
     if (raw is! Map || raw['ymd'] == null) return null;
@@ -88,6 +91,92 @@ class Expense {
       byAisle: raw['byAisle'] is Map
           ? {for (final e in (raw['byAisle'] as Map).entries) '${e.key}': (e.value as num?)?.toInt() ?? 0}
           : const {},
+      receiptId: raw['receiptId'] as String?,
+    );
+  }
+}
+
+/// Une ligne d'un ticket de caisse lu par Claude : le libellé imprimé, le nom
+/// simple du produit, le prix payé (centimes), son domaine, son rayon.
+class ReceiptLine {
+  final String label;
+  final String name;
+  final int price;
+  final String? domainId;
+  final String? projectId;
+  final String? aisle;
+  const ReceiptLine({required this.label, required this.name, required this.price, this.domainId, this.projectId, this.aisle});
+
+  ReceiptLine withDomain(String? d) => ReceiptLine(label: label, name: name, price: price, domainId: d, projectId: projectId, aisle: aisle);
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        if (name != label) 'name': name,
+        'price': price,
+        if (domainId != null) 'domainId': domainId,
+        if (projectId != null) 'projectId': projectId,
+        if (aisle != null) 'aisle': aisle,
+      };
+
+  static ReceiptLine? from(Object? raw) {
+    if (raw is! Map || raw['label'] == null) return null;
+    final label = '${raw['label']}';
+    return ReceiptLine(
+      label: label,
+      name: (raw['name'] as String?) ?? label,
+      price: (raw['price'] as num?)?.toInt() ?? 0,
+      domainId: raw['domainId'] as String?,
+      projectId: raw['projectId'] as String?,
+      aisle: raw['aisle'] as String?,
+    );
+  }
+}
+
+/// Un ticket de caisse conservé tel que Claude l'a lu (pas de photo) : magasin,
+/// lieu, jour, heure, numéro, total et chaque ligne. Ses dépenses portent son id.
+class Receipt {
+  final String id;
+  final String ymd;
+  /// « HH:MM » imprimé sur le ticket.
+  final String? time;
+  final String? store;
+  /// Ville / magasin précis (« Rennes Cléunay »).
+  final String? place;
+  /// Numéro du ticket.
+  final String? ref;
+  final int total;
+  final String envelopeId;
+  final List<ReceiptLine> lines;
+  final int? at;
+  const Receipt({required this.id, required this.ymd, this.time, this.store, this.place, this.ref, required this.total, required this.envelopeId, this.lines = const [], this.at});
+
+  Receipt withLines(List<ReceiptLine> l) => Receipt(id: id, ymd: ymd, time: time, store: store, place: place, ref: ref, total: total, envelopeId: envelopeId, lines: l, at: at);
+
+  Map<String, dynamic> toJson() => {
+        'ymd': ymd,
+        if (time != null) 'time': time,
+        if (store != null) 'store': store,
+        if (place != null) 'place': place,
+        if (ref != null) 'ref': ref,
+        'total': total,
+        'envelopeId': envelopeId,
+        'lines': [for (final l in lines) l.toJson()],
+        if (at != null) 'at': at,
+      };
+
+  static Receipt? from(String id, Object? raw) {
+    if (raw is! Map || raw['ymd'] == null) return null;
+    return Receipt(
+      id: id,
+      ymd: '${raw['ymd']}',
+      time: raw['time'] as String?,
+      store: raw['store'] as String?,
+      place: raw['place'] as String?,
+      ref: raw['ref'] as String?,
+      total: (raw['total'] as num?)?.toInt() ?? 0,
+      envelopeId: '${raw['envelopeId'] ?? 'courses'}',
+      lines: raw['lines'] is List ? [for (final l in raw['lines'] as List) if (ReceiptLine.from(l) case final v?) v] : const [],
+      at: (raw['at'] as num?)?.toInt(),
     );
   }
 }
@@ -162,6 +251,8 @@ class Finances {
   final Map<String, int> checksAt;
   /// Rentrées ponctuelles (factures encaissées…).
   final Map<String, Income> incomes;
+  /// Tickets de caisse lus par Claude (2026-11-03).
+  final Map<String, Receipt> receipts;
   const Finances({
     this.envelopes = kDefaultEnvelopes,
     this.recurring = const [],
@@ -171,6 +262,7 @@ class Finances {
     this.checks = const {},
     this.checksAt = const {},
     this.incomes = const {},
+    this.receipts = const {},
   });
 
   Finances copyWith({
@@ -182,6 +274,7 @@ class Finances {
     Map<String, int>? checks,
     Map<String, int>? checksAt,
     Map<String, Income>? incomes,
+    Map<String, Receipt>? receipts,
   }) =>
       Finances(
         envelopes: envelopes ?? this.envelopes,
@@ -192,6 +285,7 @@ class Finances {
         checks: checks ?? this.checks,
         checksAt: checksAt ?? this.checksAt,
         incomes: incomes ?? this.incomes,
+        receipts: receipts ?? this.receipts,
       );
 
   Envelope? envelopeOf(String id) {
@@ -212,6 +306,7 @@ class Finances {
         'checks': checks,
         'checksAt': checksAt,
         'incomes': {for (final x in incomes.values) x.id: x.toJson()},
+        'receipts': {for (final r in receipts.values) r.id: r.toJson()},
       };
 }
 
@@ -257,7 +352,15 @@ Finances parseFinances(Object? raw) {
       if (x != null) incomes[x.id] = x;
     }
   }
+  final receipts = <String, Receipt>{};
+  if (raw['receipts'] is Map) {
+    for (final e in (raw['receipts'] as Map).entries) {
+      final r = Receipt.from('${e.key}', e.value);
+      if (r != null) receipts[r.id] = r;
+    }
+  }
   return Finances(
+    receipts: receipts,
     envelopes: envs == null || envs.isEmpty ? kDefaultEnvelopes : envs,
     recurring: rec,
     expenses: exp,

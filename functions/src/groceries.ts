@@ -147,6 +147,8 @@ export type ReceiptPlan = {
   prices: Record<string, { price: number; domainId?: string; projectId?: string; aisle?: string }>;
   /** Produits achetés pour les placards : mot → {label, aisle}. */
   bought: Record<string, { label: string; aisle: string }>;
+  /** Les lignes telles qu'elles seront conservées dans le ticket (prix payé en centimes). */
+  lines: { label: string; name?: string; price: number; domainId?: string; projectId?: string; aisle?: string }[];
   /** Lignes de la liste couvertes (ids des lignes à la main à retirer). */
   removeItemIds: string[];
   /** Clés d'ingrédients du menu à marquer achetés (libellé de la liste, minuscules). */
@@ -196,6 +198,7 @@ export function planReceipt(
   const groups = new Map<string, ReceiptShare>();
   const prices: ReceiptPlan["prices"] = {};
   const bought: ReceiptPlan["bought"] = {};
+  const kept: ReceiptPlan["lines"] = [];
   lines.forEach((l, i) => {
     const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel!)) : undefined;
     const memKey = groceryKey(l.listLabel || l.label);
@@ -217,11 +220,19 @@ export function planReceipt(
       bought[groceryKey(product)] = { label: product, aisle };
     }
     groups.set(k, g);
+    kept.push({
+      label: l.label.trim(),
+      ...(product !== l.label.trim() ? { name: product } : {}),
+      price: paid[i],
+      ...(domainId ? { domainId } : {}),
+      ...(projectId ? { projectId } : {}),
+      ...(aisle ? { aisle } : {}),
+    });
     prices[groceryKey(product)] = { price: paid[i], ...(domainId ? { domainId } : {}), ...(projectId ? { projectId } : {}), ...(aisle ? { aisle } : {}) };
   });
   const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
   if (shares.some((s) => s.domainId == null)) warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
-  return { total, shares, prices, bought, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+  return { total, shares, prices, bought, lines: kept, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
 }
 
 /** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */

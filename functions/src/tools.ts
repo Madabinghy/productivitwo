@@ -1575,7 +1575,8 @@ const RECORD_RECEIPT_TOOL = {
     "liste (get_shopping_list), son libellé exact en listLabel ; donne aussi un nom simple (name : « Pâtes » pour « PATES " +
     "FARFALLE 500G ») et un rayon (aisle : Épicerie, Frais, Fruits et légumes, Surgelés, Boissons, Ménager, Hygiène, Autre " +
     "ou un rayon ajouté, voir manage_aisles) — à l'enregistrement chaque produit passe « j'en ai » dans les placards " +
-    "(get_pantry) et la dépense garde son montant par rayon ; 2) appelle avec apply:false et MONTRE la " +
+    "(get_pantry) et la dépense garde son montant par rayon ; relève aussi le magasin, le lieu, l'heure et le numéro du " +
+    "ticket (store, place, time, ref) : le ticket est conservé ligne par ligne dans Finances ; 2) appelle avec apply:false et MONTRE la " +
     "répartition ; 3) après accord, rappelle avec apply:true. Ne devine pas un prix illisible : demande-le.",
   inputSchema: {
     type: "object",
@@ -1600,6 +1601,9 @@ const RECORD_RECEIPT_TOOL = {
       },
       total: { type: "number", description: "Total payé (euros) ; un écart avec la somme des lignes (remise) est réparti au prorata" },
       store: { type: "string", description: "Magasin (ex. Lidl)" },
+      place: { type: "string", description: "Lieu imprimé sur le ticket (ex. « Rennes Cléunay »)" },
+      ref: { type: "string", description: "Numéro du ticket imprimé (ex. 4521)" },
+      time: { type: "string", description: "Heure imprimée HH:MM" },
       date: { type: "string", description: "Date du ticket YYYY-MM-DD (défaut : aujourd'hui)" },
       envelope: { type: "string", description: "Enveloppe Finances (défaut : Courses)" },
       apply: { type: "boolean", description: "false (défaut) = proposer la répartition sans rien écrire ; true = enregistrer" },

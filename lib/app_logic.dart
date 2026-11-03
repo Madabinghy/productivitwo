@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
+import 'package:productivitwo_v1/utils/receipts.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin, kFlemmeChronoMin;
@@ -1876,7 +1877,7 @@ class AppLogic implements HuntStore {
     if (old == null || x.amount <= 0) return false;
     if (x.ymd != old.ymd && !canLogOn(x.ymd, livedTodayYmd)) return false;
     final y = Expense(
-        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note?.trim(), domainId: x.domainId, projectId: x.projectId, items: old.items, at: old.at, byAisle: old.byAisle);
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note?.trim(), domainId: x.domainId, projectId: x.projectId, items: old.items, at: old.at, byAisle: old.byAisle, receiptId: old.receiptId);
     finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
     if (y.ymd != old.ymd) _countTrackedDay(y.ymd);
     onChange();
@@ -1898,10 +1899,31 @@ class AppLogic implements HuntStore {
       await sync?.setFinanceCheck(x.ymd, balance, at: cAt);
     }
     final y = Expense(
-        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1, byAisle: x.byAisle);
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note, domainId: x.domainId, projectId: x.projectId, items: x.items, at: cAt + 1, byAisle: x.byAisle, receiptId: x.receiptId);
     finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
     onChange();
     await sync?.setFinanceExpense(y.id, y.toJson());
+  }
+
+  /// Change le domaine d'un article d'un ticket : le ticket est réécrit et ses
+  /// dépenses recalculées (anciennes retirées, nouvelles `<ticket>-<n>`).
+  Future<void> setReceiptLineDomain(String receiptId, int index, String? domainId) async {
+    final r = finances.receipts[receiptId];
+    if (r == null) return;
+    final next = withReceiptLineDomain(r, index, domainId);
+    final old = expensesOfReceipt(finances, receiptId);
+    final fresh = receiptExpenses(next);
+    final exp = {...finances.expenses}..removeWhere((_, x) => x.receiptId == receiptId);
+    exp.addAll(fresh);
+    finances = finances.copyWith(receipts: {...finances.receipts, receiptId: next}, expenses: exp);
+    onChange();
+    await sync?.setFinanceReceipt(receiptId, next.toJson());
+    for (final x in old) {
+      if (!fresh.containsKey(x.id)) await sync?.setFinanceExpense(x.id, null);
+    }
+    for (final x in fresh.values) {
+      await sync?.setFinanceExpense(x.id, x.toJson());
+    }
   }
 
   /// Remet une dépense retirée (« Annuler »), avec son id, son domaine et son heure.
