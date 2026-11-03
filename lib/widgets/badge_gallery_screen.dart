@@ -16,6 +16,10 @@ import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/widgets/card_pile_view.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
+import 'package:productivitwo_v1/widgets/sniper_screen.dart' show showSniperScreen, kSniperAccent;
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show showGuerillaScreen;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show showOffensiveScreen;
 import 'package:productivitwo_v1/card_seen_store.dart';
 import 'package:productivitwo_v1/utils/collection_badges.dart';
 import 'package:productivitwo_v1/widgets/collection_badge_view.dart';
@@ -444,6 +448,33 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
               ? '+$pts pt${pts > 1 ? 's' : ''} de collection'
               : '+$pts pt${pts > 1 ? 's' : ''} de collection · ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} ${next.value + pts} / ${next.next}'),
           const SizedBox(height: 14),
+          if (q.sniperable)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: kSniperAccent, foregroundColor: const Color(0xFF06202C), padding: const EdgeInsets.symmetric(vertical: 14)),
+              icon: const Icon(Icons.gps_fixed),
+              label: Text('Sniper sur cette carte · ≈ ${fmtMin(q.stepsMin)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                showSniperScreen(context, widget.logic, badges: widget.center, focus: q);
+              },
+            )
+          else if (q.modeKind case final m?)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: kBPrimary, padding: const EdgeInsets.symmetric(vertical: 14)),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                switch (m) {
+                  case 'guerilla':
+                    showGuerillaScreen(context, widget.logic);
+                  case 'offensive':
+                    showOffensiveScreen(context, widget.logic);
+                  default:
+                    showSniperScreen(context, widget.logic, badges: widget.center);
+                }
+              },
+              child: Text(switch (m) { 'guerilla' => 'Lancer une guérilla', 'offensive' => 'Lancer une offensive', _ => 'Lancer le Sniper' },
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
           TextButton(onPressed: () => _showFacts(b), child: const Text('Fiche de la carte', style: TextStyle(color: kBText2))),
         ]),
       ),

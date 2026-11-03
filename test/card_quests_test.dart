@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart';
+import 'package:productivitwo_v1/utils/sniper.dart';
+import 'package:productivitwo_v1/utils/stakes.dart';
 
 void main() {
   final aspi = Activity(id: 'aspi', name: 'Passer l’aspirateur', domainId: 'd', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 9, 1));
@@ -68,5 +70,19 @@ void main() {
     ]);
     final qs = cardQuests(deck, activities: acts, limit: 3);
     expect(qs.map((q) => q.badge.def.id), ['fois-aspi', 'heures-cui', 'metronome']);
+  });
+
+  test('Sniper ciblé : le tir de la carte porte le gain « carte », fabriqué s’il manque', () {
+    final q = cardQuestOf(b('fois-aspi', 'Passer l’aspirateur', kRoutineCountTiers, 0, 9, subject: 'aspi'), activities: acts)!;
+    final other = Stake(const StakeGesture(key: 'routine:lec', kind: StakeGestureKind.routine, title: 'Lecture', costMin: 5),
+        const [StakeGain(kind: StakeGainKind.seriesTonight, label: 'série', losesTonight: true, weight: 30)]);
+    final st = focusStakes([other], q);
+    expect(st.length, 2);
+    final made = st.last;
+    expect(made.gesture.key, 'routine:aspi');
+    expect(made.gains.single.label, 'carte Passer l’aspirateur');
+    final t = sniperTargetOf(made)!;
+    expect(t.kind, SniperKind.routine);
+    expect(t.amount, 1);
   });
 }

@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/stakes.dart';
 
 /// Les cartes à aller chercher (maquette validée 2026-11-03, « Cartes à aller
 /// chercher ») : les cartes que la journée peut faire avancer, ce qu'il manque
@@ -236,4 +237,40 @@ List<CardQuest> cardQuests(BadgeDeck deck, {required List<Activity> activities, 
       return (b.badge.progress ?? 0).compareTo(a.badge.progress ?? 0);
     });
   return limit == null || out.length <= limit ? out : out.sublist(0, limit);
+}
+
+/// Le gain « carte » posé sur les tirs d'une quête (puce du viseur).
+StakeGain questGain(CardQuest q) => StakeGain(
+      kind: StakeGainKind.hunt,
+      label: 'carte ${q.badge.def.name}',
+      detail: q.need,
+      weight: 60,
+      sourceId: q.badge.def.id,
+    );
+
+/// Les enjeux du Sniper ciblé : ceux du jour, où les tirs de la quête portent
+/// le gain « carte » ; un tir sans enjeu du jour (compteur de coches d'une
+/// routine déjà atteinte, heures d'une activité au rythme) est fabriqué.
+List<Stake> focusStakes(List<Stake> stakes, CardQuest q) {
+  final gain = questGain(q);
+  final keys = {for (final s in q.steps) s.key};
+  final out = [
+    for (final s in stakes) keys.contains(s.gesture.key) ? Stake(s.gesture, [gain, ...s.gains]) : s,
+  ];
+  final have = {for (final s in out) s.gesture.key};
+  for (final st in q.steps) {
+    if (have.contains(st.key)) continue;
+    final a = st.activity;
+    out.add(Stake(
+      StakeGesture(
+        key: st.key,
+        kind: st.minutes ? StakeGestureKind.activity : StakeGestureKind.routine,
+        title: a.name,
+        costMin: st.minutes ? st.amount : ((a.timerMin ?? 0) > 0 ? a.timerMin! : 5),
+        activity: a,
+      ),
+      [gain],
+    ));
+  }
+  return out;
 }

@@ -1567,6 +1567,12 @@ classe par jours, puis effort du jour, puis avancement. L'année et le chemin de
 portée aujourd'hui », trois lignes — mini carte, « carte bronze · 9 / 10 fois », jauge à la couleur du prochain cadre, `need` —, « Voir les
 n autres ») ; tap = feuille de la quête (`_openQuest` : la carte, LA STRATÉGIE, LES TIRS, CE QU'ELLE RAPPORTE = points de collection et
 Collectionneur après, « Fiche de la carte »).
+**Lot 3 livré (Sniper ciblé)** : bouton « ◎ Sniper sur cette carte · ≈ n min » de la feuille de la quête → `showSniperScreen(focus:)` ; le
+viseur porte « Visée : … · carte bronze » et `need`, les tirs de la carte passent en tête à leur montant (`_aimAt` : `_added`, `_amounts`,
+`_order`), les autres enjeux sont proposés écartés (« remettre »). `focusStakes` (`card_quests.dart`) pose le gain « carte … »
+(`questGain`, `StakeGainKind.hunt`) sur les enjeux du jour visés, et fabrique l'enjeu d'un tir absent (routine déjà atteinte, activité au
+rythme). Session reprenable : `PendingRun.extra.focus` = id du badge, la quête est recalculée à la reprise (`_resumedFocus`). Quête de
+mode : « Lancer une guérilla / une offensive / le Sniper ».
 
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
