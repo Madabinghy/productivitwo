@@ -1710,6 +1710,47 @@ const DELETE_EXPENSES_TOOL = {
   },
 };
 
+const UPDATE_RECEIPT_TOOL = {
+  name: "update_receipt",
+  description:
+    "Corrige un ticket de caisse déjà enregistré (record_receipt), à la demande de l'utilisateur : magasin, lieu, heure, " +
+    "référence, date. \"\" retire le champ (sauf la date). Les prix, articles, domaines et placards ne bougent pas ; les " +
+    "dépenses du ticket suivent (note « Courses · magasin », date). receiptId = « ticket … » dans list_expenses.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      receiptId: { type: "string", description: "Id du ticket (list_expenses)" },
+      store: { type: "string", description: "Magasin (\"\" = retirer)" },
+      place: { type: "string", description: "Lieu, ville (\"\" = retirer)" },
+      time: { type: "string", description: "HH:MM (\"\" = retirer)" },
+      ref: { type: "string", description: "N° du ticket (\"\" = retirer)" },
+      date: { type: "string", description: "YYYY-MM-DD" },
+    },
+    required: ["receiptId"],
+  },
+};
+
+const UPDATE_EXPENSE_TOOL = {
+  name: "update_expense",
+  description:
+    "Corrige UNE dépense de Finances, à la demande de l'utilisateur : note (\"Courses · K-Market\"…), montant en euros, " +
+    "enveloppe (nom), domaine de vie (nom ou id, \"\" = retirer), projet (id, \"\" = retirer), date. Le montant et la date " +
+    "d'une part de ticket ne se changent pas ici (update_receipt pour la date ; retirer et réenregistrer le ticket pour les prix).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      expenseId: { type: "string", description: "Id de la dépense (list_expenses)" },
+      note: { type: "string" },
+      amount: { type: "number", description: "Montant en euros (ex. 12.67)" },
+      envelope: { type: "string", description: "Nom de l'enveloppe" },
+      domain: { type: "string", description: "Domaine de vie (nom ou id ; \"\" = retirer)" },
+      projectId: { type: "string", description: "\"\" = retirer" },
+      date: { type: "string", description: "YYYY-MM-DD" },
+    },
+    required: ["expenseId"],
+  },
+};
+
 const CHECK_SHOPPING_ITEM_TOOL = {
   name: "check_shopping_item",
   description:
@@ -1800,6 +1841,8 @@ UPDATE_PANTRY_TOOL,
 MANAGE_AISLES_TOOL,
 LIST_EXPENSES_TOOL,
 DELETE_EXPENSES_TOOL,
+UPDATE_RECEIPT_TOOL,
+UPDATE_EXPENSE_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {

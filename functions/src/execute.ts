@@ -1,4 +1,4 @@
-import { expenseLine, expensesIn, planDelete, type ExpenseDoc } from "./expenses_mcp";
+import { expenseLine, expensesIn, planDelete, planExpenseUpdate, planReceiptUpdate, type ExpenseDoc, type ReceiptPatch } from "./expenses_mcp";
 import { addAisle, aisleFor, DEFAULT_AISLES, foldWords, OTHER_AISLE, pantryText, parseState, removeAisle, renameAisle, resolveAisle, STATE_LABEL, type PantryDoc } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
@@ -1591,7 +1591,7 @@ async function executeListExpenses(uid: string, args: { from?: string; to?: stri
     `Dépenses du ${from} au ${to} : ${list.length} · ${(total / 100).toFixed(2).replace(".", ",")} €`,
     ...list.map(([id, x]) => expenseLine(id, x, { domain: (d) => domains.get(d), envelope: (e) => envs.get(e) })),
     "",
-    "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false.",
+    "Pour en retirer : delete_expenses {expenseIds:[…]} (ou receiptIds pour un ticket entier), d'abord avec apply:false. Pour corriger : update_expense (une dépense) ou update_receipt (magasin, lieu, heure, n°, date d'un ticket).",
   ].join("\n");
 }
 
@@ -1630,6 +1630,69 @@ async function executeDeleteExpenses(
     { merge: true },
   );
   return `✅ Retiré : ${head}`;
+}
+
+/** update_receipt : corriger magasin, lieu, heure, référence, date d'un ticket conservé. */
+async function executeUpdateReceipt(uid: string, args: ReceiptPatch & { receiptId?: string }): Promise<string> {
+  const rid = String(args.receiptId ?? "").trim();
+  if (!rid) return "❌ receiptId requis (list_expenses donne « ticket … »).";
+  const ref = db.doc(`users/${uid}/data/meta`);
+  const meta = ((await ref.get()).data() ?? {}) as Record<string, any>;
+  const expenses = (meta.finances?.expenses ?? {}) as Record<string, ExpenseDoc>;
+  const receipt = meta.finances?.receipts?.[rid] as Record<string, unknown> | undefined;
+  const plan = planReceiptUpdate(rid, receipt, expenses, args);
+  if (plan.errors.length) return `❌ ${plan.errors.join(" ")}`;
+  if (!plan.changes.length) return "Rien à changer : donne store, place, time, ref ou date.";
+  const finances: Record<string, unknown> = {
+    expenses: Object.fromEntries(Object.entries(plan.expenses).map(([id, p]) => [id, p])),
+  };
+  if (receipt) {
+    finances.receipts = { [rid]: Object.fromEntries(Object.entries(plan.receipt).map(([k, v]) => [k, v === null ? FieldValue.delete() : v])) };
+  }
+  await ref.set({ finances }, { merge: true });
+  const n = Object.keys(plan.expenses).length;
+  return `✅ Ticket ${rid} corrigé : ${plan.changes.join(" · ")}${n ? ` (${n} dépense(s) mise(s) à jour)` : ""}.${receipt ? "" : "\n⚠️ Pas de ticket conservé : seules ses dépenses ont changé."}`;
+}
+
+/** update_expense : corriger une dépense (note, montant, enveloppe, domaine, projet, date). */
+async function executeUpdateExpense(
+  uid: string,
+  args: { expenseId?: string; note?: string; amount?: number; envelope?: string; domain?: string; projectId?: string; date?: string },
+): Promise<string> {
+  const id = String(args.expenseId ?? "").trim();
+  if (!id) return "❌ expenseId requis (list_expenses).";
+  const ref = db.doc(`users/${uid}/data/meta`);
+  const meta = ((await ref.get()).data() ?? {}) as Record<string, any>;
+  const x = (meta.finances?.expenses ?? {})[id] as ExpenseDoc | undefined;
+  let envelopeId: string | undefined;
+  if (args.envelope !== undefined && args.envelope.trim()) {
+    const envs = (meta.finances?.envelopes ?? []) as { id: string; name: string }[];
+    const f = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    envelopeId = envs.find((e) => f(e.name ?? "") === f(args.envelope!) || e.id === args.envelope)?.id;
+    if (!envelopeId) return `❌ Enveloppe « ${args.envelope} » inconnue (${envs.map((e) => e.name).join(", ")}).`;
+  }
+  let domainId: string | undefined = args.domain === undefined ? undefined : "";
+  if (args.domain && args.domain.trim()) {
+    const snap = await db.collection(`users/${uid}/domains`).get();
+    const doms = snap.docs.filter((d) => d.data().deleted !== true).map((d) => ({ id: d.id, name: String(d.data().name ?? "") }));
+    domainId = resolveDomain(args.domain, doms) ?? undefined;
+    if (!domainId) return `❌ Domaine « ${args.domain} » inconnu (${doms.map((d) => d.name).join(", ")}).`;
+  }
+  const plan = planExpenseUpdate(x, {
+    note: args.note,
+    amount: args.amount === undefined ? undefined : Math.round(Number(args.amount) * 100),
+    envelopeId,
+    domainId,
+    projectId: args.projectId,
+    date: args.date,
+  });
+  if (plan.errors.length) return `❌ ${plan.errors.join(" ")}`;
+  if (!plan.changes.length) return "Rien à changer.";
+  await ref.set(
+    { finances: { expenses: { [id]: { ...plan.set, ...Object.fromEntries(plan.remove.map((k) => [k, FieldValue.delete()])) } } } },
+    { merge: true },
+  );
+  return `✅ Dépense ${id} corrigée : ${plan.changes.join(" · ")}.`;
 }
 
 async function executeGetArchives(uid: string): Promise<string> {
@@ -5378,7 +5441,7 @@ export {
   executeSaveDocument,
   executeGetDocuments,
   executeGetArchives,
-  executeGetShoppingList, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses,
+  executeGetShoppingList, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses, executeUpdateReceipt, executeUpdateExpense,
   executeAddShoppingItem,
   executeCheckShoppingItem,
   executeRestoreItem,
