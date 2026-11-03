@@ -1168,7 +1168,7 @@ projet, sinon porteuse ; routine : activité liée ; une activité tombe seule a
 (`confirmDone`, `setActionDone` + `patchActionOf` / `updateOwnActions`), routine = `incHabit(+n)`, relevé = `noteReadingQuick` ;
 Pause · +5 min · Passer), TOUCHÉ (temps tiré / visé, ce qui vient de tomber, tir suivant après `kSniperPauseMin` min — Tirer
 maintenant · Souffler 5 min · Passer cette cible), BILAN (k / n touchées, tirées / visées, précision, tombé, badge). Reprenable comme
-Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). **Ajuster le tir** (2026-11-01, retour user : 20 pompes
+Guérilla / Offensive (`PendingRun` `kind:"sniper"`, carte `PendingRunCard(badges:)`). **Faire ça dans l'app** (2026-11-03, bug user : une cible Planification se fait dans l'app, l'écran plein la bloquait) : lien sous les boutons du TIR (`_goAway`) — l'écran se ferme sans arrêter le tir : minuteur, alarme et chrono continuent (`_away` : `dispose` ne les coupe pas), la session attend avec le tir en cours (`extra.cur` / `endsAt` / `shotStart` / `paused` / `own`, `lastActiveAt` = fin du minuteur) ; la carte d'Aujourd'hui dit « Tir en cours · le minuteur continue jusqu'à HH:MM » et « Reprendre » rouvre CE tir là où il en est (`_restore`), au bout du minuteur il tombe. **Ajuster le tir** (2026-11-01, retour user : 20 pompes
 d'un coup, 6 verres d'eau ; Cuisiner proposé à 15 min) : dans le viseur, chaque cible visée porte − valeur + (`stepAmount`,
 `sniperStep` : routine par 1, par 5 dès 10 à faire, de 1 à ce qui manque ; temps par 5 min, de 5 à `kSniperMaxMin`) ; la cible
 proposée reste ce qui manque (`SniperTarget.need`), un tir plus petit est un **mini-tir** (`isMini`, `leftAfter` : « mini-tir ·

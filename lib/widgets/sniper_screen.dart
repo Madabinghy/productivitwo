@@ -98,6 +98,9 @@ class _SniperScreenState extends State<SniperScreen> {
   Timer? _timer;
   bool _ownChrono = false;
   bool _saved = false;
+  /// Sorti du Sniper pendant un tir (« Faire ça dans l'app », bug user 2026-11-03 : une cible
+  /// Planification se fait dans l'app, l'écran plein la bloquait) : minuteur, alarme et chrono continuent.
+  bool _away = false;
   String? _lastHit;
   late final String _runId = widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
 
@@ -279,6 +282,25 @@ class _SniperScreenState extends State<SniperScreen> {
     }
     _aimed = aimed;
     _totalAimed = keys.length;
+    // Retour d'une sortie dans l'app : le tir en cours continue (minuteur, chrono, alarme).
+    final cur = r.extra['cur'];
+    final ci = cur is String ? _aimed.indexWhere((t) => t.key == cur) : -1;
+    if (ci >= 0 && !_hit.contains(cur) && !_skipped.contains(cur)) {
+      final ends = r.intOf('endsAt'), start = r.intOf('shotStart');
+      _index = ci;
+      _phase = _Phase.shot;
+      _shotStart = start == null ? DateTime.now() : DateTime.fromMillisecondsSinceEpoch(start);
+      _endsAt = ends == null ? null : DateTime.fromMillisecondsSinceEpoch(ends);
+      _pausedLeft = r.intOf('paused');
+      _ownChrono = r.extra['own'] == true && logic.state.sessions.any((x) => x.endAt == null);
+      if (_endsAt != null) {
+        final left = _endsAt!.difference(DateTime.now()).inSeconds;
+        _remaining = left > 0 ? left : 0;
+        _ticking();
+      }
+      _persist();
+      return;
+    }
     if (logic.state.sessions.any((x) => x.endAt == null && !x.startAt.isBefore(r.startedAt))) logic.stopActive(notify: false);
     final n = _nextIndex(-1);
     if (n == null) {
@@ -302,15 +324,17 @@ class _SniperScreenState extends State<SniperScreen> {
 
   Session? get _runningBefore => logic.state.sessions.where((x) => x.endAt == null).firstOrNull;
 
-  void _persist() {
+  void _persist({bool away = false}) {
     if (_startedAt == null) return;
+    final cur = _phase == _Phase.shot && _index < _aimed.length ? _aimed[_index] : null;
     final now = DateTime.now();
     RunSessionStore.save(PendingRun(
       kind: kSniperKind,
       runId: _runId,
       date: ymdOf(livedDate(now, logic.dayStartMin)),
       startedAt: _startedAt!,
-      lastActiveAt: now,
+      // Sorti pendant un tir : la session reste reprenable jusqu'au bout du minuteur, puis la fenêtre habituelle.
+      lastActiveAt: away && _endsAt != null && _endsAt!.isAfter(now) ? _endsAt! : now,
       done: _hit.length,
       extra: {
         'aimed': [for (final t in _aimed) t.key],
@@ -325,6 +349,13 @@ class _SniperScreenState extends State<SniperScreen> {
         if (_focus case final q?) 'focus': q.badge.def.id,
         'full': _fullHits,
         'total': _totalAimed,
+        if (away && cur != null) ...{
+          'cur': cur.key,
+          if (_endsAt case final e?) 'endsAt': e.millisecondsSinceEpoch,
+          if (_shotStart case final s?) 'shotStart': s.millisecondsSinceEpoch,
+          if (_pausedLeft case final p?) 'paused': p,
+          'own': _ownChrono,
+        },
       },
     ));
   }
@@ -332,8 +363,10 @@ class _SniperScreenState extends State<SniperScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    if (_startedAt != null) CoupAlarm.cancel();
-    _stopOwnChrono();
+    if (!_away) {
+      if (_startedAt != null) CoupAlarm.cancel();
+      _stopOwnChrono();
+    }
     if (!_saved && _phase == _Phase.end) {
       if (_hit.isNotEmpty) _save();
       RunSessionStore.clear();
@@ -1042,7 +1075,24 @@ class _SniperScreenState extends State<SniperScreen> {
         ],
         Expanded(child: _outline(action ? 'Pas finie · suivante' : 'Passer', _skip)),
       ]),
+      TextButton.icon(
+        onPressed: _goAway,
+        icon: const Icon(Icons.south_rounded, size: 16, color: _text2),
+        label: Text(timed ? 'Faire ça dans l’app · le minuteur continue' : 'Faire ça dans l’app · reprendre ensuite',
+            style: const TextStyle(color: _text2, fontSize: 13.5)),
+      ),
     ]);
+  }
+
+  /// Sortir du Sniper sans l'arrêter : la session attend (carte « Reprendre » d'Aujourd'hui).
+  void _goAway() {
+    _away = true;
+    _persist(away: true);
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+      content: Text(_endsAt == null ? 'Sniper en attente · reprends-le depuis Aujourd’hui' : 'Le minuteur continue · l’alarme sonnera à la fin'),
+      duration: const Duration(seconds: 4),
+    ));
+    Navigator.of(context).pop();
   }
 
   Widget _hitView() {
