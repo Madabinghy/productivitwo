@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
@@ -131,6 +134,37 @@ void main() {
     expect(find.text('X'), findsNWidgets(4));
     await t.tap(find.text('JOURNÉE PARFAITE'));
     expect(opened, 'perfect');
+  });
+
+  testWidgets('tuile du mode : carrée, à droite de Journée parfaite, icône seule', (t) async {
+    var ran = false;
+    await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: DashboardTiles(
+      perfect: const DashTile(label: 'JOURNÉE PARFAITE', value: 'Il manque 3', sub: 'routines'),
+      perfectWide: true,
+      modeTile: InkWell(key: const Key('mode-tile'), onTap: () => ran = true, child: const Center(child: ModeGlyph(kind: kGuerillaKind, size: 56, color: Colors.green))),
+    )))));
+    await t.pump();
+    final tile = t.getSize(find.byKey(const Key('mode-tile')));
+    expect(tile.width, 104);
+    expect(tile.height, greaterThanOrEqualTo(104));
+    expect(t.getTopLeft(find.byKey(const Key('mode-tile'))).dx, greaterThan(t.getTopLeft(find.text('JOURNÉE PARFAITE')).dx));
+    await t.tap(find.byKey(const Key('mode-tile')));
+    expect(ran, isTrue);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('ModeGlyph : shuriken, percée, viseur', (t) async {
+    await t.pumpWidget(const MaterialApp(home: Row(children: [
+      ModeGlyph(kind: kGuerillaKind, size: 24, color: Colors.green),
+      ModeGlyph(kind: kOffensiveKind, size: 24, color: Colors.orange),
+      ModeGlyph(kind: 'sniper', size: 24, color: Colors.blue),
+    ])));
+    await t.pump();
+    expect(find.byIcon(Icons.gps_fixed), findsOneWidget);
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('« Badges en jeu » en feuille : en-tête des fiches, pas de Scaffold', (t) async {

@@ -7,6 +7,8 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 import 'package:productivitwo_v1/utils/default_estimate.dart' show defaultEstimateFor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/offensive.dart' show openTargets;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/confirm_done.dart' show confirmDone;
 import 'package:productivitwo_v1/widgets/focus_day_sheet.dart' show pickFocusDay, FocusDay, FocusClear;
@@ -487,7 +489,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
           minimumSize: const Size.fromHeight(46),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        icon: const Icon(Icons.north_east_rounded, size: 18),
+        icon: const ModeGlyph(kind: kOffensiveKind, size: 18, color: Color(0xFFFF8A4C)),
         label: Text('Offensive sur ce projet · $ready action${ready > 1 ? 's' : ''} prête${ready > 1 ? 's' : ''}',
             style: const TextStyle(fontWeight: FontWeight.w800)),
       ),

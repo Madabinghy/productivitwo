@@ -1258,10 +1258,15 @@ le bilan dit « dont 3 pleines · session comptée » / « il faut 3 cibles plei
 (`ReorderableListView`, `_order`) = l'ordre des tirs (`adjustPlan(order:)` ; une cible ajoutée va en fin), lien « Ordre conseillé »
 pour revenir au calcul ; l'ordre des tirs est déjà celui persisté (`aimed`). Le réglage − / + absorbe ses taps (bouton grisé compris) : il n'écarte jamais la cible (bug 2026-11-01). Une routine à minuteur (Louanges 15 min, `timedRoutine`) se règle en minutes (pas de 5) : la coche tombe au bout, jamais un mini-tir. Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
-**Un gros bouton, le mode du moment** (2026-11-01, retour user : pas quatre boutons alignés) : sous l'en-tête d'Aujourd'hui, UN gros
-bouton = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge),
-« Reprendre · … » quand une session de ce mode attend (`_modeLauncher`) ; en haut à droite, les petits ronds des deux autres modes
-et Planifier (les trois modes + Planifier en recharge et sur Demain).
+**Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
+2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
+`mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
+sur Demain), l'ICÔNE SEULE en grand à la couleur du mode, un point quand une session de ce mode attend, le nom en infobulle et pour la
+lecture d'écran ; tap = `openRun`. En haut à droite, les petits ronds des deux autres modes et Planifier. **Icônes des modes**
+(`widgets/mode_glyph.dart`, `ModeGlyph(kind:, size:, color:)`, SVG via `flutter_svg` teintés `srcIn`) : Guérilla = shuriken en plein vol
+vers le haut à droite, trois traînées ; Offensive = la percée (mur fendu par la foudre, éclats) ; Sniper = viseur `Icons.gps_fixed`.
+Branché : ronds et tuile d'Aujourd'hui, MES MODES de Ma vie, écrans Guérilla / Offensive, boutons « Offensive sur ce projet » (fiche
+projet, projet déplié, page focus). Le widget iOS Lanceurs garde ses SF Symbols (⚡ / ↗).
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
@@ -710,7 +711,6 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 ...[
                 if (!_showTomorrow) ...[
-                  if (_modeLauncher(cs) case final big?) big,
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
@@ -888,7 +888,7 @@ class TodayViewState extends State<TodayView> {
           // Le mode du moment a son gros bouton sous l'en-tête (2026-11-01) : ici, les autres.
           for (final l in _launchers)
             if (_showTomorrow || l.kind != _modeKind) ...[
-              _launcherBtn(cs, l.kind, l.icon, l.tooltip, l.accent, l.light),
+              _launcherBtn(cs, l.kind, l.tooltip, l.accent, l.light),
               const SizedBox(width: 8),
             ],
           _planBtn(cs),
@@ -898,9 +898,9 @@ class TodayViewState extends State<TodayView> {
   }
 
   static const _launchers = [
-    (kind: kGuerillaKind, icon: Icons.bolt, tooltip: 'Guérilla · la flemme ou moi', accent: kGuerillaAccent, light: Color(0xFF5E6B2A), name: 'Guérilla', line: 'la flemme ou moi'),
-    (kind: kSniperKind, icon: Icons.gps_fixed, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFF2A6F94), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
-    (kind: kOffensiveKind, icon: Icons.north_east, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFFB4532A), name: 'Offensive', line: 'en forme, à fond'),
+    (kind: kGuerillaKind, tooltip: 'Guérilla · la flemme ou moi', accent: kGuerillaAccent, light: Color(0xFF5E6B2A), name: 'Guérilla', line: 'la flemme ou moi'),
+    (kind: kSniperKind, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFF2A6F94), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
+    (kind: kOffensiveKind, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFFB4532A), name: 'Offensive', line: 'en forme, à fond'),
   ];
 
   /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
@@ -914,9 +914,11 @@ class TodayViewState extends State<TodayView> {
     };
   }
 
-  /// Un seul gros bouton, celui du mode actuel (retour user 2026-11-01 : pas
-  /// quatre boutons alignés) ; les autres restent en petit en haut à droite.
-  Widget? _modeLauncher(ColorScheme cs) {
+  /// La tuile du mode du moment (maquette validée 2026-11-03 « Modes en
+  /// tuile ») : carrée, l'icône seule à la couleur du mode, un point quand une
+  /// session de ce mode attend ; le nom reste en infobulle et pour la lecture
+  /// d'écran. Rien en recharge (Journée parfaite reprend la largeur).
+  Widget? _modeTile(ColorScheme cs) {
     final kind = _modeKind;
     if (kind == null) return null;
     final l = _launchers.firstWhere((x) => x.kind == kind);
@@ -925,33 +927,27 @@ class TodayViewState extends State<TodayView> {
     final p = RunSessionStore.current;
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     final unit = kind == kSniperKind ? 'cible' : 'coup';
-    final title = pending != null ? 'Reprendre · ${l.name}' : l.name;
-    final sub = pending != null ? '${pending.done} $unit${pending.done > 1 ? 's' : ''} déjà ${kind == kSniperKind ? 'touchée' : 'gagné'}${pending.done > 1 ? 's' : ''}' : l.line;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Material(
-        color: c.withValues(alpha: dark ? .16 : .12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: c.withValues(alpha: .6), width: 1.5)),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => openRun(kind),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-                child: Icon(l.icon, size: 22, color: dark ? const Color(0xFF0B130A) : Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.onSurface)),
-                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .65))),
-                ]),
-              ),
-              Icon(Icons.play_arrow_rounded, size: 30, color: c),
+    final label = pending != null ? 'Reprendre · ${l.name} · ${pending.done} $unit${pending.done > 1 ? 's' : ''}' : '${l.name} · ${l.line}';
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          key: const Key('mode-tile'),
+          color: c.withValues(alpha: dark ? .16 : .12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.withValues(alpha: .6), width: 1.5)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => openRun(kind),
+            child: Stack(children: [
+              Center(child: ModeGlyph(kind: kind, size: 56, color: c)),
+              if (pending != null)
+                Positioned(
+                  right: 9,
+                  top: 9,
+                  child: Container(width: 11, height: 11, decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: Border.all(color: cs.surface, width: 2))),
+                ),
             ]),
           ),
         ),
@@ -974,7 +970,7 @@ class TodayViewState extends State<TodayView> {
     if (mounted) setState(() {});
   }
 
-  Widget _launcherBtn(ColorScheme cs, String kind, IconData icon, String tooltip, Color accent, Color lightAccent) {
+  Widget _launcherBtn(ColorScheme cs, String kind, String tooltip, Color accent, Color lightAccent) {
     final p = RunSessionStore.current;
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     final c = cs.brightness == Brightness.dark ? accent : lightAccent;
@@ -990,7 +986,7 @@ class TodayViewState extends State<TodayView> {
           child: InkWell(
             onTap: open,
             customBorder: const CircleBorder(),
-            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} ${kind == kSniperKind ? 'cible' : 'coup'}${pending.done > 1 ? 's' : ''}' : tooltip, child: Icon(icon, size: 20, color: c)),
+            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} ${kind == kSniperKind ? 'cible' : 'coup'}${pending.done > 1 ? 's' : ''}' : tooltip, child: Center(child: ModeGlyph(kind: kind, size: 22, color: c, semanticLabel: tooltip))),
           ),
         ),
       ),
@@ -1114,6 +1110,8 @@ class TodayViewState extends State<TodayView> {
         // La tuile Routines est retirée (2026-11-03) : Journée parfaite dit ce qui manque
         // aujourd'hui, le lanceur (FAB) montre toutes les routines.
         perfectWide: true,
+        // Le mode du moment : une tuile carrée, l'icône seule (2026-11-03, « Modes en tuile »).
+        modeTile: _showTomorrow ? null : _modeTile(cs),
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         // La tuile Collection ouvre l'album (ce qui se joue ce soir y est en tête, 2026-11-01).
         onBadges: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
