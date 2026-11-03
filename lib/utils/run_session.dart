@@ -90,3 +90,20 @@ ChainRun? expiredRunOf(PendingRun p) {
 
 /// « Guérilla en cours · 2 coups » / « Offensive en cours · 3 coups ».
 String pendingRunLabel(PendingRun p, {required String name}) => '$name en cours · ${p.done} coup${p.done > 1 ? 's' : ''}';
+
+/// Session restée vivante parce que SON chrono tourne encore (2026-11-03, retour user : resté plongé dans une offensive,
+/// l'app fermée, la session paraissait perdue alors que le chrono tournait toujours) : même jour vécu, chrono lancé par la
+/// session (`extra.own`) et toujours ouvert sur l'action en cours (`extra.cur`).
+bool chronoKeepsAlive(PendingRun p, Iterable<Session> sessions, String livedYmd) {
+  if (p.date.replaceAll('-', '') != livedYmd.replaceAll('-', '') || p.extra['own'] != true) return false;
+  final cur = p.extra['cur']?.toString();
+  return sessions.any((s) => !s.deleted && s.endAt == null && !s.startAt.isBefore(p.startedAt) && (cur == null || s.actionId == cur));
+}
+
+/// Coups gagnés pendant l'absence : le coup en cours finissait à [endsAt] ; au-delà, un coup par tranche de [duration] min
+/// entamée… seulement les tranches PLEINES (le coup entamé continue). 0 = le coup en cours n'est pas fini.
+int overtimeCoups(DateTime endsAt, DateTime now, int duration) {
+  if (!now.isAfter(endsAt) || duration <= 0) return 0;
+  return 1 + now.difference(endsAt).inMinutes ~/ duration;
+}
+

@@ -60,7 +60,12 @@ class _PendingRunCardState extends State<PendingRunCard> {
 
   /// Sniper quitté pendant un tir (« Faire ça dans l'app ») : le tir continue.
   String _line(PendingRun p, bool sniper, String at) {
-    if (!sniper) return 'Quittée à $at. Elle reprend au coup suivant.';
+    if (!sniper) {
+      if (chronoKeepsAlive(p, widget.logic.state.sessions, widget.logic.livedTodayYmd)) {
+        return 'Ton chrono tourne toujours : elle reprend là où tu en es, les coups passés comptent.';
+      }
+      return 'Quittée à $at. Elle reprend au coup suivant.';
+    }
     if (p.extra['cur'] == null) return 'Quitté à $at. Il reprend au tir suivant.';
     final ends = p.intOf('endsAt');
     if (ends == null) return 'Tir en cours : fais-le dans l’app, puis reviens ici.';
@@ -72,7 +77,10 @@ class _PendingRunCardState extends State<PendingRunCard> {
   @override
   Widget build(BuildContext context) {
     final p = RunSessionStore.current;
-    if (p == null || !p.isLive(DateTime.now(), widget.logic.livedTodayYmd)) return const SizedBox.shrink();
+    if (p == null ||
+        !(p.isLive(DateTime.now(), widget.logic.livedTodayYmd) || chronoKeepsAlive(p, widget.logic.state.sessions, widget.logic.livedTodayYmd))) {
+      return const SizedBox.shrink();
+    }
     final guerilla = p.kind == kGuerillaKind;
     final sniper = p.kind == kSniperKind;
     final accent = guerilla ? kGuerillaAccent : (sniper ? kSniperAccent : kOffensiveAccent);

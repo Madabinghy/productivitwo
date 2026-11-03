@@ -47,7 +47,8 @@ class RunSessionStore {
   static Future<PendingRun?> live(AppLogic logic) async {
     final p = await load();
     if (p == null) return null;
-    if (p.isLive(DateTime.now(), logic.livedTodayYmd)) return p;
+    // Son chrono tourne encore : la session reste vivante, même au-delà de la fenêtre (resté plongé dedans).
+    if (p.isLive(DateTime.now(), logic.livedTodayYmd) || chronoKeepsAlive(p, logic.state.sessions, logic.livedTodayYmd)) return p;
     await closeAsIs(logic, p);
     return null;
   }

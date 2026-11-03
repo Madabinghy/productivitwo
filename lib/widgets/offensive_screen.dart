@@ -72,6 +72,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   DateTime? _chronoFrom;
   int _chronoSec = 0;
   bool _saved = false;
+  /// Retour après être resté plongé dans le coup, app fermée : ce qui a été compté pendant l'absence.
+  String? _awayNote;
   final _passed = <String>{};
   final _asked = <String>{}; // actions sans activité déjà questionnées
   final _actionsDone = <String, List<String>>{}; // projet → titres
@@ -116,9 +118,34 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         }
       }
     }
-    // Le chrono d'un coup interrompu tourne encore : il s'arrête, le coup repart.
-    if (logic.state.sessions.any((x) => x.endAt == null && !x.startAt.isBefore(r.startedAt))) logic.stopActive(notify: false);
+    // Resté plongé dans le coup, app fermée (retour user 2026-11-03) : si le chrono du coup tourne encore, l'offensive
+    // reprend là où elle en est, le chrono continue et les coups passés pendant l'absence comptent.
+    final cur = r.extra['cur']?.toString();
+    final ends = r.intOf('endsAt');
+    final open = logic.state.sessions.where((x) => !x.deleted && x.endAt == null && !x.startAt.isBefore(r.startedAt)).firstOrNull;
+    final keep = cur != null && ends != null && open != null && open.actionId == cur;
+    if (open != null && !keep) logic.stopActive(notify: false);
     _queue = _previewQueue();
+    final ki = keep ? _queue.indexWhere((t) => t.action.id == cur) : -1;
+    if (keep && ki >= 0) {
+      _index = ki;
+      _ownChrono = true;
+      _chronoSec = r.intOf('chronoBase') ?? _chronoSec;
+      final from = r.intOf('chronoFrom');
+      _chronoFrom = from == null ? open.startAt : DateTime.fromMillisecondsSinceEpoch(from);
+      final endsAt = DateTime.fromMillisecondsSinceEpoch(ends);
+      final now = DateTime.now();
+      final extra = overtimeCoups(endsAt, now, _duration);
+      _won += extra;
+      if (extra > 0) {
+        final m = now.difference(open.startAt).inMinutes;
+        _awayNote = 'Tu es resté dedans : +$extra coup${extra > 1 ? 's' : ''} compté${extra > 1 ? 's' : ''} · chrono ${m ~/ 60 > 0 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min'} sur cette action';
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startCoup(endsAt: extra > 0 ? null : endsAt);
+      });
+      return;
+    }
     final i = _queue.indexWhere((t) => !_passed.contains(t.action.id) && !t.action.done);
     if (i < 0) {
       _phase = _Phase.end;
@@ -150,12 +177,18 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       runId: _runId,
       date: ymdOf(livedDate(now, logic.dayStartMin)),
       startedAt: _startedAt!,
-      lastActiveAt: now,
+      // Un coup en cours garde la session vivante jusqu'à sa fin (puis la fenêtre habituelle).
+      lastActiveAt: _phase == _Phase.coup && _endsAt != null && _endsAt!.isAfter(now) ? _endsAt! : now,
       done: _won,
       extra: {
         'front': _front ?? '',
         'duration': _duration,
         'chronoSec': _chronoSec + (_chronoFrom == null ? 0 : now.difference(_chronoFrom!).inSeconds),
+        'chronoBase': _chronoSec,
+        if (_chronoFrom case final f?) 'chronoFrom': f.millisecondsSinceEpoch,
+        if (_phase == _Phase.coup && _cur != null) 'cur': _cur!.action.id,
+        if (_phase == _Phase.coup && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
+        'own': _ownChrono,
         'passed': _passed.toList(),
         'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
         'total': _actionsDone.values.fold(0, (s, l) => s + l.length),
@@ -200,9 +233,10 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _startCoup();
   }
 
-  void _startCoup() {
-    _endsAt = DateTime.now().add(Duration(minutes: _duration));
-    _remaining = _duration * 60;
+  void _startCoup({DateTime? endsAt}) {
+    _endsAt = endsAt ?? DateTime.now().add(Duration(minutes: _duration));
+    _remaining = _endsAt!.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30);
+    if (endsAt != null) CoupAlarm.cancel(all: false);
     _phase = _Phase.coup;
     _startChrono();
     _armAlarm();
@@ -234,6 +268,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     CoupAlarm.cancel(all: false);
     _armAlarm();
     setState(() => _remaining = _endsAt!.difference(DateTime.now()).inSeconds);
+    _saveSession();
   }
 
   void _coupWon() {
@@ -594,6 +629,18 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       const SizedBox(height: 4),
       _progress(),
+      if (_awayNote case final note?)
+        Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          decoration: BoxDecoration(color: kOffensiveAccent.withValues(alpha: .14), borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            const Icon(Icons.local_fire_department_rounded, size: 18, color: kOffensiveAccent),
+            const SizedBox(width: 8),
+            Expanded(child: Text(note, style: const TextStyle(fontSize: 13, height: 1.3, color: _text2))),
+            IconButton(icon: const Icon(Icons.close, size: 16, color: _text3), onPressed: () => setState(() => _awayNote = null)),
+          ]),
+        ),
       const SizedBox(height: 16),
       Text('${_front == null ? '${t.project.title} › ' : ''}${t.task.title}', style: const TextStyle(fontSize: 12.5, color: _text3)),
       const SizedBox(height: 4),
