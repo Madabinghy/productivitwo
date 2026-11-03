@@ -28,7 +28,7 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, showFinanceSheet;
-import 'package:productivitwo_v1/utils/finances.dart' show euros, monthSummary, trackedDays;
+import 'package:productivitwo_v1/utils/finances.dart' show accountNow, euros, monthSummary, trackedDays;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
@@ -438,23 +438,40 @@ class _LifeViewState extends State<LifeView> {
         final from = ymdOf(DateTime(t.year, t.month, t.day - 89));
         final tracked = trackedDays(f).where((y) => y.compareTo(from) >= 0 && y.compareTo(today) <= 0).length;
         eyebrow = 'FINANCES';
-        value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
-        sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · $tracked / 90 suivis' : 'note tes dépenses, jour après jour');
-        // 7 derniers jours : la dépense de chaque jour ; un jour « rien dépensé » = petit trait.
-        final spentDays = [
-          for (var i = 6; i >= 0; i--)
-            () {
-              final y = ymdOf(DateTime(t.year, t.month, t.day - i));
-              return f.expenses.values.where((x) => x.ymd == y).fold<int>(0, (s, x) => s + x.amount);
-            }(),
-        ];
-        final maxSpent = spentDays.fold<int>(0, (a, b) => a > b ? a : b);
-        viz = _bars([
-          for (var i = 0; i < 7; i++)
-            spentDays[i] > 0
-                ? (spentDays[i] / maxSpent).clamp(0.08, 1.0)
-                : (f.nothing.contains(ymdOf(DateTime(t.year, t.month, t.day - 6 + i))) ? 0.05 : 0.0),
-        ], c, cs);
+        // Le solde du compte d'abord (retour user 2026-11-03), dès qu'un solde est posé.
+        final acc = accountNow(f, today);
+        if (acc != null) {
+          value = euros(acc.balance);
+          sub = 'sur ton compte · $tracked / 90 jours suivis';
+          // 7 derniers jours : le solde de fin de journée (rien avant le premier solde posé).
+          final days = [
+            for (var i = 6; i >= 0; i--) accountNow(f, ymdOf(DateTime(t.year, t.month, t.day - i)))?.balance,
+          ];
+          final known = days.whereType<int>();
+          final lo = known.reduce((a, b) => a < b ? a : b);
+          final hi = known.reduce((a, b) => a > b ? a : b);
+          viz = _bars([
+            for (final b in days) b == null ? 0.0 : (hi == lo ? .6 : (.15 + .85 * (b - lo) / (hi - lo))),
+          ], acc.balance < 0 ? const Color(0xFFE66767) : c, cs);
+        } else {
+          value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
+          sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · pose ton solde' : 'note tes dépenses, jour après jour');
+          // 7 derniers jours : la dépense de chaque jour ; un jour « rien dépensé » = petit trait.
+          final spentDays = [
+            for (var i = 6; i >= 0; i--)
+              () {
+                final y = ymdOf(DateTime(t.year, t.month, t.day - i));
+                return f.expenses.values.where((x) => x.ymd == y).fold<int>(0, (s, x) => s + x.amount);
+              }(),
+          ];
+          final maxSpent = spentDays.fold<int>(0, (a, b) => a > b ? a : b);
+          viz = _bars([
+            for (var i = 0; i < 7; i++)
+              spentDays[i] > 0
+                  ? (spentDays[i] / maxSpent).clamp(0.08, 1.0)
+                  : (f.nothing.contains(ymdOf(DateTime(t.year, t.month, t.day - 6 + i))) ? 0.05 : 0.0),
+          ], c, cs);
+        }
         onTap = () => showFinanceSheet(context, logic: logic);
       case DomainNature.work:
       case DomainNature.practice:
