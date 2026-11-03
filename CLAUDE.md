@@ -1545,6 +1545,16 @@ activityId)` (série, compteur de coches, heures de l'activité, l'année, le ch
 fiche d'activité (section CE QUE ÇA FAIT AVANCER avant ENGAGEMENTS), fiche routine (série + compteur, sous les paliers), carte EN COURS du
 lanceur d'activités (heures de l'activité + l'année, jauges fines). Compteurs (heures, coches) recalculés EN DIRECT depuis `AppState` (`gainsFor(state:)` → `longHaulBadges`), la série reste au deck (bug 2026-11-02 : « 152,4 h » ne bougeait qu'à la relance).
 
+## Cartes à aller chercher (2026-11-03, maquette validée « Cartes à aller chercher », Sniper seul, pas de « Viser »)
+
+Les cartes que la journée peut faire avancer, leur stratégie et un Sniper ciblé sur une carte. **Lot 1 livré (logique pure)**
+`utils/card_quests.dart` : `cardQuestOf(badge, activities:, facts:)` → `CardQuest {kind, nextRarity, need, days, effortMin, strategy,
+steps, modeKind}` ou null hors de portée — `QuestKind` time (`heures-<activité>`, ≤ `kQuestMaxMin` 120 min, tir ≤ 60 min) · reps
+(`fois-<routine>`, ≤ 10 coches) · series (`serie-<routine>`, ≤ 3 j, tir = le +1 du jour s'il manque) · days (Métronome : routines qui
+manquent ; Montre suisse : activités en retard, ≤ 3 ; ≤ 3 j) · mode (Guérilla, Offensive, Sniper : ≤ 2 sessions, pas de tir) ;
+`QuestStep {key 'activity:<id>' | 'routine:<id>', activity, amount, minutes}` = mêmes clés que les enjeux ; `cardQuests(deck, …, limit:)`
+classe par jours, puis effort du jour, puis avancement. L'année et le chemin des 10 000 h ne sont jamais proposés.
+
 ## Catalogue de routines (2026-11-01, maquette validée « Catalogue de routines »)
 
 Un catalogue composé par l'administrateur, que les utilisateurs activent ; chaque routine a sa carte illustrée. **Lot 1 livré** :
