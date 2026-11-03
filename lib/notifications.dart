@@ -76,6 +76,7 @@ class NotificationService {
   // création) — voir AlarmRingtone.androidChannel + _alarmDetails.
   static const _timerEndNotifId = 30;
   static const _coupEndNotifId = 31;
+  static const _landingNotifId = 32;
   // Défis programmés (ids 40000 / 50000 / 60000 dérivés du block.id) : plus
   // armés depuis le 2026-10-30, seulement annulés (`cancelChallengeAll`).
 
@@ -397,6 +398,28 @@ class NotificationService {
   static Future<void> cancelCoupEnd() async {
     if (!_supported) return;
     await _plugin.cancel(_coupEndNotifId);
+  }
+
+  /// Atterrissage (deep work) : 10 min avant un rendez-vous daté, filet si l'app est tuée.
+  static Future<void> scheduleLanding({required String title, required String body, required DateTime at, AlarmRingtone? ringtone}) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_landingNotifId);
+    if (!at.isAfter(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+      _landingNotifId,
+      title,
+      body,
+      tz.TZDateTime.from(at, tz.local),
+      _alarmDetails(ringtone ?? kAlarmRingtones.first, 'Rendez-vous qui arrive pendant un deep work'),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  static Future<void> cancelLanding() async {
+    if (!_supported) return;
+    await _plugin.cancel(_landingNotifId);
   }
 
   // ── Challenge programmé ─────────────────────────────────────────────────────

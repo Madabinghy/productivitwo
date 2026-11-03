@@ -1154,6 +1154,19 @@ Bilan : coups · durée · chrono, par projet touché la rangée de briques, « 
 `arrow`, 1 / 5 / 15) dès 3 coups (`offensiveCounts`). Le deep work 90 min reste à part (un seul gros bloc). ⓘ `kRuleOffensive`.
 Logique pure `utils/offensive.dart`. **Resté plongé dedans** (2026-11-03, retour user : coups de 10 min, « +10 » répétés, puis resté dans les copies l'app fermée — le chrono tournait encore à 50 min mais l'offensive avait disparu) : la session porte le coup en cours (`extra.cur` / `endsAt` / `own` / `chronoBase` / `chronoFrom`, réécrite aussi à chaque « +N min », `lastActiveAt` = fin du coup) ; tant que SON chrono tourne sur l'action en cours, elle reste vivante au-delà des 45 min (`chronoKeepsAlive`, `utils/run_session.dart` ; `RunSessionStore.live`, carte d'Aujourd'hui « Ton chrono tourne toujours… ») ; à la reprise le chrono n'est plus coupé, l'offensive repart sur la même action et les coups passés pendant l'absence comptent (`overtimeCoups` : 1 + tranches pleines au-delà de la fin du coup), bandeau « Tu es resté dedans : +n coups comptés · chrono 52 min ». **Depuis un projet** (2026-10-31, retour user) : `showOffensiveScreen(projectId:, firstActionId:)` — front présélectionné (en tête de la liste) ; bouton « ↗ Offensive sur ce projet · n actions prêtes » dans la fiche projet (`_offensiveButton`, au-dessus de CETTE SEMAINE, si des actions sont prêtes) ; 4ᵉ option « Offensive » du « Mode d'exécution » de la page focus d'une action de projet (la page laisse place à l'offensive, qui commence par cette action). Même bouton dans le projet déplié (`showProjectSheet`, sous « Activité liée », `_offensiveButton`). Page focus d'une action de projet : icône ↗ orange dans la barre du haut, à côté du ⏱ (avant le chrono, `_openOffensive`).
 
+## Plongé, pas perdu (2026-11-03, maquette validée « Plongé, pas perdu »)
+
+En deep work, la tête dans le travail, on perd de vue ce qui est prévu. Règle : seule une chose DATÉE dérange — un rendez-vous
+d'agenda (miroir `gcalEventId`) ou une séance (bloc qui vise une tâche 🎯, `sessionTaskIdsOf`) ; blocs de temps, besoins de base
+(sommeil, repas), blocs souples, routines et actions attendent. Logique pure `utils/landing.dart` (`isFixedBlock`, `nextFixed` sur
+`logic.todayBlocks` de la journée vécue, `FixedAhead.landingAt` = début − `kLandingLeadMin` (10), `inLabel`). **Lot 1 livré
+(Offensive)** : ligne « Ensuite Cours 6e à 14:00 · dans 1 h 05 » sous la piste (`_aheadLine`, ambre dans les 10 dernières minutes) ;
+alarme d'atterrissage UNE fois par rendez-vous (`CoupAlarm.scheduleLanding`, alarme id 45 + notification id 32, sonne téléphone en
+veille ou app fermée ; annulée à la fin de l'offensive) ; à l'heure, feuille « Atterrissage » (`_showLanding`) : « Je finis ce coup,
+puis j'y vais » (l'offensive s'arrête au bout du coup, `_leaveAfterCoup`) · « J'arrête maintenant ». Lots suivants : point d'étape
+qui n'arrête plus le chrono (ce qui arrive, ce qui se perd ce soir), fin du bloc Deep work (continuer 30 min = la suite souple se
+décale), reprise « Pendant que tu étais dedans ».
+
 ## Sniper (2026-11-01, maquette validée « Mode Sniper »)
 
 Entre la Guérilla et l'Offensive : l'app calcule le temps EXACT qui fait tomber chaque enjeu du jour et enchaîne les tirs sans

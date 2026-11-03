@@ -51,4 +51,40 @@ class CoupAlarm {
     } catch (_) {}
     await NotificationService.cancelCoupEnd();
   }
+
+  static const _landingId = 45;
+
+  /// Alarme d'atterrissage (« Plongé, pas perdu », 2026-11-03) : une seule,
+  /// [at] = 10 min avant le prochain rendez-vous daté ; à part des coups.
+  static Future<void> scheduleLanding(AppLogic logic, {required DateTime at, required String title, required String body}) async {
+    if (kIsWeb) return;
+    final ringtone = ringtoneByKey(logic.state.alarmSound);
+    try {
+      await Alarm.stop(_landingId);
+      if (at.isAfter(DateTime.now())) {
+        await Alarm.set(
+          alarmSettings: AlarmSettings(
+            id: _landingId,
+            dateTime: at,
+            assetAudioPath: 'assets/audio/${ringtone.asset}',
+            loopAudio: false,
+            vibrate: true,
+            warningNotificationOnKill: false,
+            androidFullScreenIntent: false,
+            volumeSettings: VolumeSettings.fade(volume: 0.9, fadeDuration: const Duration(seconds: 1), volumeEnforced: false),
+            notificationSettings: NotificationSettings(title: title, body: body, stopButton: 'OK'),
+          ),
+        );
+      }
+    } catch (_) {}
+    await NotificationService.scheduleLanding(title: title, body: body, at: at, ringtone: ringtone);
+  }
+
+  static Future<void> cancelLanding() async {
+    if (kIsWeb) return;
+    try {
+      await Alarm.stop(_landingId);
+    } catch (_) {}
+    await NotificationService.cancelLanding();
+  }
 }

@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistItem, setActionDone, setChecklistItem;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
+import 'package:productivitwo_v1/utils/landing.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
@@ -32,6 +33,8 @@ const _card = Color(0xFF1F130C);
 const _track = Color(0xFF3A2418);
 const _text2 = Color(0xFFD4C4BA);
 const _text3 = Color(0xFFB8A69A);
+const _sky = Color(0xFF7CC7FF);
+const _amber = Color(0xFFF2C14E);
 
 /// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
 /// [projectId] = front déjà choisi (fiche projet, page focus) ; [firstActionId] = l'action par laquelle commencer.
@@ -74,6 +77,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   bool _saved = false;
   /// Retour après être resté plongé dans le coup, app fermée : ce qui a été compté pendant l'absence.
   String? _awayNote;
+  /// Prochain rendez-vous daté (agenda, séance) : ligne « Ensuite » et alarme d'atterrissage.
+  FixedAhead? _ahead;
+  late final Set<String> _sessionTasks = sessionTaskIdsOf(logic.currentProjects);
+  String? _armedFor;
+  String? _landedFor;
+  /// « Je finis ce coup, puis j'y vais » : l'offensive s'arrête au bout du coup.
+  bool _leaveAfterCoup = false;
   final _passed = <String>{};
   final _asked = <String>{}; // actions sans activité déjà questionnées
   final _actionsDone = <String, List<String>>{}; // projet → titres
@@ -201,6 +211,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void dispose() {
     _timer?.cancel();
     if (_phase != _Phase.pause) CoupAlarm.cancel();
+    if (_phase == _Phase.end) CoupAlarm.cancelLanding();
     _stopOwnChrono();
     // Quittée en route : l'offensive reste en attente (reprenable) ; au bilan, elle se clôt.
     if (!_saved && _phase == _Phase.end) {
@@ -244,14 +255,73 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final left = _endsAt!.difference(DateTime.now()).inSeconds;
+      _refreshAhead();
       if (left > 0) {
         setState(() => _remaining = left);
       } else {
         _coupWon();
       }
     });
+    _refreshAhead();
     _saveSession();
     setState(() {});
+  }
+
+  String _keyOf(FixedAhead a) => '${a.block.id}@${a.block.startTime}';
+
+  /// Ligne « Ensuite » + alarme d'atterrissage (une seule par rendez-vous) +
+  /// feuille « Atterrissage » quand on entre dans les 10 dernières minutes.
+  void _refreshAhead() {
+    final now = DateTime.now();
+    final a = nextFixed(logic.todayBlocks, now, logic.dayStartMin, sessionTaskIds: _sessionTasks);
+    _ahead = a;
+    if (a == null) {
+      if (_armedFor != null) CoupAlarm.cancelLanding();
+      _armedFor = null;
+      return;
+    }
+    final key = _keyOf(a);
+    if (_armedFor != key && a.landingAt.isAfter(now)) {
+      _armedFor = key;
+      CoupAlarm.scheduleLanding(logic, at: a.landingAt, title: '🔔 ${a.block.title} dans $kLandingLeadMin min', body: 'À ${a.block.startTime} · finis ton coup, prépare-toi.');
+    }
+    if (_phase == _Phase.coup && !now.isBefore(a.landingAt) && _landedFor != key) {
+      _landedFor = key;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showLanding(a);
+      });
+    }
+  }
+
+  Future<void> _showLanding(FixedAhead a) async {
+    final leftMin = (_remaining / 60).ceil();
+    final choice = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: const Color(0xFF221A10),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('🔔 ATTERRISSAGE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .8, color: _amber)),
+            const SizedBox(height: 6),
+            Text('${a.block.title} ${inLabel(a.inMin)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 6),
+            Text('À ${a.block.startTime}. Il te reste $leftMin min sur ce coup.', style: const TextStyle(fontSize: 14, color: _text2)),
+            const SizedBox(height: 16),
+            _primary('Je finis ce coup, puis j’y vais', () => Navigator.pop(ctx, true)),
+            const SizedBox(height: 10),
+            _outline('J’arrête maintenant', () => Navigator.pop(ctx, false)),
+          ]),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice) {
+      setState(() => _leaveAfterCoup = true);
+    } else {
+      _end();
+    }
   }
 
   /// Alarme de fin du coup (le minuteur se lit sur l'heure de fin : il continue en veille).
@@ -275,6 +345,10 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _timer?.cancel();
     _won++;
     _saveSession();
+    if (_leaveAfterCoup) {
+      _end();
+      return;
+    }
     if (offensivePauseDue(_won)) {
       _stopOwnChrono();
       setState(() => _phase = _Phase.pause);
@@ -371,6 +445,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _end({bool lastCoupWon = false}) {
     _timer?.cancel();
     CoupAlarm.cancel();
+    CoupAlarm.cancelLanding();
     if (lastCoupWon) _won++;
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
@@ -629,6 +704,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       const SizedBox(height: 4),
       _progress(),
+      if (_ahead case final a?) _aheadLine(a),
       if (_awayNote case final note?)
         Container(
           margin: const EdgeInsets.only(top: 10),
@@ -738,6 +814,36 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         style: const TextStyle(fontSize: 12, color: _text3),
       ),
     ]);
+  }
+
+  /// « Ensuite Cours 6e à 14:00 · dans 1 h 05 » (ambre dans les 10 dernières minutes).
+  Widget _aheadLine(FixedAhead a) {
+    final hot = a.inMin <= kLandingLeadMin;
+    final c = hot ? _amber : _sky;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: hot ? _amber : const Color(0xFF3A2F22))),
+      child: Row(children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'Ensuite ', style: TextStyle(color: _text3)),
+              TextSpan(text: a.block.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: ' à ${a.block.startTime}', style: const TextStyle(color: _text3)),
+            ]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 13.5),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(_leaveAfterCoup ? 'fin du coup, puis j’y vais' : inLabel(a.inMin),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
+      ]),
+    );
   }
 
   String _gainedLine() {
