@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
+import 'package:productivitwo_v1/utils/meal_plan.dart' show ShoppingLine;
 
 void main() {
   test('guessAisle : le rayon par les mots, le plus spécifique d\'abord', () {
@@ -86,5 +87,27 @@ void main() {
     expect(back.pantry['café']!.state, PantryState.low);
     expect(back.aisles.contains('Bébé'), isTrue);
     expect(parseGroceries({}).aisles, kDefaultAisles);
+  });
+
+  test('liste : le placard propose, le menu n\'ajoute que le manquant, rayons', () {
+    var g = afterPurchase(const Groceries(), ['Pâtes'], '2026-11-03');
+    g = withPantryState(g, 'Huile d\'olive', PantryState.out);
+    g = withPantryState(g, 'Riz', PantryState.low);
+    g = g.copyWith(items: {'a': const GroceryItem(id: 'a', label: 'Lessive')});
+    final menu = [
+      const ShoppingLine('pâtes', 'Pâtes', '500 g', ['Bolognaise']),
+      const ShoppingLine('bœuf haché', 'Bœuf haché', '500 g', ['Bolognaise']),
+      const ShoppingLine('riz', 'Riz', '', ['Riz cantonais']),
+    ];
+    final rows = groceryRows(menuLines: menu, menuChecked: const {}, g: g);
+    expect(rows.map((r) => r.label).toList(), ['Bœuf haché', 'Riz', 'Lessive', 'Huile d\'olive']);
+    expect(rows.firstWhere((r) => r.label == 'Riz').source, 'menu'); // bientôt fini : reste listé (une seule fois)
+    expect(rows.last.source, 'pantry');
+    expect(rows.last.pantryState, PantryState.out);
+    expect(rows.firstWhere((r) => r.label == 'Lessive').aisle, 'Ménager');
+    expect(menuCoveredByPantry(menu, g).map((l) => l.label), ['Pâtes']);
+    expect(rowsByAisle(rows, g.aisles).map((e) => e.key), ['Épicerie', 'Frais', 'Ménager']);
+    // Coché dans le panier, l'ingrédient du placard reste visible.
+    expect(groceryRows(menuLines: menu, menuChecked: const {'pâtes'}, g: g).any((r) => r.label == 'Pâtes'), isTrue);
   });
 }

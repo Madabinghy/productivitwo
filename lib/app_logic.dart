@@ -2038,6 +2038,13 @@ class AppLogic implements HuntStore {
     await sync?.setGroceryItem(id, y.toJson());
   }
 
+  /// Ligne proposée par le placard mise dans le panier : elle devient une
+  /// ligne de la liste (pour passer en caisse avec le reste).
+  Future<void> basketPantryRow(GroceryRow r) async {
+    final x = await addGrocery(label: r.label, domainId: r.domainId, projectId: r.projectId, store: r.store, source: 'pantry', aisle: r.aisle);
+    await setGroceryInBasket(x.id, true);
+  }
+
   Future<void> addGroceryStore(String name) async {
     final n = name.trim();
     if (n.isEmpty || groceries.stores.contains(n)) return;

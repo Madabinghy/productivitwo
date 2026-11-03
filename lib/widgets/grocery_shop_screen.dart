@@ -29,6 +29,10 @@ List<GroceryRow> _rows(AppLogic logic, List<Recipe> recipes) {
 }
 
 void _toggle(AppLogic logic, GroceryRow r) {
+  if (r.pantryKey != null) {
+    logic.basketPantryRow(r);
+    return;
+  }
   if (r.itemId != null) {
     logic.setGroceryInBasket(r.itemId!, !r.inBasket);
     return;
@@ -156,7 +160,14 @@ class _GroceryShopScreenState extends State<GroceryShopScreen> {
         ),
         if (toTake.isNotEmpty) ...[
           Padding(padding: const EdgeInsets.only(top: 16, bottom: 4), child: Text('À PRENDRE · ${toTake.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute))),
-          for (final r in toTake) line(r),
+          for (final a in rowsByAisle(toTake, logic.groceries.aisles)) ...[
+            if (rowsByAisle(toTake, logic.groceries.aisles).length > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 2),
+                child: Text(a.key, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kGroceryAccent)),
+              ),
+            for (final r in a.value) line(r),
+          ],
         ] else
           Padding(
             padding: const EdgeInsets.only(top: 24),
