@@ -11,6 +11,8 @@ export const BLOCK_RULES =
   "matin de préférence), « Petites choses » (small, 45 min, mails / appels / petites actions) et « Tampon » " +
   "(buffer, 45 min, en fin de journée) : l'utilisateur choisit QUOI faire au moment de lancer le bloc (l'app lui " +
   "propose sa parole, ses retards, ses visées), car un programme détaillé est faux dès la première interruption. " +
+  "Un Deep work peut viser UN projet (projectId seul) ou une activité (activityId seul), titre « Deep work · <nom> », " +
+  "quand l'utilisateur le demande ou qu'une échéance l'impose. " +
   "Ne détaille par activité que si l'utilisateur le demande. " +
   "30 min minimum pour un bloc de travail. Pour un travail de fond détaillé, pose des blocs d'ACTIVITÉ " +
   "(activityId seul, sans projectId / taskId / actionId, titre = le nom de l'activité, ex. « Enseignement ») : " +

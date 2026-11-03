@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels, kTimeBlockColors;
+import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels, kTimeBlockColors, deepWorkTitle;
+import 'package:productivitwo_v1/utils/offensive.dart' show offensiveFronts, frontLine;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
@@ -1806,8 +1807,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) =>
-          _BlockEditSheet(block: block, onSave: _saveBlock),
+      builder: (_) => _BlockEditSheet(
+          block: block,
+          onSave: _saveBlock,
+          activities: widget.logic.state.activeActivities.where((a) => !a.isHabit && a.role != ActivityRole.shopping).toList(),
+          projects: widget.logic.currentProjects,
+          domains: widget.logic.state.activeDomains),
     );
   }
 
@@ -1897,6 +1902,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         block: draft,
         isNew: true,
         activities: acts,
+        projects: widget.logic.currentProjects,
         domains: widget.logic.state.activeDomains,
         suggestions: _buildSuggestions(),
         onSave: (b) => _sync.addScheduleBlock(
@@ -1952,6 +1958,8 @@ class _BlockEditSheet extends StatefulWidget {
   // Suggestions à la frappe (routines, activités, actions) — un tap associe.
   final List<BlockSuggestion> suggestions;
   final List<Domain> domains;
+  /// Projets pour viser un Deep work (« Deep work sur… », 2026-11-03).
+  final List<Project> projects;
 
   const _BlockEditSheet(
       {required this.block,
@@ -1959,7 +1967,8 @@ class _BlockEditSheet extends StatefulWidget {
       this.isNew = false,
       this.activities = const [],
       this.suggestions = const [],
-      this.domains = const []});
+      this.domains = const [],
+      this.projects = const []});
 
   @override
   State<_BlockEditSheet> createState() => _BlockEditSheetState();
@@ -2048,6 +2057,85 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     });
   }
 
+  /// Deep work VISÉ (2026-11-03, décision user) : le type reste Deep work
+  /// (Offensive au ▶, tout chrono du créneau compte), la cible dit sur quoi.
+  bool get _deepTargeted => _timeBlock == 'deep' && (_projectId != null || _activityId != null);
+
+  void _setDeepTarget({Project? project, Activity? activity}) {
+    setState(() {
+      _projectId = project?.id;
+      _activityId = project == null ? activity?.id : null;
+      _taskId = null;
+      _actionId = null;
+      _linkedLabel = null;
+      _activityPicked = false;
+      final name = project?.title ?? activity?.name;
+      _titleCtrl.text = name == null ? kTimeBlockLabels['deep']! : deepWorkTitle(name);
+    });
+  }
+
+  Future<void> _pickDeepProject() async {
+    final fronts = offensiveFronts(widget.projects, DateTime.now());
+    final picked = await showModalBottomSheet<Project>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .7),
+          child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Deep work sur quel projet ?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            if (fronts.isEmpty) const Text('Aucun projet n’a d’action prête.'),
+            for (final f in fronts)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(f.project.title, maxLines: 2),
+                subtitle: Text(frontLine(f)),
+                trailing: f.project.id == _projectId ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(ctx, f.project),
+              ),
+          ]),
+        ),
+      ),
+    );
+    if (picked != null) _setDeepTarget(project: picked);
+  }
+
+  Future<void> _pickDeepActivity() async {
+    final id = await showActivityPicker(context,
+        activities: widget.activities, domains: widget.domains, title: 'Deep work sur quelle activité ?', selectedId: _activityId);
+    final a = widget.activities.where((x) => x.id == id).firstOrNull;
+    if (a != null) _setDeepTarget(activity: a);
+  }
+
+  Widget _deepTargetRow(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurface.withOpacity(.55);
+    final project = widget.projects.where((p) => p.id == _projectId).firstOrNull;
+    final activity = widget.activities.where((a) => a.id == _activityId).firstOrNull;
+    final name = project?.title ?? activity?.name;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text('Sur :', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: muted)),
+        if (name != null)
+          InputChip(
+            label: Text(name, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            avatar: Icon(project != null ? Icons.rocket_launch_outlined : Icons.timer_outlined, size: 15),
+            visualDensity: VisualDensity.compact,
+            onDeleted: () => _setDeepTarget(),
+          )
+        else
+          Text('n’importe quoi', style: TextStyle(fontSize: 12.5, color: muted)),
+        ActionChip(label: const Text('Un projet…', style: TextStyle(fontSize: 12.5)), visualDensity: VisualDensity.compact, onPressed: _pickDeepProject),
+        if (widget.activities.isNotEmpty)
+          ActionChip(label: const Text('Une activité…', style: TextStyle(fontSize: 12.5)), visualDensity: VisualDensity.compact, onPressed: _pickDeepActivity),
+      ]),
+    );
+  }
+
   void _clearLink() {
     setState(() {
       _timeBlock = null;
@@ -2061,7 +2149,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   }
 
   List<BlockSuggestion> get _matches {
-    if (!widget.isNew || _linkedLabel != null) return const [];
+    if (!widget.isNew || _linkedLabel != null || _deepTargeted) return const [];
     final q = foldName(_titleCtrl.text.trim());
     if (q.length < 2) return const [];
     return widget.suggestions
@@ -2086,7 +2174,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       actionId: _actionId,
       status: widget.block.status,
       doneAt: widget.block.doneAt,
-      timeBlock: _timeBlock != null && _activityId == null && _projectId == null ? _timeBlock : null,
+      timeBlock: _timeBlock == 'deep' || (_timeBlock != null && _activityId == null && _projectId == null) ? _timeBlock : null,
     ));
     if (mounted) Navigator.pop(context);
   }
@@ -2158,9 +2246,10 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                   onSelected: (v) => v ? _pickTimeBlock(k) : _clearLink(),
                 ),
             ]),
+            if (_timeBlock == 'deep') _deepTargetRow(context),
             const SizedBox(height: 14),
           ],
-          if (widget.isNew && widget.activities.isNotEmpty) ...[
+          if (widget.isNew && widget.activities.isNotEmpty && _timeBlock != 'deep') ...[
             Text('BLOC D\'ACTIVITÉ',
                 style: TextStyle(
                     fontSize: 10.5,

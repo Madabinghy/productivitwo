@@ -35,10 +35,11 @@ const _text3 = Color(0xFFB8A69A);
 
 /// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
 /// [projectId] = front déjà choisi (fiche projet, page focus) ; [firstActionId] = l'action par laquelle commencer.
-Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume, String? projectId, String? firstActionId}) {
+/// [activityId] = Deep work visé sur une activité : seuls les projets qui la servent sont proposés (tous si aucun).
+Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume, String? projectId, String? firstActionId, String? activityId}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId)));
+      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId, activityId: activityId)));
 }
 
 enum _Phase { setup, coup, pause, end }
@@ -48,7 +49,8 @@ class OffensiveScreen extends StatefulWidget {
   final PendingRun? resume;
   final String? projectId;
   final String? firstActionId;
-  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId});
+  final String? activityId;
+  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId, this.activityId});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -84,7 +86,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void initState() {
     super.initState();
     WakelockPlus.enable().catchError((_) {});
-    final fronts = offensiveFronts(logic.currentProjects, DateTime.now());
+    final fronts = frontsForActivity(offensiveFronts(logic.currentProjects, DateTime.now()), widget.activityId);
     // Front déjà choisi (fiche projet, page focus) : en tête de liste, sélectionné.
     final pre = fronts.indexWhere((f) => f.project.id == widget.projectId);
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
