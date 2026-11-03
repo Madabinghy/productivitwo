@@ -14,6 +14,8 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/parole.dart' show kParoleMin, paroleIndex, paroleOfDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
+import 'package:productivitwo_v1/utils/card_quests.dart';
+import 'package:productivitwo_v1/utils/badge_cards.dart' show rarityLabel;
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, spentByAction;
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
@@ -37,8 +39,10 @@ const _text3 = Color(0xFF8DA2AF);
 const _green = Color(0xFF3DDC84);
 const _amber = Color(0xFFF5B041);
 
-Future<void> showSniperScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, PendingRun? resume}) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => SniperScreen(logic: logic, badges: badges, resume: resume)));
+/// [focus] = Sniper ciblé sur une carte (2026-11-03) : ses tirs en tête, le reste décoché.
+Future<void> showSniperScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, PendingRun? resume, CardQuest? focus}) {
+  return Navigator.of(context)
+      .push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => SniperScreen(logic: logic, badges: badges, resume: resume, focus: focus)));
 }
 
 enum _Phase { aim, shot, hit, end }
@@ -47,7 +51,8 @@ class SniperScreen extends StatefulWidget {
   final AppLogic logic;
   final BadgeCenter? badges;
   final PendingRun? resume;
-  const SniperScreen({super.key, required this.logic, this.badges, this.resume});
+  final CardQuest? focus;
+  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus});
 
   @override
   State<SniperScreen> createState() => _SniperScreenState();
@@ -55,6 +60,7 @@ class SniperScreen extends StatefulWidget {
 
 class _SniperScreenState extends State<SniperScreen> {
   List<Stake> _stakes = const [];
+  CardQuest? _focus;
   Map<String, int> _routineLeft = const {};
   double _factor = 1;
   int _endMin = 22 * 60;
@@ -144,11 +150,42 @@ class _SniperScreenState extends State<SniperScreen> {
       } catch (_) {}
     }
     _stakes = [...board.top, ...board.rest];
+    _focus = widget.focus ?? _resumedFocus();
+    if (_focus case final q?) _stakes = focusStakes(_stakes, q);
     _factor = estimateFactor(logic.currentProjects, spentByAction(st.sessions)) ?? 1;
     final nowMin = logic.livedNowMinNow;
     final end = nowMin >= _endMin - 15 ? nowMin + 90 : _endMin;
     _budget = sniperBudget(blocks: logic.todayBlocks, nowMin: nowMin, endMin: end);
     _replan();
+    if (_focus case final q? when widget.resume == null) _aimAt(q);
+  }
+
+  /// Session ciblée reprise : la quête est recalculée depuis le deck.
+  CardQuest? _resumedFocus() {
+    final id = widget.resume?.extra['focus'];
+    final deck = widget.badges?.deck;
+    if (id is! String || deck == null) return null;
+    final b = deck.byId(id);
+    if (b == null) return null;
+    return cardQuestOf(b, activities: logic.state.activities, facts: widget.badges?.todayFacts());
+  }
+
+  /// Le viseur ne garde que les tirs de la carte, à leur montant, en tête ;
+  /// les autres enjeux restent proposés, écartés.
+  void _aimAt(CardQuest q) {
+    final keys = [for (final s in q.steps) s.key];
+    _added.addAll(keys);
+    _excluded.addAll([for (final t in _base.aimed) if (!keys.contains(t.key)) t.key]);
+    final byKey = {
+      for (final s in _stakes)
+        if (sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor) case final t?) t.key: t,
+    };
+    for (final st in q.steps) {
+      final t = byKey[st.key];
+      if (t != null && t.amount != st.amount) _amounts[st.key] = st.amount;
+    }
+    _order = keys;
+    _adjust();
   }
 
   void _replan() {
@@ -285,6 +322,7 @@ class _SniperScreenState extends State<SniperScreen> {
         'skipped': _skipped.toList(),
         'fired': _fired,
         'aimedMin': _aimedMin,
+        if (_focus case final q?) 'focus': q.badge.def.id,
         'full': _fullHits,
         'total': _totalAimed,
       },
@@ -751,6 +789,18 @@ class _SniperScreenState extends State<SniperScreen> {
           const Text('Chaque minute, pile où elle compte', style: TextStyle(fontSize: 26, height: 1.15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
           const Text('L’app a calculé le temps exact qui fait tomber chaque enjeu du jour. Tu enchaînes, sans décider entre deux.', style: TextStyle(fontSize: 14, height: 1.4, color: _text2)),
+          if (_focus case final q?) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: kSniperAccent.withValues(alpha: .7))),
+              child: Text.rich(TextSpan(style: const TextStyle(fontSize: 13.5, height: 1.35, color: _text2), children: [
+                const TextSpan(text: 'Visée : '),
+                TextSpan(text: q.badge.def.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                TextSpan(text: ' · carte ${rarityLabel(q.nextRarity).toLowerCase()}\n${q.need}'),
+              ])),
+            ),
+          ],
           const SizedBox(height: 14),
           _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
