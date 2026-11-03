@@ -955,6 +955,21 @@ staple?, remove?}])` (quand l'utilisateur DIT ce qu'il a) ; `manage_aisles(actio
 demande seulement) ; `add_shopping_item {aisle}` ; `get_shopping_list` montre le rayon. **Lot 2 livré (écran)** : `widgets/pantry_sheet.dart` — `showPantrySheet` (`showFiche`) : « n produits », ligne bientôt fini · plus rien, bandeau « Achats du … · n produits rangés » (dernier `boughtAt`), champ « J'ai… » (produit « J'en ai », rayon deviné, SnackBar « Modifier »), puces des rayons (filtre), sections par rayon (pastille `aisleColor`, palette fixe par position), ligne = nom + « habituel · à racheter / sur la liste · acheté le … », pastille d'état (tap = suivant, `nextPantryState`), tap = `showPantryItemEditor` (CHEZ TOI · RAYON · Produit habituel · Retirer), glisser = retirer (« Annuler ») ; « Gérer les rayons » = `showAislesSheet` (renommer, retirer, ajouter avant Autre). Entrées : « Mes placards › » sous le titre de la feuille Courses (`open-pantry`) et dans la feuille Repas. À venir : lot 3 liste
 par rayon + menu qui n'ajoute que le manquant + Finances par rayon, lot 4 plats « ce que j'ai » / « Avec ce que tu as ».
 
+## Où va mon argent (2026-11-03, maquette validée « Où va mon argent », 2 lots)
+
+Le mois en un coup d'œil par domaine, enveloppe ou magasin, jusqu'au ticket et ses articles. **Pas de photo** (décision user) : le
+ticket est RECOMPOSÉ à partir de ce que Claude a lu. **Lot 1 livré (ticket conservé)** : `Finances.receipts {<id>: Receipt {ymd,
+time?, store?, place?, ref?, total, envelopeId, lines: [ReceiptLine {label (imprimé), name (simple), price (centimes payés),
+domainId?, projectId?, aisle?}], at?}}` (`utils/finances.dart`, `FirestoreSync.setFinanceReceipt`) ; `Expense.receiptId`. Logique
+pure `utils/receipts.dart` : `receiptParts` (par domaine · projet, remise au prorata, `byAisle`), `receiptExpenses` (ids stables
+`<ticket>-<n>`), `withReceiptLineDomain`, `expensesOfReceipt`, `receiptOf`. `AppLogic.setReceiptLineDomain` réécrit le ticket et
+recalcule ses dépenses. Fiche `widgets/receipt_sheet.dart` (`showReceiptSheet`) : le ticket « papier » (magasin · lieu, date heure,
+« Ticket n° », lignes imprimées, TOTAL), LES ARTICLES (nom, pastille domaine · rayon, prix ; tap = changer le domaine), RÉPARTI
+(barre + une ligne par domaine). Feuille Finances : tap sur une dépense d'un ticket conservé = sa fiche (au lieu de l'éditeur).
+MCP `record_receipt {store, place, time, ref}` conserve le ticket ligne par ligne (`ReceiptPlan.lines`) et pose `receiptId` sur ses
+dépenses (⚠️ `firebase deploy --only functions`). Les tickets d'avant n'ont pas de fiche (dépense « Courses · Lidl » + articles).
+À venir : lot 2 « Où va mon argent » (Domaines · Enveloppes · Magasins, ‹ › mois, page d'une catégorie avec ses tickets).
+
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)
 
 Une feuille « Repas » comme Sommeil et Sport ; le plat est la seule chose à saisir, une fois (nom, portions, temps, ingrédients

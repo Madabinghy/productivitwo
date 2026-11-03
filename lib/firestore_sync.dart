@@ -3144,6 +3144,16 @@ class FirestoreSync {
   /// Gels d'activité / routine (`data/meta.freezes`, `utils/rest_periods.dart`).
   /// Finances (`data/meta.finances`, 2026-11-02) : écriture ciblée d'un
   /// morceau (une dépense, un fixe passé, un solde) ; `null` = le retirer.
+  /// Un ticket de caisse conservé (`finances.receipts`, 2026-11-03).
+  Future<void> setFinanceReceipt(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'finances': {
+        'receipts': {id: json ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
   Future<void> setFinanceExpense(String id, Map<String, dynamic>? json) async {
     if (uid == null) return;
     await _meta().set({

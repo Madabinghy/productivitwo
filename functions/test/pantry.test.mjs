@@ -88,3 +88,18 @@ test("ticket : rayon par ligne, montant par rayon, produits pour les placards", 
   assert.equal(p.bought["lessive x30"].aisle, "Ménager");
   assert.equal(p.prices["lait"].aisle, "Frais");
 });
+
+test("ticket conservé : lignes avec prix payé, nom simple, domaine, rayon", () => {
+  const p = planReceipt(
+    [
+      { label: "PATES FARFALLE 500G", name: "Pâtes", price: 1.5, domain: "Santé" },
+      { label: "LESSIVE X30", price: 8.5, domain: "Intendance", aisle: "Ménager" },
+    ],
+    9.0,
+    { domains: [{ id: "s", name: "Santé" }, { id: "i", name: "Intendance" }], memory: {}, items: {}, aisleOf: (l, g) => g ?? guessAisle(l) ?? OTHER_AISLE },
+  );
+  assert.equal(p.lines.length, 2);
+  assert.deepEqual(p.lines[0], { label: "PATES FARFALLE 500G", name: "Pâtes", price: 135, domainId: "s", aisle: "Épicerie" });
+  assert.equal(p.lines[1].name, undefined);
+  assert.equal(p.lines.reduce((a, l) => a + l.price, 0), 900);
+});

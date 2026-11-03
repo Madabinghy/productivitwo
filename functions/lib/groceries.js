@@ -145,6 +145,7 @@ function planReceipt(lines, totalEuros, ctx) {
     const groups = new Map();
     const prices = {};
     const bought = {};
+    const kept = [];
     lines.forEach((l, i) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const listMatch = l.listLabel ? findItems(ctx.items, l.listLabel).find(([, x]) => fold(x.label) === fold(l.listLabel)) : undefined;
@@ -170,12 +171,13 @@ function planReceipt(lines, totalEuros, ctx) {
             bought[groceryKey(product)] = { label: product, aisle };
         }
         groups.set(k, g);
+        kept.push(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ label: l.label.trim() }, (product !== l.label.trim() ? { name: product } : {})), { price: paid[i] }), (domainId ? { domainId } : {})), (projectId ? { projectId } : {})), (aisle ? { aisle } : {})));
         prices[groceryKey(product)] = Object.assign(Object.assign(Object.assign({ price: paid[i] }, (domainId ? { domainId } : {})), (projectId ? { projectId } : {})), (aisle ? { aisle } : {}));
     });
     const shares = [...groups.values()].sort((a, b) => b.amount - a.amount);
     if (shares.some((s) => s.domainId == null))
         warnings.push("Des lignes n'ont pas de domaine de vie : elles iront dans « Sans domaine ».");
-    return { total, shares, prices, bought, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
+    return { total, shares, prices, bought, lines: kept, removeItemIds: [...new Set(removeItemIds)], menuKeys: [...new Set(menuKeys)], warnings };
 }
 /** Le lundi (YYYY-MM-DD) de la semaine d'un jour. */
 function mondayOfYmd(ymd) {

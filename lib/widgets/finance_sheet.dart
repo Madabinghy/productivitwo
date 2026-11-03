@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/receipt_sheet.dart' show showReceiptSheet;
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart';
@@ -104,6 +105,11 @@ class _FinanceSheetState extends State<FinanceSheet> {
 
   /// Corriger une dépense : la même feuille, déjà remplie, avec « Supprimer ».
   Future<void> _editExpense(Expense x) async {
+    // Dépense d'un ticket conservé : on ouvre le ticket (articles, domaines).
+    if (x.receiptId != null && logic.finances.receipts.containsKey(x.receiptId)) {
+      await showReceiptSheet(context, logic: logic, receiptId: x.receiptId!);
+      return;
+    }
     final deleted = await showExpenseSheet(context, logic: logic, edit: x);
     if (deleted == true && mounted) _removeExpense(x);
   }

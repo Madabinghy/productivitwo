@@ -1238,7 +1238,7 @@ async function executeRecordReceipt(uid, args) {
     const dn = (id) => { var _a, _b; return (id ? (_b = (_a = domains.find((d) => d.id === id)) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : "domaine retiré" : "Sans domaine"); };
     const eur = (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
     const summary = [
-        `Ticket${args.store ? ` ${args.store}` : ""} du ${ymd} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
+        `Ticket${args.store ? ` ${args.store}` : ""}${args.place ? ` (${args.place})` : ""} du ${ymd}${args.time ? ` à ${args.time}` : ""}${args.ref ? ` · n° ${args.ref}` : ""} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
         ...plan.shares.map((s) => { var _a; return `• ${dn(s.domainId)}${s.projectId ? ` · ${(_a = projects.get(s.projectId)) !== null && _a !== void 0 ? _a : "projet"}` : ""} : ${eur(s.amount)} (${s.labels.join(", ")})`; }),
         ...(() => {
             var _a;
@@ -1257,13 +1257,17 @@ async function executeRecordReceipt(uid, args) {
         return `${summary}\n\nRien n'est enregistré : montre cette répartition à l'utilisateur, corrige les domaines s'il le demande, puis rappelle record_receipt avec apply:true.`;
     }
     const at = Date.now();
+    const receiptId = `${at.toString(36)}t`;
     const expenses = {};
     plan.shares.forEach((s, i) => {
         if (s.amount <= 0)
             return;
-        const id = `${at.toString(36)}r${i}`;
-        expenses[id] = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ ymd, amount: s.amount, envelopeId: env, note: args.store ? `Courses · ${args.store}` : "Courses" }, (s.domainId ? { domainId: s.domainId } : {})), (s.projectId ? { projectId: s.projectId } : {})), { items: s.labels }), (Object.keys(s.byAisle).length ? { byAisle: s.byAisle } : {})), { at });
+        const id = `${receiptId}-${i}`;
+        expenses[id] = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ ymd, amount: s.amount, envelopeId: env, note: args.store ? `Courses · ${args.store}` : "Courses" }, (s.domainId ? { domainId: s.domainId } : {})), (s.projectId ? { projectId: s.projectId } : {})), { items: s.labels }), (Object.keys(s.byAisle).length ? { byAisle: s.byAisle } : {})), { receiptId,
+            at });
     });
+    const time = args.time && /^\d{1,2}:\d{2}$/.test(args.time.trim()) ? args.time.trim().padStart(5, "0") : undefined;
+    const receipt = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ ymd }, (time ? { time } : {})), (args.store ? { store: args.store.trim() } : {})), (args.place ? { place: args.place.trim() } : {})), (args.ref ? { ref: String(args.ref).trim() } : {})), { total: plan.total, envelopeId: env, lines: plan.lines, at });
     const pantry = {};
     for (const [k, b] of Object.entries(plan.bought)) {
         pantry[k] = Object.assign(Object.assign({}, ((_s = (_r = g.pantry) === null || _r === void 0 ? void 0 : _r[k]) !== null && _s !== void 0 ? _s : {})), { label: (_v = (_u = (_t = g.pantry) === null || _t === void 0 ? void 0 : _t[k]) === null || _u === void 0 ? void 0 : _u.label) !== null && _v !== void 0 ? _v : b.label, aisle: b.aisle, state: "have", boughtAt: ymd });
@@ -1276,11 +1280,11 @@ async function executeRecordReceipt(uid, args) {
         items[id] = db_1.FieldValue.delete();
     const nothing = ((_z = (_y = meta.finances) === null || _y === void 0 ? void 0 : _y.nothing) !== null && _z !== void 0 ? _z : []).filter((d) => d !== ymd);
     const patch = {
-        finances: Object.assign({ expenses }, (nothing.length !== ((_1 = (_0 = meta.finances) === null || _0 === void 0 ? void 0 : _0.nothing) !== null && _1 !== void 0 ? _1 : []).length ? { nothing } : {})),
+        finances: Object.assign({ expenses, receipts: { [receiptId]: receipt } }, (nothing.length !== ((_1 = (_0 = meta.finances) === null || _0 === void 0 ? void 0 : _0.nothing) !== null && _1 !== void 0 ? _1 : []).length ? { nothing } : {})),
         groceries: Object.assign(Object.assign(Object.assign({ memory }, (Object.keys(pantry).length ? { pantry } : {})), (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
     };
     await metaRef.set(patch, { merge: true });
-    return `✅ Enregistré : ${Object.keys(expenses).length} dépense(s) dans Finances.\n${summary}`;
+    return `✅ Enregistré : ticket conservé (visible dans Finances) et ${Object.keys(expenses).length} dépense(s).\n${summary}`;
 }
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
 async function executeGetPantry(uid, args = {}) {

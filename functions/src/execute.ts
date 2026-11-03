@@ -1345,7 +1345,17 @@ async function executeCheckShoppingItem(
  */
 async function executeRecordReceipt(
   uid: string,
-  args: { lines?: ReceiptLineInput[]; total?: number; store?: string; date?: string; envelope?: string; apply?: boolean },
+  args: {
+    lines?: ReceiptLineInput[];
+    total?: number;
+    store?: string;
+    place?: string;
+    ref?: string;
+    time?: string;
+    date?: string;
+    envelope?: string;
+    apply?: boolean;
+  },
 ): Promise<string> {
   const lines = (args.lines ?? []).filter((l) => l && String(l.label ?? "").trim() && Number(l.price) > 0);
   if (!lines.length) return "❌ Aucune ligne lisible (label + price en euros).";
@@ -1386,7 +1396,7 @@ async function executeRecordReceipt(
   const dn = (id: string | null) => (id ? domains.find((d) => d.id === id)?.name ?? "domaine retiré" : "Sans domaine");
   const eur = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
   const summary = [
-    `Ticket${args.store ? ` ${args.store}` : ""} du ${ymd} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
+    `Ticket${args.store ? ` ${args.store}` : ""}${args.place ? ` (${args.place})` : ""} du ${ymd}${args.time ? ` à ${args.time}` : ""}${args.ref ? ` · n° ${args.ref}` : ""} · ${eur(plan.total)} · ${lines.length} ligne${lines.length > 1 ? "s" : ""}`,
     ...plan.shares.map((s) => `• ${dn(s.domainId)}${s.projectId ? ` · ${projects.get(s.projectId) ?? "projet"}` : ""} : ${eur(s.amount)} (${s.labels.join(", ")})`),
     ...(() => {
       const by: Record<string, number> = {};
@@ -1402,10 +1412,11 @@ async function executeRecordReceipt(
     return `${summary}\n\nRien n'est enregistré : montre cette répartition à l'utilisateur, corrige les domaines s'il le demande, puis rappelle record_receipt avec apply:true.`;
   }
   const at = Date.now();
+  const receiptId = `${at.toString(36)}t`;
   const expenses: Record<string, unknown> = {};
   plan.shares.forEach((s, i) => {
     if (s.amount <= 0) return;
-    const id = `${at.toString(36)}r${i}`;
+    const id = `${receiptId}-${i}`;
     expenses[id] = {
       ymd,
       amount: s.amount,
@@ -1415,9 +1426,22 @@ async function executeRecordReceipt(
       ...(s.projectId ? { projectId: s.projectId } : {}),
       items: s.labels,
       ...(Object.keys(s.byAisle).length ? { byAisle: s.byAisle } : {}),
+      receiptId,
       at,
     };
   });
+  const time = args.time && /^\d{1,2}:\d{2}$/.test(args.time.trim()) ? args.time.trim().padStart(5, "0") : undefined;
+  const receipt = {
+    ymd,
+    ...(time ? { time } : {}),
+    ...(args.store ? { store: args.store.trim() } : {}),
+    ...(args.place ? { place: args.place.trim() } : {}),
+    ...(args.ref ? { ref: String(args.ref).trim() } : {}),
+    total: plan.total,
+    envelopeId: env,
+    lines: plan.lines,
+    at,
+  };
   const pantry: Record<string, PantryDoc> = {};
   for (const [k, b] of Object.entries(plan.bought)) {
     pantry[k] = { ...(g.pantry?.[k] ?? {}), label: g.pantry?.[k]?.label ?? b.label, aisle: b.aisle, state: "have", boughtAt: ymd };
@@ -1428,7 +1452,7 @@ async function executeRecordReceipt(
   for (const id of plan.removeItemIds) items[id] = FieldValue.delete();
   const nothing = ((meta.finances?.nothing ?? []) as string[]).filter((d) => d !== ymd);
   const patch: Record<string, unknown> = {
-    finances: { expenses, ...(nothing.length !== (meta.finances?.nothing ?? []).length ? { nothing } : {}) },
+    finances: { expenses, receipts: { [receiptId]: receipt }, ...(nothing.length !== (meta.finances?.nothing ?? []).length ? { nothing } : {}) },
     groceries: {
       memory,
       ...(Object.keys(pantry).length ? { pantry } : {}),
@@ -1437,7 +1461,7 @@ async function executeRecordReceipt(
     },
   };
   await metaRef.set(patch, { merge: true });
-  return `✅ Enregistré : ${Object.keys(expenses).length} dépense(s) dans Finances.\n${summary}`;
+  return `✅ Enregistré : ticket conservé (visible dans Finances) et ${Object.keys(expenses).length} dépense(s).\n${summary}`;
 }
 
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
