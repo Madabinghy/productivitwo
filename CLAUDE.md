@@ -952,7 +952,7 @@ pluriel en s / x) : `guessAisle`, `aisleFor` (mot retenu → placard → deviné
 MCP (⚠️ `firebase deploy --only functions`) : `record_receipt` lignes `{name, aisle}` (nom simple du produit, rayon) → placard « j'en
 ai » daté, dépense `byAisle`, résumé « Par rayon » ; `get_pantry(aisle?, state?)` ; `update_pantry(items:[{label, state?, aisle?,
 staple?, remove?}])` (quand l'utilisateur DIT ce qu'il a) ; `manage_aisles(action: list|add|rename|delete, aisle?, newName?)` (à la
-demande seulement) ; `add_shopping_item {aisle}` ; `get_shopping_list` montre le rayon. À venir : lot 2 écran Mes placards, lot 3 liste
+demande seulement) ; `add_shopping_item {aisle}` ; `get_shopping_list` montre le rayon. **Lot 2 livré (écran)** : `widgets/pantry_sheet.dart` — `showPantrySheet` (`showFiche`) : « n produits », ligne bientôt fini · plus rien, bandeau « Achats du … · n produits rangés » (dernier `boughtAt`), champ « J'ai… » (produit « J'en ai », rayon deviné, SnackBar « Modifier »), puces des rayons (filtre), sections par rayon (pastille `aisleColor`, palette fixe par position), ligne = nom + « habituel · à racheter / sur la liste · acheté le … », pastille d'état (tap = suivant, `nextPantryState`), tap = `showPantryItemEditor` (CHEZ TOI · RAYON · Produit habituel · Retirer), glisser = retirer (« Annuler ») ; « Gérer les rayons » = `showAislesSheet` (renommer, retirer, ajouter avant Autre). Entrées : « Mes placards › » sous le titre de la feuille Courses (`open-pantry`) et dans la feuille Repas. À venir : lot 3 liste
 par rayon + menu qui n'ajoute que le manquant + Finances par rayon, lot 4 plats « ce que j'ai » / « Avec ce que tu as ».
 
 ## Repas et menu (2026-11-01, maquette validée « Repas et menu »)

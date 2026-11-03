@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/utils/meal_day.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
+import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show showPantrySheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent, showDishesSheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
@@ -267,6 +268,7 @@ class _MealSheetState extends State<MealSheet> {
           ),
           Wrap(alignment: WrapAlignment.spaceBetween, children: [
             TextButton(onPressed: () => showDishesSheet(context, sync: widget.sync), child: const Text('Mes plats ›')),
+            TextButton(onPressed: () => showPantrySheet(context, logic: logic), child: const Text('Mes placards ›')),
             TextButton(
               onPressed: () => showGroceriesSheet(context, logic: logic, sync: widget.sync),
               child: Text('Liste de courses${toBuy > 0 ? ' · $toBuy' : ''}'),

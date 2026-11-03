@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/meal_day.dart' show isBalancedMealRoutine
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/grocery_shop_screen.dart' show showGroceryShop;
+import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show showPantrySheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
 /// Feuille « Courses » (maquette validée 2026-11-02 « Courses générales »,
@@ -138,7 +139,16 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
               child: Text(toBuy.isEmpty ? 'rien à prendre' : '${toBuy.length} à prendre', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: kGroceryAccent)),
             ),
           ]),
-          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('open-pantry'),
+              onPressed: () => showPantrySheet(context, logic: logic),
+              icon: const Icon(Icons.kitchen_outlined, size: 18),
+              label: Text(logic.groceries.pantry.isEmpty ? 'Mes placards ›' : 'Mes placards · ${logic.groceries.pantry.length} produits ›'),
+              style: TextButton.styleFrom(foregroundColor: kGroceryAccent, padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+            ),
+          ),
           TextField(
             controller: _add,
             textCapitalization: TextCapitalization.sentences,
