@@ -1869,6 +1869,27 @@ class AppLogic implements HuntStore {
     return x.id;
   }
 
+  /// Corrige une dépense déjà notée (même id, heure de saisie gardée) ; le jour reste aujourd'hui ou hier.
+  Future<bool> updateExpense(Expense x) async {
+    final old = finances.expenses[x.id];
+    if (old == null || x.amount <= 0) return false;
+    if (x.ymd != old.ymd && !canLogOn(x.ymd, livedTodayYmd)) return false;
+    final y = Expense(
+        id: x.id, ymd: x.ymd, amount: x.amount, envelopeId: x.envelopeId, note: x.note?.trim(), domainId: x.domainId, projectId: x.projectId, items: old.items, at: old.at);
+    finances = finances.copyWith(expenses: {...finances.expenses, y.id: y});
+    if (y.ymd != old.ymd) _countTrackedDay(y.ymd);
+    onChange();
+    await sync?.setFinanceExpense(y.id, y.toJson());
+    return true;
+  }
+
+  /// Remet une dépense retirée (« Annuler »), avec son id, son domaine et son heure.
+  Future<void> restoreExpense(Expense x) async {
+    finances = finances.copyWith(expenses: {...finances.expenses, x.id: x});
+    onChange();
+    await sync?.setFinanceExpense(x.id, x.toJson());
+  }
+
   Future<void> removeExpense(String id) async {
     if (!finances.expenses.containsKey(id)) return;
     finances = finances.copyWith(expenses: {...finances.expenses}..remove(id));
