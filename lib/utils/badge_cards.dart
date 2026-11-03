@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
 /// Badges en cartes (maquette validée 2026-11-01 « Badges en cartes ») : un
@@ -87,8 +88,49 @@ CardAlbum cardAlbum(BadgeDeck deck) {
     won++;
     by[r] = (by[r] ?? 0) + 1;
   }
-  return CardAlbum(won, cards.length, by);
+  // Les piles (séries et compteurs, une par cadre) comptent comme une carte chacune
+  // (retour user 2026-11-03 : ne pas mélanger, mais que ça compte).
+  final piles = cardPiles(deck);
+  for (final p in piles) {
+    if (!p.won) continue;
+    won++;
+    by[p.rarity] = (by[p.rarity] ?? 0) + 1;
+  }
+  return CardAlbum(won, cards.length + piles.length, by);
 }
+
+/// Séries de routine ou compteurs (heures, coches au total).
+enum PileKind { series, counters }
+
+/// Une pile = toutes les cartes d'une sorte à un même cadre (« Séries or · 3 »).
+/// Gagnée dès qu'elle contient une carte. Rangées à part dans l'album, elles
+/// comptent chacune comme une carte de badge.
+class CardPile {
+  final PileKind kind;
+  final CardRarity rarity;
+  final List<BadgeState> cards;
+  const CardPile(this.kind, this.rarity, this.cards);
+  bool get won => cards.isNotEmpty;
+  String get name => '${kind == PileKind.series ? 'Séries' : 'Compteurs'} ${rarityLabel(rarity).toLowerCase()}';
+}
+
+const kPileRarities = [CardRarity.bronze, CardRarity.argent, CardRarity.or, CardRarity.legend];
+
+/// Les huit piles : séries puis compteurs, de bronze à légendaire.
+List<CardPile> cardPiles(BadgeDeck deck) {
+  final series = deck.series;
+  final counters = [for (final b in deck.badges) if (isLongHaulId(b.def.id)) b];
+  List<CardPile> of(PileKind k, List<BadgeState> l) => [
+        for (final r in kPileRarities) CardPile(k, r, albumOrder([for (final b in l) if (rarityOf(b) == r) b])),
+      ];
+  return [...of(PileKind.series, series), ...of(PileKind.counters, counters)];
+}
+
+/// Séries ou compteurs commencés mais sans cadre encore (pas dans une pile).
+List<BadgeState> pileStarted(BadgeDeck deck, PileKind k) => [
+      for (final b in k == PileKind.series ? deck.series : [for (final x in deck.badges) if (isLongHaulId(x.def.id)) x])
+        if (rarityOf(b) == CardRarity.none && b.value > 0) b,
+    ];
 
 /// Ordre d'une famille dans l'album : gagnées (plus rare d'abord), puis
 /// commencées (plus avancée d'abord), puis de dos.
