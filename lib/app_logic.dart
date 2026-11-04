@@ -3,6 +3,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:productivitwo_v1/utils/freedom.dart';
+import 'package:productivitwo_v1/utils/linked_routines.dart';
 import 'dart:async';
 import 'package:productivitwo_v1/utils/not_today.dart';
 import 'dart:math' as math;
@@ -1818,6 +1819,21 @@ class AppLogic implements HuntStore {
   Activity? get budgetRoutine {
     final rs = state.activities.where((a) => !a.deleted && a.isHabit).toList();
     return rs.where((a) => a.catalogId == 'budget').firstOrNull ?? rs.where((a) => isBudgetRoutineName(a.name)).firstOrNull;
+  }
+
+  /// La routine « Planifier ma journée » (carte `planifier-journee`, sinon le nom) et « Boire de l'eau ».
+  Activity? get planRoutine => planRoutineOf(state.activities);
+  Activity? get waterRoutine => waterRoutineOf(state.activities);
+
+  /// Journée posée dans l'écran de planification : la routine « Planifier ma
+  /// journée » prend son +1 du jour vécu si elle ne l'a pas (une seule fois).
+  bool countPlannedDay() {
+    final r = planRoutine;
+    if (r == null) return false;
+    final start = livedDayStart(DateTime.now(), dayStartMin);
+    if (state.habitHits.any((h) => h.habitId == r.id && !h.ts.isBefore(start))) return false;
+    incHabit(r.id, 1, livedToday);
+    return true;
   }
 
   String _newFinanceId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${math.Random().nextInt(1 << 20).toRadixString(36)}';

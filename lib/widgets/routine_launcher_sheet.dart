@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart' show showRoutinesOrganizeScreen;
@@ -27,6 +28,7 @@ Future<void> showRoutineLauncher(
   required void Function(Activity linked) onChrono,
   required void Function(Activity routine) onTimer,
   VoidCallback? onChanged,
+  VoidCallback? onPlan,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -54,6 +56,12 @@ Future<void> showRoutineLauncher(
           onTimer(r);
         },
         onChanged: onChanged,
+        onPlan: onPlan == null
+            ? null
+            : () {
+                Navigator.pop(ctx);
+                onPlan();
+              },
       ),
     ),
   );
@@ -67,6 +75,8 @@ class RoutineLauncher extends StatefulWidget {
   final void Function(Activity linked) onChrono;
   final void Function(Activity routine) onTimer;
   final VoidCallback? onChanged;
+  /// « Planifier ma journée » (2026-11-04) : son lanceur ouvre la planification.
+  final VoidCallback? onPlan;
   const RoutineLauncher({
     super.key,
     required this.logic,
@@ -76,6 +86,7 @@ class RoutineLauncher extends StatefulWidget {
     required this.onChrono,
     required this.onTimer,
     this.onChanged,
+    this.onPlan,
   });
 
   @override
@@ -302,6 +313,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final dismissed = day.dismissed.contains(a.id);
     final linked = _linkedOf(a);
     final hasTimer = (a.timerMin ?? 0) > 0;
+    final plan = widget.onPlan != null && isPlanRoutine(a);
     final streak = a.habitFreq == HabitFreq.daily ? logic.habitCurrentStreak(a.id) : 0;
     final dc = _colorOf(a);
     final target = t.dayTarget ?? t.weekTarget;
@@ -352,10 +364,10 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               ]),
             ),
           ),
-          if (!done && !dismissed && (linked != null || hasTimer)) ...[
+          if (!done && !dismissed && (plan || linked != null || hasTimer)) ...[
             const SizedBox(width: 6),
             Tooltip(
-              message: linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min',
+              message: plan ? 'Planifier maintenant' : (linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min'),
               child: SizedBox(
                 width: 34,
                 height: 34,
@@ -364,8 +376,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   shape: const CircleBorder(),
                   child: InkWell(
                     customBorder: const CircleBorder(),
-                    onTap: () => linked != null ? widget.onChrono(linked) : widget.onTimer(a),
-                    child: Icon(linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined, size: 18, color: dc),
+                    onTap: () => plan ? widget.onPlan!() : (linked != null ? widget.onChrono(linked) : widget.onTimer(a)),
+                    child: Icon(plan ? Icons.explore_outlined : (linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined), size: 18, color: dc),
                   ),
                 ),
               ),

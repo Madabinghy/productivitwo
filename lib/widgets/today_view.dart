@@ -1277,6 +1277,7 @@ class TodayViewState extends State<TodayView> {
                 onlyMissing: true,
                 onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
                 onStartTimed: widget.onStartTimed,
+                onPlan: () => showPlanScreen(context, widget.logic, badges: widget.badges),
                 onChanged: () {
                   if (ctx.mounted) setLocal(() {});
                 },
