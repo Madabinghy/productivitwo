@@ -38,6 +38,6 @@ Légumineuses = féculent ET protéine.
    > 3 j : +2 ; combinaison déjà validée : +1 ; même protéine qu'au repas précédent : −2, hors petit-déj ;
    identique < 3 j : −3), 3 meilleures, « Je prends » en un tap. MCP `get_meal_options(date, slot)` et
    `plan_meals(meals[], apply)`.
-4. **Placards par famille** — compteurs par famille dans Mes placards, rangée vide = « ajouter à la liste ».
+4. **Placards par famille** (livré : compteurs + filtre, famille réglable dans l'éditeur d'un produit) — compteurs par famille dans Mes placards, rangée vide = « ajouter à la liste ».
 
 Hors périmètre : grammages, portions, calories, macros, recettes pas à pas, planification sans validation.
