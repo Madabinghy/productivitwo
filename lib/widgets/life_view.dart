@@ -36,7 +36,10 @@ import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent,
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show kPlanAccent, showPlanScreen;
 import 'package:productivitwo_v1/widgets/season_view.dart' show SeasonTile;
-import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet;
+import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, WeightTrajectoryPainter;
+import 'package:productivitwo_v1/widgets/sleep_sheet.dart' show SleepNightsMini;
+import 'package:productivitwo_v1/widgets/finance_flow_card.dart' show FinanceFlowMini;
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show computeObjectiveTrajectory;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show kReviewAccent, showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 
@@ -50,7 +53,9 @@ const _natureColors = {
 };
 const _kNaturesPref = 'life_natures';
 /// Hauteur commune des tuiles de Ma vie (à l'échelle du texte 1).
-const kLifeTileHeight = 172.0;
+const kLifeTileHeight = 192.0;
+/// Hauteur des mini-graphiques des tuiles.
+const kLifeVizHeight = 48.0;
 
 /// Onglet « Ma vie » (maquette validée 2026-11-01) : les lanceurs des modes,
 /// la semaine en une ligne, une tuile par domaine selon sa nature (Sommeil,
@@ -392,7 +397,9 @@ class _LifeViewState extends State<LifeView> {
         eyebrow = 'SOMMEIL';
         value = s.avgMin == null ? 'Pas de nuit' : fmtNight(s.avgMin!);
         sub = s.avgMin == null ? 'lance le chrono Sommeil au coucher' : 'moy. ${s.nights} nuits · dette ${fmtNight(s.debtMin)}';
-        viz = _bars([for (final x in nights) x == null ? 0.0 : (x.minutes / 540).clamp(0.05, 1.0)], c, cs);
+        // Les nuits du coucher au lever, comme dans la feuille Sommeil (retour user 2026-11-04).
+        final byBed = sleepNightsByBedDay(sessions: st.sessions, activities: st.activities, now: now, dayStartMin: logic.dayStartMin, nights: 7);
+        viz = byBed.nights.every((x) => x == null) ? null : SleepNightsMini(nights: byBed.nights, bedDays: byBed.bedDays, target: target, height: kLifeVizHeight);
         onTap = widget.onOpenSleep;
       case DomainNature.sessions:
         final pick = resolveSportPick(st.activities, st.domains, logic.sportOverrides);
@@ -406,6 +413,14 @@ class _LifeViewState extends State<LifeView> {
         // Une barre par jour de la semaine : le temps actif (vide = repos).
         final maxMin = days.fold<int>(0, (a, x) => a > x.activeMin ? a : x.activeMin);
         viz = _bars([for (var i = 0; i < 7; i++) i < days.length && days[i].activeMin > 0 ? (days[i].activeMin / maxMin).clamp(0.12, 1.0) : 0.0], c, cs);
+        // Avec un objectif chiffré (le poids) : sa trajectoire, comme dans la feuille Sport (retour user 2026-11-04).
+        final wo = sportObjective(pick, _objectives.where((o) => o.status == 'active').toList());
+        if (wo != null && wo.metric != null) {
+          final traj = computeObjectiveTrajectory(wo, st.sessions, now);
+          if (traj.result != null) {
+            viz = SizedBox(height: kLifeVizHeight, width: double.infinity, child: CustomPaint(painter: WeightTrajectoryPainter(wo, traj, cs.onSurface, dot: 2.5)));
+          }
+        }
         onTap = () => showSportSheet(context, logic: logic, sync: widget.sync);
       case DomainNature.meals:
         final t = logic.livedToday;
@@ -443,34 +458,12 @@ class _LifeViewState extends State<LifeView> {
         if (acc != null) {
           value = euros(acc.balance);
           sub = 'sur ton compte · $tracked / 90 jours suivis';
-          // 7 derniers jours : le solde de fin de journée (rien avant le premier solde posé).
-          final days = [
-            for (var i = 6; i >= 0; i--) accountNow(f, ymdOf(DateTime(t.year, t.month, t.day - i)))?.balance,
-          ];
-          final known = days.whereType<int>();
-          final lo = known.reduce((a, b) => a < b ? a : b);
-          final hi = known.reduce((a, b) => a > b ? a : b);
-          viz = _bars([
-            for (final b in days) b == null ? 0.0 : (hi == lo ? .6 : (.15 + .85 * (b - lo) / (hi - lo))),
-          ], acc.balance < 0 ? const Color(0xFFE66767) : c, cs);
+          // 30 jours : la courbe du solde et les barres entré / sorti, comme dans la feuille Finances (retour user 2026-11-04).
+          viz = FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight);
         } else {
           value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
           sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · pose ton solde' : 'note tes dépenses, jour après jour');
-          // 7 derniers jours : la dépense de chaque jour ; un jour « rien dépensé » = petit trait.
-          final spentDays = [
-            for (var i = 6; i >= 0; i--)
-              () {
-                final y = ymdOf(DateTime(t.year, t.month, t.day - i));
-                return f.expenses.values.where((x) => x.ymd == y).fold<int>(0, (s, x) => s + x.amount);
-              }(),
-          ];
-          final maxSpent = spentDays.fold<int>(0, (a, b) => a > b ? a : b);
-          viz = _bars([
-            for (var i = 0; i < 7; i++)
-              spentDays[i] > 0
-                  ? (spentDays[i] / maxSpent).clamp(0.08, 1.0)
-                  : (f.nothing.contains(ymdOf(DateTime(t.year, t.month, t.day - 6 + i))) ? 0.05 : 0.0),
-          ], c, cs);
+          viz = f.expenses.isEmpty && f.incomes.isEmpty ? null : FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight);
         }
         onTap = () => showFinanceSheet(context, logic: logic);
       case DomainNature.work:
@@ -553,13 +546,13 @@ class _LifeViewState extends State<LifeView> {
   }
 
   Widget _bars(List<double> values, Color c, ColorScheme cs) => SizedBox(
-        height: 28,
+        height: kLifeVizHeight,
         child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           for (final (i, v) in values.indexed) ...[
             if (i > 0) const SizedBox(width: 3),
             Expanded(
               child: Container(
-                height: v <= 0 ? 3 : 28 * v,
+                height: v <= 0 ? 3 : kLifeVizHeight * v,
                 decoration: BoxDecoration(color: v <= 0 ? cs.onSurface.withValues(alpha: .08) : c, borderRadius: BorderRadius.circular(2)),
               ),
             ),
