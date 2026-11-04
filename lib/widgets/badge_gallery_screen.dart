@@ -79,7 +79,20 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   @override
   void initState() {
     super.initState();
+    widget.logic.addListener(_onLogic);
     _load();
+  }
+
+  /// Un +1 posé depuis une fiche ouverte au-dessus redessine l'album (faits du jour) — bug user 2026-11-04 :
+  /// la routine validée n'apparaissait qu'après avoir quitté l'app.
+  void _onLogic() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.logic.removeListener(_onLogic);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -555,7 +568,13 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
               expand: false,
               initialChildSize: .8,
               maxChildSize: .95,
-              builder: (ctx, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [_todaySection(deck, facts)]),
+              builder: (ctx, scroll) => ListenableBuilder(
+                listenable: widget.logic.listenable,
+                builder: (ctx, _) => ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    children: [_todaySection(deck, widget.center?.todayFacts() ?? facts)]),
+              ),
             ),
           ),
           child: Padding(
@@ -918,7 +937,7 @@ Future<void> _shareCard(BuildContext context, GlobalKey key, BadgeState b) async
 Future<void> showBadgeSheet(BuildContext context, BadgeState b,
     {HuntStore? logic, TodayFacts? facts, TodayFacts Function()? factsOf, BadgeTodayActions? actions, BadgeDeck? deck}) {
   final cardKey = GlobalKey();
-  final live = logic is Listenable ? logic as Listenable : Listenable.merge(const []);
+  final live = logic is AppLogic ? logic.listenable : logic is Listenable ? logic as Listenable : Listenable.merge(const []);
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
