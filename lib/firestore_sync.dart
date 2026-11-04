@@ -979,31 +979,23 @@ class FirestoreSync {
 
   // Séances de muscu (2026-11-04, `utils/workouts.dart`) : exercices et séances types dans `data/meta.gym`,
   // une séance faite = un doc `workouts/{id}`.
-  /// Liberté (`data/meta.freedom`, `utils/freedom.dart`) : le plan, une envie, un écart.
-  Future<void> setFreedomPlan(Map<String, dynamic>? json) async {
+  /// Liberté (`data/meta.freedoms.<id>`, `utils/freedom.dart`) : le plan, une envie, un écart.
+  Future<void> _setFreedomField(String id, Map<String, dynamic> field) async {
     if (uid == null) return;
     await _meta().set({
-      'freedom': {'plan': json ?? FieldValue.delete()}
+      'freedoms': {id: field}
     }, SetOptions(merge: true));
   }
 
-  Future<void> setFreedomUrge(String id, Map<String, dynamic>? json) async {
-    if (uid == null) return;
-    await _meta().set({
-      'freedom': {
-        'urges': {id: json ?? FieldValue.delete()}
-      }
-    }, SetOptions(merge: true));
-  }
+  Future<void> setFreedomPlan(String id, Map<String, dynamic>? json) => _setFreedomField(id, {'plan': json ?? FieldValue.delete()});
 
-  Future<void> setFreedomSlip(String id, Map<String, dynamic>? json) async {
-    if (uid == null) return;
-    await _meta().set({
-      'freedom': {
-        'slips': {id: json ?? FieldValue.delete()}
-      }
-    }, SetOptions(merge: true));
-  }
+  Future<void> setFreedomUrge(String id, String urgeId, Map<String, dynamic>? json) => _setFreedomField(id, {
+        'urges': {urgeId: json ?? FieldValue.delete()}
+      });
+
+  Future<void> setFreedomSlip(String id, String slipId, Map<String, dynamic>? json) => _setFreedomField(id, {
+        'slips': {slipId: json ?? FieldValue.delete()}
+      });
 
   Future<void> setGymExercise(String id, Map<String, dynamic>? json) async {
     if (uid == null) return;

@@ -3,7 +3,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 /// Liberté (2026-11-04, maquette validée « Sortir d'une dépendance ») : UNE chose qu'on veut arrêter ou
 /// réduire. L'app ne nomme aucune dépendance : la personne donne le nom qu'elle veut. On ne compte pas les
 /// chutes, on compte les victoires : chaque envie surmontée reste acquise, même après un écart.
-/// Stockage `data/meta.freedom {plan, urges: {<id>: …}, slips: {<id>: …}}`. Privé (jamais montré au coach
+/// Stockage `data/meta.freedoms.<id> {plan, urges: {<id>: …}, slips: {<id>: …}}` (une par chose). Privé (jamais montré au coach
 /// sans un consentement à part, lot 3).
 
 enum FreedomGoal { stop, reduce }
@@ -219,6 +219,27 @@ Freedom parseFreedom(dynamic raw) {
     }
   }
   return Freedom(plan: FreedomPlan.fromJson(raw['plan']), urges: urges, slips: slips);
+}
+
+/// Plusieurs libertés (2026-11-04, retour user) : `data/meta.freedoms.<id> = {plan, urges, slips}`.
+Map<String, Freedom> parseFreedoms(dynamic raw) {
+  final out = <String, Freedom>{};
+  if (raw is Map) {
+    for (final e in raw.entries) {
+      out[e.key.toString()] = parseFreedom(e.value);
+    }
+  }
+  return out;
+}
+
+/// Les libertés suivies (plan posé), de la plus ancienne à la plus récente.
+List<String> activeFreedomIds(Map<String, Freedom> all) {
+  final ids = [for (final e in all.entries) if (e.value.active) e.key];
+  ids.sort((a, b) {
+    final c = all[a]!.plan!.startYmd.compareTo(all[b]!.plan!.startYmd);
+    return c != 0 ? c : a.compareTo(b);
+  });
+  return ids;
 }
 
 // ── Où j'en suis ─────────────────────────────────────────────────────────────

@@ -266,55 +266,64 @@ class _LifeViewState extends State<LifeView> {
     );
   }
 
-  // Liberté (2026-11-04) : une seule chose à quitter ; rien d'affiché tant qu'elle n'existe pas, sauf un lien discret.
+  // Liberté (2026-11-04) : une carte par chose qu'on quitte ; aucune = un lien discret, sinon « + une autre ».
   Widget _freedomTile(ColorScheme cs, Color mute) {
-    final f = logic.freedom;
-    final p = f.plan;
-    if (p == null) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(
-          key: const ValueKey('life-freedom-start'),
-          onPressed: () => showFreedomSetup(context, logic: logic).then((_) => mounted ? setState(() {}) : null),
-          child: Text('Quitter une habitude ›', style: TextStyle(color: mute)),
+    final ids = logic.freedomIds;
+    void refresh(_) => mounted ? setState(() {}) : null;
+    final add = Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        key: const ValueKey('life-freedom-start'),
+        onPressed: () => showFreedomSetup(context, logic: logic).then(refresh),
+        child: Text(ids.isEmpty ? 'Quitter une habitude ›' : '+ Une autre habitude', style: TextStyle(color: mute)),
+      ),
+    );
+    if (ids.isEmpty) return add;
+    final now = DateTime.now();
+    Widget card(String id) {
+      final f = logic.freedomOf(id);
+      final p = f.plan!;
+      final stop = p.goal == FreedomGoal.stop;
+      final head = stop ? 'libre depuis ${freeLabel(now.difference(freeSince(f)))}' : '${usedThisPeriod(f, now)} / ${p.limit ?? '?'} ${p.unit} ${p.period == FreedomPeriod.day ? "aujourd'hui" : 'cette semaine'}';
+      final n = urgesOvercome(f);
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Material(
+          color: cs.surfaceContainerHighest.withValues(alpha: .5),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            key: ValueKey('life-freedom-$id'),
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => showFreedomSheet(context, logic: logic, id: id).then(refresh),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(p.name.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kFreeAccent)),
+                    const SizedBox(height: 2),
+                    Text(head, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                    Text('$n envie${n > 1 ? 's' : ''} surmontée${n > 1 ? 's' : ''}', style: TextStyle(fontSize: 12, color: mute)),
+                  ]),
+                ),
+                FilledButton(
+                  key: ValueKey('life-freedom-urge-$id'),
+                  style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: const Color(0xFF2A1606)),
+                  onPressed: () => showUrgeScreen(context, logic: logic, id: id).then(refresh),
+                  child: const Text("J'ai une envie", style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ]),
+            ),
+          ),
         ),
       );
     }
-    final now = DateTime.now();
-    final stop = p.goal == FreedomGoal.stop;
-    final head = stop ? 'libre depuis ${freeLabel(now.difference(freeSince(f)))}' : '${usedThisPeriod(f, now)} / ${p.limit ?? '?'} ${p.unit} ${p.period == FreedomPeriod.day ? "aujourd'hui" : 'cette semaine'}';
-    final n = urgesOvercome(f);
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Material(
-        color: cs.surfaceContainerHighest.withValues(alpha: .5),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          key: const ValueKey('life-freedom'),
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => showFreedomSheet(context, logic: logic).then((_) => mounted ? setState(() {}) : null),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('LIBERTÉ · ${p.name.toUpperCase()}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: kFreeAccent)),
-                  const SizedBox(height: 2),
-                  Text(head, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                  Text('$n envie${n > 1 ? 's' : ''} surmontée${n > 1 ? 's' : ''}', style: TextStyle(fontSize: 12, color: mute)),
-                ]),
-              ),
-              FilledButton(
-                key: const ValueKey('life-freedom-urge'),
-                style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: const Color(0xFF2A1606)),
-                onPressed: () => showUrgeScreen(context, logic: logic).then((_) => mounted ? setState(() {}) : null),
-                child: const Text("J'ai une envie", style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _section(mute, 'LIBERTÉ'),
+      for (final id in ids) card(id),
+      add,
+    ]);
   }
 
   Widget _section(Color mute, String t, {String? right}) => Padding(
