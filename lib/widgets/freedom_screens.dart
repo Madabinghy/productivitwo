@@ -516,7 +516,7 @@ class _UrgeScreenState extends State<UrgeScreen> {
 
   Future<void> _cancel() async {
     await UrgeSessionStore.clear();
-    if (widget.ticking) await CoupAlarm.cancelUrge();
+    if (widget.ticking) unawaited(CoupAlarm.cancelUrge());
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -537,9 +537,9 @@ class _UrgeScreenState extends State<UrgeScreen> {
       passed: passed,
       durationSec: math.min(DateTime.now().difference(_start).inSeconds, kUrgeWaveSec),
     );
-    await UrgeSessionStore.clear();
-    if (widget.ticking) await CoupAlarm.cancelUrge();
     await logic.logUrge(widget.id, u);
+    await UrgeSessionStore.clear();
+    if (widget.ticking) unawaited(CoupAlarm.cancelUrge());
     if (!mounted) return;
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
