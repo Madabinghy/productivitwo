@@ -14,7 +14,7 @@ import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/life_natures.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
-import 'package:productivitwo_v1/utils/meal_day.dart' show mealWeekView, currentMealMoment;
+import 'package:productivitwo_v1/utils/meal_day.dart' show mealWeekView, currentMealMoment, MealCell;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show PlannedMeal, leftoversOf, mealKey;
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
@@ -27,6 +27,7 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBad
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
+import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, showFinanceSheet;
 import 'package:productivitwo_v1/utils/finances.dart' show accountNow, euros, monthSummary, trackedDays;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
@@ -436,14 +437,8 @@ class _LifeViewState extends State<LifeView> {
         eyebrow = 'REPAS';
         value = v.counted == 0 ? 'Repas' : '${v.balanced} / ${v.counted}';
         sub = next != null ? '${moment == 'midi' ? 'ce midi' : 'ce soir'} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');
-        // Une barre par jour de la semaine : repas équilibrés (0, 1 ou 2).
-        viz = _bars([
-          for (final d in days)
-            () {
-              final ok = ['midi', 'soir'].where((m) => v.cells[mealKey(d, m)]?.name == 'ok').length;
-              return ok / 2;
-            }(),
-        ], c, cs);
+        // La grille midi / soir de la semaine, comme dans la feuille Repas (retour user 2026-11-04).
+        viz = _mealGrid(cs, days, (k) => v.cells[k], nowKey);
         onTap = () => showMealSheet(context, logic: logic, sync: widget.sync);
       case DomainNature.money:
         final f = logic.finances;
@@ -543,6 +538,43 @@ class _LifeViewState extends State<LifeView> {
     }
     final mx = per.fold<int>(0, (a, b) => a > b ? a : b);
     return _bars([for (final k in per) k <= 0 ? 0.0 : (k / mx).clamp(0.1, 1.0)], c, cs);
+  }
+
+  /// Mini grille des repas : une case par midi / soir des 7 jours (équilibré, autre chose, prévu, rien noté).
+  Widget _mealGrid(ColorScheme cs, List<String> days, MealCell? Function(String key) cell, String nowKey) {
+    Color color(MealCell? c) => switch (c) {
+          MealCell.ok => kMealAccent,
+          MealCell.other => const Color(0xFF3A2F1B),
+          MealCell.planned => const Color(0xFF1D2742),
+          MealCell.none => cs.onSurface.withValues(alpha: .12),
+          _ => cs.onSurface.withValues(alpha: .06),
+        };
+    return SizedBox(
+      height: kLifeVizHeight,
+      child: Column(children: [
+        for (final (i, m) in const ['midi', 'soir'].indexed) ...[
+          if (i > 0) const SizedBox(height: 4),
+          Expanded(
+            child: Row(children: [
+              for (final (j, d) in days.indexed) ...[
+                if (j > 0) const SizedBox(width: 3),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: color(cell(mealKey(d, m))),
+                      borderRadius: BorderRadius.circular(4),
+                      border: mealKey(d, m) == nowKey
+                          ? Border.all(color: cs.onSurface.withValues(alpha: .85), width: 1.2)
+                          : (cell(mealKey(d, m)) == MealCell.other ? Border.all(color: _kAmber.withValues(alpha: .6), width: 1) : null),
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+          ),
+        ],
+      ]),
+    );
   }
 
   Widget _bars(List<double> values, Color c, ColorScheme cs) => SizedBox(
