@@ -178,7 +178,8 @@ List<Season> wonSeasons(List<Season> seasons) => [for (final s in seasons) if (!
 SeasonGoal goalFor(StrategicObjective o) {
   final m = o.metric;
   if (m == null) return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.rhythm);
-  final last = o.readings.isEmpty ? null : o.readings.last.value;
+  final sorted = [...o.readings]..sort((a, b) => a.date.compareTo(b.date));
+  final last = sorted.isEmpty ? null : sorted.last.value;
   return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.metric, from: last ?? m.startValue, target: m.targetValue, unit: m.unit);
 }
 
@@ -230,7 +231,7 @@ SeasonGoalView seasonGoalView(
   if (g.kind == SeasonGoalKind.metric) {
     final from = g.from, target = g.target;
     if (o == null || from == null || target == null) return SeasonGoalView(g, SeasonGoalState.none);
-    final inSeason = o.readings.where((r) => r.date.compareTo(s.start) >= 0 && r.date.compareTo(day) <= 0).toList();
+    final inSeason = o.readings.where((r) => r.date.compareTo(s.start) >= 0 && r.date.compareTo(day) <= 0).toList()..sort((a, b) => a.date.compareTo(b.date));
     final latest = inSeason.isEmpty ? from : inSeason.last.value;
     final up = target >= from;
     final reachedNow = up ? latest >= target : latest <= target;
@@ -258,11 +259,22 @@ SeasonGoalView seasonGoalView(
 /// Rythme moyen d'un objectif sur les semaines pleines de la saison (chaque semaine
 /// mesurée jusqu'à son dimanche, sans ce qui est venu après).
 double? seasonRhythmMean(Season s, StrategicObjective o, {List<Activity> activities = const [], List<Session> sessions = const [], List<HabitHit> hits = const []}) {
-  final out = <double>[];
+  final out = seasonRhythmWeeks(s, o, activities: activities, sessions: sessions, hits: hits).whereType<double>().toList();
+  return out.isEmpty ? null : out.reduce((a, b) => a + b) / out.length;
+}
+
+/// Le rythme de chaque semaine de la saison (null = rien à mesurer), jusqu'à la
+/// semaine de [untilYmd] comprise (par défaut toute la saison).
+List<double?> seasonRhythmWeeks(Season s, StrategicObjective o,
+    {List<Activity> activities = const [], List<Session> sessions = const [], List<HabitHit> hits = const [], String? untilYmd}) {
+  final out = <double?>[];
   var monday = mondayOf(DateTime.parse(s.start));
-  final last = DateTime.parse(s.end);
+  final last = DateTime.parse(untilYmd != null && untilYmd.compareTo(s.end) < 0 ? untilYmd : s.end);
   while (!monday.isAfter(last)) {
-    final sunday = DateTime(monday.year, monday.month, monday.day + 6, 23, 59);
+    final lastEnd = DateTime(last.year, last.month, last.day, 23, 59);
+    final sundayEnd = DateTime(monday.year, monday.month, monday.day + 6, 23, 59);
+    // Semaine en cours : mesurée à ce jour (attendu au prorata), pas au dimanche.
+    final sunday = sundayEnd.isAfter(lastEnd) ? lastEnd : sundayEnd;
     final next = DateTime(monday.year, monday.month, monday.day + 7);
     final p = computeObjectiveProgress(
       o,
@@ -271,10 +283,10 @@ double? seasonRhythmMean(Season s, StrategicObjective o, {List<Activity> activit
       [for (final h in hits) if (h.ts.isBefore(next)) h],
       sunday,
     );
-    if (p.weekPercent != null) out.add(p.weekPercent!);
+    out.add(p.weekPercent);
     monday = next;
   }
-  return out.isEmpty ? null : out.reduce((a, b) => a + b) / out.length;
+  return out;
 }
 
 /// Toutes les vues d'une saison, dans l'ordre des objectifs posés.

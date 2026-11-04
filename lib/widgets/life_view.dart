@@ -241,7 +241,13 @@ class _LifeViewState extends State<LifeView> {
         ]),
         const SizedBox(height: 6),
         // Saison (refonte 2026-11-04) : la période des objectifs, sa cible sur chaque tuile.
-        SeasonBanner(logic: logic, objectives: _objectives, onOpenCap: _openCap),
+        SeasonBanner(
+          logic: logic,
+          objectives: _objectives,
+          onOpenCap: _openCap,
+          onOpenBilan: (season) => showSeasonBilanSheet(context, logic: logic, season: season, objectives: _objectives, sync: widget.sync, projects: widget.projects)
+              .then((_) => _reloadObjectives()),
+        ),
         _section(mute, 'CETTE SEMAINE'),
         WeekStatsView(logic: logic, sync: widget.sync, badges: widget.badges, onOpenDomain: (d, {focus = 'time'}) => widget.onOpenDomain(d), onManageDomains: widget.onManageDomains, onlyWeekLine: true),
         _section(mute, 'MES DOMAINES', right: 'appui long = nature'),
@@ -437,7 +443,7 @@ class _LifeViewState extends State<LifeView> {
                       view: sView,
                       title: sg.$3.title,
                       onTap: () async {
-                        await showObjectiveTrajectorySheet(context, logic: logic, sync: widget.sync, objective: sg.$3, projects: widget.projects);
+                        await showSeasonGoalSheet(context, logic: logic, season: sg.$1, goal: sg.$2, objective: sg.$3, sync: widget.sync, projects: widget.projects);
                         _reloadObjectives();
                       },
                     )

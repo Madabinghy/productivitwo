@@ -105,4 +105,51 @@ void main() {
     expect(find.text('Lancer la saison · 1 objectif'), findsOneWidget);
     // Lancer écrit dans Firebase (absent en test) : l'ouverture elle-même est testée plus haut (withSeasonOpened).
   });
+
+  test('rythme semaine par semaine, jusqu\'à aujourd\'hui', () {
+    final pompes = Activity(id: 'pompes', domainId: 'sport', name: 'Pompes', role: ActivityRole.generic, type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 1, 1));
+    final o = StrategicObjective(id: 'r', title: 'Pompes', routineCommitments: [ObjectiveRoutineCommitment(activityId: 'pompes')]);
+    final s = withSeasonOpened(const [], [goalFor(o)], '2026-11-02', weeks: 4).single;
+    final hits = [
+      for (var d = 2; d <= 8; d++) HabitHit(habitId: 'pompes', ts: DateTime(2026, 11, d, 9)), // semaine 1 pleine
+      HabitHit(habitId: 'pompes', ts: DateTime(2026, 11, 9, 9)), // semaine 2 : le lundi seulement
+    ];
+    final w = seasonRhythmWeeks(s, o, activities: [pompes], hits: hits, untilYmd: '2026-11-10');
+    expect(w.length, 2);
+    expect(w.first, 1.0);
+    expect(w.last, closeTo(0.5, 0.01)); // 1 sur 2 attendus à mardi
+  });
+
+  testWidgets('Objectif de saison : trajectoire, chiffres, ce qui le fait avancer', (tester) async {
+    tester.view.physicalSize = const Size(780, 2600);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final logic = AppLogic(AppState(domains: [Domain(id: 'sport', name: 'Sport')], activities: [], sessions: [], habitProgress: []), () {})..dayStartMin = 0;
+    final o = poids();
+    final today = logic.livedTodayYmd;
+    logic.seasons = withSeasonOpened(const [], [goalFor(o)], today);
+    final s = logic.seasons.single;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SeasonGoalView2(logic: logic, season: s, goal: s.goals.single, objective: o))));
+    await tester.pump();
+    expect(find.text('Prendre du muscle'), findsOneWidget);
+    expect(find.text('dernier relevé'), findsOneWidget);
+    expect(find.textContaining('fin · 90 kg'), findsOneWidget);
+  });
+
+  testWidgets('Bilan : objectifs atteints, Garder · Ajuster · Laisser', (tester) async {
+    tester.view.physicalSize = const Size(780, 2600);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {})..dayStartMin = 0;
+    final o = poids();
+    o.readings.add(ObjectiveReading(date: '2026-10-31', value: 90.5));
+    const s = Season(n: 2, start: '2026-10-05', end: '2026-11-01', goals: [SeasonGoal(objectiveId: 'poids', name: 'Prendre du muscle', kind: SeasonGoalKind.metric, from: 82, target: 90, unit: 'kg')]);
+    logic.seasons = [s];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SeasonBilanView(logic: logic, season: s, objectives: [o]))));
+    await tester.pump();
+    expect(find.text('1 objectif sur 1 tenu'), findsOneWidget);
+    expect(find.text('atteint'), findsOneWidget);
+    expect(find.text('Garder'), findsOneWidget);
+    expect(find.text('Lancer la saison 3'), findsOneWidget);
+  });
 }

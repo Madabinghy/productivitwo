@@ -4,7 +4,10 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
+import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart' show showObjectiveEditSheet;
+import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
+import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 
 // Saisons, refonte 2026-11-04 (maquette validée « Saisons et objectifs ») : le bandeau
 // d'Organisation, « Poser le cap », la cible de saison sur un mini-graphique.
@@ -33,18 +36,44 @@ class SeasonBanner extends StatelessWidget {
   final AppLogic logic;
   final List<StrategicObjective> objectives;
   final VoidCallback onOpenCap;
-  const SeasonBanner({super.key, required this.logic, required this.objectives, required this.onOpenCap});
+  final void Function(Season s)? onOpenBilan;
+  const SeasonBanner({super.key, required this.logic, required this.objectives, required this.onOpenCap, this.onOpenBilan});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final today = logic.livedTodayYmd;
     final s = currentSeason(logic.seasons, today);
+    final bilan = s == null ? unseenBilan(logic.seasons, today) : null;
     final box = BoxDecoration(
       borderRadius: BorderRadius.circular(16),
       gradient: const LinearGradient(colors: [Color(0xFF251E38), Color(0xFF17142A)]),
       border: Border.all(color: const Color(0xFF3A2F5A)),
     );
+    if (bilan != null && onOpenBilan != null) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const ValueKey('season-banner'),
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => onOpenBilan!(bilan),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: box,
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('SAISON ${bilan.n} TERMINÉE', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSeasonAccent)),
+                  const SizedBox(height: 2),
+                  const Text('Voir le bilan et lancer la suivante', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: kSeasonAccent),
+            ]),
+          ),
+        ),
+      );
+    }
     if (s == null) {
       return Material(
         color: Colors.transparent,
@@ -466,5 +495,365 @@ class SeasonGoalLine extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+
+// ── Un objectif de saison ────────────────────────────────────────────────────
+
+Future<void> showSeasonGoalSheet(BuildContext context,
+    {required AppLogic logic, required Season season, required SeasonGoal goal, required StrategicObjective objective, required FirestoreSync sync, List<Project> projects = const []}) {
+  return showFiche<void>(context,
+      builder: (ctx, scroll) => SeasonGoalView2(logic: logic, season: season, goal: goal, objective: objective, sync: sync, projects: projects, scroll: scroll));
+}
+
+class SeasonGoalView2 extends StatefulWidget {
+  final AppLogic logic;
+  final Season season;
+  final SeasonGoal goal;
+  final StrategicObjective objective;
+  final FirestoreSync? sync;
+  final List<Project> projects;
+  final ScrollController? scroll;
+  const SeasonGoalView2({super.key, required this.logic, required this.season, required this.goal, required this.objective, this.sync, this.projects = const [], this.scroll});
+
+  @override
+  State<SeasonGoalView2> createState() => _SeasonGoalView2State();
+}
+
+class _SeasonGoalView2State extends State<SeasonGoalView2> {
+  AppLogic get logic => widget.logic;
+  late StrategicObjective _o = widget.objective;
+
+  Season get _season => logic.seasons.where((x) => x.n == widget.season.n).firstOrNull ?? widget.season;
+  SeasonGoal get _goal => _season.goalOf(widget.goal.objectiveId) ?? widget.goal;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final mute = cs.onSurface.withValues(alpha: .6);
+    final st = logic.state;
+    final today = logic.livedTodayYmd;
+    final s = _season, g = _goal, o = _o;
+    final v = seasonGoalView(s, g, o, todayYmd: today, activities: st.activities, sessions: st.sessions, hits: st.habitHits);
+    final domain = st.domains.where((d) => d.id == o.domainId).firstOrNull?.name;
+    final closed = s.isOverOn(today);
+    final stateChip = switch (v.state) {
+      SeasonGoalState.onTrack => _chip(v.label(), _green, const Color(0xFF173527)),
+      SeasonGoalState.reached => _chip(closed ? 'atteint' : 'cible atteinte', _green, const Color(0xFF173527)),
+      SeasonGoalState.behind => _chip(g.kind == SeasonGoalKind.metric ? 'en retard de ${v.label().replaceFirst('−', '')}' : v.label(), _amber, const Color(0xFF3A2A12)),
+      SeasonGoalState.missed => _chip(v.label(closed: true), _amber, const Color(0xFF3A2A12)),
+      SeasonGoalState.none => _chip(v.label(), mute, const Color(0xFF1C2A24)),
+    };
+    final u = g.unit == null || g.unit!.isEmpty ? '' : ' ${g.unit}';
+    final p = computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, DateTime.now());
+    Widget stat(String value, String label) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .5), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
+              Text(label, style: TextStyle(fontSize: 11, color: mute)),
+            ]),
+          ),
+        );
+    final weeks = g.kind == SeasonGoalKind.rhythm
+        ? seasonRhythmWeeks(s, o, activities: st.activities, sessions: st.sessions, hits: st.habitHits, untilYmd: closed ? null : today)
+        : const <double?>[];
+    return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+      Text(['SAISON ${s.n}', if (domain != null) domain.toUpperCase()].join(' · '), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kSeasonAccent)),
+      Text(o.title, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        stateChip,
+        _chip(closed ? 'saison terminée' : 'semaine ${s.weekOf(today)} / ${s.weeks}', cs.onSurface.withValues(alpha: .75), const Color(0xFF1C2A24)),
+      ]),
+      const SizedBox(height: 12),
+      if (g.kind == SeasonGoalKind.metric) ...[
+        SizedBox(
+          height: 150,
+          child: CustomPaint(painter: SeasonMetricPainter(o: o, s: s, g: g, line: _green, ink: cs.onSurface, now: DateTime.now()), size: Size.infinite),
+        ),
+        const SizedBox(height: 4),
+        Row(children: [
+          Flexible(child: Text('début de saison', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: mute))),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('fin · ${seasonNum(g.target ?? 0)}$u le ${seasonEndLabel(s)}',
+                textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kSeasonAccent)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Wrap(spacing: 12, children: [
+          Text('— tes relevés', style: TextStyle(fontSize: 11.5, color: _green.withValues(alpha: .9))),
+          const Text('– – trajectoire de la saison', style: TextStyle(fontSize: 11.5, color: kSeasonAccent)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          stat(v.latest == null ? '—' : seasonNum(v.latest!), 'dernier relevé'),
+          const SizedBox(width: 6),
+          stat(v.expected == null ? '—' : seasonNum(v.expected!), closed ? 'cible' : 'attendu aujourd\'hui'),
+          const SizedBox(width: 6),
+          stat(v.latest == null || g.target == null ? '—' : '${(g.target! - v.latest!) >= 0 ? '+' : '−'}${seasonNum((g.target! - v.latest!).abs())}',
+              closed ? 'écart final' : 'reste en ${(s.daysLeft(today) / 7).ceil()} sem.'),
+        ]),
+      ] else ...[
+        Text('LE RYTHME, SEMAINE PAR SEMAINE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: mute)),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 90,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (var i = 0; i < s.weeks; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  Container(
+                    height: i < weeks.length && weeks[i] != null ? (70 * weeks[i]!).clamp(4.0, 70.0) : 4,
+                    decoration: BoxDecoration(
+                      color: i < weeks.length && weeks[i] != null
+                          ? (weeks[i]! >= kSeasonRhythmOk ? _green : _amber)
+                          : cs.onSurface.withValues(alpha: .08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('S${i + 1}', style: TextStyle(fontSize: 10.5, color: mute)),
+                ]),
+              ),
+            ],
+          ]),
+        ),
+        Text('vert = rythme tenu (≥ 85 %)', style: TextStyle(fontSize: 11.5, color: mute)),
+      ],
+      if (p.items.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Text('CE QUI LE FAIT AVANCER · CETTE SEMAINE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: mute)),
+        const SizedBox(height: 4),
+        for (final it in p.items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Expanded(child: Text(it.name, style: const TextStyle(fontSize: 13.5))),
+              Text(it.type == 'time' ? '${it.done} / ${it.target} min' : '${it.done} / ${it.target}',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: it.onTrack ? _green : _amber)),
+            ]),
+          ),
+      ],
+      const SizedBox(height: 14),
+      Row(children: [
+        if (g.kind == SeasonGoalKind.metric && widget.sync != null)
+          Expanded(
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: kSeasonAccent, foregroundColor: _seasonInk, minimumSize: const Size.fromHeight(48)),
+              onPressed: () async {
+                if (await noteReadingQuick(context, sync: widget.sync!, objective: o)) {
+                  final all = await widget.sync!.fetchStrategicObjectives();
+                  final fresh = all.where((x) => x.id == o.id).firstOrNull;
+                  if (mounted && fresh != null) setState(() => _o = fresh);
+                }
+              },
+              child: const Text('Noter un relevé', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        if (g.kind == SeasonGoalKind.metric && !closed) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(foregroundColor: kSeasonAccent, side: const BorderSide(color: Color(0xFF3A2F5A)), minimumSize: const Size.fromHeight(48)),
+              onPressed: () async {
+                final t = await askSeasonTarget(context, g);
+                if (t != null) await logic.setSeasonTarget(g.objectiveId, t);
+                if (mounted) setState(() {});
+              },
+              child: const Text('Changer la cible'),
+            ),
+          ),
+        ],
+      ]),
+      if (widget.sync != null)
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () => showObjectiveTrajectorySheet(context, logic: logic, sync: widget.sync!, objective: o, projects: widget.projects),
+            child: const Text('Fiche de l\'objectif ›'),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// Cible à la fin de la saison (métrique).
+Future<double?> askSeasonTarget(BuildContext context, SeasonGoal g) {
+  final ctrl = TextEditingController(text: g.target == null ? '' : seasonNum(g.target!));
+  return showDialog<double>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Cible à la fin de la saison', style: TextStyle(fontSize: 17)),
+      content: TextField(
+        key: const ValueKey('season-target-field'),
+        controller: ctrl,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(suffixText: g.unit, helperText: g.from == null ? null : 'au départ : ${seasonNum(g.from!)} ${g.unit ?? ''}'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim().replaceAll(',', '.').replaceAll(' ', ''))),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
+// ── Bilan de fin de saison ───────────────────────────────────────────────────
+
+/// Carte en tête d'Aujourd'hui tant que le bilan d'une saison close n'est pas fait.
+class SeasonBilanCard extends StatelessWidget {
+  final AppLogic logic;
+  final void Function(Season s) onOpen;
+  const SeasonBilanCard({super.key, required this.logic, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = currentSeason(logic.seasons, logic.livedTodayYmd) == null ? unseenBilan(logic.seasons, logic.livedTodayYmd) : null;
+    if (s == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const ValueKey('season-bilan-card'),
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => onOpen(s),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(colors: [Color(0xFF251E38), Color(0xFF17142A)]),
+              border: Border.all(color: const Color(0xFF3A2F5A)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.flag_rounded, color: kSeasonAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('SAISON ${s.n} TERMINÉE', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSeasonAccent)),
+                  const Text('Le bilan, puis la saison suivante', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: kSeasonAccent),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showSeasonBilanSheet(BuildContext context,
+    {required AppLogic logic, required Season season, required List<StrategicObjective> objectives, required FirestoreSync sync, List<Project> projects = const []}) async {
+  final next = await showFiche<bool>(context,
+      builder: (ctx, scroll) => SeasonBilanView(logic: logic, season: season, objectives: objectives, scroll: scroll));
+  if (next == true && context.mounted) {
+    await showSeasonCapSheet(context, logic: logic, objectives: objectives, sync: sync, projects: projects);
+  }
+}
+
+class SeasonBilanView extends StatefulWidget {
+  final AppLogic logic;
+  final Season season;
+  final List<StrategicObjective> objectives;
+  final ScrollController? scroll;
+  const SeasonBilanView({super.key, required this.logic, required this.season, required this.objectives, this.scroll});
+
+  @override
+  State<SeasonBilanView> createState() => _SeasonBilanViewState();
+}
+
+class _SeasonBilanViewState extends State<SeasonBilanView> {
+  late final Map<String, SeasonDecision> _decisions = {for (final g in widget.season.goals) g.objectiveId: g.decision ?? SeasonDecision.keep};
+  late final Map<String, double?> _targets = {for (final g in widget.season.goals) g.objectiveId: g.target};
+
+  Future<void> _close({required bool next}) async {
+    final st = widget.logic.state;
+    final views = seasonViews(widget.season, widget.objectives,
+        todayYmd: widget.logic.livedTodayYmd, activities: st.activities, sessions: st.sessions, hits: st.habitHits);
+    final held = views.where((v) => v.ok).length;
+    final s = widget.season.copyWith(goals: [
+      for (final g in widget.season.goals) _decisions[g.objectiveId] == SeasonDecision.adjust && _targets[g.objectiveId] != null ? g.copyWith(target: _targets[g.objectiveId]) : g,
+    ]);
+    await widget.logic.closeSeasonBilan(s, held: held, decisions: _decisions);
+    if (mounted) Navigator.of(context).pop(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final mute = cs.onSurface.withValues(alpha: .6);
+    final s = widget.season;
+    final st = widget.logic.state;
+    final byId = {for (final o in widget.objectives) o.id: o};
+    final views = seasonViews(s, widget.objectives, todayYmd: widget.logic.livedTodayYmd, activities: st.activities, sessions: st.sessions, hits: st.habitHits);
+    final held = views.where((v) => v.ok).length;
+    final won = held >= seasonHeldNeeded(s.goals.length) && s.goals.isNotEmpty;
+    return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+      Text('SAISON ${s.n} TERMINÉE · ${s.weeks} SEMAINES', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kSeasonAccent)),
+      Text('$held objectif${held > 1 ? 's' : ''} sur ${s.goals.length} ${held > 1 ? 'tenus' : 'tenu'}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+      Text(won ? 'Saison réussie : elle compte pour le badge Saisons.' : 'Il en fallait ${seasonHeldNeeded(s.goals.length)} pour réussir la saison.',
+          style: TextStyle(fontSize: 13, color: won ? _green : mute)),
+      const SizedBox(height: 4),
+      Text('Pour chacun : tu le gardes pour la saison suivante, tu ajustes la cible, ou tu le laisses.', style: TextStyle(fontSize: 13, color: mute)),
+      const SizedBox(height: 12),
+      for (final v in views)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .45), borderRadius: BorderRadius.circular(14)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: Text(byId[v.goal.objectiveId]?.title ?? v.goal.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800))),
+                v.ok ? _chip('atteint', _green, const Color(0xFF173527)) : _chip(v.state == SeasonGoalState.none ? 'rien de mesuré' : 'pas atteint', _amber, const Color(0xFF3A2A12)),
+              ]),
+              const SizedBox(height: 4),
+              Text(v.label(closed: true), style: TextStyle(fontSize: 12.5, color: mute)),
+              const SizedBox(height: 8),
+              SegmentedButton<SeasonDecision>(
+                segments: [
+                  const ButtonSegment(value: SeasonDecision.keep, label: Text('Garder')),
+                  ButtonSegment(
+                    value: SeasonDecision.adjust,
+                    label: Text(_decisions[v.goal.objectiveId] == SeasonDecision.adjust && _targets[v.goal.objectiveId] != null && v.goal.kind == SeasonGoalKind.metric
+                        ? 'Ajuster · ${seasonNum(_targets[v.goal.objectiveId]!)}'
+                        : 'Ajuster'),
+                  ),
+                  const ButtonSegment(value: SeasonDecision.drop, label: Text('Laisser')),
+                ],
+                selected: {_decisions[v.goal.objectiveId]!},
+                showSelectedIcon: false,
+                onSelectionChanged: (sel) async {
+                  final d = sel.first;
+                  if (d == SeasonDecision.adjust && v.goal.kind == SeasonGoalKind.metric) {
+                    final t = await askSeasonTarget(context, v.goal);
+                    if (t == null) return;
+                    _targets[v.goal.objectiveId] = t;
+                  }
+                  setState(() => _decisions[v.goal.objectiveId] = d);
+                },
+              ),
+            ]),
+          ),
+        ),
+      const SizedBox(height: 8),
+      FilledButton(
+        key: const ValueKey('season-bilan-next'),
+        style: FilledButton.styleFrom(backgroundColor: kSeasonAccent, foregroundColor: _seasonInk, minimumSize: const Size.fromHeight(52)),
+        onPressed: () => _close(next: true),
+        child: Text('Lancer la saison ${s.n + 1}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+      ),
+      TextButton(onPressed: () => _close(next: false), child: const Text('Fermer le bilan, sans nouvelle saison')),
+    ]);
   }
 }
