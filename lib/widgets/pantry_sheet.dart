@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleGroceries;
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
@@ -119,7 +121,10 @@ class _PantrySheetState extends State<PantrySheet> {
 
     return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(20, 8, 20, 32), children: [
       Row(children: [
-        const Expanded(child: Text('Mes placards', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+        Flexible(child: Text('Mes placards', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+        const SizedBox(width: 4),
+        const InfoDot(kRuleGroceries, startAt: 4),
+        const Spacer(),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
           decoration: BoxDecoration(color: kGroceryAccent.withValues(alpha: .16), borderRadius: BorderRadius.circular(20)),

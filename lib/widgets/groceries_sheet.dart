@@ -12,6 +12,8 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/grocery_shop_screen.dart' show showGroceryShop;
 import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show aisleColor, showPantryItemEditor, showPantrySheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
+import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleGroceries;
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 
 /// Feuille « Courses » (maquette validée 2026-11-02 « Courses générales »,
 /// lot 2) : LA liste — ingrédients du menu de la semaine + lignes à la main /
@@ -138,7 +140,10 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
         final groups = rowsByStore(toBuy, logic.groceries.stores);
         return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(20, 8, 20, 32), children: [
           Row(children: [
-            const Expanded(child: Text('Courses', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+            Flexible(child: Text('Courses', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+            const SizedBox(width: 4),
+            const InfoDot(kRuleGroceries, key: ValueKey('groceries-rule')),
+            const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
               decoration: BoxDecoration(color: kGroceryAccent.withValues(alpha: .16), borderRadius: BorderRadius.circular(20)),
