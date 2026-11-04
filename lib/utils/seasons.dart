@@ -1,70 +1,112 @@
-import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show mondayOf, ymdOf;
+import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
 
-/// Saisons (lot 3 de la gamification moyen terme, 2026-10-30) : six semaines,
-/// trois chasses choisies à l'ouverture et figées (on en lâche une, on ne la
-/// remplace pas), un bilan à la fin. Les chasses de la saison sont aussi posées
-/// dans `badgeHunts` (date visée = fin de saison) : enjeux du jour et « Badges en
-/// jeu » les montrent sans rien de plus. La saison garde sa propre liste, car une
-/// chasse attrapée sort de `badgeHunts`. Une saison est RÉUSSIE avec au moins
-/// [kSeasonWinHunts] chasses attrapées pendant la saison : badge « Saisons ».
-/// Stockage : `data/meta.seasons` (liste, la dernière peut être en cours) ; les
-/// résultats ne sont jamais stockés, ils se relisent sur les dates des paliers.
+/// Saisons, refonte 2026-11-04 (maquette validée « Saisons et objectifs ») : une
+/// saison = la PÉRIODE DE TES OBJECTIFS. On pose le cap au début (durée 4 · 6 ·
+/// 8 · 12 semaines, objectifs visés et leur cible à la fin), chaque tuile
+/// d'Organisation montre la cible de la saison sur son graphique, le bilan de
+/// fin se lit objectif par objectif (Garder · Ajuster · Laisser). Plus de
+/// chasses de badges : les anciennes saisons (format `hunts`) sont relues mais
+/// ignorées. Stockage `data/meta.seasons` (liste, la dernière peut être en cours).
+/// Le résultat d'une saison close est figé au bilan (`held` / `total`) : c'est
+/// lui que compte le badge « Saisons » (le moteur des badges n'a pas les objectifs).
 const kSeasonWeeks = 6;
-const kSeasonHunts = 3;
-const kSeasonWinHunts = 2;
+const kSeasonDurations = [4, 6, 8, 12];
+const kSeasonMaxGoals = 5;
 const kSeasonTiers = [1, 4, 8];
 const kSeasonsKept = 40;
+/// Sur la trajectoire : rythme hebdo ≥ 85 % ; métrique à moins de 10 % de l'écart visé.
+const kSeasonRhythmOk = 0.85;
+const kSeasonMetricTolerance = 0.10;
 
-class SeasonHunt {
-  final String badgeId;
-  final int tier; // 1-based
-  final String name; // nom du badge à l'ouverture (bilan même si le badge disparaît)
-  const SeasonHunt({required this.badgeId, required this.tier, this.name = ''});
-  Map<String, dynamic> toJson() => {'badgeId': badgeId, 'tier': tier, if (name.isNotEmpty) 'name': name};
-  static SeasonHunt? fromJson(dynamic j) {
-    if (j is! Map || j['badgeId'] is! String) return null;
-    return SeasonHunt(badgeId: j['badgeId'] as String, tier: (j['tier'] as num?)?.toInt() ?? 1, name: (j['name'] ?? '').toString());
+enum SeasonGoalKind { metric, rhythm }
+
+enum SeasonDecision { keep, adjust, drop }
+
+class SeasonGoal {
+  final String objectiveId;
+  final String name; // titre de l'objectif à l'ouverture (bilan même s'il disparaît)
+  final SeasonGoalKind kind;
+  /// Métrique : valeur au départ de la saison (dernier relevé, sinon départ de l'objectif) et cible à la fin.
+  final double? from;
+  final double? target;
+  final String? unit;
+  final SeasonDecision? decision;
+  const SeasonGoal({required this.objectiveId, this.name = '', this.kind = SeasonGoalKind.rhythm, this.from, this.target, this.unit, this.decision});
+
+  Map<String, dynamic> toJson() => {
+        'objectiveId': objectiveId,
+        if (name.isNotEmpty) 'name': name,
+        'kind': kind.name,
+        if (from != null) 'from': from,
+        if (target != null) 'target': target,
+        if (unit != null && unit!.isNotEmpty) 'unit': unit,
+        if (decision != null) 'decision': decision!.name,
+      };
+
+  static SeasonGoal? fromJson(dynamic j) {
+    if (j is! Map || j['objectiveId'] is! String) return null;
+    return SeasonGoal(
+      objectiveId: j['objectiveId'] as String,
+      name: (j['name'] ?? '').toString(),
+      kind: j['kind'] == 'metric' ? SeasonGoalKind.metric : SeasonGoalKind.rhythm,
+      from: (j['from'] as num?)?.toDouble(),
+      target: (j['target'] as num?)?.toDouble(),
+      unit: j['unit'] as String?,
+      decision: SeasonDecision.values.where((d) => d.name == j['decision']).firstOrNull,
+    );
   }
+
+  SeasonGoal copyWith({double? target, SeasonDecision? decision}) =>
+      SeasonGoal(objectiveId: objectiveId, name: name, kind: kind, from: from, target: target ?? this.target, unit: unit, decision: decision ?? this.decision);
 }
 
 class Season {
   final int n;
   final String start; // YYYY-MM-DD, jour d'ouverture
   final String end; // YYYY-MM-DD, un dimanche, inclus
-  final List<SeasonHunt> hunts;
-  final Set<String> dropped;
+  final List<SeasonGoal> goals;
   final bool bilanSeen;
-  const Season({required this.n, required this.start, required this.end, required this.hunts, this.dropped = const {}, this.bilanSeen = false});
+  /// Figé au bilan : objectifs tenus sur le total.
+  final int? held;
+  final int? total;
+  /// Ancienne saison (chasses de badges) : relue, jamais en cours.
+  final bool legacy;
+  const Season({required this.n, required this.start, required this.end, this.goals = const [], this.bilanSeen = false, this.held, this.total, this.legacy = false});
 
   Map<String, dynamic> toJson() => {
         'n': n,
         'start': start,
         'end': end,
-        'hunts': [for (final h in hunts) h.toJson()],
-        if (dropped.isNotEmpty) 'dropped': dropped.toList(),
+        if (!legacy) 'v': 2,
+        'goals': [for (final g in goals) g.toJson()],
         if (bilanSeen) 'bilanSeen': true,
+        if (held != null) 'held': held,
+        if (total != null) 'total': total,
       };
 
   static Season? fromJson(dynamic j) {
     if (j is! Map) return null;
     final s = j['start'], e = j['end'];
     if (s is! String || e is! String || DateTime.tryParse(s) == null || DateTime.tryParse(e) == null) return null;
-    final hunts = j['hunts'] is List ? [for (final x in j['hunts'] as List) if (SeasonHunt.fromJson(x) case final h?) h] : <SeasonHunt>[];
+    final goals = j['goals'] is List ? [for (final x in j['goals'] as List) if (SeasonGoal.fromJson(x) case final g?) g] : <SeasonGoal>[];
     return Season(
       n: (j['n'] as num?)?.toInt() ?? 1,
       start: s,
       end: e,
-      hunts: hunts,
-      dropped: j['dropped'] is List ? {for (final x in j['dropped'] as List) x.toString()} : const {},
+      goals: goals,
       bilanSeen: j['bilanSeen'] == true,
+      held: (j['held'] as num?)?.toInt(),
+      total: (j['total'] as num?)?.toInt(),
+      legacy: j['v'] != 2,
     );
   }
 
-  Season copyWith({Set<String>? dropped, bool? bilanSeen}) =>
-      Season(n: n, start: start, end: end, hunts: hunts, dropped: dropped ?? this.dropped, bilanSeen: bilanSeen ?? this.bilanSeen);
+  Season copyWith({List<SeasonGoal>? goals, bool? bilanSeen, int? held, int? total}) => Season(
+      n: n, start: start, end: end, goals: goals ?? this.goals, bilanSeen: bilanSeen ?? this.bilanSeen, held: held ?? this.held, total: total ?? this.total, legacy: legacy);
 
-  bool isOpenOn(String ymd) => start.compareTo(ymd) <= 0 && end.compareTo(ymd) >= 0;
+  bool isOpenOn(String ymd) => !legacy && start.compareTo(ymd) <= 0 && end.compareTo(ymd) >= 0;
   bool isOverOn(String ymd) => end.compareTo(ymd) < 0;
   int get totalDays => DateTime.parse(end).difference(DateTime.parse(start)).inDays + 1;
   int daysLeft(String ymd) => DateTime.parse(end).difference(DateTime.parse(ymd)).inDays.clamp(0, totalDays);
@@ -73,16 +115,22 @@ class Season {
   int get weeks => (DateTime.parse(end).difference(mondayOf(DateTime.parse(start))).inDays ~/ 7) + 1;
   /// Part du temps écoulé (0..1), aujourd'hui compris.
   double elapsed(String ymd) => ((DateTime.parse(ymd).difference(DateTime.parse(start)).inDays + 1) / totalDays).clamp(0.0, 1.0);
+  SeasonGoal? goalOf(String objectiveId) => goals.where((g) => g.objectiveId == objectiveId).firstOrNull;
+  /// Réussie : au moins deux tiers des objectifs tenus (2 sur 3).
+  bool get won => held != null && total != null && total! > 0 && held! >= seasonHeldNeeded(total!);
 }
+
+int seasonHeldNeeded(int total) => total <= 1 ? total : (total * 2 / 3).ceil();
 
 List<Season> parseSeasons(dynamic raw) => raw is List ? [for (final x in raw) if (Season.fromJson(x) case final s?) s] : const [];
 
-/// Fin d'une saison ouverte le [startYmd] : le dimanche de la 6ᵉ semaine pleine
-/// (ouverte un lundi : ce lundi + 41 jours ; sinon le lundi suivant + 41).
-String seasonEndFor(String startYmd) {
+/// Fin d'une saison de [weeks] semaines ouverte le [startYmd] : le dimanche de la
+/// dernière semaine pleine (ouverte un lundi : ce lundi + 7×weeks − 1 ; sinon à
+/// partir du lundi suivant, la semaine entamée en plus).
+String seasonEndFor(String startYmd, {int weeks = kSeasonWeeks}) {
   final d = DateTime.parse(startYmd);
   final firstMonday = d.weekday == DateTime.monday ? d : mondayOf(d).add(const Duration(days: 7));
-  return ymdOf(DateTime(firstMonday.year, firstMonday.month, firstMonday.day + kSeasonWeeks * 7 - 1));
+  return ymdOf(DateTime(firstMonday.year, firstMonday.month, firstMonday.day + weeks * 7 - 1));
 }
 
 Season? currentSeason(List<Season> seasons, String todayYmd) {
@@ -92,154 +140,162 @@ Season? currentSeason(List<Season> seasons, String todayYmd) {
   return null;
 }
 
-/// Dernière saison close dont le bilan n'a pas été vu.
+/// Dernière saison close (nouveau format) dont le bilan n'a pas été vu.
 Season? unseenBilan(List<Season> seasons, String todayYmd) {
   for (final s in seasons.reversed) {
+    if (s.legacy) continue;
     if (s.isOverOn(todayYmd)) return s.bilanSeen ? null : s;
   }
   return null;
 }
 
-List<Season> withSeasonOpened(List<Season> seasons, List<SeasonHunt> hunts, String todayYmd) {
+/// Ouvre une saison aujourd'hui. Une saison en cours est close d'office à hier
+/// (on repose le cap) ; une saison close au bilan pas vu le garde à voir.
+List<Season> withSeasonOpened(List<Season> seasons, List<SeasonGoal> goals, String todayYmd, {int weeks = kSeasonWeeks}) {
+  final yesterday = ymdOf(DateTime.parse(todayYmd).subtract(const Duration(days: 1)));
   final next = [
-    for (final s in seasons) s.isOverOn(todayYmd) && !s.bilanSeen ? s.copyWith(bilanSeen: true) : s,
-    Season(n: seasons.isEmpty ? 1 : seasons.map((s) => s.n).reduce((a, b) => a > b ? a : b) + 1, start: todayYmd, end: seasonEndFor(todayYmd), hunts: hunts.take(kSeasonHunts).toList()),
+    for (final s in seasons)
+      s.isOpenOn(todayYmd) ? Season(n: s.n, start: s.start, end: yesterday.compareTo(s.start) < 0 ? s.start : yesterday, goals: s.goals, bilanSeen: true) : s,
+    Season(
+      n: seasons.isEmpty ? 1 : seasons.map((s) => s.n).reduce((a, b) => a > b ? a : b) + 1,
+      start: todayYmd,
+      end: seasonEndFor(todayYmd, weeks: weeks),
+      goals: goals.take(kSeasonMaxGoals).toList(),
+    ),
   ];
   return next.length > kSeasonsKept ? next.sublist(next.length - kSeasonsKept) : next;
 }
 
 List<Season> withSeasonReplaced(List<Season> seasons, Season updated) => [for (final s in seasons) s.n == updated.n ? updated : s];
 
-enum SeasonHuntState { caught, onTrack, push, dropped, missed }
+/// Saisons réussies (résultat figé au bilan), de la plus ancienne à la plus récente.
+List<Season> wonSeasons(List<Season> seasons) => [for (final s in seasons) if (!s.legacy && s.won) s];
 
-class SeasonHuntView {
-  final SeasonHunt hunt;
-  final BadgeState? badge;
-  final SeasonHuntState state;
-  final DateTime? caughtOn;
-  const SeasonHuntView(this.hunt, this.badge, this.state, {this.caughtOn});
+// ── Un objectif dans la saison ───────────────────────────────────────────────
 
-  int get target => badge == null || hunt.tier < 1 || hunt.tier > badge!.def.tiers.length ? 0 : badge!.def.tiers[hunt.tier - 1];
-  num get value => badge?.value ?? 0;
-  double get progress => state == SeasonHuntState.caught ? 1 : (target <= 0 ? 0 : (value / target).clamp(0.0, 1.0).toDouble());
-  String get name => badge == null ? (hunt.name.isEmpty ? hunt.badgeId : hunt.name) : seasonHuntLabel(badge!, hunt.tier);
+/// Le but posé pour [o] en ouvrant une saison : métrique = dernier relevé (sinon
+/// départ) → cible de l'objectif ; sinon le rythme hebdo de ses engagements.
+SeasonGoal goalFor(StrategicObjective o) {
+  final m = o.metric;
+  if (m == null) return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.rhythm);
+  final last = o.readings.isEmpty ? null : o.readings.last.value;
+  return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.metric, from: last ?? m.startValue, target: m.targetValue, unit: m.unit);
 }
 
-String seasonHuntLabel(BadgeState b, int tier) {
-  final t = tier >= 1 && tier <= b.def.tiers.length ? b.def.tiers[tier - 1] : 0;
-  if (b.def.tiers.length == 1 && t <= 1) return b.def.name;
-  final unit = b.def.unit.isEmpty ? '' : ' ${b.def.unit}';
-  return b.def.id.startsWith('serie-') ? '${b.def.name} · série $t$unit' : '${b.def.name} · ${fmtInt(t)}$unit';
-}
+enum SeasonGoalState { onTrack, behind, reached, missed, none }
 
-/// État d'une chasse de [s] sur [deck] au jour [todayYmd] : attrapée (palier
-/// obtenu pendant la saison), lâchée, en bonne voie (avancée ≥ 85 % du temps
-/// écoulé) ou à pousser ; saison close et pas attrapée = manquée.
-SeasonHuntView seasonHuntView(Season s, SeasonHunt h, BadgeDeck deck, String todayYmd) {
-  final b = deck.byId(h.badgeId);
-  if (s.dropped.contains(h.badgeId)) return SeasonHuntView(h, b, SeasonHuntState.dropped);
-  final i = h.tier - 1;
-  final d = b == null || i < 0 || i >= b.tierDates.length ? null : b.tierDates[i];
-  if (d != null) {
-    final y = ymdOf(d);
-    if (y.compareTo(s.start) >= 0 && y.compareTo(s.end) <= 0) return SeasonHuntView(h, b, SeasonHuntState.caught, caughtOn: d);
-  }
-  if (s.isOverOn(todayYmd)) return SeasonHuntView(h, b, SeasonHuntState.missed);
-  final v = SeasonHuntView(h, b, SeasonHuntState.onTrack);
-  return v.progress >= s.elapsed(todayYmd) * 0.85 ? v : SeasonHuntView(h, b, SeasonHuntState.push);
-}
+class SeasonGoalView {
+  final SeasonGoal goal;
+  final SeasonGoalState state;
+  /// Métrique : dernier relevé dans la saison (sinon départ) et attendu aujourd'hui.
+  final double? latest;
+  final double? expected;
+  /// Rythme : rythme de la semaine (0..1), ou moyenne des semaines (bilan).
+  final double? rhythm;
+  const SeasonGoalView(this.goal, this.state, {this.latest, this.expected, this.rhythm});
 
-List<SeasonHuntView> seasonViews(Season s, BadgeDeck deck, String todayYmd) => [for (final h in s.hunts) seasonHuntView(s, h, deck, todayYmd)];
+  bool get ok => state == SeasonGoalState.onTrack || state == SeasonGoalState.reached;
 
-int caughtCount(List<SeasonHuntView> views) => views.where((v) => v.state == SeasonHuntState.caught).length;
-
-/// Saisons closes réussies (≥ [kSeasonWinHunts] chasses attrapées), avec leur
-/// date de fin, de la plus ancienne à la plus récente.
-List<Season> wonSeasons(List<Season> seasons, BadgeDeck deck, String todayYmd) => [
-      for (final s in seasons)
-        if (s.isOverOn(todayYmd) && caughtCount(seasonViews(s, deck, todayYmd)) >= kSeasonWinHunts) s
-    ];
-
-/// Paliers obtenus pendant la saison (hors séries de routine), « Méditation 21 j ».
-List<String> tiersDuring(Season s, BadgeDeck deck) {
-  final out = <String>[];
-  for (final b in deck.badges) {
-    for (var i = 0; i < b.tierDates.length && i < b.def.tiers.length; i++) {
-      final d = b.tierDates[i];
-      if (d == null) continue;
-      final y = ymdOf(d);
-      if (y.compareTo(s.start) >= 0 && y.compareTo(s.end) <= 0) out.add(seasonHuntLabel(b, i + 1));
+  /// « −0,6 kg », « sur la ligne », « 92 % du rythme », « 84,1 / 85 kg ».
+  String label({bool closed = false}) {
+    final u = goal.unit == null || goal.unit!.isEmpty ? '' : ' ${goal.unit}';
+    if (goal.kind == SeasonGoalKind.metric) {
+      if (latest == null || goal.target == null) return 'pas de relevé';
+      if (closed) return state == SeasonGoalState.reached ? 'atteint · ${seasonNum(latest!)}$u' : '${seasonNum(latest!)} / ${seasonNum(goal.target!)}$u';
+      if (state == SeasonGoalState.reached) return 'cible atteinte';
+      final d = (latest! - (expected ?? latest!)) * ((goal.target! >= (goal.from ?? goal.target!)) ? 1 : -1);
+      if (state == SeasonGoalState.onTrack) return d.abs() < 0.05 ? 'sur la ligne' : '${d > 0 ? '+' : '−'}${seasonNum(d.abs())}$u';
+      return '−${seasonNum(d.abs())}$u';
     }
-  }
-  return out;
-}
-
-/// Groupe d'une proposition de chasse à l'ouverture.
-enum SeasonPickGroup { objectives, reachable, restart }
-
-class SeasonPick {
-  final BadgeState badge;
-  final int tier;
-  final SeasonPickGroup group;
-  /// Paliers visables en six semaines (1-based, croissants) ; [tier] = le premier.
-  final List<int> tiers;
-  const SeasonPick(this.badge, this.tier, this.group, {this.tiers = const []});
-  int get target => targetOf(tier);
-  int targetOf(int t) => badge.def.tiers[t - 1];
-  String get label => labelOf(tier);
-  String labelOf(int t) => seasonHuntLabel(badge, t);
-  /// « encore 32 j », « encore 3 actions » : ce qu'il reste.
-  String get remaining => remainingOf(tier);
-  String remainingOf(int t) {
-    final target = targetOf(t);
-    final left = (target - badge.value).clamp(0, target);
-    final unit = badge.def.unit.isEmpty ? '' : ' ${badge.def.unit}';
-    return 'encore ${fmtInt(left)}$unit';
-  }
-  /// Palier suivant visable après [t] (retour au premier après le dernier).
-  int nextTier(int t) {
-    final list = tiers.isEmpty ? [tier] : tiers;
-    final i = list.indexOf(t);
-    return list[(i + 1) % list.length];
+    if (rhythm == null) return 'rien à mesurer';
+    return '${(rhythm! * 100).round()} % du rythme';
   }
 }
 
-/// Propositions pour une saison : le prochain palier de chaque badge à paliers
-/// qui peut tomber en six semaines. « De tes objectifs » = badges portés par un
-/// objectif (temps, trajectoire, relevés, semaines tenues, séries des routines
-/// engagées) ; « Pour repartir » = Reprise et séries cassées qui avaient tenu ;
-/// le reste « À portée ». Les plus avancés d'abord ; TOUS les candidats (la
-/// feuille en montre quatre par groupe, puis « Afficher les n autres »). Une série
-/// peut viser plus haut que son prochain palier tant qu'il tient en six semaines.
-List<SeasonPick> seasonPicks(BadgeDeck deck, {Set<String> engagedRoutineIds = const {}}) {
-  final out = <SeasonPick>[];
-  for (final b in deck.badges) {
-    final next = b.nextTarget;
-    if (next == null) continue;
-    final tier = b.level + 1;
-    final id = b.def.id;
-    if (id == 'saisons' || id == 'premiere-cible' || id == 'cible-atteinte') continue;
-    final left = next - b.value;
-    final serie = id.startsWith('serie-');
-    if (serie && left > kSeasonWeeks * 7) continue;
-    if (id == 'semaines-tenues' && left > kSeasonWeeks) continue;
-    if (id == 'trajectoire' && left > kSeasonWeeks) continue;
-    final SeasonPickGroup g;
-    if (id == 'reprise' || (serie && b.value == 0 && b.level > 0)) {
-      g = SeasonPickGroup.restart;
-    } else if (id.startsWith('temps-') || id == 'trajectoire' || id == 'releve-fidele' || id == 'semaines-tenues' || (serie && engagedRoutineIds.contains(b.def.subjectId))) {
-      g = SeasonPickGroup.objectives;
-    } else {
-      if ((b.progress ?? 0) < .25 && !serie) continue;
-      g = SeasonPickGroup.reachable;
-    }
-    final horizon = serie ? kSeasonWeeks * 7 : (id == 'semaines-tenues' || id == 'trajectoire' ? kSeasonWeeks : null);
-    final tiers = [
-      for (var t = tier; t <= b.def.tiers.length; t++)
-        if (t == tier || (horizon != null && b.def.tiers[t - 1] - b.value <= horizon)) t
-    ];
-    out.add(SeasonPick(b, tier, g, tiers: tiers));
+/// « 84,1 », « 85 ».
+String seasonNum(double v) => (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)).replaceAll('.', ',');
+
+/// Où en est [g] de la saison [s] au jour [todayYmd] (ou à la fin si elle est close).
+SeasonGoalView seasonGoalView(
+  Season s,
+  SeasonGoal g,
+  StrategicObjective? o, {
+  required String todayYmd,
+  List<Activity> activities = const [],
+  List<Session> sessions = const [],
+  List<HabitHit> hits = const [],
+}) {
+  final closed = s.isOverOn(todayYmd);
+  final day = closed ? s.end : todayYmd;
+  if (g.kind == SeasonGoalKind.metric) {
+    final from = g.from, target = g.target;
+    if (o == null || from == null || target == null) return SeasonGoalView(g, SeasonGoalState.none);
+    final inSeason = o.readings.where((r) => r.date.compareTo(s.start) >= 0 && r.date.compareTo(day) <= 0).toList();
+    final latest = inSeason.isEmpty ? from : inSeason.last.value;
+    final up = target >= from;
+    final reachedNow = up ? latest >= target : latest <= target;
+    final expected = from + (target - from) * s.elapsed(day);
+    if (reachedNow) return SeasonGoalView(g, SeasonGoalState.reached, latest: latest, expected: expected);
+    if (closed) return SeasonGoalView(g, SeasonGoalState.missed, latest: latest, expected: target);
+    final gap = (target - from).abs();
+    final behindBy = up ? expected - latest : latest - expected;
+    final ok = behindBy <= gap * kSeasonMetricTolerance + 1e-9;
+    return SeasonGoalView(g, ok ? SeasonGoalState.onTrack : SeasonGoalState.behind, latest: latest, expected: expected);
   }
-  out.sort((a, b) => (b.badge.progress ?? 0).compareTo(a.badge.progress ?? 0));
-  return [for (final g in SeasonPickGroup.values) ...out.where((p) => p.group == g)];
+  if (o == null) return SeasonGoalView(g, SeasonGoalState.none);
+  if (!closed) {
+    final now = DateTime.parse(todayYmd).add(const Duration(hours: 23, minutes: 59));
+    final p = computeObjectiveProgress(o, activities, sessions, hits, now);
+    final r = p.weekPercent;
+    if (r == null) return SeasonGoalView(g, SeasonGoalState.none);
+    return SeasonGoalView(g, r >= kSeasonRhythmOk ? SeasonGoalState.onTrack : SeasonGoalState.behind, rhythm: r);
+  }
+  final r = seasonRhythmMean(s, o, activities: activities, sessions: sessions, hits: hits);
+  if (r == null) return SeasonGoalView(g, SeasonGoalState.none);
+  return SeasonGoalView(g, r >= kSeasonRhythmOk ? SeasonGoalState.reached : SeasonGoalState.missed, rhythm: r);
+}
+
+/// Rythme moyen d'un objectif sur les semaines pleines de la saison (chaque semaine
+/// mesurée jusqu'à son dimanche, sans ce qui est venu après).
+double? seasonRhythmMean(Season s, StrategicObjective o, {List<Activity> activities = const [], List<Session> sessions = const [], List<HabitHit> hits = const []}) {
+  final out = <double>[];
+  var monday = mondayOf(DateTime.parse(s.start));
+  final last = DateTime.parse(s.end);
+  while (!monday.isAfter(last)) {
+    final sunday = DateTime(monday.year, monday.month, monday.day + 6, 23, 59);
+    final next = DateTime(monday.year, monday.month, monday.day + 7);
+    final p = computeObjectiveProgress(
+      o,
+      activities,
+      [for (final x in sessions) if (x.startAt.isBefore(next)) x],
+      [for (final h in hits) if (h.ts.isBefore(next)) h],
+      sunday,
+    );
+    if (p.weekPercent != null) out.add(p.weekPercent!);
+    monday = next;
+  }
+  return out.isEmpty ? null : out.reduce((a, b) => a + b) / out.length;
+}
+
+/// Toutes les vues d'une saison, dans l'ordre des objectifs posés.
+List<SeasonGoalView> seasonViews(
+  Season s,
+  List<StrategicObjective> objectives, {
+  required String todayYmd,
+  List<Activity> activities = const [],
+  List<Session> sessions = const [],
+  List<HabitHit> hits = const [],
+}) {
+  final byId = {for (final o in objectives) o.id: o};
+  return [
+    for (final g in s.goals) seasonGoalView(s, g, byId[g.objectiveId], todayYmd: todayYmd, activities: activities, sessions: sessions, hits: hits),
+  ];
+}
+
+/// « Jusqu'au dim. 14 déc. »
+String seasonEndLabel(Season s) {
+  const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+  const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  final d = DateTime.parse(s.end);
+  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
 }

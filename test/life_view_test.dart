@@ -44,6 +44,7 @@ void main() {
     expect(find.text('Guérilla'), findsNothing);
     expect(find.text('MES MODES'), findsNothing);
     expect(find.byKey(const ValueKey('life-objectives')), findsOneWidget);
+    expect(find.text('PAS DE SAISON EN COURS'), findsOneWidget);
     expect(find.text('SOMMEIL'), findsOneWidget);
     expect(find.text('SPORT'), findsOneWidget);
     expect(find.text('1 séance'), findsOneWidget);

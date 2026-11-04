@@ -116,7 +116,7 @@ class WebDeckSource extends ChangeNotifier {
     Map<String, ParoleDay> paroles = const {},
   }) {
     final key =
-        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.dropped.length}|${acquired.length}|${paroles.length}';
+        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.held}|${acquired.length}|${paroles.length}';
     if (_deck != null && key == _key) return _deck!;
     _key = key;
     return _deck = computeBadges(

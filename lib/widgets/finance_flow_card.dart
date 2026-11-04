@@ -162,7 +162,9 @@ class FinanceFlowMini extends StatelessWidget {
   final String todayYmd;
   final int days;
   final double height;
-  const FinanceFlowMini({super.key, required this.finances, required this.todayYmd, this.days = 30, this.height = 48});
+  /// Cible de saison (centimes) : trait violet en pointillés sur la courbe du solde.
+  final int? targetCents;
+  const FinanceFlowMini({super.key, required this.finances, required this.todayYmd, this.days = 30, this.height = 48, this.targetCents});
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +172,7 @@ class FinanceFlowMini extends StatelessWidget {
     final s = flowSeries(finances, todayYmd, days: days);
     return CustomPaint(
       size: Size(double.infinity, height),
-      painter: _FlowPainter(s, s.length - 1, cs.onSurface.withValues(alpha: .55), cs.onSurface.withValues(alpha: .08), cs.surface, compact: true),
+      painter: _FlowPainter(s, s.length - 1, cs.onSurface.withValues(alpha: .55), cs.onSurface.withValues(alpha: .08), cs.surface, compact: true, target: targetCents),
     );
   }
 }
@@ -182,7 +184,8 @@ class _FlowPainter extends CustomPainter {
   final Color grid;
   final Color surface;
   final bool compact;
-  _FlowPainter(this.s, this.sel, this.mute, this.grid, this.surface, {this.compact = false});
+  final int? target;
+  _FlowPainter(this.s, this.sel, this.mute, this.grid, this.surface, {this.compact = false, this.target});
 
   void _text(Canvas c, String t, Offset at, {TextAlign align = TextAlign.right, Color? color, FontWeight? weight}) {
     final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 9.5, color: color ?? mute, fontWeight: weight)), textDirection: TextDirection.ltr)..layout();
@@ -209,7 +212,7 @@ class _FlowPainter extends CustomPainter {
 
     // ── Solde ──
     final top = compact ? 2.0 : 6.0, bh = compact ? size.height * .58 : _ChartGeom.balanceH;
-    final vals = [for (final d in s) if (d.balance != null) d.balance!];
+    final vals = [for (final d in s) if (d.balance != null) d.balance!, if (target != null) target!];
     if (vals.isNotEmpty) {
       var mn = vals.reduce(math.min).toDouble(), mx = vals.reduce(math.max).toDouble();
       if (mx - mn < 10000) {
@@ -224,6 +227,15 @@ class _FlowPainter extends CustomPainter {
         final v = (mn + (mx - mn) * k / 2).round();
         canvas.drawLine(Offset(l, y(v)), Offset(size.width - r, y(v)), gridP);
         _text(canvas, _k(v), Offset(l - 5, y(v)));
+      }
+      if (target != null) {
+        final ty = y(target!);
+        final dash = Paint()
+          ..color = const Color(0xFFB79CF2)
+          ..strokeWidth = 1.5;
+        for (var x0 = l; x0 < size.width - r; x0 += 7) {
+          canvas.drawLine(Offset(x0, ty), Offset(math.min(x0 + 4, size.width - r), ty), dash);
+        }
       }
       final path = Path();
       var started = false;

@@ -26,6 +26,8 @@ import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, 
 import 'package:productivitwo_v1/utils/finances.dart' show accountNow, euros, monthSummary, trackedDays;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
+import 'package:productivitwo_v1/utils/seasons.dart';
+import 'package:productivitwo_v1/widgets/season_widgets.dart';
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, WeightTrajectoryPainter;
 import 'package:productivitwo_v1/widgets/sleep_sheet.dart' show SleepNightsMini;
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart' show FinanceFlowMini;
@@ -160,6 +162,31 @@ class _LifeViewState extends State<LifeView> {
     ).then((_) => _reloadObjectives());
   }
 
+  void _openCap() {
+    showSeasonCapSheet(context, logic: logic, objectives: _objectives, sync: widget.sync, projects: widget.projects).then((_) => _reloadObjectives());
+  }
+
+  /// Cible de saison en centimes quand l'objectif se mesure en euros (courbe du solde).
+  int? _euroTargetCents((Season, SeasonGoal, StrategicObjective)? sg) {
+    if (sg == null) return null;
+    final g = sg.$2;
+    if (g.kind != SeasonGoalKind.metric || g.target == null) return null;
+    final u = (g.unit ?? '').toLowerCase();
+    if (!u.contains('€') && !u.contains('eur')) return null;
+    return (g.target! * 100).round();
+  }
+
+  /// L'objectif de la saison en cours porté par ce domaine (le premier posé).
+  (Season, SeasonGoal, StrategicObjective)? _seasonGoalOf(Domain d) {
+    final s = currentSeason(logic.seasons, logic.livedTodayYmd);
+    if (s == null) return null;
+    for (final g in s.goals) {
+      final o = _objectives.where((x) => x.id == g.objectiveId).firstOrNull;
+      if (o != null && _domainOf(o) == d.id) return (s, g, o);
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -212,6 +239,9 @@ class _LifeViewState extends State<LifeView> {
           TextButton(key: const ValueKey('life-objectives'), onPressed: _openAllObjectives, child: Text('Objectifs · ${active.length}')),
           TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
         ]),
+        const SizedBox(height: 6),
+        // Saison (refonte 2026-11-04) : la période des objectifs, sa cible sur chaque tuile.
+        SeasonBanner(logic: logic, objectives: _objectives, onOpenCap: _openCap),
         _section(mute, 'CETTE SEMAINE'),
         WeekStatsView(logic: logic, sync: widget.sync, badges: widget.badges, onOpenDomain: (d, {focus = 'time'}) => widget.onOpenDomain(d), onManageDomains: widget.onManageDomains, onlyWeekLine: true),
         _section(mute, 'MES DOMAINES', right: 'appui long = nature'),
@@ -267,6 +297,7 @@ class _LifeViewState extends State<LifeView> {
     final st = logic.state;
     final mute = cs.onSurface.withValues(alpha: .55);
     final c = _natureColors[n] ?? domainColor(d.id, st.activeDomains) ?? cs.primary;
+    final sg = _seasonGoalOf(d);
     String eyebrow = d.name.toUpperCase();
     String value = '';
     String sub = '';
@@ -336,11 +367,11 @@ class _LifeViewState extends State<LifeView> {
           value = euros(acc.balance);
           sub = 'sur ton compte · $tracked / 90 jours suivis';
           // 30 jours : la courbe du solde et les barres entré / sorti, comme dans la feuille Finances (retour user 2026-11-04).
-          viz = FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight);
+          viz = FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight, targetCents: _euroTargetCents(sg));
         } else {
           value = m.hasIncome ? euros(m.remaining) : (m.spent > 0 ? euros(m.spent) : 'Finances');
           sub = m.hasIncome ? 'reste à vivre · $tracked / 90 jours suivis' : (m.spent > 0 ? 'dépensés ce mois · pose ton solde' : 'note tes dépenses, jour après jour');
-          viz = f.expenses.isEmpty && f.incomes.isEmpty ? null : FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight);
+          viz = f.expenses.isEmpty && f.incomes.isEmpty ? null : FinanceFlowMini(finances: f, todayYmd: today, height: kLifeVizHeight, targetCents: _euroTargetCents(sg));
         }
         onTap = () => showFinanceSheet(context, logic: logic);
       case DomainNature.work:
@@ -358,6 +389,19 @@ class _LifeViewState extends State<LifeView> {
           if (w.resting) sub = 'en veille';
           viz = _domainDays(cs, d, w, n, now, c);
         }
+    }
+    // Objectif de saison chiffré : sa trajectoire de saison (fenêtre, pointillés jusqu'à la cible), sauf Finances (courbe du solde + cible).
+    SeasonGoalView? sView;
+    if (sg != null) {
+      final (season, goal, obj) = sg;
+      sView = seasonGoalView(season, goal, obj, todayYmd: logic.livedTodayYmd, activities: st.activities, sessions: st.sessions, hits: st.habitHits);
+      if (goal.kind == SeasonGoalKind.metric && !(n == DomainNature.money && _euroTargetCents(sg) != null)) {
+        viz = SizedBox(
+          height: kLifeVizHeight,
+          width: double.infinity,
+          child: CustomPaint(painter: SeasonMetricPainter(o: obj, s: season, g: goal, line: const Color(0xFF5CC79A), ink: cs.onSurface, now: now)),
+        );
+      }
     }
     final behind = w != null && w.hasGoal && !w.resting && w.doneMin < w.expectedMin * .95;
     return Material(
@@ -388,7 +432,16 @@ class _LifeViewState extends State<LifeView> {
             Divider(height: 1, color: cs.onSurface.withValues(alpha: .07)),
             SizedBox(
               height: 30,
-              child: objs.isEmpty
+              child: sg != null && sView != null
+                  ? SeasonGoalLine(
+                      view: sView,
+                      title: sg.$3.title,
+                      onTap: () async {
+                        await showObjectiveTrajectorySheet(context, logic: logic, sync: widget.sync, objective: sg.$3, projects: widget.projects);
+                        _reloadObjectives();
+                      },
+                    )
+                  : objs.isEmpty
                   ? Align(alignment: Alignment.centerLeft, child: Text('pas d’objectif', style: TextStyle(fontSize: 11, color: mute.withValues(alpha: .6))))
                   : _objectiveLine(cs, objs.first, progress[objs.first.id], c, more: objs.length - 1),
             ),
