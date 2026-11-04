@@ -1062,6 +1062,20 @@ de la semaine, heures moyennes du déjeuner et du dîner d'après Manger). Écra
 soir), trois chiffres, TES HEURES DE REPAS, « Les repas de la semaine », Mes plats ›, Liste de courses · n. Entrées : rond 🍽
 (`kMealAccent`) dans la barre du haut après Sport, ligne « Repas · k / n équilibrés » dans Domaines (`_mealLine`) ; tuile Repas de Ma vie.
 
+## Repas en 3 familles (2026-11-04, spec + maquette validées, handoff `docs/specs/repas-3-familles-2026-11/README.md`, 4 lots)
+
+Un repas = briques de 3 familles (protéines · féculents · fibres), 2 sur 3 suffisent ; ail, oignon, sauces, épices,
+desserts = accompagnements (affichés, jamais comptés) ; légumineuses = féculent ET protéine. Trois créneaux : petit-déj ·
+midi · soir (pas de collation). **Lot 1 livré (familles des produits, rien de visible)** : logique pure
+`utils/meal_families.dart` ↔ `functions/src/meal_families.ts` (**garder alignés** : `kFamilyKeywords` / `FAMILY_KEYWORDS`,
+même ordre ; le mot-clé le plus LONG gagne, à égalité la première famille de la liste) — `guessFamilies`, `parseFamilies`
+/ `formatFamilies` (accompagnement exclusif), `familiesFor` (retenue `data/meta.groceries.families.<mot>` → devinée →
+rayon Ménager · Hygiène · Boissons = aucune → accompagnement), `pantryByFamily` (J'en ai et Bientôt fini, deux familles =
+deux places), `withFamilies`. `Groceries.families`, `AppLogic.setFoodFamilies`, `FirestoreSync.setFoodFamily`. MCP (⚠️
+`firebase deploy --only functions`) : `record_receipt` lignes `{family}` (retenue pour le mot), `update_pantry {family}`
+(`""` = automatique), `get_pantry` sans filtre ajoute « PAR FAMILLE ». Lots 2-4 (petit-déj + composer un repas,
+suggestions + MCP repas, placards par famille) : voir le handoff.
+
 ## Finances, 100 % manuel (2026-11-02, maquette validée « Suivi des finances »)
 
 Objectif user « Reprendre mon budget en main 100 % manuel · 90 jours suivis » : une feuille Finances comme Sommeil, Sport et Repas ;

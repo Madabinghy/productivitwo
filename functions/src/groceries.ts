@@ -129,6 +129,8 @@ export type ReceiptLineInput = {
   name?: string;
   /** Rayon (Épicerie, Frais…) ; sinon retenu pour le mot ou deviné. */
   aisle?: string;
+  /** Repas en 3 familles : proteines · feculents · fibres · accompagnement (ou deux, « feculents,proteines »). */
+  family?: string;
 };
 
 export type ReceiptShare = {

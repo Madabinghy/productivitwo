@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
+import 'package:productivitwo_v1/utils/meal_families.dart' show withFamilies;
 import 'package:productivitwo_v1/utils/receipts.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
@@ -2209,6 +2210,17 @@ class AppLogic implements HuntStore {
     groceries = groceries.copyWith(pantry: {...groceries.pantry}..remove(key));
     onChange();
     await sync?.setPantryItems({key: null});
+  }
+
+  /// Repas en 3 familles : retient la famille d'un produit pour son mot
+  /// (vide = revenir à l'automatique, `utils/meal_families.dart`).
+  Future<void> setFoodFamilies(String label, List<String> fams) async {
+    final next = withFamilies(groceries, label, fams);
+    final k = normLabel(label);
+    if (k.isEmpty) return;
+    groceries = next;
+    onChange();
+    await sync?.setFoodFamily(k, next.families[k]);
   }
 
   Future<void> _saveAisleChange(Groceries next) async {

@@ -1596,6 +1596,7 @@ const RECORD_RECEIPT_TOOL = {
             listLabel: { type: "string", description: "Libellé exact de l'article de la liste de courses couvert (optionnel)" },
             name: { type: "string", description: "Nom simple du produit pour les placards (ex. « Pâtes », « Lait »)" },
             aisle: { type: "string", description: "Rayon du produit (ex. Épicerie, Frais, Ménager)" },
+            family: { type: "string", description: "Famille pour composer les repas, seulement si elle ne va pas de soi par le nom : proteines · feculents · fibres (légumes, fruits) · accompagnement (ail, oignon, sauce, épices, desserts) ; deux possibles : « feculents,proteines » (lentilles)" },
           },
         },
       },
@@ -1618,7 +1619,8 @@ const GET_PANTRY_TOOL = {
   description:
     "Lit « Mes placards » : ce que l'utilisateur a chez lui, rangé par rayon, avec l'état de chaque produit (j'en ai · " +
     "bientôt fini · plus rien) et ce qui est habituel. À utiliser pour « qu'est-ce que j'ai pour cuisiner ce soir ? », " +
-    "« il me reste du riz ? », ou avant de proposer un menu.",
+    "« il me reste du riz ? », ou avant de proposer un menu. Sans filtre, la réponse range aussi ce qu'on a par famille " +
+    "(protéines · féculents · fibres · accompagnements) : un repas = 2 familles sur 3.",
   inputSchema: {
     type: "object",
     properties: {
@@ -1651,6 +1653,7 @@ const UPDATE_PANTRY_TOOL = {
             aisle: { type: "string", description: "Rayon (existant, voir manage_aisles)" },
             staple: { type: "boolean", description: "Produit habituel" },
             remove: { type: "boolean", description: "true = le retirer du placard" },
+            family: { type: "string", description: "Famille pour les repas : proteines · feculents · fibres · accompagnement, ou deux « feculents,proteines » ; \"\" = revenir à l'automatique" },
           },
         },
       },

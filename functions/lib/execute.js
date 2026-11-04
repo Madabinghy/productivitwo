@@ -102,6 +102,7 @@ exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const expenses_mcp_1 = require("./expenses_mcp");
 const pantry_1 = require("./pantry");
+const meal_families_1 = require("./meal_families");
 const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
@@ -1112,10 +1113,16 @@ async function legacyMenuText(uid) {
     return `Ancienne liste du menu du ${at} :\n${lines.join("\n")}`;
 }
 async function groceriesState(uid) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
     const g = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.groceries) !== null && _b !== void 0 ? _b : {});
-    return { items: (_c = g.items) !== null && _c !== void 0 ? _c : {}, memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {}, pantry: (_e = g.pantry) !== null && _e !== void 0 ? _e : {}, aisles: ((_f = g.aisles) === null || _f === void 0 ? void 0 : _f.length) ? g.aisles : pantry_1.DEFAULT_AISLES };
+    return {
+        items: (_c = g.items) !== null && _c !== void 0 ? _c : {},
+        memory: (_d = g.memory) !== null && _d !== void 0 ? _d : {},
+        pantry: (_e = g.pantry) !== null && _e !== void 0 ? _e : {},
+        aisles: ((_f = g.aisles) === null || _f === void 0 ? void 0 : _f.length) ? g.aisles : pantry_1.DEFAULT_AISLES,
+        families: (_g = g.families) !== null && _g !== void 0 ? _g : {},
+    };
 }
 async function executeGetShoppingList(uid) {
     const [{ items }, domainsSnap, projectsSnap, legacy] = await Promise.all([
@@ -1204,7 +1211,7 @@ async function executeCheckShoppingItem(uid, label, checked) {
  * `apply:false` (défaut) = la répartition proposée, rien n'est écrit.
  */
 async function executeRecordReceipt(uid, args) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2;
     const lines = ((_a = args.lines) !== null && _a !== void 0 ? _a : []).filter((l) => { var _a; return l && String((_a = l.label) !== null && _a !== void 0 ? _a : "").trim() && Number(l.price) > 0; });
     if (!lines.length)
         return "❌ Aucune ligne lisible (label + price en euros).";
@@ -1255,6 +1262,10 @@ async function executeRecordReceipt(uid, args) {
             return list.length ? [`Par rayon : ${list.map(([a, c]) => `${a} ${eur(c)}`).join(" · ")}`] : [];
         })(),
         ...(Object.keys(plan.bought).length ? [`Mes placards : ${Object.keys(plan.bought).length} produit(s) passent « j'en ai ».`] : []),
+        ...(() => {
+            const fam = lines.filter((l) => l.family && (0, meal_families_1.parseFamilies)(l.family).length);
+            return fam.length ? [`Familles retenues : ${fam.map((l) => { var _a; return `${String((_a = l.name) !== null && _a !== void 0 ? _a : "").trim() || l.label} → ${(0, meal_families_1.parseFamilies)(l.family).map((f) => meal_families_1.FAMILY_LABEL[f]).join(" + ")}`; }).join(" · ")}`] : [];
+        })(),
         ...(plan.removeItemIds.length || plan.menuKeys.length ? [`Liste de courses : ${plan.removeItemIds.length + plan.menuKeys.length} article(s) couvert(s), retirés de la liste.`] : []),
         ...plan.warnings.map((w) => `⚠️ ${w}`),
     ].join("\n");
@@ -1273,34 +1284,41 @@ async function executeRecordReceipt(uid, args) {
     });
     const time = args.time && /^\d{1,2}:\d{2}$/.test(args.time.trim()) ? args.time.trim().padStart(5, "0") : undefined;
     const receipt = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ ymd }, (time ? { time } : {})), (args.store ? { store: args.store.trim() } : {})), (args.place ? { place: args.place.trim() } : {})), (args.ref ? { ref: String(args.ref).trim() } : {})), { total: plan.total, envelopeId: env, lines: plan.lines, at });
+    const families = {};
+    for (const l of lines) {
+        const fams = l.family ? (0, meal_families_1.parseFamilies)(l.family) : [];
+        if (fams.length)
+            families[(0, groceries_1.groceryKey)(String((_r = l.name) !== null && _r !== void 0 ? _r : "").trim() || String(l.label))] = fams.join(",");
+    }
     const pantry = {};
     for (const [k, b] of Object.entries(plan.bought)) {
-        pantry[k] = Object.assign(Object.assign({}, ((_s = (_r = g.pantry) === null || _r === void 0 ? void 0 : _r[k]) !== null && _s !== void 0 ? _s : {})), { label: (_v = (_u = (_t = g.pantry) === null || _t === void 0 ? void 0 : _t[k]) === null || _u === void 0 ? void 0 : _u.label) !== null && _v !== void 0 ? _v : b.label, aisle: b.aisle, state: "have", boughtAt: ymd });
+        pantry[k] = Object.assign(Object.assign({}, ((_t = (_s = g.pantry) === null || _s === void 0 ? void 0 : _s[k]) !== null && _t !== void 0 ? _t : {})), { label: (_w = (_v = (_u = g.pantry) === null || _u === void 0 ? void 0 : _u[k]) === null || _v === void 0 ? void 0 : _v.label) !== null && _w !== void 0 ? _w : b.label, aisle: b.aisle, state: "have", boughtAt: ymd });
     }
     const memory = {};
     for (const [k, v] of Object.entries(plan.prices))
-        memory[k] = Object.assign(Object.assign({}, ((_x = (_w = g.memory) === null || _w === void 0 ? void 0 : _w[k]) !== null && _x !== void 0 ? _x : {})), v);
+        memory[k] = Object.assign(Object.assign({}, ((_y = (_x = g.memory) === null || _x === void 0 ? void 0 : _x[k]) !== null && _y !== void 0 ? _y : {})), v);
     const items = {};
     for (const id of plan.removeItemIds)
         items[id] = db_1.FieldValue.delete();
-    const nothing = ((_z = (_y = meta.finances) === null || _y === void 0 ? void 0 : _y.nothing) !== null && _z !== void 0 ? _z : []).filter((d) => d !== ymd);
+    const nothing = ((_0 = (_z = meta.finances) === null || _z === void 0 ? void 0 : _z.nothing) !== null && _0 !== void 0 ? _0 : []).filter((d) => d !== ymd);
     const patch = {
-        finances: Object.assign({ expenses, receipts: { [receiptId]: receipt } }, (nothing.length !== ((_1 = (_0 = meta.finances) === null || _0 === void 0 ? void 0 : _0.nothing) !== null && _1 !== void 0 ? _1 : []).length ? { nothing } : {})),
-        groceries: Object.assign(Object.assign(Object.assign({ memory }, (Object.keys(pantry).length ? { pantry } : {})), (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
+        finances: Object.assign({ expenses, receipts: { [receiptId]: receipt } }, (nothing.length !== ((_2 = (_1 = meta.finances) === null || _1 === void 0 ? void 0 : _1.nothing) !== null && _2 !== void 0 ? _2 : []).length ? { nothing } : {})),
+        groceries: Object.assign(Object.assign(Object.assign(Object.assign({ memory }, (Object.keys(pantry).length ? { pantry } : {})), (Object.keys(families).length ? { families } : {})), (plan.removeItemIds.length ? { items } : {})), (plan.menuKeys.length ? { bought: { [(0, groceries_1.mondayOfYmd)(ymd)]: db_1.FieldValue.arrayUnion(...plan.menuKeys) } } : {})),
     };
     await metaRef.set(patch, { merge: true });
     return `✅ Enregistré : ticket conservé (visible dans Finances) et ${Object.keys(expenses).length} dépense(s).\n${summary}`;
 }
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
 async function executeGetPantry(uid, args = {}) {
-    const { pantry, aisles } = await groceriesState(uid);
+    const { pantry, aisles, families, memory } = await groceriesState(uid);
     const aisle = args.aisle ? (0, pantry_1.resolveAisle)(args.aisle, aisles) : null;
     if (args.aisle && !aisle)
         return `❌ Rayon inconnu : « ${args.aisle} ». Rayons : ${aisles.join(", ")}.`;
     const state = args.state ? (0, pantry_1.parseState)(args.state) : null;
     if (args.state && !state)
         return "❌ state : have (j'en ai) · low (bientôt fini) · out (plus rien).";
-    return `Rayons : ${aisles.join(" · ")}\n\n${(0, pantry_1.pantryText)(pantry, aisles, { aisle, state })}`;
+    const byFamily = !aisle && !state && Object.keys(pantry).length ? `\n\n${(0, meal_families_1.familiesText)(pantry, families, memory)}` : "";
+    return `Rayons : ${aisles.join(" · ")}\n\n${(0, pantry_1.pantryText)(pantry, aisles, { aisle, state })}${byFamily}`;
 }
 /** update_pantry : poser l'état, le rayon, « habituel », ou retirer des produits du placard. */
 async function executeUpdatePantry(uid, args) {
@@ -1313,6 +1331,7 @@ async function executeUpdatePantry(uid, args) {
     const { pantry, memory, aisles } = await groceriesState(uid);
     const patch = {};
     const mem = {};
+    const fam = {};
     const done = [];
     const errors = [];
     for (const x of list) {
@@ -1338,16 +1357,23 @@ async function executeUpdatePantry(uid, args) {
             errors.push(`« ${label} » : rayon inconnu « ${x.aisle} » (rayons : ${aisles.join(", ")} ; manage_aisles pour en ajouter).`);
             continue;
         }
+        const fams = x.family != null ? (0, meal_families_1.parseFamilies)(x.family) : null;
+        if (x.family != null && x.family !== "" && !(fams === null || fams === void 0 ? void 0 : fams.length)) {
+            errors.push(`« ${label} » : famille inconnue « ${x.family} » (proteines · feculents · fibres · accompagnement ; "" = automatique).`);
+            continue;
+        }
+        if (fams)
+            fam[k] = fams.length ? fams.join(",") : db_1.FieldValue.delete();
         const next = Object.assign(Object.assign({}, (old !== null && old !== void 0 ? old : {})), { label: (_b = old === null || old === void 0 ? void 0 : old.label) !== null && _b !== void 0 ? _b : label, aisle: (_c = aisle !== null && aisle !== void 0 ? aisle : old === null || old === void 0 ? void 0 : old.aisle) !== null && _c !== void 0 ? _c : (0, pantry_1.aisleFor)(label, memory, pantry), state: (_d = state !== null && state !== void 0 ? state : old === null || old === void 0 ? void 0 : old.state) !== null && _d !== void 0 ? _d : "have" });
         if (x.staple != null)
             next.staple = x.staple === true;
         patch[k] = next;
         if (aisle)
             mem[k] = Object.assign(Object.assign({}, ((_e = memory[k]) !== null && _e !== void 0 ? _e : {})), { aisle });
-        done.push(`${next.state === "have" ? "✓" : next.state === "low" ? "!" : "✕"} ${next.label} — ${pantry_1.STATE_LABEL[next.state]} · ${next.aisle}${next.staple ? " · habituel" : ""}${old ? "" : " (nouveau)"}`);
+        done.push(`${next.state === "have" ? "✓" : next.state === "low" ? "!" : "✕"} ${next.label} — ${pantry_1.STATE_LABEL[next.state]} · ${next.aisle}${next.staple ? " · habituel" : ""}${(fams === null || fams === void 0 ? void 0 : fams.length) ? ` · ${fams.map((f) => meal_families_1.FAMILY_LABEL[f]).join(" + ")}` : ""}${old ? "" : " (nouveau)"}`);
     }
     if (Object.keys(patch).length) {
-        await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: Object.assign({ pantry: patch }, (Object.keys(mem).length ? { memory: mem } : {})) }, { merge: true });
+        await db_1.db.doc(`users/${uid}/data/meta`).set({ groceries: Object.assign(Object.assign({ pantry: patch }, (Object.keys(mem).length ? { memory: mem } : {})), (Object.keys(fam).length ? { families: fam } : {})) }, { merge: true });
     }
     return [
         done.length ? `✅ Placards mis à jour :\n${done.join("\n")}` : "Rien n'a changé.",
