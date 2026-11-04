@@ -900,8 +900,19 @@ suivie par main.dart). `exerciseByName` (nom déjà connu, sans accents ni casse
 (semaine, mois), libellés `kgLabel` / `restLabel` / `setLabel` / `itemLabel`. `AppLogic.gym` / `workouts`, `saveExercise` (un nom connu
 réutilise l'exercice), `setExerciseRest` (« Garder 1 min 45 pour cet exercice »), `saveWorkoutTemplate` / `removeWorkoutTemplate` (doux),
 `saveWorkout` ; `FirestoreSync.setGymExercise` / `setGymTemplate`. Coffre : `workouts` dans `kBackupCollections`, `gym` dans
-`kBackupMetaKeys`. **Lot 2 à venir** : Ma séance, Régler un exercice (repos), En série, Repos (alarme), Bilan. **Lot 3** : fiche d'un
-exercice, Mes séances (semaine, mois), une séance passée.
+`kBackupMetaKeys`. **Lot 2 livré (écrans, `widgets/workout_screens.dart`)** : bouton « Séance de muscu · séries et repos »
+de la feuille Sport (`open-workout`) → `showWorkoutHub` (Ma séance, `showFiche`) : puces des séances types (+ « Libre », « + Séance
+type » = `showTemplateEditor` : nom, À la maison / À la salle), une ligne par exercice (« dernière fois : … », « +2,5 kg proposé » ;
+tap = régler, glisser = retirer, appui long = ordre), champ « Ajouter un exercice… » (nom déjà connu = même exercice), « Démarrer la
+séance ». `showExerciseEditor` (Régler un exercice) : nom, machine, Avec poids · Poids du corps · Durée, séries / répétitions (ou max)
+/ poids au pas, REPOS ENTRE DEUX SÉRIES (45 s · 1 min · 1 min 30 · 2 min · 3 min, ±15 s ; repos réellement pris la dernière fois).
+`WorkoutPlayer` (plein écran, écran allumé, chrono sur l'activité de séance de sport — « muscu » de préférence — arrêté à
+l'enregistrement) : EN SÉRIE (« SÉRIE k / n », poids et répétitions − / +, « dernière fois, série k : … · aujourd'hui +2,5 kg »,
+liste des séries face à avant, « Série faite · repos … », Liste des exercices, Passer cet exercice) → REPOS (anneau, ±15 s,
+`CoupAlarm` qui sonne téléphone en veille, « Garder 1 min 45 pour cet exercice » = `setExerciseRest`, ENSUITE, « J'y vais » ; le repos
+réellement pris est noté sur la série suivante) → BILAN (`summarize` : titre « Mieux que ven. », volume et écart %, durée, records,
+exercice par exercice aujourd'hui / avant, « La prochaine fois », « Enregistrer la séance »). La séance est écrite après chaque série
+(rien de perdu si l'app se ferme). **Lot 3 à venir** : fiche d'un exercice, Mes séances (semaine, mois), une séance passée.
 
 ## Courses générales (2026-11-02, maquette validée « Courses générales »)
 
