@@ -7,7 +7,7 @@ import 'package:productivitwo_v1/utils/finances.dart' show euros;
 import 'package:productivitwo_v1/widgets/life_view.dart';
 
 void main() {
-  testWidgets('Ma vie : modes, tuiles par nature', (tester) async {
+  testWidgets('Organisation : tuiles par nature, sans modes', (tester) async {
     tester.view.physicalSize = const Size(720, 4000);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
@@ -41,7 +41,9 @@ void main() {
     ));
     await tester.pump();
     expect(find.text('Organisation'), findsOneWidget);
-    expect(find.text('Guérilla'), findsOneWidget);
+    expect(find.text('Guérilla'), findsNothing);
+    expect(find.text('MES MODES'), findsNothing);
+    expect(find.byKey(const ValueKey('life-objectives')), findsOneWidget);
     expect(find.text('SOMMEIL'), findsOneWidget);
     expect(find.text('SPORT'), findsOneWidget);
     expect(find.text('1 séance'), findsOneWidget);
