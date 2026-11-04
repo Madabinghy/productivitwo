@@ -923,6 +923,26 @@ bilan, contenu d'une séance) : n séances depuis …, repos réglé, RECORD, DE
 Poids · Volume · Reps · Repos (`exerciseHistory`, `curveValue`), DERNIÈRES SÉANCES (`setsLine` + repos moyen réellement pris),
 « Réglages · repos, pas de poids ». Logique pure ajoutée : `ExerciseSession`, `periodSummary`, `volumeLabel`. **Les 3 lots sont livrés.**
 
+## Liberté · sortir d'une dépendance (2026-11-04, maquette validée « Sortir d'une dépendance », 3 lots)
+
+UNE chose qu'on veut **arrêter** ou **réduire** (décision user : une seule pour commencer). L'app ne nomme AUCUNE dépendance : la
+personne donne le nom qu'elle veut, même discret ; ce qu'on compte est libre (« fois », « verres », « minutes »). On ne compte pas les
+chutes mais les victoires : chaque **envie surmontée** reste acquise, même après un écart ; un écart = une info, pas une rechute.
+Privé par défaut (le coach ne voit rien sans un consentement à part, lot 3). Une seule mise en garde, à la création : « si ton corps en
+dépend, un arrêt brutal peut être dangereux, demande conseil à un médecin » ; « Trouver de l'aide › » = médecin puis lignes d'écoute
+gratuites. Pas de jalons santé : caps neutres. **Lot 1 livré (données + logique, rien de visible)** : logique pure `utils/freedom.dart` —
+`FreedomPlan {name, goal stop|reduce, limit?, period day|week, unit, startYmd, costPerDay? (centimes), why, triggers, parades,
+supportName?, supportPhone?, warned}`, `FreedomUrge {at, intensity 1-5, trigger?, parade?, passed, durationSec?}`, `FreedomSlip {at,
+count, triggers, next?}` (écart en Arrêter, consommation en Réduire), `Freedom {plan, urges, slips}` dans `data/meta.freedom`
+(`parseFreedom`, `FirestoreSync.setFreedomPlan` / `setFreedomUrge` / `setFreedomSlip`, flux meta de main.dart via `_freedomJson`, dans
+`kBackupMetaKeys`). Calculs : `freeSince` (départ ou dernier écart), `freeLabel` (« 12 j 6 h »), `urgesOvercome`, `freeDaysTotal` /
+`savedCents` (coût × jours sans écart, Arrêter seulement), `nextMilestone` / `milestoneLabel` (`kFreedomMilestones` 1 · 3 · 7 · 14 · 30 ·
+60 · 90 · 180 · 365 j), `usedThisPeriod` / `overLimit` (Réduire), `urgeDays` (barres 14 j), `meanIntensity` / `intensityTrendPct` (7 j
+face aux 7 d'avant), `urgeHeat` (semaine / week-end × 6 moments), `triggerShares`, `paradeRates` / `bestParade` (≥ 3 essais),
+`meanUrgeSec`, `slipTriggers` ; `kUrgeWaveSec` (10 min). `AppLogic.freedom`, `saveFreedomPlan`, `logUrge`, `logSlip`, `removeSlip`.
+**Lot 2 à venir** : écrans (créer, la feuille, le moment de l'envie, après un écart, ce que ça apprend, tuile d'Organisation). **Lot 3** :
+cartes (envies surmontées, caps), widget « J'ai une envie », partage coach à part.
+
 ## Courses générales (2026-11-02, maquette validée « Courses générales »)
 
 UNE liste de courses : les ingrédients du menu de la semaine (dérivés comme avant, `shoppingFor`) + les lignes à la main ou via Claude,

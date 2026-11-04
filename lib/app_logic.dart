@@ -2,6 +2,7 @@
 
 // ignore_for_file: deprecated_member_use
 
+import 'package:productivitwo_v1/utils/freedom.dart';
 import 'dart:async';
 import 'package:productivitwo_v1/utils/not_today.dart';
 import 'dart:math' as math;
@@ -1977,6 +1978,35 @@ class AppLogic implements HuntStore {
     finances = finances.copyWith(paid: {...finances.paid, month: m});
     onChange();
     await sync?.setFinancePaid(month, recurringId, amount == null ? null : m[recurringId]!.toJson());
+  }
+
+  /// Liberté (2026-11-04, `utils/freedom.dart`) : UNE chose qu'on veut arrêter ou réduire (`data/meta.freedom`).
+  Freedom freedom = const Freedom();
+
+  Future<void> saveFreedomPlan(FreedomPlan? plan) async {
+    freedom = plan == null ? freedom.copyWith(clearPlan: true) : freedom.copyWith(plan: plan);
+    onChange();
+    await sync?.setFreedomPlan(plan?.toJson());
+  }
+
+  /// Note une envie (passée ou non) ; une envie non passée n'est pas un écart à elle seule.
+  Future<void> logUrge(FreedomUrge u) async {
+    freedom = freedom.copyWith(urges: {...freedom.urges, u.id: u});
+    onChange();
+    await sync?.setFreedomUrge(u.id, u.toJson());
+  }
+
+  /// Note un écart (arrêter) ou une consommation (réduire).
+  Future<void> logSlip(FreedomSlip s) async {
+    freedom = freedom.copyWith(slips: {...freedom.slips, s.id: s});
+    onChange();
+    await sync?.setFreedomSlip(s.id, s.toJson());
+  }
+
+  Future<void> removeSlip(String id) async {
+    freedom = freedom.copyWith(slips: {...freedom.slips}..remove(id));
+    onChange();
+    await sync?.setFreedomSlip(id, null);
   }
 
   /// Séances de muscu (2026-11-04, `utils/workouts.dart`) : exercices et séances types (`data/meta.gym`) et
