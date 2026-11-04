@@ -883,6 +883,26 @@ les activités »), 8 SEMAINES (barres empilées, pointillés = engagement, phra
 (`linkedActivityId`, Footing → Courir) prend son +1 du jour si elle n'en a pas (`AppLogic._checkSportRoutine`, tick minute, une
 fois par session ; SnackBar « Footing +1 · séance comptée » via `onSportRoutineCounted`).
 
+## Séances de muscu (2026-11-04, maquette validée « Séances de muscu », 3 lots)
+
+Préparer une séance (salle ou maison, avec ou sans poids), la dérouler série par série avec le repos minuté, comparer avec la fois
+d'avant, suivre ses exercices et ses séances (semaine, mois). Pour la reprise, volontairement simple : le lieu est une étiquette
+(`maison` / `salle`) sur la séance type ; échelle de niveaux type Lafay, circuit, enchaînement A → B → C et échauffement = plus tard
+(décision user). **Lot 1 livré (données + logique, rien de visible)** : logique pure `utils/workouts.dart` — `Exercise {name, gear?,
+kind weight · bodyweight · duration, restSec (repos retenu, défaut 90), stepKg (2,5)}`, `TemplateItem {exerciseId, sets, reps? (secondes
+en durée, null = max), weightKg?}`, `WorkoutTemplate {name, place?, items}`, `Gym` (`data/meta.gym {exercises, templates}`, `parseGym`),
+`SetLog {exerciseId, reps, weightKg?, seconds?, restSec? = repos réellement pris avant la série, at}`, `Workout {templateId?, name, place?,
+ymd (jour vécu), startAt, endAt?, sets, activityId?}` (collection `users/{uid}/workouts`, `FirestoreSync.saveWorkout` / `streamWorkouts`,
+suivie par main.dart). `exerciseByName` (nom déjà connu, sans accents ni casse), `lastSetsOf` / `lastWorkoutOf` (la fois d'avant),
+`suggestedWeight` (toutes les séries prévues faites au poids d'avant → un pas de plus), `plannedSet`, `volumeOf` / `repsOf` / `avgRestSec`,
+`bestSet` / `isRecord` (première fois = pas un record), `compareExercise` → `ExerciseDelta` (« +2,5 kg » · « +2 reps » · « −10 s » ·
+« pareil »), `summarize` → `WorkoutSummary` (volume et écart %, records, repos moyen, par exercice), `workoutsBetween` / `countByName`
+(semaine, mois), libellés `kgLabel` / `restLabel` / `setLabel` / `itemLabel`. `AppLogic.gym` / `workouts`, `saveExercise` (un nom connu
+réutilise l'exercice), `setExerciseRest` (« Garder 1 min 45 pour cet exercice »), `saveWorkoutTemplate` / `removeWorkoutTemplate` (doux),
+`saveWorkout` ; `FirestoreSync.setGymExercise` / `setGymTemplate`. Coffre : `workouts` dans `kBackupCollections`, `gym` dans
+`kBackupMetaKeys`. **Lot 2 à venir** : Ma séance, Régler un exercice (repos), En série, Repos (alarme), Bilan. **Lot 3** : fiche d'un
+exercice, Mes séances (semaine, mois), une séance passée.
+
 ## Courses générales (2026-11-02, maquette validée « Courses générales »)
 
 UNE liste de courses : les ingrédients du menu de la semaine (dérivés comme avant, `shoppingFor`) + les lignes à la main ou via Claude,

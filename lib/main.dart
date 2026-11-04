@@ -25,6 +25,7 @@ import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show parseMeals;
 import 'package:productivitwo_v1/utils/finances.dart' show parseFinances;
 import 'package:productivitwo_v1/utils/groceries.dart' show parseGroceries;
+import 'package:productivitwo_v1/utils/workouts.dart' show Workout, parseGym;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
@@ -1794,6 +1795,8 @@ class _AppRootState extends State<AppRoot>
   String _mealsJson = ''; // dernier `data/meta.meals` lu (repas, 2026-11-01)
   String _financesJson = ''; // dernier `data/meta.finances` lu (2026-11-02)
   String _groceriesJson = ''; // dernier `data/meta.groceries` lu (2026-11-02)
+  String _gymJson = ''; // dernier `data/meta.gym` lu (séances de muscu, 2026-11-04)
+  StreamSubscription<List<Map<String, dynamic>>>? _workoutsSub;
   String _syncStatus = ''; // '' = en cours, '☁️' = OK, '⚠️' = local
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
@@ -1808,6 +1811,11 @@ class _AppRootState extends State<AppRoot>
     _sync.fetchRoutineCatalog().then((r) {
       CatalogArt.setCatalog(r);
       CatalogArt.setActivities(logic.state.activities);
+    });
+    _workoutsSub?.cancel();
+    _workoutsSub = _sync.streamWorkouts().listen((list) {
+      logic.workouts = list.map(Workout.fromJson).whereType<Workout>().toList();
+      logic.onChange();
     });
     _dayStartSub?.cancel();
     _dayStartSub = _sync.streamMetaDoc().listen((m) {
@@ -1834,6 +1842,8 @@ class _AppRootState extends State<AppRoot>
       final sameFinances = financesJson == _financesJson;
       final groceriesJson = jsonEncode(m['groceries'] ?? const {});
       final sameGroceries = groceriesJson == _groceriesJson;
+      final gymJson = jsonEncode(m['gym'] ?? const {});
+      final sameGym = gymJson == _gymJson;
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1847,6 +1857,7 @@ class _AppRootState extends State<AppRoot>
           sameMeals &&
           sameFinances &&
           sameGroceries &&
+          sameGym &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1887,6 +1898,10 @@ class _AppRootState extends State<AppRoot>
       if (!sameGroceries) {
         _groceriesJson = groceriesJson;
         logic.groceries = parseGroceries(m['groceries']);
+      }
+      if (!sameGym) {
+        _gymJson = gymJson;
+        logic.gym = parseGym(m['gym']);
       }
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;

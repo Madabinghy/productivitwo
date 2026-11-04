@@ -32,6 +32,8 @@ const List<String> kBackupCollections = [
   'mood_marks',
   'chain_runs',
   'weekly_reports',
+  // Séances de muscu (2026-11-04).
+  'workouts',
 ];
 
 /// Réglages et historiques du doc meta restaurés tels quels (2026-11-01).
@@ -57,6 +59,7 @@ const List<String> kBackupMetaKeys = [
   'meals',
   'finances',
   'groceries',
+  'gym',
   'mirrorActivities',
   'interventionTemplates',
   'ganttVisible',

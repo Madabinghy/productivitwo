@@ -977,6 +977,36 @@ class FirestoreSync {
     return _col('mood_marks').snapshots().map((snap) => snap.docs.map((d) => MoodMark.from(d.data() as Map)).toList());
   }
 
+  // Séances de muscu (2026-11-04, `utils/workouts.dart`) : exercices et séances types dans `data/meta.gym`,
+  // une séance faite = un doc `workouts/{id}`.
+  Future<void> setGymExercise(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'gym': {
+        'exercises': {id: json ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setGymTemplate(String id, Map<String, dynamic>? json) async {
+    if (uid == null) return;
+    await _meta().set({
+      'gym': {
+        'templates': {id: json ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> saveWorkout(Map<String, dynamic> json) async {
+    if (uid == null) return;
+    await _col('workouts').doc(json['id'] as String).set(json);
+  }
+
+  Stream<List<Map<String, dynamic>>> streamWorkouts() {
+    if (uid == null) return const Stream.empty();
+    return _col('workouts').snapshots().map((snap) => snap.docs.map((d) => Map<String, dynamic>.from(d.data() as Map)).toList());
+  }
+
   Stream<List<ChainRun>> streamChainRuns() {
     if (uid == null) return const Stream.empty();
     return _col('chain_runs').snapshots().map((snap) => snap.docs.map((d) => ChainRun.from(d.data() as Map)).toList());
