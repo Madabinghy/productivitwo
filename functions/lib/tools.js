@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIGRATE_FOCUS_DATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.UPDATE_EXPENSE_TOOL = exports.UPDATE_RECEIPT_TOOL = exports.DELETE_EXPENSES_TOOL = exports.LIST_EXPENSES_TOOL = exports.MANAGE_AISLES_TOOL = exports.UPDATE_PANTRY_TOOL = exports.GET_PANTRY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.UPDATE_EXPENSE_TOOL = exports.UPDATE_RECEIPT_TOOL = exports.DELETE_EXPENSES_TOOL = exports.LIST_EXPENSES_TOOL = exports.MANAGE_AISLES_TOOL = exports.PLAN_MEALS_TOOL = exports.GET_MEAL_OPTIONS_TOOL = exports.UPDATE_PANTRY_TOOL = exports.GET_PANTRY_TOOL = exports.RECORD_RECEIPT_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
@@ -1530,6 +1530,68 @@ const RECORD_RECEIPT_TOOL = {
     },
 };
 exports.RECORD_RECEIPT_TOOL = RECORD_RECEIPT_TOOL;
+// ── Repas en 3 familles (data/meta.meals, 2026-11-04) ─────────────────────
+const GET_MEAL_OPTIONS_TOOL = {
+    name: "get_meal_options",
+    description: "Pour composer un repas avec l'utilisateur (« qu'est-ce que je mange ce soir ? », « prévois mes repas jusqu'à " +
+        "dimanche ») : ce qui est déjà prévu sur le créneau, ce qu'il a au placard rangé par famille (protéines · féculents · " +
+        "fibres · accompagnements), ce qui est à finir, et ses derniers repas composés. Un repas = une brique par famille, " +
+        "2 familles sur 3 suffisent. Ensuite : propose, puis plan_meals.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            date: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+            moment: { type: "string", description: "petit-dej · midi · soir (défaut : les trois)" },
+        },
+    },
+};
+exports.GET_MEAL_OPTIONS_TOOL = GET_MEAL_OPTIONS_TOOL;
+const PLAN_MEALS_TOOL = {
+    name: "plan_meals",
+    description: "Pose des repas COMPOSÉS dans le menu de la semaine de l'app (créneaux petit-dej · midi · soir) : chaque repas = des " +
+        "briques (« Côte de porc », « Riz », « Haricots verts »), au moins 2 familles sur 3 parmi protéines · féculents · " +
+        "fibres ; les accompagnements (ail, oignon, sauce) peuvent s'ajouter. La famille de chaque brique est celle retenue " +
+        "pour le mot, sinon devinée ; précise family seulement si elle ne va pas de soi. Workflow : get_meal_options, " +
+        "propose, plan_meals apply:false (aperçu), puis apply:true après accord. clear:true vide un créneau.",
+    inputSchema: {
+        type: "object",
+        required: ["meals"],
+        properties: {
+            meals: {
+                type: "array",
+                description: "Repas (21 au plus)",
+                items: {
+                    type: "object",
+                    required: ["moment"],
+                    properties: {
+                        date: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+                        moment: { type: "string", description: "petit-dej · midi · soir" },
+                        components: {
+                            type: "array",
+                            description: "Briques : un libellé, ou {label, family}",
+                            items: {
+                                anyOf: [
+                                    { type: "string" },
+                                    {
+                                        type: "object",
+                                        required: ["label"],
+                                        properties: {
+                                            label: { type: "string" },
+                                            family: { type: "string", description: "proteines · feculents · fibres · accompagnement (ou « feculents,proteines »)" },
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                        clear: { type: "boolean", description: "true = vider ce créneau" },
+                    },
+                },
+            },
+            apply: { type: "boolean", description: "false (défaut) = aperçu ; true = enregistrer" },
+        },
+    },
+};
+exports.PLAN_MEALS_TOOL = PLAN_MEALS_TOOL;
 // ── Mes placards (data/meta.groceries.pantry, 2026-11-03) ──────────────────
 const GET_PANTRY_TOOL = {
     name: "get_pantry",

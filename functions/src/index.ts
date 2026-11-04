@@ -29,7 +29,7 @@ import {
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
-  GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL, RECORD_RECEIPT_TOOL, GET_PANTRY_TOOL, UPDATE_PANTRY_TOOL, MANAGE_AISLES_TOOL, LIST_EXPENSES_TOOL, DELETE_EXPENSES_TOOL, UPDATE_RECEIPT_TOOL, UPDATE_EXPENSE_TOOL,
+  GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL, RECORD_RECEIPT_TOOL, GET_PANTRY_TOOL, UPDATE_PANTRY_TOOL, GET_MEAL_OPTIONS_TOOL, PLAN_MEALS_TOOL, MANAGE_AISLES_TOOL, LIST_EXPENSES_TOOL, DELETE_EXPENSES_TOOL, UPDATE_RECEIPT_TOOL, UPDATE_EXPENSE_TOOL,
   CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
@@ -53,7 +53,7 @@ import {
   executeCreateRoutine,
   executeGetDayBlocks, executeCreateActivity,
   executeSaveDocument, executeGetDocuments, executeGetArchives,
-  executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses, executeUpdateReceipt, executeUpdateExpense,
+  executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem, executeRecordReceipt, executeGetMealOptions, executePlanMeals, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses, executeUpdateReceipt, executeUpdateExpense,
   executeRestoreItem, executeCreateDomain, executeUpdateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeDeleteTask, executeUpdateActivity,
   executeDeleteRoutine,
@@ -1666,7 +1666,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
-            GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL, RECORD_RECEIPT_TOOL, GET_PANTRY_TOOL, UPDATE_PANTRY_TOOL, MANAGE_AISLES_TOOL, LIST_EXPENSES_TOOL, DELETE_EXPENSES_TOOL, UPDATE_RECEIPT_TOOL, UPDATE_EXPENSE_TOOL,
+            GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL, RECORD_RECEIPT_TOOL, GET_PANTRY_TOOL, UPDATE_PANTRY_TOOL, GET_MEAL_OPTIONS_TOOL, PLAN_MEALS_TOOL, MANAGE_AISLES_TOOL, LIST_EXPENSES_TOOL, DELETE_EXPENSES_TOOL, UPDATE_RECEIPT_TOOL, UPDATE_EXPENSE_TOOL,
             CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
@@ -1772,6 +1772,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddShoppingItem(
               uid, args.label as string, args.qty as string | undefined,
               {domain: args.domain as string | undefined, projectId: args.projectId as string | undefined, store: args.store as string | undefined, aisle: args.aisle as string | undefined});
+        } else if (toolName === "get_meal_options") {
+          text = await executeGetMealOptions(uid, args as Parameters<typeof executeGetMealOptions>[1]);
+        } else if (toolName === "plan_meals") {
+          text = await executePlanMeals(uid, args as Parameters<typeof executePlanMeals>[1]);
         } else if (toolName === "get_pantry") {
           text = await executeGetPantry(uid, args as Parameters<typeof executeGetPantry>[1]);
         } else if (toolName === "update_pantry") {
