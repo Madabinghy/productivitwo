@@ -59,20 +59,23 @@ Future<String?> _askText(BuildContext context, String title, {String hint = ''})
 
 // ── Créer / régler ───────────────────────────────────────────────────────────
 
-Future<void> showFreedomSetup(BuildContext context, {required AppLogic logic}) =>
-    showFiche<void>(context, builder: (ctx, scroll) => FreedomSetup(logic: logic, scroll: scroll));
+Future<void> showFreedomSetup(BuildContext context, {required AppLogic logic, String? id}) =>
+    showFiche<void>(context, builder: (ctx, scroll) => FreedomSetup(logic: logic, id: id, scroll: scroll));
 
 class FreedomSetup extends StatefulWidget {
   final AppLogic logic;
   final ScrollController? scroll;
-  const FreedomSetup({super.key, required this.logic, this.scroll});
+  /// null = une nouvelle chose à quitter.
+  final String? id;
+  const FreedomSetup({super.key, required this.logic, this.id, this.scroll});
 
   @override
   State<FreedomSetup> createState() => _FreedomSetupState();
 }
 
 class _FreedomSetupState extends State<FreedomSetup> {
-  FreedomPlan? get _old => widget.logic.freedom.plan;
+  late final String _fid = widget.id ?? 'f${_id()}';
+  FreedomPlan? get _old => widget.id == null ? null : widget.logic.freedomOf(widget.id!).plan;
   late final _name = TextEditingController(text: _old?.name ?? '');
   late final _unit = TextEditingController(text: _old?.unit ?? 'fois');
   late final _cost = TextEditingController(text: _old?.costPerDay == null ? '' : (_old!.costPerDay! / 100).toStringAsFixed(2).replaceAll('.', ','));
@@ -114,7 +117,7 @@ class _FreedomSetupState extends State<FreedomSetup> {
       supportPhone: _supportPhone.text.trim(),
       warned: true,
     );
-    await widget.logic.saveFreedomPlan(plan);
+    await widget.logic.saveFreedomPlan(_fid, plan);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -231,7 +234,7 @@ class _FreedomSetupState extends State<FreedomSetup> {
               ),
             );
             if (ok == true) {
-              await widget.logic.saveFreedomPlan(null);
+              await widget.logic.saveFreedomPlan(_fid, null);
               if (mounted) Navigator.of(context).pop();
             }
           },
@@ -243,13 +246,14 @@ class _FreedomSetupState extends State<FreedomSetup> {
 
 // ── La feuille ───────────────────────────────────────────────────────────────
 
-Future<void> showFreedomSheet(BuildContext context, {required AppLogic logic}) =>
-    showFiche<void>(context, builder: (ctx, scroll) => FreedomView(logic: logic, scroll: scroll));
+Future<void> showFreedomSheet(BuildContext context, {required AppLogic logic, required String id}) =>
+    showFiche<void>(context, builder: (ctx, scroll) => FreedomView(logic: logic, id: id, scroll: scroll));
 
 class FreedomView extends StatefulWidget {
   final AppLogic logic;
   final ScrollController? scroll;
-  const FreedomView({super.key, required this.logic, this.scroll});
+  final String id;
+  const FreedomView({super.key, required this.logic, required this.id, this.scroll});
 
   @override
   State<FreedomView> createState() => _FreedomViewState();
@@ -278,7 +282,7 @@ class _FreedomViewState extends State<FreedomView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mute = cs.onSurface.withValues(alpha: .6);
-    final f = logic.freedom;
+    final f = logic.freedomOf(widget.id);
     final p = f.plan;
     if (p == null) {
       return ListView(controller: widget.scroll, padding: const EdgeInsets.all(16), children: [
@@ -288,7 +292,7 @@ class _FreedomViewState extends State<FreedomView> {
         const SizedBox(height: 14),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: kFreeAccent, foregroundColor: _freeInk, minimumSize: const Size.fromHeight(50)),
-          onPressed: () => showFreedomSetup(context, logic: logic),
+          onPressed: () => showFreedomSetup(context, logic: logic, id: widget.id),
           child: const Text('Commencer', style: TextStyle(fontWeight: FontWeight.w900)),
         ),
       ]);
@@ -324,7 +328,7 @@ class _FreedomViewState extends State<FreedomView> {
           decoration: BoxDecoration(color: kFreeAccent, borderRadius: BorderRadius.circular(99)),
           child: Text(stop ? 'arrêt' : 'réduire', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _freeInk)),
         ),
-        IconButton(tooltip: 'Réglages', onPressed: () => showFreedomSetup(context, logic: logic), icon: const Icon(Icons.tune)),
+        IconButton(tooltip: 'Réglages', onPressed: () => showFreedomSetup(context, logic: logic, id: widget.id), icon: const Icon(Icons.tune)),
       ]),
       const SizedBox(height: 8),
       Container(
@@ -363,13 +367,13 @@ class _FreedomViewState extends State<FreedomView> {
       FilledButton(
         key: const ValueKey('freedom-urge'),
         style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: _urgeInk, minimumSize: const Size.fromHeight(58)),
-        onPressed: () => showUrgeScreen(context, logic: logic),
+        onPressed: () => showUrgeScreen(context, logic: logic, id: widget.id),
         child: const Text('J\'ai une envie', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
       ),
       const SizedBox(height: 6),
       OutlinedButton(
         key: const ValueKey('freedom-slip'),
-        onPressed: () => showSlipSheet(context, logic: logic),
+        onPressed: () => showSlipSheet(context, logic: logic, id: widget.id),
         child: Text(stop ? 'Noter un écart' : 'Noter une fois'),
       ),
       const SizedBox(height: 14),
@@ -416,7 +420,7 @@ class _FreedomViewState extends State<FreedomView> {
         leading: const Icon(Icons.insights_outlined, color: kFreeAccent),
         title: const Text('Ce que ça m\'apprend'),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => showFreedomInsights(context, logic: logic),
+        onTap: () => showFreedomInsights(context, logic: logic, id: widget.id),
       ),
       ListTile(
         contentPadding: EdgeInsets.zero,
@@ -431,14 +435,15 @@ class _FreedomViewState extends State<FreedomView> {
 
 // ── Le moment de l'envie ─────────────────────────────────────────────────────
 
-Future<void> showUrgeScreen(BuildContext context, {required AppLogic logic}) =>
-    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic)));
+Future<void> showUrgeScreen(BuildContext context, {required AppLogic logic, required String id}) =>
+    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic, id: id)));
 
 class UrgeScreen extends StatefulWidget {
   final AppLogic logic;
   /// Faux en test : pas de minuteur.
   final bool ticking;
-  const UrgeScreen({super.key, required this.logic, this.ticking = true});
+  final String id;
+  const UrgeScreen({super.key, required this.logic, required this.id, this.ticking = true});
 
   @override
   State<UrgeScreen> createState() => _UrgeScreenState();
@@ -474,15 +479,15 @@ class _UrgeScreenState extends State<UrgeScreen> {
       passed: passed,
       durationSec: DateTime.now().difference(_start).inSeconds,
     );
-    await logic.logUrge(u);
+    await logic.logUrge(widget.id, u);
     if (!mounted) return;
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     nav.pop();
     if (passed) {
-      messenger.showClosingSnackBar(SnackBar(content: Text('Envie surmontée · ${urgesOvercome(logic.freedom)} en tout'), duration: const Duration(seconds: 3)));
+      messenger.showClosingSnackBar(SnackBar(content: Text('Envie surmontée · ${urgesOvercome(logic.freedomOf(widget.id))} en tout'), duration: const Duration(seconds: 3)));
     } else {
-      await showSlipSheet(nav.context, logic: logic, trigger: _trigger);
+      await showSlipSheet(nav.context, logic: logic, id: widget.id, trigger: _trigger);
     }
   }
 
@@ -490,7 +495,7 @@ class _UrgeScreenState extends State<UrgeScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mute = cs.onSurface.withValues(alpha: .6);
-    final f = logic.freedom;
+    final f = logic.freedomOf(widget.id);
     final p = f.plan;
     final elapsed = DateTime.now().difference(_start).inSeconds;
     final left = math.max(0, kUrgeWaveSec - elapsed);
@@ -620,14 +625,15 @@ class _UrgeScreenState extends State<UrgeScreen> {
 
 // ── Après un écart ───────────────────────────────────────────────────────────
 
-Future<void> showSlipSheet(BuildContext context, {required AppLogic logic, String? trigger}) =>
-    showFiche<void>(context, builder: (ctx, scroll) => SlipView(logic: logic, scroll: scroll, trigger: trigger));
+Future<void> showSlipSheet(BuildContext context, {required AppLogic logic, required String id, String? trigger}) =>
+    showFiche<void>(context, builder: (ctx, scroll) => SlipView(logic: logic, id: id, scroll: scroll, trigger: trigger));
 
 class SlipView extends StatefulWidget {
   final AppLogic logic;
   final ScrollController? scroll;
   final String? trigger;
-  const SlipView({super.key, required this.logic, this.scroll, this.trigger});
+  final String id;
+  const SlipView({super.key, required this.logic, required this.id, this.scroll, this.trigger});
 
   @override
   State<SlipView> createState() => _SlipViewState();
@@ -647,10 +653,10 @@ class _SlipViewState extends State<SlipView> {
 
   Future<void> _save() async {
     final logic = widget.logic;
-    final p = logic.freedom.plan;
-    await logic.logSlip(FreedomSlip(id: _id(), at: DateTime.now().millisecondsSinceEpoch, count: _count, triggers: _triggers.toList(), next: _next.text.trim()));
+    final p = logic.freedomOf(widget.id).plan;
+    await logic.logSlip(widget.id, FreedomSlip(id: _id(), at: DateTime.now().millisecondsSinceEpoch, count: _count, triggers: _triggers.toList(), next: _next.text.trim()));
     if (_toReduce && p != null && p.goal == FreedomGoal.stop) {
-      await logic.saveFreedomPlan(p.copyWith(goal: FreedomGoal.reduce, limit: p.limit ?? 3));
+      await logic.saveFreedomPlan(widget.id, p.copyWith(goal: FreedomGoal.reduce, limit: p.limit ?? 3));
     }
     if (mounted) Navigator.of(context).pop();
   }
@@ -659,7 +665,7 @@ class _SlipViewState extends State<SlipView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mute = cs.onSurface.withValues(alpha: .6);
-    final f = widget.logic.freedom;
+    final f = widget.logic.freedomOf(widget.id);
     final p = f.plan;
     final stop = p?.goal != FreedomGoal.reduce;
     final now = DateTime.now();
@@ -714,13 +720,14 @@ class _SlipViewState extends State<SlipView> {
 
 // ── Ce que ça m'apprend ──────────────────────────────────────────────────────
 
-Future<void> showFreedomInsights(BuildContext context, {required AppLogic logic}) =>
-    showFiche<void>(context, builder: (ctx, scroll) => FreedomInsights(logic: logic, scroll: scroll));
+Future<void> showFreedomInsights(BuildContext context, {required AppLogic logic, required String id}) =>
+    showFiche<void>(context, builder: (ctx, scroll) => FreedomInsights(logic: logic, id: id, scroll: scroll));
 
 class FreedomInsights extends StatelessWidget {
   final AppLogic logic;
   final ScrollController? scroll;
-  const FreedomInsights({super.key, required this.logic, this.scroll});
+  final String id;
+  const FreedomInsights({super.key, required this.logic, required this.id, this.scroll});
 
   static const _slotLabels = ['6 h', '10 h', '14 h', '18 h', '22 h', '2 h'];
   static const _slotNames = ['le matin', 'en fin de matinée', 'après le déjeuner', 'en fin de journée', 'le soir', 'la nuit'];
@@ -729,7 +736,7 @@ class FreedomInsights extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mute = cs.onSurface.withValues(alpha: .6);
-    final f = logic.freedom;
+    final f = logic.freedomOf(id);
     final now = DateTime.now();
     final heat = urgeHeat(f, now);
     final maxH = heat.expand((r) => r).fold<int>(1, math.max);

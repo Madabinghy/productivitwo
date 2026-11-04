@@ -74,4 +74,16 @@ void main() {
     expect(bestParade(f), 'Marcher');
     expect(meanUrgeSec(f), 300);
   });
+
+  test('plusieurs libertés : chacune à part, rangées par date de départ', () {
+    final all = parseFreedoms({
+      'b': {'plan': const FreedomPlan(name: 'Écrans', startYmd: '2026-11-01').toJson(), 'urges': {}},
+      'a': {'plan': plan.toJson(), 'urges': {'u1': FreedomUrge(id: 'u1', at: at(1, 9), intensity: 2).toJson()}},
+      'c': {'urges': {}},
+    });
+    expect(activeFreedomIds(all), ['a', 'b']);
+    expect(urgesOvercome(all['a']!), 1);
+    expect(urgesOvercome(all['b']!), 0);
+    expect(parseFreedoms(null), isEmpty);
+  });
 }
