@@ -10,7 +10,7 @@ import 'package:productivitwo_v1/utils/meal_day.dart' show isBalancedMealRoutine
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/grocery_shop_screen.dart' show showGroceryShop;
-import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show aisleColor, showPantrySheet;
+import 'package:productivitwo_v1/widgets/pantry_sheet.dart' show aisleColor, showPantryItemEditor, showPantrySheet;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 
 /// Feuille « Courses » (maquette validée 2026-11-02 « Courses générales »,
@@ -265,6 +265,8 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
       onTap: () => _toggle(r),
       onLongPress: r.itemId != null
           ? () => showGroceryEditor(context, logic: logic, item: logic.groceries.items[r.itemId], monday: _monday)
+          : r.pantryKey != null && logic.groceries.pantry[r.pantryKey] != null
+              ? () => showPantryItemEditor(context, logic: logic, item: logic.groceries.pantry[r.pantryKey]!)
           : r.menuKey != null
               ? () async {
                   final x = await logic.detachMenuRow(r, _monday);
@@ -326,6 +328,26 @@ class _GroceriesSheetState extends State<GroceriesSheet> {
             content: Text('${r.label} retiré de la liste'),
             duration: const Duration(seconds: 4),
             action: SnackBarAction(label: 'Annuler', onPressed: () => logic.skipMenuLine(m, r.menuKey!, skip: false)),
+          ));
+        },
+        child: tile,
+      );
+    }
+    if (r.itemId == null && r.pantryKey != null) {
+      // Ligne du placard (2026-11-04) : glisser = pas cette semaine ; le placard
+      // garde son état, la ligne revient lundi prochain si le produit manque.
+      return Dismissible(
+        key: ValueKey('gp-${r.pantryKey}'),
+        direction: DismissDirection.endToStart,
+        background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 12), child: const Icon(Icons.event_busy_outlined, color: Color(0xFFF07A6A))),
+        onDismissed: (_) {
+          final m = _monday;
+          final k = pantryRowKey(r.pantryKey!);
+          logic.skipMenuLine(m, k);
+          ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+            content: Text('${r.label} · pas cette semaine'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(label: 'Annuler', onPressed: () => logic.skipMenuLine(m, k, skip: false)),
           ));
         },
         child: tile,

@@ -341,6 +341,19 @@ Future<void> showPantryItemEditor(BuildContext context, {required AppLogic logic
               subtitle: const Text('Revient sur la liste dès qu\'il n\'y en a plus'),
               activeThumbColor: kGroceryAccent,
             ),
+            if (p.state != PantryState.have && !p.staple && !logic.groceries.items.values.any((x) => normLabel(x.label) == p.key && !x.inBasket))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: OutlinedButton.icon(
+                  key: const ValueKey('pantry-add-to-list'),
+                  onPressed: () async {
+                    await logic.addGrocery(label: p.label, aisle: p.aisle, source: 'pantry');
+                    setS(() {});
+                  },
+                  icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                  label: const Text('Ajouter à la liste de courses'),
+                ),
+              ),
             const SizedBox(height: 4),
             TextButton.icon(
               onPressed: () async {

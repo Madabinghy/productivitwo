@@ -146,11 +146,14 @@ List<MapEntry<String, List<PantryItem>>> pantryByAisle(Groceries g, {bool Functi
 
 /// Ce que le placard demande de racheter : « Plus rien » et « Bientôt fini »,
 /// hors produits déjà sur la liste (à prendre ou au panier).
+/// Ce que le placard remet tout seul sur la liste : les produits HABITUELS
+/// bientôt finis ou épuisés (2026-11-04, retour user : un produit ordinaire à
+/// « Plus rien » reste noté au placard sans s'imposer dans les courses).
 List<PantryItem> pantryNeeds(Groceries g) {
   final listed = {for (final x in g.items.values) normLabel(x.label)};
   return [
     for (final p in g.pantry.values)
-      if (p.state != PantryState.have && !listed.contains(p.key)) p,
+      if (p.staple && p.state != PantryState.have && !listed.contains(p.key)) p,
   ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
 }
 
