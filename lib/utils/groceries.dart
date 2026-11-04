@@ -539,7 +539,7 @@ List<GroceryRow> groceryRows({
     ));
   }
   for (final p in pantryNeeds(g)) {
-    if (menuWords.contains(p.key)) continue;
+    if (menuWords.contains(p.key) || bought.contains(pantryRowKey(p.key))) continue;
     final m = g.memory[p.key];
     out.add(GroceryRow(
       label: p.label,
@@ -554,6 +554,10 @@ List<GroceryRow> groceryRows({
   }
   return out;
 }
+
+/// Clé d'une ligne du placard écartée « pas cette semaine » (rangée avec les
+/// lignes du menu écartées, `skippedMenu.<lundi>`).
+String pantryRowKey(String key) => 'pantry:$key';
 
 /// Les ingrédients du menu de la semaine qu'on a déjà au placard (« J'en ai »).
 List<ShoppingLine> menuCoveredByPantry(List<ShoppingLine> menuLines, Groceries g, {Set<String> menuChecked = const {}}) => [

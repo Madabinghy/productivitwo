@@ -38,6 +38,11 @@ void main() {
     g = withPantryState(g, 'Café', PantryState.have);
     expect(g.pantry['riz']!.aisle, 'Épicerie');
     expect(nextPantryState(PantryState.out), PantryState.have);
+    // Seuls les produits habituels reviennent sur la liste (2026-11-04).
+    expect(pantryNeeds(g), isEmpty);
+    g = g.copyWith(pantry: {
+      for (final e in g.pantry.entries) e.key: e.key == 'café' ? e.value : e.value.copyWith(staple: true),
+    });
     expect(pantryNeeds(g).map((p) => p.label), ['Huile d\'olive', 'Riz']);
     g = g.copyWith(items: {'a': const GroceryItem(id: 'a', label: 'riz')});
     expect(pantryNeeds(g).map((p) => p.label), ['Huile d\'olive']); // déjà sur la liste
@@ -93,6 +98,8 @@ void main() {
     var g = afterPurchase(const Groceries(), ['Pâtes'], '2026-11-03');
     g = withPantryState(g, 'Huile d\'olive', PantryState.out);
     g = withPantryState(g, 'Riz', PantryState.low);
+    g = withPantryState(g, 'Moutarde', PantryState.out); // pas habituel : reste au placard, pas sur la liste
+    g = g.copyWith(pantry: {...g.pantry, 'huile d\'olive': g.pantry['huile d\'olive']!.copyWith(staple: true)});
     g = g.copyWith(items: {'a': const GroceryItem(id: 'a', label: 'Lessive')});
     final menu = [
       const ShoppingLine('pâtes', 'Pâtes', '500 g', ['Bolognaise']),
@@ -107,6 +114,10 @@ void main() {
     expect(rows.firstWhere((r) => r.label == 'Lessive').aisle, 'Ménager');
     expect(menuCoveredByPantry(menu, g).map((l) => l.label), ['Pâtes']);
     expect(rowsByAisle(rows, g.aisles).map((e) => e.key), ['Épicerie', 'Frais', 'Ménager']);
+    // « Pas cette semaine » sur une ligne du placard : elle sort de la liste cette semaine seulement.
+    final skipped = g.copyWith(skippedMenu: {'2026-11-02': {pantryRowKey('huile d\'olive')}});
+    expect(groceryRows(menuLines: menu, menuChecked: const {}, g: skipped, monday: '2026-11-02').any((r) => r.label == 'Huile d\'olive'), isFalse);
+    expect(groceryRows(menuLines: menu, menuChecked: const {}, g: skipped, monday: '2026-11-09').any((r) => r.label == 'Huile d\'olive'), isTrue);
     // Coché dans le panier, l'ingrédient du placard reste visible.
     expect(groceryRows(menuLines: menu, menuChecked: const {'pâtes'}, g: g).any((r) => r.label == 'Pâtes'), isTrue);
   });

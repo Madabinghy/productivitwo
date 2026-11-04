@@ -141,3 +141,16 @@ const kRuleCoachSharing = GameRule('Ce que voit ton coach', [
   RuleCard('🧱', 'Les domaines fermés', 'Un domaine non partagé n’apparaît nulle part : pas de nom d’activité, pas de total, pas de série.'),
   RuleCard('↩️', 'Révocable', 'Tu modifies ou coupes le partage quand tu veux. Ton coach perd l’accès tout de suite, historique compris.'),
 ]);
+
+/// Liste de courses et placards (2026-11-04, retour user : l'appui long et le glisser ne se devinent pas).
+const kRuleGroceries = GameRule('La liste de courses', [
+  RuleCard('🛒', 'Trois sources', 'Les ingrédients du menu de la semaine, ce que tu ajoutes, et tes produits habituels qui manquent au placard.'),
+  RuleCard('☑️', 'Toucher = au panier', 'Une ligne touchée passe dans le panier. Touche-la encore pour la ressortir.'),
+  RuleCard('👆', 'Appui long = modifier',
+      'Quantité, domaine, rayon, magasin. Sur un produit du placard, sa fiche : chez toi, rayon, habituel ou pas.'),
+  RuleCard('👈', 'Glisser = retirer',
+      'Une ligne à toi est supprimée. Un ingrédient du menu ou un produit du placard sort seulement cette semaine : le placard ne bouge pas.'),
+  RuleCard('🏠', 'Le placard dit ce que tu as',
+      'J’en ai · Bientôt fini · Plus rien. Seuls les produits habituels reviennent seuls sur la liste ; les autres, « Ajouter à la liste » dans leur fiche.'),
+  RuleCard('🧾', 'En caisse', '« J’y vais », puis « Passer en caisse » : le ticket devient des dépenses, et ce que tu as acheté passe « J’en ai ».'),
+]);
