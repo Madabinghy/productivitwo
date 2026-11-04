@@ -29,14 +29,14 @@ import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBric
 /// Point d'étape tous les 3 coups (à fond · je ralentis = 10 min · c'est bon),
 /// bilan : ce qui a avancé par projet (briques, retard sur le plan avant →
 /// après), badge, « Caser la suite demain ». File : [buildOffensiveQueue].
-const kOffensiveAccent = Color(0xFFFF9B6E);
-const kOffensiveInk = Color(0xFF1F0E06);
-const _bg = Color(0xFF130C08);
-const _card = Color(0xFF1F130C);
-const _track = Color(0xFF3A2418);
-const _text2 = Color(0xFFD4C4BA);
-const _text3 = Color(0xFFB8A69A);
-const _sky = Color(0xFF7CC7FF);
+const kOffensiveAccent = Color(0xFF7FD3FF);
+const kOffensiveInk = Color(0xFF062130);
+const _bg = Color(0xFF0A1218);
+const _card = Color(0xFF13202A);
+const _track = Color(0xFF24384A);
+const _text2 = Color(0xFFB4C8D4);
+const _text3 = Color(0xFF8DA2AF);
+const _sky = Color(0xFFFF9B6E);
 const _amber = Color(0xFFF2C14E);
 
 /// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
@@ -343,7 +343,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _sheetOpen = true;
     final choice = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: const Color(0xFF221A10),
+      backgroundColor: const Color(0xFF13202A),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
@@ -385,7 +385,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final leftMin = (_remaining / 60).ceil();
     final choice = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: const Color(0xFF221A10),
+      backgroundColor: const Color(0xFF13202A),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -741,7 +741,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(shape: BoxShape.circle, color: on ? kOffensiveAccent : Colors.white.withValues(alpha: .08)),
-              child: Text('∞', style: TextStyle(fontSize: 26, height: 1, fontWeight: FontWeight.w800, color: on ? const Color(0xFF1A0E06) : Colors.white)),
+              child: Text('∞', style: TextStyle(fontSize: 26, height: 1, fontWeight: FontWeight.w800, color: on ? const Color(0xFF062130) : Colors.white)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -957,7 +957,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: s.done ? kOffensiveAccent : null,
-                        border: s.done ? null : Border.all(color: identical(s, step) ? kOffensiveAccent : const Color(0xFF5A4032), width: 2),
+                        border: s.done ? null : Border.all(color: identical(s, step) ? kOffensiveAccent : const Color(0xFF35506A), width: 2),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1010,7 +1010,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: hot ? _amber : const Color(0xFF3A2F22))),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12), border: Border.all(color: hot ? _amber : const Color(0xFF24384A))),
       child: Row(children: [
         Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
         const SizedBox(width: 10),
@@ -1167,7 +1167,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             onPressed: onTap,
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFF5A4032)),
+              side: const BorderSide(color: Color(0xFF35506A)),
               padding: const EdgeInsets.symmetric(vertical: 6),
               minimumSize: const Size(0, 34),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),

@@ -1352,7 +1352,7 @@ immédiat ; jamais un bloc ni une routine sans autre enjeu), `compareSniper` (se
 prochain bloc À FAIRE hors blocs de temps, sinon fin de journée active), `sniperPrecision`. Session = `ChainRun` `kind:"sniper"`
 (`doneCount` = cibles touchées, `total` = visées) ; badge **Sniper** (`sniper`, Discipline, symbole `crosshair`, 1 / 5 / 15) : une
 session compte quand toutes les cibles visées tombent, au moins 3 (`sniperCounts`). Jamais compté pour Enchaîneur.
-**Lot 2 livré (écran + entrées)** : `widgets/sniper_screen.dart` (`showSniperScreen(logic, badges:, resume:)`, accent bleu ciel
+**Lot 2 livré (écran + entrées)** : `widgets/sniper_screen.dart` (`showSniperScreen(logic, badges:, resume:)`, accent saumon (bleu ciel jusqu'au 2026-11-04 : couleurs échangées avec l'Offensive, essai user — Offensive / Deep work en bleu ciel, plus doux, Sniper en saumon, plus urgent)
 `kSniperAccent`, ⓘ `kRuleSniper`) — VISEUR (« Libre jusqu'à HH:MM · bloc », barre temps visé / libre, cibles avec durée exacte et
 puces de gains, tap = écarter / remettre, HORS DE PORTÉE avec raison ; enjeux = `buildStakeBoard` sans coupe, facteur
 `estimateFactor`, journée active `fetchDayWindow`), TIR (minuteur pile + `CoupAlarm`, chrono sur l'activité — action : liée, sinon

@@ -28,14 +28,14 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 /// exact dans le temps libre), un tir à la fois (minuteur pile, alarme),
 /// « Touché » puis le tir suivant part tout seul après une courte pause, et
 /// le bilan (cibles touchées, précision, badge). Logique : `utils/sniper.dart`.
-const kSniperAccent = Color(0xFF7FD3FF);
-const kSniperInk = Color(0xFF062130);
-const _bg = Color(0xFF0A1218);
-const _card = Color(0xFF13202A);
-const _card2 = Color(0xFF1A2A35);
-const _line = Color(0xFF24384A);
-const _text2 = Color(0xFFB4C8D4);
-const _text3 = Color(0xFF8DA2AF);
+const kSniperAccent = Color(0xFFFF9B6E);
+const kSniperInk = Color(0xFF1F0E06);
+const _bg = Color(0xFF130C08);
+const _card = Color(0xFF1F130C);
+const _card2 = Color(0xFF2A1A11);
+const _line = Color(0xFF3A2418);
+const _text2 = Color(0xFFD4C4BA);
+const _text3 = Color(0xFFB8A69A);
 const _green = Color(0xFF3DDC84);
 const _amber = Color(0xFFF5B041);
 

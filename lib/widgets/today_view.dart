@@ -912,8 +912,8 @@ class TodayViewState extends State<TodayView> {
 
   static const _launchers = [
     (kind: kGuerillaKind, tooltip: 'Guérilla · la flemme ou moi', accent: kGuerillaAccent, light: Color(0xFF5E6B2A), name: 'Guérilla', line: 'la flemme ou moi'),
-    (kind: kSniperKind, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFF2A6F94), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
-    (kind: kOffensiveKind, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFFB4532A), name: 'Offensive', line: 'en forme, à fond'),
+    (kind: kSniperKind, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFFB4532A), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
+    (kind: kOffensiveKind, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFF2A6F94), name: 'Offensive', line: 'en forme, à fond'),
   ];
 
   /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
