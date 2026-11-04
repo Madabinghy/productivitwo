@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/utils/groceries.dart' show normLabel;
+import 'package:productivitwo_v1/utils/groceries.dart' show normLabel, PantryState;
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/utils/meal_compose.dart';
 import 'package:productivitwo_v1/utils/meal_families.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
@@ -125,11 +126,22 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     );
     final l = label?.trim() ?? '';
     if (l.isEmpty || !mounted) return;
+    // Retour user 2026-11-04 : la brique tapée était choisie sans se voir (pas de pastille). Elle va
+    // au placard (« J'en ai » : on compose avec ce qu'on a) et garde la famille de la rangée ; elle
+    // apparaît alors dans la rangée, déjà choisie.
+    final k = normLabel(l);
+    final known = logic.groceries.pantry[k];
+    if (known == null || known.state == PantryState.out) await logic.setPantryState(l, PantryState.have);
+    final label2 = logic.groceries.pantry[k]?.label ?? l;
+    if (!familiesFor(logic.groceries, label2).contains(family)) await logic.setFoodFamilies(label2, [family]);
+    if (!mounted) return;
+    final c = MealComponent(label2, familiesFor(logic.groceries, label2));
     if (family == kAccompagnement) {
-      setState(() => _sides.add(l));
+      setState(() => _sides.add(label2));
     } else {
-      _toggle(family, MealComponent(l, [family]));
+      _toggle(family, c);
     }
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(content: Text('$label2 ajouté au repas et à tes placards'), duration: const Duration(seconds: 3)));
   }
 
   @override

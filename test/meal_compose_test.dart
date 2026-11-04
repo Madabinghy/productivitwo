@@ -114,4 +114,29 @@ void main() {
     expect(slot.title, 'Côte de porc · Riz');
     expect(slot.components.length, 2);
   });
+
+  testWidgets('« Autre » : la brique tapée va au placard, s\'affiche choisie dans sa rangée', (tester) async {
+    tester.view.physicalSize = const Size(780, 3200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.groceries = _pantry([_p('Lardons', 'Frais'), _p('Riz', 'Épicerie')]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealComposeSheet(logic: logic, monday: '2026-11-02', ymd: '2026-11-04', moment: 'soir'))));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-other-proteines')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('compose-other-text')), 'Côtes de porc');
+    await tester.tap(find.text('Ajouter'));
+    await tester.pumpAndSettle();
+    expect(logic.groceries.pantry['côtes de porc']?.state, PantryState.have);
+    expect(find.byKey(const Key('compose-proteines-côtes de porc')), findsOneWidget);
+    expect(tester.widget<FilterChip>(find.byKey(const Key('compose-proteines-côtes de porc'))).selected, isTrue);
+    await tester.tap(find.byKey(const Key('compose-feculents-riz')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-save')));
+    await tester.pump();
+    expect(logic.mealWeek('2026-11-02').slots[mealKey('2026-11-04', 'soir')]!.title, 'Côtes de porc · Riz');
+    await tester.pump(const Duration(seconds: 5)); // la SnackBar se ferme
+  });
 }
