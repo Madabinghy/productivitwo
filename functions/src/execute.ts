@@ -1,5 +1,7 @@
 import { expenseLine, expensesIn, planDelete, planExpenseUpdate, planReceiptUpdate, type ExpenseDoc, type ReceiptPatch } from "./expenses_mcp";
 import { addAisle, aisleFor, DEFAULT_AISLES, foldWords, OTHER_AISLE, pantryText, parseState, removeAisle, renameAisle, resolveAisle, STATE_LABEL, type PantryDoc } from "./pantry";
+import { parseFamilies, familiesText, FAMILY_LABEL } from "./meal_families";
+import type { AisleState } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
 import { normalizeSplitMoments, splitLabel } from "./routine_split";
@@ -1238,6 +1240,7 @@ async function groceriesState(uid: string): Promise<{
   memory: Record<string, GroceryMemoryDoc>;
   pantry: Record<string, PantryDoc>;
   aisles: string[];
+  families: Record<string, string>;
 }> {
   const snap = await db.doc(`users/${uid}/data/meta`).get();
   const g = (snap.data()?.groceries ?? {}) as {
@@ -1245,8 +1248,15 @@ async function groceriesState(uid: string): Promise<{
     memory?: Record<string, GroceryMemoryDoc>;
     pantry?: Record<string, PantryDoc>;
     aisles?: string[];
+    families?: Record<string, string>;
   };
-  return { items: g.items ?? {}, memory: g.memory ?? {}, pantry: g.pantry ?? {}, aisles: g.aisles?.length ? g.aisles : DEFAULT_AISLES };
+  return {
+    items: g.items ?? {},
+    memory: g.memory ?? {},
+    pantry: g.pantry ?? {},
+    aisles: g.aisles?.length ? g.aisles : DEFAULT_AISLES,
+    families: g.families ?? {},
+  };
 }
 
 async function executeGetShoppingList(uid: string): Promise<string> {
@@ -1406,6 +1416,10 @@ async function executeRecordReceipt(
       return list.length ? [`Par rayon : ${list.map(([a, c]) => `${a} ${eur(c)}`).join(" · ")}`] : [];
     })(),
     ...(Object.keys(plan.bought).length ? [`Mes placards : ${Object.keys(plan.bought).length} produit(s) passent « j'en ai ».`] : []),
+    ...(() => {
+      const fam = lines.filter((l) => l.family && parseFamilies(l.family).length);
+      return fam.length ? [`Familles retenues : ${fam.map((l) => `${String(l.name ?? "").trim() || l.label} → ${parseFamilies(l.family).map((f) => FAMILY_LABEL[f]).join(" + ")}`).join(" · ")}`] : [];
+    })(),
     ...(plan.removeItemIds.length || plan.menuKeys.length ? [`Liste de courses : ${plan.removeItemIds.length + plan.menuKeys.length} article(s) couvert(s), retirés de la liste.`] : []),
     ...plan.warnings.map((w) => `⚠️ ${w}`),
   ].join("\n");
@@ -1443,6 +1457,11 @@ async function executeRecordReceipt(
     lines: plan.lines,
     at,
   };
+  const families: Record<string, string> = {};
+  for (const l of lines) {
+    const fams = l.family ? parseFamilies(l.family) : [];
+    if (fams.length) families[groceryKey(String(l.name ?? "").trim() || String(l.label))] = fams.join(",");
+  }
   const pantry: Record<string, PantryDoc> = {};
   for (const [k, b] of Object.entries(plan.bought)) {
     pantry[k] = { ...(g.pantry?.[k] ?? {}), label: g.pantry?.[k]?.label ?? b.label, aisle: b.aisle, state: "have", boughtAt: ymd };
@@ -1457,6 +1476,7 @@ async function executeRecordReceipt(
     groceries: {
       memory,
       ...(Object.keys(pantry).length ? { pantry } : {}),
+      ...(Object.keys(families).length ? { families } : {}),
       ...(plan.removeItemIds.length ? { items } : {}),
       ...(plan.menuKeys.length ? { bought: { [mondayOfYmd(ymd)]: FieldValue.arrayUnion(...plan.menuKeys) } } : {}),
     },
@@ -1467,15 +1487,16 @@ async function executeRecordReceipt(
 
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
 async function executeGetPantry(uid: string, args: { aisle?: string; state?: string } = {}): Promise<string> {
-  const { pantry, aisles } = await groceriesState(uid);
+  const { pantry, aisles, families, memory } = await groceriesState(uid);
   const aisle = args.aisle ? resolveAisle(args.aisle, aisles) : null;
   if (args.aisle && !aisle) return `❌ Rayon inconnu : « ${args.aisle} ». Rayons : ${aisles.join(", ")}.`;
   const state = args.state ? parseState(args.state) : null;
   if (args.state && !state) return "❌ state : have (j'en ai) · low (bientôt fini) · out (plus rien).";
-  return `Rayons : ${aisles.join(" · ")}\n\n${pantryText(pantry, aisles, { aisle, state })}`;
+  const byFamily = !aisle && !state && Object.keys(pantry).length ? `\n\n${familiesText(pantry, families, memory)}` : "";
+  return `Rayons : ${aisles.join(" · ")}\n\n${pantryText(pantry, aisles, { aisle, state })}${byFamily}`;
 }
 
-type PantryUpdateInput = { label: string; state?: string; aisle?: string; staple?: boolean; remove?: boolean };
+type PantryUpdateInput = { label: string; state?: string; aisle?: string; staple?: boolean; remove?: boolean; family?: string };
 
 /** update_pantry : poser l'état, le rayon, « habituel », ou retirer des produits du placard. */
 async function executeUpdatePantry(uid: string, args: { items?: PantryUpdateInput[] }): Promise<string> {
@@ -1485,6 +1506,7 @@ async function executeUpdatePantry(uid: string, args: { items?: PantryUpdateInpu
   const { pantry, memory, aisles } = await groceriesState(uid);
   const patch: Record<string, unknown> = {};
   const mem: Record<string, GroceryMemoryDoc> = {};
+  const fam: Record<string, unknown> = {};
   const done: string[] = [];
   const errors: string[] = [];
   for (const x of list) {
@@ -1510,6 +1532,12 @@ async function executeUpdatePantry(uid: string, args: { items?: PantryUpdateInpu
       errors.push(`« ${label} » : rayon inconnu « ${x.aisle} » (rayons : ${aisles.join(", ")} ; manage_aisles pour en ajouter).`);
       continue;
     }
+    const fams = x.family != null ? parseFamilies(x.family) : null;
+    if (x.family != null && x.family !== "" && !fams?.length) {
+      errors.push(`« ${label} » : famille inconnue « ${x.family} » (proteines · feculents · fibres · accompagnement ; "" = automatique).`);
+      continue;
+    }
+    if (fams) fam[k] = fams.length ? fams.join(",") : FieldValue.delete();
     const next: PantryDoc = {
       ...(old ?? {}),
       label: old?.label ?? label,
@@ -1519,11 +1547,11 @@ async function executeUpdatePantry(uid: string, args: { items?: PantryUpdateInpu
     if (x.staple != null) next.staple = x.staple === true;
     patch[k] = next;
     if (aisle) mem[k] = { ...(memory[k] ?? {}), aisle };
-    done.push(`${next.state === "have" ? "✓" : next.state === "low" ? "!" : "✕"} ${next.label} — ${STATE_LABEL[next.state]} · ${next.aisle}${next.staple ? " · habituel" : ""}${old ? "" : " (nouveau)"}`);
+    done.push(`${next.state === "have" ? "✓" : next.state === "low" ? "!" : "✕"} ${next.label} — ${STATE_LABEL[next.state]} · ${next.aisle}${next.staple ? " · habituel" : ""}${fams?.length ? ` · ${fams.map((f) => FAMILY_LABEL[f]).join(" + ")}` : ""}${old ? "" : " (nouveau)"}`);
   }
   if (Object.keys(patch).length) {
     await db.doc(`users/${uid}/data/meta`).set(
-      { groceries: { pantry: patch, ...(Object.keys(mem).length ? { memory: mem } : {}) } },
+      { groceries: { pantry: patch, ...(Object.keys(mem).length ? { memory: mem } : {}), ...(Object.keys(fam).length ? { families: fam } : {}) } },
       { merge: true },
     );
   }
@@ -1552,7 +1580,7 @@ async function executeManageAisles(uid: string, args: { action?: string; aisle?:
   }
   const from = resolveAisle(args.aisle, st.aisles);
   if (!from) return `❌ Rayon inconnu : « ${args.aisle ?? ""} ». Rayons : ${st.aisles.join(", ")}.`;
-  let next = st;
+  let next: AisleState = st;
   if (action === "rename") {
     const to = (args.newName ?? "").trim();
     if (!to) return "❌ newName : le nouveau nom.";

@@ -186,6 +186,9 @@ class Groceries {
   final Map<String, PantryItem> pantry;
   /// Rayons, dans l'ordre d'affichage.
   final List<String> aisles;
+  /// Repas en 3 familles (2026-11-04) : familles retenues par mot
+  /// (`"proteines"`, `"feculents,proteines"`…) — `utils/meal_families.dart`.
+  final Map<String, String> families;
   const Groceries({
     this.items = const {},
     this.memory = const {},
@@ -194,6 +197,7 @@ class Groceries {
     this.skippedMenu = const {},
     this.pantry = const {},
     this.aisles = kDefaultAisles,
+    this.families = const {},
   });
 
   Groceries copyWith({
@@ -204,6 +208,7 @@ class Groceries {
     Map<String, Set<String>>? skippedMenu,
     Map<String, PantryItem>? pantry,
     List<String>? aisles,
+    Map<String, String>? families,
   }) =>
       Groceries(
         items: items ?? this.items,
@@ -213,6 +218,7 @@ class Groceries {
         skippedMenu: skippedMenu ?? this.skippedMenu,
         pantry: pantry ?? this.pantry,
         aisles: aisles ?? this.aisles,
+        families: families ?? this.families,
       );
 
   Map<String, dynamic> toJson() => {
@@ -223,6 +229,7 @@ class Groceries {
         'skipped': skippedMenu.map((k, v) => MapEntry(k, v.toList()..sort())),
         'pantry': {for (final p in pantry.values) p.key: p.toJson()},
         'aisles': aisles,
+        if (families.isNotEmpty) 'families': families,
       };
 }
 
@@ -262,6 +269,11 @@ Groceries parseGroceries(Object? raw) {
     }
   }
   final aisles = raw['aisles'] is List ? [for (final s in raw['aisles'] as List) '$s'] : const <String>[];
+  final families = <String, String>{
+    if (raw['families'] is Map)
+      for (final e in (raw['families'] as Map).entries)
+        if (e.value is String && (e.value as String).isNotEmpty) '${e.key}': e.value as String,
+  };
   return Groceries(
     items: items,
     memory: memory,
@@ -270,6 +282,7 @@ Groceries parseGroceries(Object? raw) {
     skippedMenu: skipped,
     pantry: pantry,
     aisles: aisles.isEmpty ? kDefaultAisles : aisles,
+    families: families,
   );
 }
 

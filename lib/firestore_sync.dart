@@ -3280,6 +3280,16 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Repas en 3 familles : la famille retenue d'un mot (null = retirée).
+  Future<void> setFoodFamily(String key, String? families) async {
+    if (uid == null || key.isEmpty) return;
+    await _meta().set({
+      'groceries': {
+        'families': {key: families ?? FieldValue.delete()}
+      }
+    }, SetOptions(merge: true));
+  }
+
   /// Champs entiers des courses (rayons, et ce qu'un renommage de rayon touche).
   Future<void> setGroceriesFields(Map<String, dynamic> fields) async {
     if (uid == null || fields.isEmpty) return;
