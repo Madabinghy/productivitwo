@@ -1,106 +1,108 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
+import 'package:productivitwo_v1/widgets/season_widgets.dart';
 
-BadgeState badge(String id, List<int> tiers, {int level = 0, num value = 0, List<DateTime?> dates = const []}) => BadgeState(
-      def: BadgeDef(id: id, family: BadgeFamily.discipline, name: id, symbol: 'flame', tiers: tiers, unit: 'j'),
-      level: level,
-      value: value,
-      tierDates: dates.isEmpty ? List.filled(tiers.length, null) : dates,
+StrategicObjective poids() => StrategicObjective(
+      id: 'poids',
+      title: 'Prendre du muscle',
+      domainId: 'sport',
+      metric: ObjectiveMetric(label: 'Poids', unit: 'kg', startValue: 80, targetValue: 90),
+      readings: [ObjectiveReading(date: '2026-10-30', value: 82)],
     );
 
 void main() {
-  test('fin de saison : six semaines pleines, un dimanche', () {
+  test('fin de saison : n semaines pleines, un dimanche', () {
     expect(seasonEndFor('2026-11-02'), '2026-12-13'); // ouverte un lundi
     expect(seasonEndFor('2026-10-30'), '2026-12-13'); // un jeudi : la semaine entamée en plus
+    expect(seasonEndFor('2026-11-02', weeks: 4), '2026-11-29');
   });
 
-  test('ouvrir, saison en cours, bilan à voir', () {
-    var seasons = withSeasonOpened(const [], const [SeasonHunt(badgeId: 'a', tier: 1)], '2026-11-02');
+  test('ouvrir, saison en cours, reposer le cap, bilan à voir', () {
+    final g = goalFor(poids());
+    expect(g.kind, SeasonGoalKind.metric);
+    expect(g.from, 82);
+    expect(g.target, 90);
+    var seasons = withSeasonOpened(const [], [g], '2026-11-02', weeks: 4);
     expect(seasons.single.n, 1);
-    expect(currentSeason(seasons, '2026-11-20')!.n, 1);
-    expect(currentSeason(seasons, '2026-12-14'), isNull);
-    expect(unseenBilan(seasons, '2026-12-14')!.n, 1);
-    seasons = withSeasonOpened(seasons, const [], '2026-12-14');
+    expect(currentSeason(seasons, '2026-11-20')!.goals.single.objectiveId, 'poids');
+    expect(currentSeason(seasons, '2026-11-30'), isNull);
+    expect(unseenBilan(seasons, '2026-11-30')!.n, 1);
+    // Reposer le cap en cours de route : l'ancienne est close à hier.
+    seasons = withSeasonOpened(withSeasonOpened(const [], [g], '2026-11-02'), [g], '2026-11-10');
+    expect(seasons.first.end, '2026-11-09');
     expect(seasons.first.bilanSeen, isTrue);
     expect(seasons.last.n, 2);
     final back = parseSeasons([for (final s in seasons) s.toJson()]);
-    expect(back.last.start, '2026-12-14');
-    expect(back.first.bilanSeen, isTrue);
+    expect(back.last.goals.single.target, 90);
+    expect(back.last.legacy, isFalse);
   });
 
-  test('chasses : attrapée pendant la saison, lâchée, à pousser, manquée', () {
-    const s = Season(n: 1, start: '2026-11-02', end: '2026-12-13', hunts: [
-      SeasonHunt(badgeId: 'a', tier: 1),
-      SeasonHunt(badgeId: 'b', tier: 2),
-      SeasonHunt(badgeId: 'c', tier: 1),
-    ], dropped: {'c'});
-    final deck = BadgeDeck([
-      badge('a', [3, 7], level: 1, value: 3, dates: [DateTime(2026, 11, 10), null]),
-      badge('b', [3, 7], level: 1, value: 4, dates: [DateTime(2026, 10, 1), null]),
-      badge('c', [5], value: 1),
+  test('une ancienne saison (chasses) est relue mais jamais en cours', () {
+    final old = parseSeasons([
+      {'n': 1, 'start': '2026-11-01', 'end': '2026-12-13', 'hunts': [{'badgeId': 'a', 'tier': 1}]},
     ]);
-    final v = seasonViews(s, deck, '2026-11-30');
-    expect(v[0].state, SeasonHuntState.caught);
-    expect(v[1].state, SeasonHuntState.push); // 4 / 7 à 70 % du temps
-    expect(v[2].state, SeasonHuntState.dropped);
-    expect(seasonViews(s, deck, '2026-12-14')[1].state, SeasonHuntState.missed);
-    expect(caughtCount(v), 1);
+    expect(old.single.legacy, isTrue);
+    expect(currentSeason(old, '2026-11-20'), isNull);
+    expect(unseenBilan(old, '2026-12-20'), isNull);
+    expect(old.single.toJson().containsKey('v'), isFalse);
   });
 
-  test('un palier obtenu avant la saison ne compte pas', () {
-    const s = Season(n: 1, start: '2026-11-02', end: '2026-12-13', hunts: [SeasonHunt(badgeId: 'a', tier: 1)]);
-    final deck = BadgeDeck([badge('a', [3], level: 1, value: 3, dates: [DateTime(2026, 10, 20)])]);
-    expect(seasonViews(s, deck, '2026-11-05').single.state, isNot(SeasonHuntState.caught));
+  test('métrique : sur la trajectoire, en retard, atteinte, manquée', () {
+    final o = poids();
+    final s = withSeasonOpened(const [], [goalFor(o)], '2026-11-02', weeks: 4).single; // 82 → 90 sur 28 j
+    // À mi-saison, attendu 86 : 85,5 est dans les 10 % (0,8 kg), 84 est en retard.
+    o.readings.add(ObjectiveReading(date: '2026-11-15', value: 85.5));
+    var v = seasonGoalView(s, s.goals.single, o, todayYmd: '2026-11-15');
+    expect(v.state, SeasonGoalState.onTrack);
+    o.readings.last.value = 84;
+    v = seasonGoalView(s, s.goals.single, o, todayYmd: '2026-11-15');
+    expect(v.state, SeasonGoalState.behind);
+    expect(v.label(), startsWith('−'));
+    o.readings.add(ObjectiveReading(date: '2026-11-25', value: 90.2));
+    expect(seasonGoalView(s, s.goals.single, o, todayYmd: '2026-11-26').state, SeasonGoalState.reached);
+    o.readings.removeLast();
+    final closed = seasonGoalView(s, s.goals.single, o, todayYmd: '2026-12-02');
+    expect(closed.state, SeasonGoalState.missed);
+    expect(closed.label(closed: true), '84 / 90 kg');
   });
 
-  test('badge Saisons : saisons closes avec au moins deux chasses', () {
-    final a = Activity(id: 'p', name: 'Pompes', domainId: 'd', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 9, 1));
-    final hits = [for (var d = 1; d <= 25; d++) HabitHit(habitId: 'p', ts: DateTime(2026, 10, d, 9))];
-    final seasons = [
-      const Season(n: 1, start: '2026-10-01', end: '2026-10-26', hunts: [SeasonHunt(badgeId: 'serie-p', tier: 2), SeasonHunt(badgeId: 'serie-p', tier: 3)]),
-    ];
-    final deck = computeBadges(
-      activities: [a],
-      habitHits: hits,
-      schedules: const [],
-      projects: const [],
-      objectives: const [],
-      sessions: const [],
-      now: DateTime(2026, 10, 30, 12),
-      seasons: seasons,
-    );
-    final b = deck.byId('saisons')!;
-    expect(b.value, 1); // série 7 j le 7 oct., 21 j le 21 oct. : deux chasses attrapées
-    expect(b.level, 1);
+  test('rythme : semaine au rythme des engagements', () {
+    final pompes = Activity(id: 'pompes', domainId: 'sport', name: 'Pompes', role: ActivityRole.generic, type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 1, 1));
+    final o = StrategicObjective(id: 'r', title: 'Pompes tous les jours', routineCommitments: [ObjectiveRoutineCommitment(activityId: 'pompes')]);
+    final s = withSeasonOpened(const [], [goalFor(o)], '2026-11-02').single;
+    expect(s.goals.single.kind, SeasonGoalKind.rhythm);
+    final hits = [for (var d = 2; d <= 4; d++) HabitHit(habitId: 'pompes', ts: DateTime(2026, 11, d, 9))];
+    final v = seasonGoalView(s, s.goals.single, o, todayYmd: '2026-11-04', activities: [pompes], hits: hits);
+    expect(v.state, SeasonGoalState.onTrack);
+    expect(v.label(), '100 % du rythme');
   });
 
-  test('propositions : prochain palier, à portée en six semaines', () {
-    final deck = BadgeDeck([
-      badge('serie-x', [3, 7, 21, 66, 100], level: 3, value: 34),
-      badge('serie-y', [3, 7, 21, 66, 100], level: 2, value: 1),
-      badge('reprise', [1, 5, 15], level: 1, value: 2),
-      badge('deep-work', [3, 10, 30], level: 0, value: 0),
-    ]);
-    final picks = seasonPicks(deck);
-    final ids = picks.map((p) => p.badge.def.id).toList();
-    expect(ids, contains('serie-x')); // 66 j : encore 32 j
-    expect(ids, contains('reprise'));
-    expect(ids, isNot(contains('deep-work'))); // trop loin (0 %)
-    expect(picks.firstWhere((p) => p.badge.def.id == 'serie-x').tier, 4);
+  test('badge : réussie avec 2 objectifs sur 3 tenus (figé au bilan)', () {
+    expect(seasonHeldNeeded(3), 2);
+    expect(seasonHeldNeeded(1), 1);
+    expect(seasonHeldNeeded(5), 4);
+    const s = Season(n: 1, start: '2026-11-02', end: '2026-12-13', held: 2, total: 3);
+    expect(s.won, isTrue);
+    expect(wonSeasons([s, const Season(n: 2, start: '2026-12-14', end: '2027-01-24', held: 1, total: 3)]).length, 1);
   });
 
-  test('propositions : toutes les routines, et les paliers tenables en six semaines', () {
-    final deck = BadgeDeck([
-      for (var i = 0; i < 9; i++) badge('serie-r$i', [3, 7, 21, 66, 100], level: 1, value: 4),
-    ]);
-    final picks = seasonPicks(deck);
-    expect(picks.length, 9); // plus de coupe à quatre par groupe
-    final p = picks.first;
-    expect(p.tiers, [2, 3]); // 7 j et 21 j tiennent en 42 jours, pas 66
-    expect(p.nextTier(2), 3);
-    expect(p.nextTier(3), 2);
-    expect(p.labelOf(3), 'serie-r0 · série 21 j');
+  testWidgets('Poser le cap : durée, objectifs cochés, lancer', (tester) async {
+    tester.view.physicalSize = const Size(780, 2600);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final logic = AppLogic(AppState(domains: [Domain(id: 'sport', name: 'Sport')], activities: [], sessions: [], habitProgress: []), () {})..dayStartMin = 0;
+    final o = poids();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SeasonCapView(logic: logic, objectives: [o]))));
+    await tester.pump();
+    expect(find.text('Ton cap pour la suite'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('season-weeks-8')));
+    await tester.tap(find.byKey(const ValueKey('season-goal-poids')));
+    await tester.pump();
+    expect(find.text('90 kg'), findsOneWidget);
+    expect(find.text('Lancer la saison · 1 objectif'), findsOneWidget);
+    // Lancer écrit dans Firebase (absent en test) : l'ouverture elle-même est testée plus haut (withSeasonOpened).
   });
 }

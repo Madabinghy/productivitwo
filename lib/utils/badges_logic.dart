@@ -1239,12 +1239,12 @@ BadgeDeck computeBadges({
     }
   }
 
-  // Saisons : réussie = au moins deux chasses attrapées pendant ses six semaines.
-  final won = wonSeasons(seasons, BadgeDeck(out), todayYmd);
-  final closed = seasons.where((s) => s.isOverOn(todayYmd)).length;
+  // Saisons (refonte 2026-11-04) : réussie = au moins deux objectifs sur trois tenus, figé au bilan.
+  final won = wonSeasons(seasons);
+  final closed = seasons.where((s) => !s.legacy && s.isOverOn(todayYmd)).length;
   final running = currentSeason(seasons, todayYmd);
   out.add(BadgeState(
-    def: const BadgeDef(id: 'saisons', family: BadgeFamily.objectives, name: 'Saisons', symbol: 'season', tiers: kSeasonTiers, unit: 'saisons', unitLong: 'saisons réussies'),
+    def: const BadgeDef(id: 'saisons', family: BadgeFamily.objectives, name: 'Saisons', symbol: 'season', tiers: kSeasonTiers, unit: 'saisons', unitLong: 'saisons réussies (2 objectifs sur 3 tenus)'),
     level: _levelOf(kSeasonTiers, won.length),
     value: won.length,
     tierDates: [for (final t in kSeasonTiers) t <= won.length ? DateTime.parse(won[t - 1].end) : null],

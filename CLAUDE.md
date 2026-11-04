@@ -1529,6 +1529,24 @@ carte MA SEMAINE (série + 10 semaines), gain `StakeGainKind.week` le dimanche, 
 `widgets/season_view.dart`) : six semaines, trois chasses figées (remplacent `badgeHunts`, date visée = fin), lâcher sans
 remplacer, attrapée = palier tombé pendant la saison, bilan une fois à la fin ; `data/meta.seasons` ; carte en tête de
 l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥ 2 chasses sur 3, 1 / 4 / 8). Web : badge seul.
+**⚠️ Refonte 2026-11-04 (maquette validée « Saisons et objectifs ») : une saison = la PÉRIODE DE TES OBJECTIFS**, plus de chasses de
+badges (ancien format `hunts` relu, marqué `legacy`, jamais en cours ; `season_view.dart` et `objectives_home_view.dart` supprimés).
+Logique pure `utils/seasons.dart` : `Season {n, start, end, goals, bilanSeen, held?, total?}` (`v:2`), `SeasonGoal {objectiveId, name,
+kind metric|rhythm, from, target, unit, decision keep|adjust|drop}`, durée `kSeasonDurations` 4 · 6 · 8 · 12 semaines (`seasonEndFor(weeks:)`),
+`goalFor` (métrique = dernier relevé → cible de l'objectif, sinon le rythme des engagements), `seasonGoalView` → `SeasonGoalView`
+(métrique : sur la trajectoire si l'écart à l'attendu ≤ 10 % de l'écart visé, `kSeasonMetricTolerance` ; rythme : `weekPercent` ≥ 85 % ;
+à la fin, atteint / manqué, rythme = moyenne des semaines `seasonRhythmMean`), `label()` « −0,6 kg » · « sur la ligne » · « 92 % du
+rythme » · « 84 / 90 kg ». Reposer le cap en cours de route clôt l'ancienne à hier. Badge `saisons` = saisons dont le résultat figé au
+bilan (`held` / `total`) tient 2 objectifs sur 3 (`seasonHeldNeeded`, `wonSeasons`). `AppLogic.openSeason(goals, weeks:)`,
+`setSeasonTarget`, `closeSeasonBilan(held:, decisions:)`. **Lot 1 livré** (`widgets/season_widgets.dart`) : `SeasonBanner` en tête
+d'Organisation (SAISON n · SEMAINE k / N, « Jusqu'au dim. 14 déc. », barre, « n sur la trajectoire » · « n en retard » ; sinon « Poser le
+cap de tes objectifs ») → `showSeasonCapSheet` (`SeasonCapView` : durée, objectifs actifs à cocher avec leur cible réglable, « + Nouvel
+objectif », « Lancer la saison · n objectifs » ; saison en cours = ses objectifs, état, cibles réglables, « Reposer le cap » ; une nouvelle
+saison reprend ce que le dernier bilan a gardé / ajusté) ; dans chaque tuile dont le domaine porte un objectif de saison : ligne
+`SeasonGoalLine` (point violet, nom, état vert / ambre) et, pour une métrique, le mini-graphique `SeasonMetricPainter` (fenêtre de la saison
+en violet clair, trajectoire en pointillés jusqu'à la cible, relevés, trait d'aujourd'hui) ; Finances garde la courbe du solde avec la cible
+en pointillés violets (`FinanceFlowMini(targetCents:)`, objectif en €). **Lot 2 à venir** : fiche d'un objectif de saison, bilan de fin
+(Garder · Ajuster · Laisser, en tête d'Aujourd'hui le lundi qui suit).
 **Routine acquise** (handoff `docs/specs/routine-acquise-2026-10/README.md`, logique pure `utils/acquired.dart`, écrans
 `widgets/acquired_view.dart`) : proposée une fois au palier de 66 j (carte Aujourd'hui, interrupteur de la fiche routine) ;
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),

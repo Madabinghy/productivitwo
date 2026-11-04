@@ -2571,29 +2571,25 @@ class AppLogic implements HuntStore {
     await (sync ?? FirestoreSync()).setSeasons(seasons.map((s) => s.toJson()).toList());
   }
 
-  /// Ouvre une saison : ses chasses REMPLACENT les chasses en cours (trois au
-  /// plus), date visée = fin de saison.
-  Future<void> openSeason(List<SeasonHunt> hunts) async {
-    final today = livedTodayYmd;
-    seasons = withSeasonOpened(seasons, hunts, today);
-    final s = seasons.last;
-    badgeHunts = [for (final h in s.hunts) BadgeHunt(badgeId: h.badgeId, tier: h.tier, since: today, targetDate: s.end)];
-    await (sync ?? FirestoreSync()).setBadgeHunts(badgeHunts.map((x) => x.toJson()).toList());
+  /// Ouvre une saison (refonte 2026-11-04) : les objectifs visés et leur cible,
+  /// sur [weeks] semaines. Une saison en cours est close d'office.
+  Future<void> openSeason(List<SeasonGoal> goals, {int weeks = kSeasonWeeks}) async {
+    seasons = withSeasonOpened(seasons, goals, livedTodayYmd, weeks: weeks);
     await _saveSeasons();
   }
 
-  /// Lâche une chasse de la saison en cours (comptée non réussie).
-  Future<void> dropSeasonHunt(String badgeId) async {
+  /// Change la cible d'un objectif de la saison en cours.
+  Future<void> setSeasonTarget(String objectiveId, double target) async {
     final s = season;
     if (s == null) return;
-    seasons = withSeasonReplaced(seasons, s.copyWith(dropped: {...s.dropped, badgeId}));
-    await stopHunts([badgeId]);
+    seasons = withSeasonReplaced(seasons, s.copyWith(goals: [for (final g in s.goals) g.objectiveId == objectiveId ? g.copyWith(target: target) : g]));
     await _saveSeasons();
   }
 
-  Future<void> markSeasonBilanSeen(Season s) async {
-    if (s.bilanSeen) return;
-    seasons = withSeasonReplaced(seasons, s.copyWith(bilanSeen: true));
+  /// Ferme le bilan d'une saison : résultat figé (badge Saisons) et décisions par objectif.
+  Future<void> closeSeasonBilan(Season s, {required int held, required Map<String, SeasonDecision> decisions}) async {
+    seasons = withSeasonReplaced(
+        seasons, s.copyWith(bilanSeen: true, held: held, total: s.goals.length, goals: [for (final g in s.goals) decisions[g.objectiveId] == null ? g : g.copyWith(decision: decisions[g.objectiveId])]));
     await _saveSeasons();
   }
 
