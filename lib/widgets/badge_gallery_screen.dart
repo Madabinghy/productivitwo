@@ -132,6 +132,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         seasons: widget.logic.seasons,
         acquired: widget.logic.acquired,
         paroles: widget.logic.paroles,
+        freedoms: widget.logic.freedoms,
+        freedomHidden: widget.logic.freedomCardsHidden,
       );
       if (mounted) setState(() => _deck = deck);
     } catch (e) {
@@ -192,6 +194,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             // Les badges d'abord ; séries de routine et compteurs en piles, une par cadre (2026-11-03).
             for (final f in BadgeFamily.values)
               if (f != BadgeFamily.routines) _family(deck, f),
+            if (widget.logic.freedomCardsHidden && widget.logic.freedoms.isNotEmpty) _freedomHiddenLine(),
             _piles(deck),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
@@ -791,6 +794,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       padding: const EdgeInsets.only(top: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         head,
+        if (f == BadgeFamily.freedom) _freedomPrivacy(),
         const SizedBox(height: 10),
         Wrap(
           spacing: 10,
@@ -799,6 +803,42 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         ),
       ]),
     );
+  }
+
+  /// Liberté (2026-11-04) : privée, jamais montrée au coach ; masquable de l'album (sort du total et de Collectionneur).
+  Widget _freedomPrivacy() => Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(children: [
+          const Icon(Icons.lock_outline, size: 14, color: kBText3),
+          const SizedBox(width: 6),
+          const Expanded(child: Text('Privé · ton coach ne voit pas ces cartes', style: TextStyle(fontSize: 12, color: kBText3))),
+          TextButton(key: const ValueKey('freedom-cards-hide'), onPressed: () => _setFreedomHidden(true), child: const Text('Masquer')),
+        ]),
+      );
+
+  Widget _freedomHiddenLine() => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+          decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+          child: Row(children: [
+            const Icon(Icons.lock_outline, size: 16, color: kBText3),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('LIBERTÉ · cartes masquées', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3))),
+            TextButton(key: const ValueKey('freedom-cards-show'), onPressed: () => _setFreedomHidden(false), child: const Text('Montrer')),
+          ]),
+        ),
+      );
+
+  Future<void> _setFreedomHidden(bool hidden) async {
+    await widget.logic.setFreedomCardsHidden(hidden);
+    final c = widget.center;
+    if (c != null) {
+      final d = await c.load(refresh: true);
+      if (mounted) setState(() => _deck = d);
+    } else {
+      await _load();
+    }
   }
 
   /// Séries de routine et compteurs (2026-11-03, retour user : ils prenaient la

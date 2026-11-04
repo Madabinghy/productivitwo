@@ -3,6 +3,25 @@
 /// design « Badges Productivitwo » (section Catalogue). `name` = nom de la
 /// routine ou de l'objectif porteur pour les familles à un badge par objet.
 ({String what, String how}) badgeTexts(String id, {String name = ''}) {
+  if (id == 'liberte-envies') {
+    return (
+      what: 'Les envies que tu as laissées passer sans craquer, toutes tes habitudes à quitter confondues.',
+      how: 'Quand une envie arrive, ouvre « J’ai une envie » et laisse passer les 10 minutes. Chaque envie surmontée reste acquise, '
+          'même après un écart. Paliers : 1, 10, 50, 100 et 250 envies.',
+    );
+  }
+  if (id == 'liberte-jours') {
+    return (
+      what: 'Les jours sans écart, au total : pas d’affilée, un écart n’efface rien.',
+      how: 'Chaque journée close sans écart compte, pour chacune de tes habitudes à quitter. Paliers : 7, 14, 30, 60, 90 et 365 jours.',
+    );
+  }
+  if (id == 'liberte-limite') {
+    return (
+      what: 'Les semaines tenues sous la limite que tu t’es fixée, en mode Réduire.',
+      how: 'Une semaine close (lundi → dimanche) compte quand ce que tu as noté ne dépasse pas ta limite. Paliers : 4, 12 et 26 semaines.',
+    );
+  }
   if (id.startsWith('serie-')) {
     return (
       what: 'Les jours d’affilée où « $name » atteint sa cible du jour.',
