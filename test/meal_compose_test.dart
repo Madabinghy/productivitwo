@@ -137,5 +137,6 @@ void main() {
     await tester.tap(find.byKey(const Key('compose-save')));
     await tester.pump();
     expect(logic.mealWeek('2026-11-02').slots[mealKey('2026-11-04', 'soir')]!.title, 'Côtes de porc · Riz');
+    await tester.pump(const Duration(seconds: 5)); // la SnackBar se ferme
   });
 }
