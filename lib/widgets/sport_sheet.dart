@@ -421,7 +421,7 @@ class _SportSheetState extends State<SportSheet> {
     return [
       title('TON ${m.label.toUpperCase()}', 'objectif ${v(m.targetValue)}${o.endDate != null ? ' · ${o.endDate!.day} ${_months[o.endDate!.month - 1]}' : ''}'),
       _card(cs, Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SizedBox(height: 110, child: CustomPaint(painter: _WeightPainter(o, t, cs.onSurface))),
+        SizedBox(height: 110, child: CustomPaint(painter: WeightTrajectoryPainter(o, t, cs.onSurface))),
         const SizedBox(height: 6),
         Text.rich(TextSpan(style: TextStyle(fontSize: 13, color: mute), children: [
           if (r.latestValue != null) TextSpan(text: v(r.latestValue!), style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
@@ -684,11 +684,14 @@ class _Grid extends StatelessWidget {
   }
 }
 
-class _WeightPainter extends CustomPainter {
+/// Trajectoire d'une métrique (le poids) : droite attendue en pointillés, relevés, trait d'aujourd'hui.
+/// Aussi en mini dans la tuile Sport d'Organisation.
+class WeightTrajectoryPainter extends CustomPainter {
   final StrategicObjective o;
   final ObjectiveTrajectory t;
   final Color ink;
-  _WeightPainter(this.o, this.t, this.ink);
+  final double dot;
+  WeightTrajectoryPainter(this.o, this.t, this.ink, {this.dot = 3.5});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -727,11 +730,11 @@ class _WeightPainter extends CustomPainter {
       }
       canvas.drawPath(path, line);
       for (final r in readings) {
-        canvas.drawCircle(Offset(x(r.$1!), y(r.$2)), 3.5, Paint()..color = _kGreen);
+        canvas.drawCircle(Offset(x(r.$1!), y(r.$2)), dot, Paint()..color = _kGreen);
       }
     }
   }
 
   @override
-  bool shouldRepaint(_WeightPainter old) => true;
+  bool shouldRepaint(WeightTrajectoryPainter old) => true;
 }
