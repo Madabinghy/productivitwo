@@ -92,6 +92,8 @@ class BadgeCenter extends ChangeNotifier {
       acquired: logic.acquired,
       paroles: logic.paroles,
       excusedOf: (ymd) => logic.nowDoneSet(ymd.replaceAll('-', '')),
+      freedoms: logic.freedoms,
+      freedomHidden: logic.freedomCardsHidden,
     );
     deck = d;
     logic.embers = d.embers;
@@ -139,8 +141,11 @@ class BadgeCenter extends ChangeNotifier {
   /// Dépose l'instantané du deck dans `data/badges` quand il change (le MCP
   /// `list_badges` / `hunt_badge` et le contexte de Claude le lisent).
   void _pushSnapshot(BadgeDeck d) {
+    // Liberté reste privée : jamais dans l'instantané (coach, Claude), ni dans son compteur.
+    final shared = d.badges.where((b) => b.def.family != BadgeFamily.freedom).toList();
+    final sharedDeck = BadgeDeck(shared);
     final badges = [
-      for (final b in d.badges)
+      for (final b in shared)
         {
           'id': b.def.id,
           'family': b.def.family.name,
@@ -159,8 +164,8 @@ class BadgeCenter extends ChangeNotifier {
     final since = ymdOf(DateTime.now().subtract(const Duration(days: 30)));
     final acts = {for (final a in logic.state.activities) a.id: a};
     final body = {
-      'acquired': d.acquired,
-      'total': d.total,
+      'acquired': sharedDeck.acquired,
+      'total': sharedDeck.total,
       'badges': badges,
       // Braises : réserve et séries rallumées sur 30 jours (vue coach, filtrées par domaine partagé côté serveur).
       'embers': {

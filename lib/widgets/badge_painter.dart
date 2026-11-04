@@ -404,6 +404,34 @@ class BadgePainter extends CustomPainter {
         c.drawPath(_poly([43, 57, 50, 48, 57, 57]), fill);
       case 'anvil':
         c.drawPath(_poly([26, 36, 32, 31, 70, 31, 70, 40, 58, 40, 58, 49, 62, 49, 62, 57, 38, 57, 38, 49, 42, 49, 42, 40, 34, 40]), fill);
+      case 'wave':
+        // Envie surmontée : la vague monte, passe, et la ligne redevient calme.
+        final w = Path()
+          ..moveTo(26, 52)
+          ..cubicTo(32, 52, 36, 26, 46, 26)
+          ..cubicTo(54, 26, 56, 40, 50, 42)
+          ..cubicTo(46, 44, 44, 38, 48, 36);
+        c.drawPath(w, stroke(5));
+        line(50, 52, 74, 52, 5);
+        line(26, 62, 74, 62, 4);
+      case 'unchained':
+        // Jours libres : un maillon ouvert, l'autre lâché.
+        c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(24, 36, 24, 16), const Radius.circular(8)), stroke(5));
+        final open = Path()
+          ..moveTo(58, 36)
+          ..lineTo(66, 36)
+          ..arcToPoint(const Offset(66, 52), radius: const Radius.circular(8), clockwise: true)
+          ..lineTo(58, 52);
+        c.drawPath(open, stroke(5));
+        line(52, 28, 54, 22, 4);
+        line(52, 60, 54, 66, 4);
+      case 'scale':
+        // Sous la limite : une balance d'équerre.
+        line(50, 24, 50, 60, 5);
+        line(38, 61, 62, 61, 5);
+        line(28, 32, 72, 32, 5);
+        c.drawPath(_poly([28, 32, 22, 46, 34, 46]), stroke(4));
+        c.drawPath(_poly([72, 32, 66, 46, 78, 46]), stroke(4));
       case 'tide':
         for (final dy in const [0.0, 12.0]) {
           final p = Path()

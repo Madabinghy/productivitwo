@@ -2001,6 +2001,15 @@ class AppLogic implements HuntStore {
   /// (`data/meta.freedoms.<id>`).
   Map<String, Freedom> freedoms = const {};
 
+  /// Cartes Liberté masquées de l'album (`data/meta.freedomCardsHidden`) : elles sortent alors du total et de Collectionneur.
+  bool freedomCardsHidden = false;
+
+  Future<void> setFreedomCardsHidden(bool hidden) async {
+    freedomCardsHidden = hidden;
+    onChange();
+    await sync?.setMetaFields({'freedomCardsHidden': hidden});
+  }
+
   Freedom freedomOf(String id) => freedoms[id] ?? const Freedom();
   List<String> get freedomIds => activeFreedomIds(freedoms);
 

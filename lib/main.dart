@@ -1918,6 +1918,7 @@ class _AppRootState extends State<AppRoot>
       logic.restDomains = rest;
       logic.restPeriods = periods;
       logic.freezes = freezes;
+      logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;
       logic.acquired = acquired;
       logic.acquireAsked = asked;

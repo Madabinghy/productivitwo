@@ -448,3 +448,54 @@ Map<String, int> slipTriggers(Freedom f, DateTime now, {int days = 30}) {
   }
   return m;
 }
+
+// ── Cartes Liberté (lot 3, 2026-11-04) ───────────────────────────────────────
+// Trois cartes cumulées sur toutes les choses suivies, sans jamais nommer ce qu'on quitte :
+// envies surmontées, jours libres au total, semaines sous la limite. Un écart n'en retire rien.
+
+const kFreedomUrgeTiers = [1, 10, 50, 100, 250];
+const kFreedomDayTiers = [7, 14, 30, 60, 90, 365];
+const kFreedomWeekTiers = [4, 12, 26];
+
+/// Instants (ms) des envies surmontées, toutes choses confondues, du plus ancien au plus récent.
+List<int> overcomeTimes(Iterable<Freedom> all) =>
+    [for (final f in all) for (final u in f.urges.values) if (u.passed) u.at]..sort();
+
+/// Les jours libres (sans écart, aujourd'hui exclu) de toutes les choses, du plus ancien au plus récent :
+/// le n-ième donne la date où le total a atteint n.
+List<DateTime> freeDayList(Iterable<Freedom> all, DateTime now) {
+  final out = <DateTime>[];
+  final today = DateTime(now.year, now.month, now.day);
+  for (final f in all) {
+    final p = f.plan;
+    if (p == null) continue;
+    final slipDays = {for (final s in f.slips.values) ymdOf(DateTime.fromMillisecondsSinceEpoch(s.at))};
+    for (var d = _start(p); d.isBefore(today); d = DateTime(d.year, d.month, d.day + 1)) {
+      if (!slipDays.contains(ymdOf(d))) out.add(d);
+    }
+  }
+  return out..sort();
+}
+
+/// Réduire : les semaines closes (lundi → dimanche, après le départ) tenues sous la limite ;
+/// renvoie le dimanche de chacune. Une limite par jour vaut 7 × la limite sur la semaine.
+List<DateTime> weeksUnderLimit(Freedom f, DateTime now) {
+  final p = f.plan;
+  if (p == null || p.goal != FreedomGoal.reduce || p.limit == null) return const [];
+  final weekly = p.period == FreedomPeriod.day ? p.limit! * 7 : p.limit!;
+  final start = _start(p);
+  final today = DateTime(now.year, now.month, now.day);
+  var monday = DateTime(start.year, start.month, start.day + (8 - start.weekday) % 7);
+  final out = <DateTime>[];
+  while (true) {
+    final next = DateTime(monday.year, monday.month, monday.day + 7);
+    if (next.isAfter(today)) break;
+    final used = f.slips.values.where((s) {
+      final at = DateTime.fromMillisecondsSinceEpoch(s.at);
+      return !at.isBefore(monday) && at.isBefore(next);
+    }).fold(0, (a, s) => a + s.count);
+    if (used <= weekly) out.add(DateTime(next.year, next.month, next.day - 1));
+    monday = next;
+  }
+  return out;
+}

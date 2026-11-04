@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/sniper.dart' show isSniperRun, kSniperTie
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
+import 'package:productivitwo_v1/utils/freedom.dart' show Freedom, FreedomGoal, overcomeTimes, freeDayList, weeksUnderLimit, kFreedomUrgeTiers, kFreedomDayTiers, kFreedomWeekTiers;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/utils/held_weeks.dart';
@@ -29,7 +30,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart' show isLetGoBlock;
 /// (`measured: false`) : elle compte dans le total, à 0. Discipline se mesure
 /// sur les pointages d'élan (`moodMarks`, lot 2, `utils/elan_logic.dart`).
 
-enum BadgeFamily { routines, objectives, days, discipline, chain, actions, time }
+enum BadgeFamily { routines, objectives, days, discipline, chain, actions, time, freedom }
 
 String badgeFamilyLabel(BadgeFamily f) => switch (f) {
       BadgeFamily.routines => 'Séries de routine',
@@ -39,6 +40,7 @@ String badgeFamilyLabel(BadgeFamily f) => switch (f) {
       BadgeFamily.chain => 'Enchaîner',
       BadgeFamily.actions => 'Actions accomplies',
       BadgeFamily.time => 'Temps investi',
+      BadgeFamily.freedom => 'Liberté',
     };
 
 const kRoutineTiers = [3, 7, 21, 66, 100];
@@ -638,6 +640,9 @@ BadgeDeck computeBadges({
   Map<String, ParoleDay> paroles = const {},
   /// Routines écartées « pas aujourd'hui » par jour vécu (`YYYY-MM-DD`).
   Set<String> Function(String ymd)? excusedOf,
+  /// Liberté (`data/meta.freedoms`) : cartes privées, absentes sans chose suivie ou masquées.
+  Map<String, Freedom> freedoms = const {},
+  bool freedomHidden = false,
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -1261,6 +1266,7 @@ BadgeDeck computeBadges({
       if (running != null) ('En cours', 'Saison ${running.n} · semaine ${running.weekOf(todayYmd)} / ${running.weeks}'),
     ],
   ));
+  if (!freedomHidden) out.addAll(freedomBadges(freedoms, now));
   return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers, reprises: reprisesNow, weeks: weeks);
 }
 
@@ -1347,4 +1353,44 @@ List<DateTime> deepWorkSessions(List<Session> sessions, List<DailySchedule> sche
 DateTime _ymdDay(String ymd) {
   final p = ymd.split('-');
   return DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+}
+
+/// Famille Liberté (2026-11-04, maquette validée « Cartes Liberté ») : cumulée sur toutes les choses suivies,
+/// sans le nom de l'habitude. Rien sans chose suivie ; « Sous la limite » seulement s'il y a un « Réduire ».
+List<BadgeState> freedomBadges(Map<String, Freedom> freedoms, DateTime now) {
+  final all = freedoms.values.where((f) => f.plan != null || f.urges.isNotEmpty || f.slips.isNotEmpty).toList();
+  if (all.isEmpty) return const [];
+  DateTime? at(List<DateTime> list, int n) => n <= list.length ? _day(list[n - 1]) : null;
+  final urges = [for (final ms in overcomeTimes(all)) DateTime.fromMillisecondsSinceEpoch(ms)];
+  final days = freeDayList(all, now);
+  final out = <BadgeState>[
+    BadgeState(
+      def: const BadgeDef(id: 'liberte-envies', family: BadgeFamily.freedom, name: 'Envie surmontée', symbol: 'wave', tiers: kFreedomUrgeTiers, unit: 'envies', unitLong: 'envies surmontées'),
+      level: _levelOf(kFreedomUrgeTiers, urges.length),
+      value: urges.length,
+      tierDates: [for (final t in kFreedomUrgeTiers) at(urges, t)],
+      facts: [
+        ('Envies surmontées', '${urges.length}'),
+        if (urges.isNotEmpty) ('La dernière', _fmtDate(urges.last)),
+      ],
+    ),
+    BadgeState(
+      def: const BadgeDef(id: 'liberte-jours', family: BadgeFamily.freedom, name: 'Jours libres', symbol: 'unchained', tiers: kFreedomDayTiers, unit: 'j', unitLong: 'jours libres'),
+      level: _levelOf(kFreedomDayTiers, days.length),
+      value: days.length,
+      tierDates: [for (final t in kFreedomDayTiers) at(days, t)],
+      facts: [('Jours libres au total', '${days.length}')],
+    ),
+  ];
+  if (all.any((f) => f.plan?.goal == FreedomGoal.reduce)) {
+    final weeks = [for (final f in all) ...weeksUnderLimit(f, now)]..sort();
+    out.add(BadgeState(
+      def: const BadgeDef(id: 'liberte-limite', family: BadgeFamily.freedom, name: 'Sous la limite', symbol: 'scale', tiers: kFreedomWeekTiers, unit: 'sem.', unitLong: 'semaines sous la limite'),
+      level: _levelOf(kFreedomWeekTiers, weeks.length),
+      value: weeks.length,
+      tierDates: [for (final t in kFreedomWeekTiers) at(weeks, t)],
+      facts: [('Semaines sous la limite', '${weeks.length}')],
+    ));
+  }
+  return out;
 }

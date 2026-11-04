@@ -3309,6 +3309,12 @@ class FirestoreSync {
     await _meta().set({'finances': fields}, SetOptions(merge: true));
   }
 
+  /// Quelques champs simples du doc meta (fusion).
+  Future<void> setMetaFields(Map<String, dynamic> fields) async {
+    if (uid == null) return;
+    await _meta().set(fields, SetOptions(merge: true));
+  }
+
   Future<void> setFreezes(List<Map<String, dynamic>> periods) async {
     await _meta().set({'freezes': periods}, SetOptions(merge: true));
   }
