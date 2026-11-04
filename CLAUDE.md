@@ -1096,6 +1096,11 @@ petit-dej · midi · soir et alias, `covered`, `composedTitle` aligné sur l'app
 `get_meal_options(date?, moment?)` = créneau(x), placard par famille, À FINIR, derniers repas composés, protéine du repas d'avant ;
 `plan_meals(meals:[{date, moment, components: ["Riz" | {label, family}], clear?}], apply)` écrit
 `data/meta.meals.plans.<lundi>.<ymd|moment>` (`{title, portions: 1, components}`), aperçu par défaut.
+**Lot 4 livré (placards par famille)** : Mes placards (`pantry_sheet.dart`) — trois compteurs Protéines · Féculents · Fibres sous
+le bandeau d'achats (`_familyCounter`, `pantryByFamily`, « plus rien » en ambre quand une famille est vide ; tap = filtre `_family`,
+combiné au filtre de rayon) ; éditeur d'un produit (hors Ménager · Hygiène · Boissons) : FAMILLE POUR LES REPAS = « Auto · … »
+(devinée) · Protéines · Féculents · Fibres · Accompagnements · Féculents + Protéines → `AppLogic.setFoodFamilies`. **Les 4 lots
+sont livrés.**
 
 ## Finances, 100 % manuel (2026-11-02, maquette validée « Suivi des finances »)
 

@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
+import 'package:productivitwo_v1/utils/meal_families.dart';
+import 'package:productivitwo_v1/widgets/meal_compose_sheet.dart' show kFamilyColors;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show kGroceryAccent, kGroceryInk;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
@@ -56,6 +58,8 @@ class PantrySheet extends StatefulWidget {
 class _PantrySheetState extends State<PantrySheet> {
   final _add = TextEditingController();
   String? _aisle;
+  /// Repas en 3 familles (lot 4) : filtre par famille (null = toutes).
+  String? _family;
   AppLogic get logic => widget.logic;
 
   @override
@@ -112,7 +116,9 @@ class _PantrySheetState extends State<PantrySheet> {
     final used = {for (final p in all) p.aisle};
     final chips = [...g.aisles.where(used.contains), ...used.where((a) => !g.aisles.contains(a))];
     if (_aisle != null && !used.contains(_aisle)) _aisle = null;
-    final groups = pantryByAisle(g, where: _aisle == null ? null : (p) => p.aisle == _aisle);
+    final byFamily = pantryByFamily(g);
+    final famKeys = _family == null ? null : {for (final p in byFamily[_family] ?? const <PantryItem>[]) p.key};
+    final groups = pantryByAisle(g, where: (p) => (_aisle == null || p.aisle == _aisle) && (famKeys == null || famKeys.contains(p.key)));
     final low = all.where((p) => p.state == PantryState.low).length;
     final out = all.where((p) => p.state == PantryState.out).length;
     // Le dernier achat : le jour le plus récent et ce qui y a été rangé.
@@ -149,6 +155,15 @@ class _PantrySheetState extends State<PantrySheet> {
             TextSpan(text: ' · $lastCount produit${lastCount > 1 ? 's' : ''} rangé${lastCount > 1 ? 's' : ''}'),
           ]), style: const TextStyle(fontSize: 13)),
         ),
+      ],
+      if (all.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Row(children: [
+          for (final (i, f) in kMealFamilies.indexed) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: _familyCounter(cs, f, byFamily[f]?.length ?? 0)),
+          ],
+        ]),
       ],
       const SizedBox(height: 12),
       TextField(
@@ -214,6 +229,30 @@ class _PantrySheetState extends State<PantrySheet> {
         ),
       ),
     ]);
+  }
+
+  /// Compteur d'une famille (Repas en 3 familles, lot 4) : tap = filtre ;
+  /// famille vide = « à racheter » dit en ambre.
+  Widget _familyCounter(ColorScheme cs, String f, int n) {
+    final c = kFamilyColors[f]!;
+    final on = _family == f;
+    return Material(
+      key: Key('pantry-family-$f'),
+      color: on ? c.withValues(alpha: .26) : c.withValues(alpha: .12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: on ? BorderSide(color: c, width: 1.5) : BorderSide.none),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _family = on ? null : f),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$n', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            Text(familyLabel(f), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+            if (n == 0) Text('plus rien', style: TextStyle(fontSize: 11, color: kPantryLow)),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _chip(ColorScheme cs, String label, bool on, VoidCallback onTap) => Padding(
@@ -337,6 +376,27 @@ Future<void> showPantryItemEditor(BuildContext context, {required AppLogic logic
             Wrap(children: [
               for (final a in aisles) pill(a, p.aisle == a, aisleColor(logic.groceries.aisles, a), () => save(p.copyWith(aisle: a))),
             ]),
+            if (!kNonFoodAisles.contains(p.aisle)) ...[
+              const SizedBox(height: 10),
+              section('FAMILLE POUR LES REPAS'),
+              const SizedBox(height: 8),
+              Builder(builder: (_) {
+                final set = parseFamilies(logic.groceries.families[p.key]);
+                final auto = guessFamilies(p.label);
+                final autoLabel = (auto.isEmpty ? const [kAccompagnement] : auto).map(familyLabel).join(' + ');
+                Future<void> pick(List<String> fams) async {
+                  await logic.setFoodFamilies(p.label, fams);
+                  setS(() {});
+                }
+
+                return Wrap(children: [
+                  pill('Auto · $autoLabel', set.isEmpty, kGroceryAccent, () => pick(const [])),
+                  for (final f in [...kMealFamilies, kAccompagnement])
+                    pill(familyLabel(f), set.length == 1 && set.first == f, kFamilyColors[f]!, () => pick([f])),
+                  pill('Féculents + Protéines', set.length == 2, kFamilyColors[kFeculents]!, () => pick(const [kFeculents, kProteines])),
+                ]);
+              }),
+            ],
             const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
