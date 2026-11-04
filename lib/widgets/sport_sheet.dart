@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
+import 'package:productivitwo_v1/widgets/workout_screens.dart' show showWorkoutHub;
 
 const kSportAccent = Color(0xFFF07C4C);
 const _kGreen = Color(0xFF4CBF75);
@@ -188,6 +189,14 @@ class _SportSheetState extends State<SportSheet> {
           onPressed: () => _openLaunch(commitments, sum),
           icon: const Icon(Icons.play_arrow_rounded),
           label: const Text('Lancer une séance', style: TextStyle(fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('open-workout'),
+          style: OutlinedButton.styleFrom(foregroundColor: kSportAccent, side: const BorderSide(color: kSportAccent), minimumSize: const Size.fromHeight(46)),
+          onPressed: () => showWorkoutHub(context, logic: widget.logic),
+          icon: const Icon(Icons.fitness_center),
+          label: const Text('Séance de muscu · séries et repos', style: TextStyle(fontWeight: FontWeight.w700)),
         ),
         Align(
           alignment: Alignment.centerRight,
