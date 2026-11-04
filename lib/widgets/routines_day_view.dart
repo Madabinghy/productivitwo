@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/utils/long_haul.dart' show kRoutineCountTiers;
+import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show fmtInt;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -108,7 +109,9 @@ class RoutinesDayView extends StatefulWidget {
   final bool onlyMissing;
   /// Appelé après chaque changement (+1, −1, report…) : l'hôte se recalcule.
   final VoidCallback? onChanged;
-  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain, this.onStartTimed, this.onlyMissing = false, this.onChanged});
+  /// « Planifier ma journée » (2026-11-04) : ouvre l'écran de planification.
+  final VoidCallback? onPlan;
+  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain, this.onStartTimed, this.onlyMissing = false, this.onChanged, this.onPlan});
 
   @override
   State<RoutinesDayView> createState() => _RoutinesDayViewState();
@@ -604,7 +607,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 ),
             ]),
           ),
-          if (linked != null) ...[
+          if (!done && widget.onPlan != null && isPlanRoutine(a)) ...[
+            Tooltip(message: 'Planifier maintenant', child: btn(Icons.explore_outlined, widget.onPlan!)),
+            const SizedBox(width: 6),
+          ] else if (linked != null) ...[
             btn(running ? Icons.stop_rounded : Icons.play_arrow_rounded, () => _toggleChrono(linked), color: running ? kBAttention : null),
             const SizedBox(width: 6),
           ] else if (timed) ...[

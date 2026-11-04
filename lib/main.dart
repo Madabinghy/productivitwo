@@ -40,6 +40,7 @@ import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
+import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, overdueActionCount, stopTargetCandidates, stopTaskCandidates;
@@ -4615,6 +4616,7 @@ class _AppRootState extends State<AppRoot>
       onChanged: () {
         if (mounted) setState(() {});
       },
+      onPlan: () => showPlanScreen(context, logic, badges: _badges),
     );
   }
 

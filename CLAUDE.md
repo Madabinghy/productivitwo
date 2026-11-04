@@ -1246,6 +1246,16 @@ activité demande, au moment du coup et une fois par action, « Où compter ce t
 compte nulle part · Lier une activité » au départ quand aucune action prête du front n'a d'activité (`_unlinkedFront`) ; le chrono
 de l'action précédente s'arrête quand la suivante n'a pas d'activité.
 
+**Routines branchées** (2026-11-04, retour user : la Guérilla proposait « Planifier ma journée » sans moyen de le faire, et « un verre
+d'eau » au point d'étape sans pouvoir le compter) : logique pure `utils/linked_routines.dart` — carte du catalogue d'abord
+(`planifier-journee`, `boire-eau`), sinon le nom (`isPlanRoutineName`, `isWaterRoutineName`, `planRoutineOf`, `waterRoutineOf`,
+`isPlanRoutine`) ; `AppLogic.planRoutine` / `waterRoutine`. **Planifier ma journée** = la porte de l'écran de planification : poser la
+journée dans `plan_screen.dart` (`_save`, demain comme la fin d'aujourd'hui) donne le +1 du jour vécu à la routine, une fois
+(`AppLogic.countPlannedDay`) ; dans la Guérilla, son coup affiche « Planifier maintenant » (`_planNow` : minuteur et chrono arrêtés,
+`showPlanScreen`, au retour journée posée = coup fait sans second +1, sinon le coup reprend) ; lanceur de routines (`RoutineLauncher(onPlan:)`)
+et Journée parfaite (`RoutinesDayView(onPlan:)`) : lanceur 🧭 au lieu de ▶ / ⏱. **Point d'étape** : bouton « +1 verre d'eau · n / cible »
+(`_waterButton`, `guerilla-water`) quand une routine d'eau existe.
+
 ## Offensive (2026-10-30, maquette validée « Offensive »)
 
 L'équivalent EN FORME de la Guérilla : avancer à fond. Lanceur ↗ de l'en-tête d'Aujourd'hui, ▶ d'un bloc Deep work (la carte de la

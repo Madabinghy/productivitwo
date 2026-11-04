@@ -535,6 +535,8 @@ class _PlanScreenState extends State<PlanScreen> {
       ..plannedAt = DateTime.now()
       ..plannedSameDay = !_tomorrow;
     await sync.saveDailySchedule(doc);
+    // Journée posée : la routine « Planifier ma journée » prend son +1 (2026-11-04).
+    logic.countPlannedDay();
     final today = ymdOf(logic.livedToday);
     final from = ymdOf(logic.livedToday.subtract(const Duration(days: 60)));
     try {

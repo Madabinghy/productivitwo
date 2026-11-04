@@ -15,6 +15,9 @@ import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, d
 import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
+import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
+import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 
 /// Écran Guérilla (maquette validée 2026-10-30) : le corps de 1 à 5, puis un
 /// coup à la fois (minuteur de 5 min, « Fait · suivant », « Pas ça », « Encore
@@ -225,11 +228,11 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     }
   }
 
-  void _doneCoup() {
+  void _doneCoup({bool count = true}) {
     final c = _queue[_index];
     CoupAlarm.cancel();
     _stopOwnChrono();
-    if (c.kind == GuerillaKind.routine && c.activityId != null) {
+    if (count && c.kind == GuerillaKind.routine && c.activityId != null) {
       logic.incHabit(c.activityId!, c.delta, livedDate(DateTime.now(), logic.dayStartMin));
     }
     _done.add(c.kind == GuerillaKind.action ? '${c.title} 5 min' : c.title);
@@ -242,6 +245,40 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     } else {
       _next();
     }
+  }
+
+  /// Coup « Planifier ma journée » (2026-11-04) : il se fait DANS l'app. La
+  /// journée posée coche la routine (`countPlannedDay`) ; revenu sans rien
+  /// poser, le coup reprend.
+  Activity? _routineOf(GuerillaCoup c) =>
+      c.kind == GuerillaKind.routine ? logic.state.activities.where((a) => a.id == c.activityId).firstOrNull : null;
+
+  bool _isPlanCoup(GuerillaCoup c) {
+    final r = _routineOf(c);
+    return r != null && isPlanRoutine(r);
+  }
+
+  Future<void> _planNow() async {
+    final c = _queue[_index];
+    _timer?.cancel();
+    CoupAlarm.cancel();
+    _stopOwnChrono();
+    await showPlanScreen(context, logic);
+    if (!mounted) return;
+    final r = _routineOf(c);
+    if (r != null && routineTodayCount(logic, r) > 0) {
+      _doneCoup(count: false);
+    } else {
+      _enter(_index);
+    }
+  }
+
+  /// +1 verre d'eau au point d'étape, sans quitter la guérilla.
+  void _drinkWater() {
+    final w = logic.waterRoutine;
+    if (w == null) return;
+    logic.incHabit(w.id, 1, livedDate(DateTime.now(), logic.dayStartMin));
+    setState(() {});
   }
 
   void _skipCoup() {
@@ -451,7 +488,8 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
           const SizedBox(height: 14),
           Text(c.title, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 32, height: 1.2, fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
-          Text(c.hint, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: _text2)),
+          Text(_isPlanCoup(c) ? '${c.hint} · se coche quand ta journée est posée' : c.hint,
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: _text2)),
           const SizedBox(height: 26),
           SizedBox(
             width: 190,
@@ -473,7 +511,10 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
           ),
         ]),
       ),
-      _primary('Fait · suivant', _doneCoup, height: 60),
+      if (_isPlanCoup(c))
+        _primary('Planifier maintenant', _planNow, height: 60)
+      else
+        _primary('Fait · suivant', _doneCoup, height: 60),
       const SizedBox(height: 10),
       Row(children: [
         Expanded(child: _outline('Pas ça', _skipCoup)),
@@ -513,6 +554,10 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
           const Text('POINT D’ÉTAPE · 1 MIN', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: _text3)),
           const SizedBox(height: 14),
           const Text('Un verre d’eau.\nTrois respirations.', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w800)),
+          if (logic.waterRoutine case final w?) ...[
+            const SizedBox(height: 12),
+            Center(child: _waterButton(w)),
+          ],
           const SizedBox(height: 12),
           const Text('Puis dis-moi, ta tête :', textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: _text2)),
           const SizedBox(height: 20),
@@ -530,6 +575,24 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
       ),
       TextButton(onPressed: _next, child: const Text('Passer la pause', style: TextStyle(color: _text3))),
     ]);
+  }
+
+  Widget _waterButton(Activity w) {
+    final n = routineTodayCount(logic, w);
+    final target = w.habitFreq == HabitFreq.daily ? w.habitTarget : null;
+    return OutlinedButton.icon(
+      key: const ValueKey('guerilla-water'),
+      onPressed: _drinkWater,
+      icon: const Icon(Icons.water_drop_outlined, size: 18),
+      label: Text('+1 verre d’eau · $n${target != null && target > 0 ? ' / $target' : ''}'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF7CC4F0),
+        side: const BorderSide(color: Color(0x667CC4F0)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      ),
+    );
   }
 
   Widget _end() {
