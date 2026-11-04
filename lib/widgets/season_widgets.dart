@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show objectiveStart;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart' show showObjectiveEditSheet;
@@ -420,35 +421,46 @@ class SeasonMetricPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final start = DateTime.parse(s.start), end = DateTime.parse(s.end).add(const Duration(days: 1));
+    // Le plan d'origine : du départ de l'objectif (valeur de départ) à sa cible, pas depuis le début de la saison.
+    final m = o.metric;
+    final oStart = objectiveStart(o);
+    final oEnd = o.endDate == null ? end : DateTime(o.endDate!.year, o.endDate!.month, o.endDate!.day).add(const Duration(days: 1));
     final lead = Duration(days: (end.difference(start).inDays * 0.45).round().clamp(7, 42));
-    final from = start.subtract(lead);
-    final span = end.difference(from).inHours.toDouble();
+    var from = start.subtract(lead);
+    if (m != null && oStart.isBefore(from)) from = oStart;
+    final to = m != null && oEnd.isAfter(end) ? oEnd : end;
+    final span = to.difference(from).inHours.clamp(1, 1 << 30).toDouble();
     final readings = [
       for (final r in o.readings)
-        if (DateTime.tryParse(r.date) case final d? when !d.isBefore(from) && d.isBefore(end)) (d, r.value),
+        if (DateTime.tryParse(r.date) case final d? when !d.isBefore(from) && d.isBefore(to)) (d, r.value),
     ];
-    final vals = [g.from ?? 0, g.target ?? 0, for (final r in readings) r.$2];
+    final planFrom = m?.startValue ?? g.from, planTarget = m?.targetValue ?? g.target;
+    final planStart = m != null ? oStart : start, planEnd = m != null ? oEnd : end;
+    final vals = [planFrom ?? 0, planTarget ?? 0, if (g.target != null) g.target!, for (final r in readings) r.$2];
     var lo = vals.reduce((a, b) => a < b ? a : b), hi = vals.reduce((a, b) => a > b ? a : b);
     final pad = (hi - lo).abs() < 1e-6 ? 1.0 : (hi - lo) * .15;
     lo -= pad;
     hi += pad;
     double x(DateTime d) => (d.difference(from).inHours / span).clamp(0.0, 1.0) * size.width;
     double y(double v) => size.height - (v - lo) / (hi - lo) * size.height;
-    canvas.drawRect(Rect.fromLTRB(x(start), 0, size.width, size.height), Paint()..color = kSeasonAccent.withValues(alpha: .08));
-    if (g.from != null && g.target != null) {
-      final a = Offset(x(start), y(g.from!)), b = Offset(size.width, y(g.target!));
+    canvas.drawRect(Rect.fromLTRB(x(start), 0, x(end), size.height), Paint()..color = kSeasonAccent.withValues(alpha: .08));
+    if (planFrom != null && planTarget != null) {
+      final a = Offset(x(planStart), y(planFrom)), b = Offset(x(planEnd), y(planTarget));
       final dash = Paint()
         ..color = kSeasonAccent
         ..strokeWidth = 1.5;
-      const n = 24;
+      const n = 32;
       for (var i = 0; i < n; i += 2) {
         canvas.drawLine(Offset.lerp(a, b, i / n)!, Offset.lerp(a, b, (i + 1) / n)!, dash);
       }
-      canvas.drawCircle(b - const Offset(3, 0), 3, Paint()..color = kSeasonAccent);
+      canvas.drawCircle(b - Offset(b.dx >= size.width - 3 ? 3 : 0, 0), 3, Paint()..color = kSeasonAccent);
     }
     if (readings.isNotEmpty) {
-      final path = Path()..moveTo(x(readings.first.$1), y(readings.first.$2));
-      for (final r in readings.skip(1)) {
+      // Le chemin parcouru part du même point que le plan.
+      final path = m != null && !oStart.isBefore(from)
+          ? (Path()..moveTo(x(oStart), y(m.startValue)))
+          : (Path()..moveTo(x(readings.first.$1), y(readings.first.$2)));
+      for (final r in m != null ? readings : readings.skip(1)) {
         path.lineTo(x(r.$1), y(r.$2));
       }
       canvas.drawPath(
@@ -576,7 +588,7 @@ class _SeasonGoalView2State extends State<SeasonGoalView2> {
         ),
         const SizedBox(height: 4),
         Row(children: [
-          Flexible(child: Text('début de saison', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: mute))),
+          Flexible(child: Text(o.metric == null ? 'début de saison' : 'départ · ${seasonNum(o.metric!.startValue)}$u', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: mute))),
           const SizedBox(width: 8),
           Expanded(
             child: Text('fin · ${seasonNum(g.target ?? 0)}$u le ${seasonEndLabel(s)}',
