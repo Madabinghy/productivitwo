@@ -251,7 +251,7 @@ class _LifeViewState extends State<LifeView> {
     return SafeArea(
       child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 120), children: [
         Row(children: [
-          Expanded(child: Text('Ma vie', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
+          Expanded(child: Text('Organisation', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
           TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
         ]),
         Padding(

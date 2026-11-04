@@ -87,6 +87,7 @@ void main() {
     await tester.longPress(find.text('Lecture'));
     await tester.pumpAndSettle();
     expect(find.text('Fiche de la routine'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Pas aujourd\'hui'), 80, scrollable: find.byType(Scrollable).last);
     await tester.tap(find.text('Pas aujourd\'hui'));
     await tester.pumpAndSettle();
     expect(logic.nowDoneSet(logic.livedYmdNow).contains('Lecture'), isTrue);

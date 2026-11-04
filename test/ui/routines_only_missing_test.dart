@@ -58,6 +58,7 @@ void main() {
     expect(find.text('1 / 6'), findsOneWidget);
     await tester.longPress(find.text('Eau'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Pas aujourd\'hui'), 80, scrollable: find.byType(Scrollable).last);
     expect(find.text('Pas aujourd\'hui'), findsOneWidget);
     expect(find.text('Fiche de la routine'), findsOneWidget);
     expect(tester.takeException(), isNull);

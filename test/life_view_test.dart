@@ -40,7 +40,7 @@ void main() {
       ),
     ));
     await tester.pump();
-    expect(find.text('Ma vie'), findsOneWidget);
+    expect(find.text('Organisation'), findsOneWidget);
     expect(find.text('Guérilla'), findsOneWidget);
     expect(find.text('SOMMEIL'), findsOneWidget);
     expect(find.text('SPORT'), findsOneWidget);
