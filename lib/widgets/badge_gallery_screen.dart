@@ -180,10 +180,10 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
               child: Center(child: CircularProgressIndicator(color: kBPrimary)),
             )
           else ...[
-            // En tête aussi (2026-11-04, retour user) : la tuile Collection annonce les séries à sauver,
-            // on y accède dès l'ouverture ; le même bouton reste plus bas, au-dessus des familles.
-            if (_facts case final f?) _inPlayButton(deck, f, atTop: true),
             _deckHeader(deck),
+            // Aussi juste au-dessus de « À aller chercher » (2026-11-04, retour user) : la tuile Collection
+            // annonce les séries à sauver, on y accède dès l'ouverture ; le même bouton reste plus bas.
+            if (_facts case final f?) _inPlayButton(deck, f, atTop: true),
             // Les cartes à aller chercher (2026-11-03, maquette validée).
             _questsSection(deck),
             _shelf(deck),
@@ -553,7 +553,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     final cards = [...inPlay.map((e) => e.$1), ...reachable].take(3).toList();
     return Padding(
       key: atTop ? const ValueKey('in-play-top') : null,
-      padding: atTop ? const EdgeInsets.only(bottom: 12) : const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 12),
       child: Material(
         color: kBSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: kBAttention.withValues(alpha: .45))),
