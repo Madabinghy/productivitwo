@@ -78,6 +78,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   DateTime? _chronoFrom;
   int _chronoSec = 0;
   bool _saved = false;
+  bool get _unlimited => _duration == kOffensiveUnlimited;
+  int get _coupMin => coupMinutes(_duration);
   /// Retour après être resté plongé dans le coup, app fermée : ce qui a été compté pendant l'absence.
   String? _awayNote;
   /// Prochain rendez-vous daté (agenda, séance) : ligne « Ensuite » et alarme d'atterrissage.
@@ -159,7 +161,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _chronoFrom = from == null ? open.startAt : DateTime.fromMillisecondsSinceEpoch(from);
       final endsAt = DateTime.fromMillisecondsSinceEpoch(ends);
       final now = DateTime.now();
-      final extra = overtimeCoups(endsAt, now, _duration);
+      final extra = overtimeCoups(endsAt, now, _coupMin);
       _won += extra;
       if (extra > 0) {
         final m = now.difference(open.startAt).inMinutes;
@@ -267,7 +269,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   }
 
   void _startCoup({DateTime? endsAt}) {
-    _endsAt = endsAt ?? DateTime.now().add(Duration(minutes: _duration));
+    _endsAt = endsAt ?? DateTime.now().add(Duration(minutes: _coupMin));
     _remaining = _endsAt!.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30);
     if (endsAt != null) CoupAlarm.cancel(all: false);
     _phase = _Phase.coup;
@@ -413,6 +415,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   /// Alarme de fin du coup (le minuteur se lit sur l'heure de fin : il continue en veille).
   void _armAlarm() {
+    if (_unlimited) return;
     final t = _cur;
     CoupAlarm.schedule(logic,
         endsAt: _endsAt!,
@@ -436,7 +439,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _end();
       return;
     }
-    if (offensivePauseDue(_won)) {
+    if (offensivePauseDue(_won) && !_unlimited) {
       // Le point d'étape n'arrête plus le chrono (« Plongé, pas perdu », lot 2) : on lève la tête, on replonge.
       _breathing = false;
       _timer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -506,12 +509,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (t == null) return;
     final step = nextChecklistItem(t.action);
     if (step == null) return _actionDone();
+    final snap = _snapshot(t);
     setChecklistItem(t.action, step.id, true);
     _stepsDone[t.action.id] = (_stepsDone[t.action.id] ?? 0) + 1;
     _persist(t);
     if (t.action.done) {
       _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
       _advance();
+      _offerUndo(t, snap, stepCounted: true);
     } else {
       setState(() {});
     }
@@ -520,10 +525,51 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _actionDone() {
     final t = _cur;
     if (t == null) return;
+    final snap = _snapshot(t);
     setActionDone(t.action, true);
     _persist(t);
     _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
     _advance();
+    _offerUndo(t, snap);
+  }
+
+  /// État d'une action avant de la cocher : faite ou non, et chaque étape.
+  ({bool done, DateTime? doneAt, int index, List<(bool, DateTime?)> steps}) _snapshot(OffensiveTarget t) =>
+      (done: t.action.done, doneAt: t.action.doneAt, index: _index, steps: [for (final c in t.action.checklist) (c.done, c.doneAt)]);
+
+  /// « Action faite » par erreur (retour user 2026-11-04 : le gros bouton touché en croyant relancer) :
+  /// quelques secondes pour revenir dessus — l'action se rouvre et l'offensive y retourne.
+  void _offerUndo(OffensiveTarget t, ({bool done, DateTime? doneAt, int index, List<(bool, DateTime?)> steps}) snap, {bool stepCounted = false}) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showClosingSnackBar(SnackBar(
+        content: Text('« ${t.action.title} » faite'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(label: 'Annuler', onPressed: () => _undoDone(t, snap, stepCounted: stepCounted)),
+      ));
+  }
+
+  void _undoDone(OffensiveTarget t, ({bool done, DateTime? doneAt, int index, List<(bool, DateTime?)> steps}) snap, {bool stepCounted = false}) {
+    if (!mounted) return;
+    t.action.done = snap.done;
+    t.action.doneAt = snap.doneAt;
+    for (var i = 0; i < t.action.checklist.length && i < snap.steps.length; i++) {
+      t.action.checklist[i].done = snap.steps[i].$1;
+      t.action.checklist[i].doneAt = snap.steps[i].$2;
+    }
+    _persist(t);
+    _actionsDone[t.project.id]?.remove(t.action.title);
+    if (stepCounted) {
+      final n = (_stepsDone[t.action.id] ?? 1) - 1;
+      _stepsDone[t.action.id] = n < 0 ? 0 : n;
+    }
+    if (_phase == _Phase.coup) {
+      setState(() => _index = snap.index);
+      _startChrono();
+      _saveSession();
+    } else {
+      setState(() {});
+    }
   }
 
   void _skip() {
@@ -673,6 +719,46 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         ),
       );
 
+  /// Le grand choix « Illimité » (2026-11-04, retour user) : plongé dans l'action, sans minuteur.
+  Widget _unlimitedChoice() {
+    final on = _unlimited;
+    return Material(
+      color: on ? kOffensiveAccent.withValues(alpha: .16) : Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        key: const ValueKey('offensive-unlimited'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _duration = kOffensiveUnlimited),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? kOffensiveAccent : Colors.white.withValues(alpha: .14), width: on ? 2 : 1),
+          ),
+          child: Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: on ? kOffensiveAccent : Colors.white.withValues(alpha: .08)),
+              child: Text('∞', style: TextStyle(fontSize: 26, height: 1, fontWeight: FontWeight.w800, color: on ? const Color(0xFF1A0E06) : Colors.white)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Illimité', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: on ? kOffensiveAccent : Colors.white)),
+                const SizedBox(height: 2),
+                const Text('Plongé dans l’action, aucun minuteur. Un coup compte en silence toutes les 25 min.',
+                    style: TextStyle(fontSize: 12.5, height: 1.3, color: _text2)),
+              ]),
+            ),
+            if (on) const Icon(Icons.check_circle, color: kOffensiveAccent),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _setup() {
     final preview = _previewQueue();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -682,9 +768,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           const SizedBox(height: 6),
           const Text('En forme : on avance à fond', style: TextStyle(fontSize: 28, height: 1.15, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          const Text('Des coups de 10, 15 ou 25 min sur tes vraies actions de projet, l’une après l’autre. Tu choisis le front, l’app enchaîne.',
+          const Text('Tes vraies actions de projet, l’une après l’autre : sans minuteur, ou en coups de 10, 15 ou 25 min. Tu choisis le front, l’app enchaîne.',
               style: TextStyle(fontSize: 14.5, height: 1.4, color: _text2)),
           _label('DURÉE D’UN COUP'),
+          _unlimitedChoice(),
+          const SizedBox(height: 8),
           Row(children: [
             for (final d in kOffensiveDurations) ...[
               if (d != kOffensiveDurations.first) const SizedBox(width: 8),
@@ -787,10 +875,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final step = nextChecklistItem(t.action);
     final stepIdx = step == null ? -1 : steps.indexOf(step);
     final after = stepIdx >= 0 && stepIdx + 1 < steps.length ? steps.skip(stepIdx + 1).where((s) => !s.done).firstOrNull : null;
-    final total = _duration * 60;
+    final total = _coupMin * 60;
     final left = _remaining;
-    final mm = (left ~/ 60).toString();
-    final ss = (left % 60).toString().padLeft(2, '0');
+    // Illimité : le temps passé monte, l'anneau suit la tranche de 25 min en cours.
+    final shown = _unlimited ? (_startedAt == null ? 0 : DateTime.now().difference(_startedAt!).inSeconds) : left;
+    final hh = shown ~/ 3600;
+    final mm = hh > 0 ? '$hh:${((shown % 3600) ~/ 60).toString().padLeft(2, '0')}' : (shown ~/ 60).toString();
+    final ss = (shown % 60).toString().padLeft(2, '0');
     final front = _front == null ? 'OFFENSIVE' : 'OFFENSIVE · ${t.project.title.toUpperCase()}';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
@@ -829,7 +920,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text('$mm:$ss', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
-              Text('reste sur $_duration', style: const TextStyle(fontSize: 11, color: _text3)),
+              Text(_unlimited ? '∞ illimité' : 'reste sur $_duration', style: const TextStyle(fontSize: 11, color: _text3)),
             ]),
           ]),
         ),
@@ -893,13 +984,17 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           Expanded(child: _outline('Action faite', _actionDone)),
           const SizedBox(width: 8),
         ],
-        Expanded(child: _outline('+$_duration min', _moreTime)),
-        const SizedBox(width: 8),
+        if (!_unlimited) ...[
+          Expanded(child: _outline('+$_duration min', _moreTime)),
+          const SizedBox(width: 8),
+        ],
         Expanded(child: _outline('Pas ça', _skip)),
       ]),
       const SizedBox(height: 8),
       Text(
-        t.chronoActivityId == null
+        _unlimited
+            ? 'Illimité : rien ne sonne. Chaque tranche de 25 min compte un coup, en silence.'
+            : t.chronoActivityId == null
             ? 'Au bout de $_duration:00, le coup est gagné même sans finir.'
             : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == t.chronoActivityId).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
         textAlign: TextAlign.center,
