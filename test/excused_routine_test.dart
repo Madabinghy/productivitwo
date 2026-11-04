@@ -10,5 +10,6 @@ void main() {
     expect(missed.routinesDue, 1);
     final excused = scoreDay(day, activities: [r], reachedDaysByRoutine: const {}, excused: {'r'});
     expect(excused.routinesDue, 0);
+    expect(excused.excused, 1);
   });
 }

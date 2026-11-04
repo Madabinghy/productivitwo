@@ -389,13 +389,18 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now,
 class DayScore {
   final String ymd;
   final int routinesDue, routinesReached, blocks, blocksDone;
-  const DayScore(this.ymd, this.routinesDue, this.routinesReached, this.blocks, this.blocksDone);
+  /// Routines écartées « pas aujourd'hui » ce jour-là (hors dues).
+  final int excused;
+  const DayScore(this.ymd, this.routinesDue, this.routinesReached, this.blocks, this.blocksDone, {this.excused = 0});
 
   /// Journée neutre : rien à tenir ce jour-là, elle ne compte ni pour ni contre.
   bool get neutral => routinesDue + blocks == 0;
   double get routineRatio => routinesDue == 0 ? 1 : routinesReached / routinesDue;
   double get blockRatio => blocks == 0 ? 1 : blocksDone / blocks;
   bool get perfect => !neutral && routinesReached == routinesDue && blocksDone == blocks;
+  /// Une journée parfaite forge une braise, sauf si une routine y a été excusée (décision user 2026-11-04 :
+  /// sinon on fabriquerait des braises en écartant tout).
+  bool get forgesEmber => perfect && excused == 0;
   bool solidAt(double threshold) => !neutral && routineRatio >= threshold && blockRatio >= threshold;
 }
 
@@ -418,14 +423,17 @@ DayScore scoreDay(DateTime day, {
   Set<String> excused = const {},
 }) {
   final ymd = ymdOf(day);
-  var due = 0, reached = 0;
+  var due = 0, reached = 0, excusedN = 0;
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
     if (_day(a.createdAt).isAfter(day)) continue;
     // Acquise (2026-10-30) : hors journée parfaite / solide à partir de son passage.
     if (isAcquiredOn(acquired, a.id, ymd)) continue;
     // « Pas aujourd'hui » (2026-11-02, décision user) : la routine écartée ce jour-là n'est plus réclamée.
-    if (excused.contains(a.id)) continue;
+    if (excused.contains(a.id)) {
+      excusedN++;
+      continue;
+    }
     due++;
     if (reachedDaysByRoutine[a.id]?.contains(ymd) ?? false) reached++;
   }
@@ -437,7 +445,7 @@ DayScore scoreDay(DateTime day, {
       if (b.status == 'done') done++;
     }
   }
-  return DayScore(ymd, due, reached, blocks, done);
+  return DayScore(ymd, due, reached, blocks, done, excused: excusedN);
 }
 
 /// Scores de tous les jours passés (hier vécu compris), du plus ancien au plus
@@ -649,7 +657,7 @@ BadgeDeck computeBadges({
   // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
   final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
   final embers = emberLedger(
-    perfectYmds: [for (final d in days) if (d.perfect) d.ymd],
+    perfectYmds: [for (final d in days) if (d.forgesEmber) d.ymd],
     heldWeekYmds: weeks.heldSundays,
     spends: emberSpends,
     reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},

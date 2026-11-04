@@ -1838,6 +1838,12 @@ Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'
 solide (`scoreDay(excused:)`, `scoreDays(excusedOf:)`), hors Métronome (`metronomeDays(excusedOf:)`) et hors faits du jour
 (`composeTodayFacts(excused:)` : tuile Journée parfaite, enjeux, notification du soir). Branché par `BadgeCenter`
 (`excusedOf: nowDoneSet(ymd sans tirets)`). La série de la routine, elle, n'est pas comblée : le jour reste non atteint.
+**Pas de braise, et on le dit** (2026-11-04, décision user : sinon on fabriquerait des braises en écartant tout) : une journée parfaite
+où une routine a été excusée reste parfaite (badge Journée parfaite) mais ne forge PAS de braise (`DayScore.excused`,
+`DayScore.forgesEmber`, `perfectYmds` de `computeBadges`) ; le bilan du soir dit « Journée parfaite · n routine(s) excusée(s) · pas de
+braise ce soir » (`buildEveningLedger(excusedToday:)`, `AppLogic.excusedRoutinesToday`). Le « Pas aujourd'hui » du lanceur, de la vue
+Routines et d'Enchaîner les routines affiche « … · ta journée parfaite reste possible (sans braise), la série de 12 j s'arrête »
+(`notTodayLine`, `utils/not_today.dart` ; `AppLogic.notTodayMessage` / `currentSeriesOf`), 6 s, avec « Annuler ».
 
 ## SnackBar : toujours `showClosingSnackBar` (2026-11-01)
 

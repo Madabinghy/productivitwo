@@ -53,6 +53,8 @@ EveningLedger buildEveningLedger({
   bool perfectToday = false,
   /// Braises libres maintenant (pour « n sur 3 »).
   int emberStock = 0,
+  /// Routines excusées « pas aujourd'hui » : la journée reste parfaite, mais ne forge pas de braise.
+  int excusedToday = 0,
 }) {
   final advanced = <LedgerLine>[];
   final slipped = <LedgerLine>[];
@@ -60,7 +62,13 @@ EveningLedger buildEveningLedger({
   final calToday = DateTime(dayStart.year, dayStart.month, dayStart.day);
 
   // ── Braise : la journée parfaite en forge une à la bascule ────────────────
-  if (perfectToday) {
+  if (perfectToday && excusedToday > 0) {
+    advanced.add(LedgerLine(
+      '✓',
+      'Journée parfaite · $excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}',
+      'pas de braise ce soir : elle se forge sans « pas aujourd\'hui »',
+    ));
+  } else if (perfectToday) {
     advanced.add(LedgerLine(
       '+1',
       'Journée parfaite · une braise',
@@ -70,7 +78,7 @@ EveningLedger buildEveningLedger({
   // ── Braise : le dimanche, une semaine tenue en forge une aussi ────────────
   final week = deck?.weeks.thisWeek;
   if (week != null && week.pct != null && calToday.weekday == DateTime.sunday && deck!.weeks.missing == 0) {
-    final stock = emberStock + (perfectToday ? 1 : 0);
+    final stock = emberStock + (perfectToday && excusedToday == 0 ? 1 : 0);
     advanced.add(LedgerLine(
       '+1',
       'Semaine tenue · ${deck.weeks.current + 1} d’affilée · une braise',

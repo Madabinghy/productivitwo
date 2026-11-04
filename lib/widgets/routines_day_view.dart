@@ -308,8 +308,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showClosingSnackBar(SnackBar(
-        content: Text('Pas aujourd\'hui : ${a.name}'),
-        duration: const Duration(seconds: 4),
+        content: Text(logic.notTodayMessage(a)),
+        duration: const Duration(seconds: 6),
         action: SnackBarAction(
           label: 'Annuler',
           onPressed: () {

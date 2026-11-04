@@ -3,6 +3,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async';
+import 'package:productivitwo_v1/utils/not_today.dart';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +12,7 @@ import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
-import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays;
+import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays, routineSeries;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
@@ -4212,6 +4213,20 @@ extension TodayLogic on AppLogic {
   void setNowSkipped(String ymd, Set<String> ids) {
     state.nowSkippedByYmd[ymd] = ids.toList();
     onChange();
+  }
+
+  /// Série en cours d'une routine (jours atteints, rallumés, gelés), pour le message du « Pas aujourd'hui ».
+  int currentSeriesOf(Activity a) =>
+      routineSeries(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin, bridged: bridgedOf(a.id), frozen: frozenOf(a.id)).current;
+
+  /// Message à montrer après « Pas aujourd'hui » sur [a] (`utils/not_today.dart`).
+  String notTodayMessage(Activity a) =>
+      notTodayLine(a.name, series: currentSeriesOf(a), daily: a.isHabit && a.habitFreq == HabitFreq.daily);
+
+  /// Routines quotidiennes écartées « pas aujourd'hui » dans la journée vécue (pas de braise ce soir).
+  int excusedRoutinesToday() {
+    final ids = nowDoneSet(livedYmdNow);
+    return state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily && ids.contains(a.id)).length;
   }
 
   void setNowDone(String ymd, Set<String> ids) {
