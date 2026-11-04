@@ -509,6 +509,85 @@ List<MapEntry<String, int>> countByName(Iterable<Workout> list) {
   return m.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 }
 
+// ── Fiche d'un exercice, une séance passée (lot 3) ───────────────────────────
+
+/// Une séance où l'exercice a été fait, avec ses séries.
+class ExerciseSession {
+  final Workout workout;
+  final List<SetLog> sets;
+  const ExerciseSession(this.workout, this.sets);
+
+  double? get topKg => sets.map((s) => s.weightKg).whereType<double>().fold<double?>(null, (m, x) => m == null || x > m ? x : m);
+  double get volume => volumeOf(sets);
+  int get reps => repsOf(sets);
+  int get seconds => sets.fold(0, (a, s) => a + (s.seconds ?? 0));
+  int? get avgRest => avgRestSec(sets);
+}
+
+/// Les séances d'un exercice, de la plus ancienne à la plus récente.
+List<ExerciseSession> exerciseHistory(String exerciseId, Iterable<Workout> workouts) => [
+      for (final w in liveWorkouts(workouts))
+        if (w.sets.any((s) => s.exerciseId == exerciseId)) ExerciseSession(w, w.sets.where((s) => s.exerciseId == exerciseId).toList()),
+    ];
+
+/// La valeur d'une séance d'exercice pour une courbe : poids max, volume, répétitions (ou secondes), repos moyen.
+enum ExerciseCurve { weight, volume, reps, rest }
+
+double? curveValue(ExerciseSession x, ExerciseCurve c) => switch (c) {
+      ExerciseCurve.weight => x.topKg,
+      ExerciseCurve.volume => x.volume > 0 ? x.volume : null,
+      ExerciseCurve.reps => x.reps > 0 ? x.reps.toDouble() : (x.seconds > 0 ? x.seconds.toDouble() : null),
+      ExerciseCurve.rest => x.avgRest?.toDouble(),
+    };
+
+/// « 10, 10, 10, 9 à 40 kg » (même poids partout), sinon les séries une à une.
+String setsLine(List<SetLog> sets) {
+  if (sets.isEmpty) return '';
+  final kgs = sets.map((s) => s.weightKg).toSet();
+  if (kgs.length == 1 && kgs.first != null) return '${sets.map((s) => s.reps).join(', ')} à ${kgLabel(kgs.first!)} kg';
+  return sets.map(setLabel).join(', ');
+}
+
+/// Les lignes d'une séance passée pour la refaire : une par exercice, dans l'ordre, séries et charge de la première série.
+List<TemplateItem> itemsFromWorkout(Workout w) {
+  final order = <String>[];
+  for (final s in w.sets) {
+    if (!order.contains(s.exerciseId)) order.add(s.exerciseId);
+  }
+  return [
+    for (final id in order)
+      () {
+        final sets = w.sets.where((s) => s.exerciseId == id).toList();
+        final f = sets.first;
+        return TemplateItem(exerciseId: id, sets: sets.length, reps: f.seconds != null && f.reps == 0 ? f.seconds : f.reps, weightKg: f.weightKg);
+      }(),
+  ];
+}
+
+/// Une semaine ou un mois de séances : nombre, durée, volume.
+class PeriodSummary {
+  final int count;
+  final int minutes;
+  final double volume;
+  const PeriodSummary(this.count, this.minutes, this.volume);
+}
+
+PeriodSummary periodSummary(Iterable<Workout> list) {
+  final l = liveWorkouts(list).where((w) => w.sets.isNotEmpty).toList();
+  return PeriodSummary(l.length, l.fold(0, (a, w) => a + w.durationMin), l.fold(0.0, (a, w) => a + volumeOf(w.sets)));
+}
+
+/// « 14 200 kg », « 980 kg ».
+String volumeLabel(double kg) {
+  final n = kg.round().toString();
+  final b = StringBuffer();
+  for (var i = 0; i < n.length; i++) {
+    if (i > 0 && (n.length - i) % 3 == 0) b.write(' ');
+    b.write(n[i]);
+  }
+  return '$b kg';
+}
+
 // ── Libellés ─────────────────────────────────────────────────────────────────
 
 /// « 42,5 », « 40 ».
