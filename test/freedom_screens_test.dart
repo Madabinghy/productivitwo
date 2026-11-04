@@ -148,7 +148,7 @@ void main() {
     // 11 minutes plus tard : l'écran demande comment ça a été et ce qui a été fait.
     final late = PendingUrge(freedomId: 'f1', startMs: DateTime.now().subtract(const Duration(minutes: 11)).millisecondsSinceEpoch, intensity: 3);
     await UrgeSessionStore.save(late);
-    await t.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => UrgeScreen(logic: logic, id: 'f1', resume: late))), child: const Text('back'))))));
+    await t.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => UrgeScreen(logic: logic, id: 'f1', resume: late, ticking: false))), child: const Text('back'))))));
     await t.tap(find.text('back'));
     await t.pump();
     await t.pump(const Duration(milliseconds: 400));

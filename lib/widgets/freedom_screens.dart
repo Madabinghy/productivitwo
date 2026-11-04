@@ -560,7 +560,7 @@ class _UrgeScreenState extends State<UrgeScreen> {
     final now = DateTime.now();
     final elapsed = now.difference(_start).inSeconds;
     final left = _u.secondsLeft(now);
-    final over = widget.ticking && left == 0;
+    final over = left == 0;
     final best = bestParade(f);
     final rates = {for (final r in paradeRates(f)) r.parade: r};
     final breath = ['Inspire', 'Bloque', 'Expire'][(elapsed % 14) < 4 ? 0 : ((elapsed % 14) < 8 ? 1 : 2)];
