@@ -148,6 +148,7 @@ void main() {
     await t.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => UrgeScreen(logic: logic, id: 'f1', resume: late))), child: const Text('back'))))));
     await t.tap(find.text('back'));
     await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
     expect(find.text('Les 10 minutes sont passées.'), findsOneWidget);
     expect(find.byKey(const ValueKey('urge-away')), findsNothing);
     await t.tap(find.text('Marcher 5 min'));
