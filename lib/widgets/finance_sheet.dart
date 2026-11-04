@@ -5,7 +5,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/money_month_card.dart' show MoneyMonthCard;
-import 'package:productivitwo_v1/widgets/receipt_sheet.dart' show showReceiptSheet;
+import 'package:productivitwo_v1/widgets/receipt_sheet.dart' show receiptDayLabel, showReceiptSheet;
 import 'package:productivitwo_v1/widgets/balance_check_sheet.dart' show showBalanceCheck;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart';
@@ -91,19 +91,7 @@ class _FinanceSheetState extends State<FinanceSheet> {
     _trackedSnack(context, logic, ymd);
   }
 
-  Future<void> _removeExpense(Expense x) async {
-    await logic.removeExpense(x.id);
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
-    messenger.showClosingSnackBar(SnackBar(
-      content: Text('${euros(x.amount)} retirés'),
-      duration: const Duration(seconds: 4),
-      action: SnackBarAction(
-        label: 'Annuler',
-        onPressed: () => logic.restoreExpense(x),
-      ),
-    ));
-  }
+  Future<void> _removeExpense(Expense x) => removeExpenseWithUndo(context, logic, x);
 
   /// Corriger une dépense : la même feuille, déjà remplie, avec « Supprimer ».
   Future<void> _editExpense(Expense x) async {
@@ -112,8 +100,7 @@ class _FinanceSheetState extends State<FinanceSheet> {
       await showReceiptSheet(context, logic: logic, receiptId: x.receiptId!);
       return;
     }
-    final deleted = await showExpenseSheet(context, logic: logic, edit: x);
-    if (deleted == true && mounted) _removeExpense(x);
+    await editExpense(context, logic: logic, expense: x);
   }
 
   Future<void> _editEnvelope(Envelope e) => editEnvelopeCap(context, logic, e);
@@ -634,6 +621,27 @@ Future<int?> _askAmount(BuildContext context, {required String title, String? hi
   );
 }
 
+/// Retire une dépense et propose « Annuler » (domaine, heure et ticket compris).
+Future<void> removeExpenseWithUndo(BuildContext context, AppLogic logic, Expense x) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  await logic.removeExpense(x.id);
+  if (messenger == null) return;
+  messenger
+    ..hideCurrentSnackBar()
+    ..showClosingSnackBar(SnackBar(
+      content: Text('${euros(x.amount)} retirés'),
+      duration: const Duration(seconds: 4),
+      action: SnackBarAction(label: 'Annuler', onPressed: () => logic.restoreExpense(x)),
+    ));
+}
+
+/// Corriger une dépense notée à la main, depuis n'importe quel écran :
+/// la feuille déjà remplie ; « Supprimer cette dépense » la retire vraiment.
+Future<void> editExpense(BuildContext context, {required AppLogic logic, required Expense expense}) async {
+  final deleted = await showExpenseSheet(context, logic: logic, edit: expense);
+  if (deleted == true && context.mounted) await removeExpenseWithUndo(context, logic, expense);
+}
+
 /// Saisie d'une dépense en cinq secondes : montant (clavier ouvert), enveloppe
 /// (la dernière utilisée en avant), note facultative, aujourd'hui ou hier.
 /// [edit] = corriger une dépense existante ; renvoie true quand elle doit être supprimée.
@@ -772,6 +780,8 @@ class _ExpenseEntryState extends State<_ExpenseEntry> {
         const SizedBox(height: 10),
         SegmentedButton<String>(
           segments: [
+            if (widget.edit != null && !canLogOn(widget.edit!.ymd, today))
+              ButtonSegment(value: widget.edit!.ymd, label: Text(receiptDayLabel(widget.edit!.ymd))),
             ButtonSegment(value: today, label: const Text('Aujourd’hui')),
             ButtonSegment(value: prevYmd(today), label: const Text('Hier')),
           ],

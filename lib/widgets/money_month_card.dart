@@ -4,7 +4,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/month_spend.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
-import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, showExpenseSheet;
+import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, editExpense;
 import 'package:productivitwo_v1/widgets/receipt_sheet.dart' show receiptDayLabel, showReceiptSheet;
 
 /// « Où va mon argent » (maquette validée 2026-11-03, lot 2) : le mois en un
@@ -292,7 +292,7 @@ class _CategoryPageState extends State<_CategoryPage> {
     return InkWell(
       onTap: i.fixed
           ? null
-          : () => r != null ? showReceiptSheet(context, logic: logic, receiptId: r.id) : showExpenseSheet(context, logic: logic, edit: i.expense),
+          : () => r != null ? showReceiptSheet(context, logic: logic, receiptId: r.id) : editExpense(context, logic: logic, expense: i.expense!),
       child: Container(
         decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: cs.onSurface.withValues(alpha: .06)))),
         padding: const EdgeInsets.symmetric(vertical: 8),
