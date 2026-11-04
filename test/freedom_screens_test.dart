@@ -5,12 +5,17 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/freedom.dart';
 import 'package:productivitwo_v1/widgets/freedom_screens.dart';
+import 'package:productivitwo_v1/urge_session_store.dart';
+import 'package:productivitwo_v1/utils/urge_session.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 AppLogic _logic() => AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
 
 Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('créer une liberté : nom libre, but, pourquoi', (t) async {
     t.view.physicalSize = const Size(800, 4000);
     t.view.devicePixelRatio = 2;
@@ -114,5 +119,47 @@ void main() {
     final ids = logic.freedomIds;
     expect(ids.length, 2);
     expect({for (final id in ids) logic.freedomOf(id).plan!.name}, {'Ma pause', 'Écrans le soir'});
+  });
+
+  testWidgets("envie : on part faire autre chose, au bout on dit comment ça a été", (t) async {
+    t.view.physicalSize = const Size(800, 4000);
+    t.view.devicePixelRatio = 2;
+    addTearDown(t.view.reset);
+    final logic = _logic();
+    logic.freedoms = {'f1': Freedom(
+      plan: FreedomPlan(name: 'Ma pause', goal: FreedomGoal.stop, startYmd: ymdOf(DateTime.now()), why: ''),
+      urges: const {},
+      slips: const {},
+    )};
+    await t.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => UrgeScreen(logic: logic, id: 'f1', ticking: false))), child: const Text('go'))))));
+    await t.tap(find.text('go'));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('urge-3')));
+    await t.tap(find.byKey(const ValueKey('urge-away')));
+    await t.pumpAndSettle();
+    // L'envie reste en cours, rien n'est compté.
+    expect(UrgeSessionStore.current?.freedomId, 'f1');
+    expect(UrgeSessionStore.current?.intensity, 3);
+    expect(logic.freedomOf('f1').urgeList, isEmpty);
+
+    // 11 minutes plus tard : l'écran demande comment ça a été et ce qui a été fait.
+    final late = PendingUrge(freedomId: 'f1', startMs: DateTime.now().subtract(const Duration(minutes: 11)).millisecondsSinceEpoch, intensity: 3);
+    await UrgeSessionStore.save(late);
+    await t.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => UrgeScreen(logic: logic, id: 'f1', resume: late))), child: const Text('back'))))));
+    await t.tap(find.text('back'));
+    await t.pump();
+    expect(find.text('Les 10 minutes sont passées.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('urge-away')), findsNothing);
+    await t.tap(find.text('Marcher 5 min'));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('urge-passed')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 500));
+    final u = logic.freedomOf('f1').urgeList.single;
+    expect(u.passed, isTrue);
+    expect(u.parade, 'Marcher 5 min');
+    expect(u.durationSec, 600);
+    expect(UrgeSessionStore.current, isNull);
+    await t.pump(const Duration(seconds: 5));
   });
 }

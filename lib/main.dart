@@ -130,6 +130,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/widgets/routine_catalog_screen.dart' show showRoutineCatalog;
+import 'package:productivitwo_v1/widgets/freedom_screens.dart' show reopenPendingUrge;
 import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
@@ -2169,6 +2170,8 @@ class _AppRootState extends State<AppRoot>
       _openBlockFromNotif(p);
     } else if (p == NotificationService.kPayloadPerfect) {
       onToday((t) => t.openPerfectDaySheet());
+    } else if (p == NotificationService.kPayloadUrge) {
+      reopenPendingUrge(ctx, logic: logic);
     } else if (p.startsWith('run:')) {
       onToday((t) => t.openRun(p.substring(4)));
     } else {
