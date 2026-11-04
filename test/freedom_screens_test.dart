@@ -141,6 +141,9 @@ void main() {
     expect(UrgeSessionStore.current?.freedomId, 'f1');
     expect(UrgeSessionStore.current?.intensity, 3);
     expect(logic.freedomOf('f1').urgeList, isEmpty);
+    expect(find.textContaining('Le minuteur continue'), findsOneWidget);
+    await t.pump(const Duration(seconds: 4));
+    await t.pumpAndSettle();
 
     // 11 minutes plus tard : l'écran demande comment ça a été et ce qui a été fait.
     final late = PendingUrge(freedomId: 'f1', startMs: DateTime.now().subtract(const Duration(minutes: 11)).millisecondsSinceEpoch, intensity: 3);
