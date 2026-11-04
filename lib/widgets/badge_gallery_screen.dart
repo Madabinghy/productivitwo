@@ -469,7 +469,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           const SizedBox(height: 14),
           if (q.sniperable)
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: kSniperAccent, foregroundColor: const Color(0xFF06202C), padding: const EdgeInsets.symmetric(vertical: 14)),
+              style: FilledButton.styleFrom(backgroundColor: kSniperAccent, foregroundColor: const Color(0xFF1F0E06), padding: const EdgeInsets.symmetric(vertical: 14)),
               icon: const Icon(Icons.gps_fixed),
               label: Text('Sniper sur cette carte · ≈ ${fmtMin(q.stepsMin)}', style: const TextStyle(fontWeight: FontWeight.w800)),
               onPressed: () {

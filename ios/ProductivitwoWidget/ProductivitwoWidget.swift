@@ -36,7 +36,7 @@ private let kEmber = Color(hex: 0xFFB27A)
 private let kGold = Color(hex: 0xFFD27A)
 private let kAmber = Color(hex: 0xE0A93A)
 private let kGuerilla = Color(hex: 0xC5D38A)
-private let kOffensive = Color(hex: 0xFF9B6E)
+private let kOffensive = Color(hex: 0x7FD3FF)
 private let kNight = Color(hex: 0x1D2A44)
 private let kNightText = Color(hex: 0xA9B8E8)
 
