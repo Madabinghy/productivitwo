@@ -6,42 +6,30 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore;
 import 'package:productivitwo_v1/utils/domain_colors.dart' show domainColor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/fiche_cache.dart';
-import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/life_natures.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/meal_day.dart' show mealWeekView, currentMealMoment, MealCell;
 import 'package:productivitwo_v1/utils/meal_plan.dart' show PlannedMeal, leftoversOf, mealKey;
 import 'package:productivitwo_v1/utils/objective_progress.dart';
-import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sleep_stats.dart';
 import 'package:productivitwo_v1/utils/sport_stats.dart';
-import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek, weekSummary;
+import 'package:productivitwo_v1/utils/week_stats.dart' show domainWeeks, DomainWeek;
 import 'package:productivitwo_v1/utils/budget_window.dart' show dailyMinutesByDomain;
-import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
-import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/finance_sheet.dart' show kMoneyAccent, showFinanceSheet;
 import 'package:productivitwo_v1/utils/finances.dart' show accountNow, euros, monthSummary, trackedDays;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
-import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
-import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
-import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
-import 'package:productivitwo_v1/widgets/plan_screen.dart' show kPlanAccent, showPlanScreen;
-import 'package:productivitwo_v1/widgets/season_view.dart' show SeasonTile;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, WeightTrajectoryPainter;
 import 'package:productivitwo_v1/widgets/sleep_sheet.dart' show SleepNightsMini;
 import 'package:productivitwo_v1/widgets/finance_flow_card.dart' show FinanceFlowMini;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show computeObjectiveTrajectory;
-import 'package:productivitwo_v1/widgets/week_review_screen.dart' show kReviewAccent, showWeekReviewScreen;
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 
 const _kNight = Color(0xFF7FB2E8);
@@ -152,19 +140,6 @@ class _LifeViewState extends State<LifeView> {
     } catch (_) {}
   }
 
-  Future<void> _run(String kind) async {
-    final p = RunSessionStore.current;
-    final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), logic.livedTodayYmd) ? p : null;
-    if (kind == kGuerillaKind) {
-      await showGuerillaScreen(context, logic, resume: pending);
-    } else if (kind == kSniperKind) {
-      await showSniperScreen(context, logic, badges: widget.badges, resume: pending);
-    } else {
-      await showOffensiveScreen(context, logic, resume: pending);
-    }
-    if (mounted) setState(() {});
-  }
-
   String? _domainOf(StrategicObjective o) {
     if (o.domainId != null && o.domainId!.isNotEmpty) return o.domainId;
     final ids = [...o.timeCommitments.map((c) => c.activityId), ...o.routineCommitments.map((c) => c.activityId)];
@@ -219,31 +194,6 @@ class _LifeViewState extends State<LifeView> {
     // Une seule tuile Sommeil / Sport / Repas, même si deux domaines en ont la nature.
     final seenSheet = <DomainNature>{};
 
-    Widget launcher(String label, Object icon, Color c, VoidCallback onTap, {bool dot = false}) => Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(children: [
-                Stack(clipBehavior: Clip.none, children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: c.withValues(alpha: .14), border: Border.all(color: c.withValues(alpha: .7), width: 1.5)),
-                    child: icon is IconData ? Icon(icon, color: c, size: 22) : Center(child: ModeGlyph(kind: icon as String, size: 24, color: c)),
-                  ),
-                  if (dot) Positioned(right: 0, top: 0, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle))),
-                ]),
-                const SizedBox(height: 5),
-                Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: mute)),
-              ]),
-            ),
-          ),
-        );
-    final pending = RunSessionStore.current;
-    bool live(String kind) => pending != null && pending.kind == kind && pending.isLive(now, logic.livedTodayYmd);
-
     final tiles = <Widget>[];
     for (final d in sorted) {
       final n = _natureOf(d);
@@ -258,19 +208,9 @@ class _LifeViewState extends State<LifeView> {
       child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 120), children: [
         Row(children: [
           Expanded(child: Text('Organisation', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
+          // Objectifs : la liste complète (rushs, veille, archivés, création) ; les tuiles portent chacune le leur.
+          TextButton(key: const ValueKey('life-objectives'), onPressed: _openAllObjectives, child: Text('Objectifs · ${active.length}')),
           TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
-        ]),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(_sentence(now, weeks), style: TextStyle(fontSize: 15.5, height: 1.35, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .85))),
-        ),
-        _section(mute, 'MES MODES'),
-        Row(children: [
-          launcher('Guérilla', kGuerillaKind, kGuerillaAccent, () => _run(kGuerillaKind), dot: live(kGuerillaKind)),
-          launcher('Sniper', Icons.gps_fixed, kSniperAccent, () => _run(kSniperKind), dot: live(kSniperKind)),
-          launcher('Offensive', kOffensiveKind, kOffensiveAccent, () => _run(kOffensiveKind), dot: live(kOffensiveKind)),
-          launcher('Planifier', Icons.explore_outlined, kPlanAccent, () => showPlanScreen(context, logic, badges: widget.badges)),
-          launcher('Revue', Icons.event_repeat_rounded, kReviewAccent, () => showWeekReviewScreen(context, logic, badges: widget.badges)),
         ]),
         _section(mute, 'CETTE SEMAINE'),
         WeekStatsView(logic: logic, sync: widget.sync, badges: widget.badges, onOpenDomain: (d, {focus = 'time'}) => widget.onOpenDomain(d), onManageDomains: widget.onManageDomains, onlyWeekLine: true),
@@ -283,49 +223,8 @@ class _LifeViewState extends State<LifeView> {
           _section(mute, 'OBJECTIFS SANS DOMAINE'),
           for (final o in orphan) _objectiveLine(cs, o, progress[o.id], cs.primary),
         ],
-        const SizedBox(height: 14),
-        Row(children: [
-          if (widget.badges case final bc?) ...[
-            Expanded(child: SeasonTile(logic: logic, center: bc)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _smallTile(cs, 'BADGES', ListenableBuilder(
-                listenable: bc,
-                builder: (_, __) => Text(bc.deck == null ? '…' : '${bc.deck!.acquired} / ${bc.deck!.total} ›', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              ), () => showBadgeGallerySheet(context, logic: logic, sync: widget.sync, center: bc)),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(child: _smallTile(cs, 'OBJECTIFS', Text('${active.length} actifs ›', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)), _openAllObjectives)),
-        ]),
       ]),
     );
-  }
-
-  String _sentence(DateTime now, Map<String, DomainWeek> weeks) {
-    final st = logic.state;
-    final w = weekSummary(activities: st.activeActivities, hits: st.habitHits, sessions: st.sessions, objectives: _objectives.where((o) => o.status == 'active'), now: now);
-    final natures = {for (final d in st.activeDomains) d.id: _natureOf(d)};
-    int? sleepAvg;
-    var target = 450;
-    if (natures.values.contains(DomainNature.night)) {
-      final nights = sleepNightList(sessions: st.sessions, activities: st.activities, now: now, dayStartMin: logic.dayStartMin, nights: 7);
-      target = sleepTargetMin(sleepActivityOf(st.activities));
-      sleepAvg = sleepStats(nights, target).avgMin;
-    }
-    int? sport;
-    if (natures.values.contains(DomainNature.sessions)) {
-      final pick = resolveSportPick(st.activities, st.domains, logic.sportOverrides);
-      final today = ymdOf(livedDate(now, logic.dayStartMin));
-      sport = sportDays(pick: pick, sessions: st.sessions, hits: st.habitHits, fromYmd: mondayOf(today), toYmd: today, now: now, dayStartMin: logic.dayStartMin)
-          .fold<int>(0, (s, x) => s + x.sessions);
-    }
-    final behind = [
-      for (final d in st.activeDomains)
-        if (weeks[d.id] case final r? when r.hasGoal && !r.resting && r.expectedMin > 0 && r.doneMin < r.expectedMin * .7 && !{DomainNature.night, DomainNature.meals, DomainNature.money}.contains(natures[d.id]))
-          d.name,
-    ];
-    return lifeSentence(kept: w.kept, engagements: w.engagements.length, sleepAvgMin: sleepAvg, sleepTargetMin: target, sportSessions: sport, behindDomains: behind);
   }
 
   Widget _section(Color mute, String t, {String? right}) => Padding(
@@ -334,23 +233,6 @@ class _LifeViewState extends State<LifeView> {
           Expanded(child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute))),
           if (right != null) Text(right, style: TextStyle(fontSize: 11.5, color: mute)),
         ]),
-      );
-
-  Widget _smallTile(ColorScheme cs, String eyebrow, Widget child, VoidCallback onTap) => Material(
-        color: cs.surfaceContainerHighest.withValues(alpha: .35),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(eyebrow, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .7, color: cs.onSurface.withValues(alpha: .55))),
-              const SizedBox(height: 4),
-              child,
-            ]),
-          ),
-        ),
       );
 
   Widget _objectiveLine(ColorScheme cs, StrategicObjective o, ObjectiveProgress? p, Color c, {int more = 0}) {
