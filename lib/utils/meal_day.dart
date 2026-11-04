@@ -10,11 +10,14 @@ bool isBalancedMealRoutine(Activity a) => a.isHabit && !a.deleted && RegExp(r're
 bool isCookActivity(Activity a) => a.type == 'time' && !a.deleted && RegExp(r'cuisin', caseSensitive: false).hasMatch(a.name);
 bool isEatActivity(Activity a) => a.type == 'time' && !a.deleted && RegExp(r'^(manger|repas|déjeuner|dîner|diner)', caseSensitive: false).hasMatch(a.name.trim());
 
-/// Midi ou soir d'un instant : avant 16 h = midi.
-String momentOfMeal(DateTime t) => t.hour < 16 ? 'midi' : 'soir';
+/// Fin du petit-déj (10 h 30, Repas en 3 familles 2026-11-04).
+const kBreakfastEndMin = 10 * 60 + 30;
 
-/// Repas « en cours » : le midi jusqu'à 15 h, puis le soir.
-String currentMealMoment(DateTime now) => now.hour < 15 ? 'midi' : 'soir';
+/// Le repas d'un instant : avant 10 h 30 = petit-déj, avant 16 h = midi, sinon soir.
+String momentOfMeal(DateTime t) => t.hour * 60 + t.minute < kBreakfastEndMin ? kBreakfast : (t.hour < 16 ? 'midi' : 'soir');
+
+/// Repas « en cours » : le petit-déj jusqu'à 10 h 30, le midi jusqu'à 15 h, puis le soir.
+String currentMealMoment(DateTime now) => now.hour * 60 + now.minute < kBreakfastEndMin ? kBreakfast : (now.hour < 15 ? 'midi' : 'soir');
 
 enum MealCell { ok, other, none, planned, empty }
 
@@ -61,7 +64,8 @@ MealWeekView mealWeekView({
     if (eatIds.contains(s.activityId)) {
       final m = momentOfMeal(s.startAt);
       ateKeys.add(mealKey(y, m));
-      (m == 'midi' ? lunches : dinners).add(s.startAt);
+      if (m == 'midi') lunches.add(s.startAt);
+      if (m == 'soir') dinners.add(s.startAt);
     }
   }
   final today = ymdOf(livedDate(now, dayStartMin));
@@ -75,7 +79,7 @@ MealWeekView mealWeekView({
     for (final m in kMealMoments) {
       final k = mealKey(y, m);
       final slot = week.slots[k];
-      final past = y.compareTo(today) < 0 || (y == today && (m == 'midi' && curMoment == 'soir'));
+      final past = y.compareTo(today) < 0 || (y == today && kMealMoments.indexOf(m) < kMealMoments.indexOf(curMoment));
       final current = y == today && m == curMoment;
       MealCell c;
       if (okKeys.contains(k) || slot?.ate == 'ok') {
@@ -90,6 +94,9 @@ MealWeekView mealWeekView({
         c = MealCell.empty;
       }
       cells[k] = c;
+      // Les chiffres de la semaine (équilibrés, midis sans rien) restent sur
+      // midi et soir : le petit-déj s'affiche, il ne compte pas.
+      if (m == kBreakfast) continue;
       if (past || (current && c != MealCell.planned && c != MealCell.empty)) {
         counted++;
         if (c == MealCell.ok) balanced++;

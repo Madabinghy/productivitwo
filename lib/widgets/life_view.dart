@@ -418,7 +418,7 @@ class _LifeViewState extends State<LifeView> {
             (leftFrom == null || week.slots[leftFrom] == null ? null : PlannedMeal(title: 'les restes · ${week.slots[leftFrom]!.title}'));
         eyebrow = 'REPAS';
         value = v.counted == 0 ? 'Repas' : '${v.balanced} / ${v.counted}';
-        sub = next != null ? '${moment == 'midi' ? 'ce midi' : 'ce soir'} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');
+        sub = next != null ? '${moment == 'petit-dej' ? 'ce matin' : (moment == 'midi' ? 'ce midi' : 'ce soir')} : ${next.title}' : (v.counted == 0 ? 'menu, plats, courses' : 'repas équilibrés');
         // La grille midi / soir de la semaine, comme dans la feuille Repas (retour user 2026-11-04).
         viz = _mealGrid(cs, days, (k) => v.cells[k], nowKey);
         onTap = () => showMealSheet(context, logic: logic, sync: widget.sync);

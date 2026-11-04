@@ -15,6 +15,8 @@ import 'package:productivitwo_v1/utils/pantry.dart' show finishCandidates;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/meal_week_sheet.dart' show showMealWeekSheet;
+import 'package:productivitwo_v1/widgets/meal_compose_sheet.dart' show showMealComposeSheet;
+import 'package:productivitwo_v1/utils/meal_compose.dart' show sidesOf;
 import 'package:productivitwo_v1/widgets/groceries_sheet.dart' show showGroceriesSheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineMinus, routinePlus;
 
@@ -24,7 +26,8 @@ const _kPlanned = Color(0xFF9DB8FF);
 const _letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 const kRuleMeals = GameRule('Les repas', [
-  RuleCard('✅', 'Équilibré, ce qui compte', '« ✓ Mangé, équilibré » (ou un +1 de ta routine Repas équilibré) fait avancer ta routine : sa série, la Journée parfaite et le Métronome. Avant 16 h c’est le midi, après le soir.'),
+  RuleCard('✅', 'Équilibré, ce qui compte', '« ✓ Mangé, équilibré » (ou un +1 de ta routine Repas équilibré) fait avancer ta routine : sa série, la Journée parfaite et le Métronome. Avant 10 h 30 c’est le petit-déj, avant 16 h le midi, après le soir.'),
+  RuleCard('🥗', 'Composer avec ce que tu as', 'Un repas = une brique par famille : protéines, féculents, fibres. Deux sur trois suffisent. « Composer » te propose une idée avec ce qu’il y a dans tes placards ; ail, oignon et sauces accompagnent, ils ne comptent pas.'),
   RuleCard('🍝', 'Autre chose…', 'Tu dis ce que tu as mangé : un de tes plats, un mot, ou dehors. Coche « C’était équilibré » s’il l’était : il compte alors comme le bouton vert. Sinon il est noté mangé, mais ta routine n’avance pas.'),
   RuleCard('↩️', 'Te tromper n’est pas grave', '« Changer » corrige ce que tu as noté. « Effacer » remet la case comme avant et retire le +1 s’il y en avait un.'),
   RuleCard('📌', 'Le plat prévu reste', 'Noter que tu as mangé autre chose ne retire pas le plat du menu : ses restes et ses courses restent en place.'),
@@ -311,7 +314,8 @@ class _MealSheetState extends State<MealSheet> {
         final heroSub = [
           if (slot != null && !slot.out && slot.portions > 1) '${slot.portions} portions → les midis suivants',
           if (recipe?.minutes != null) fmtMin(recipe!.minutes!),
-          if (slot == null && fromSlot == null) 'choisis un plat dans le menu de la semaine',
+          if (slot != null && slot.isComposed && sidesOf(slot.components).isNotEmpty) 'avec : ${sidesOf(slot.components).join(', ').toLowerCase()}',
+          if (slot == null && fromSlot == null) 'compose-le avec ce que tu as, ou choisis un plat',
         ].join(' · ');
 
         return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(20, 8, 20, 32), children: [
@@ -335,7 +339,7 @@ class _MealSheetState extends State<MealSheet> {
               border: Border.all(color: const Color(0xFF2F4A2A)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text(moment == 'midi' ? 'CE MIDI' : 'CE SOIR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute)),
+              Text(mealMomentTitle(moment), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: mute)),
               const SizedBox(height: 2),
               Text(heroTitle, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
               if (heroSub.isNotEmpty) Text(heroSub, style: TextStyle(fontSize: 13, color: mute)),
@@ -368,10 +372,16 @@ class _MealSheetState extends State<MealSheet> {
                     ),
                   OutlinedButton(onPressed: () => _eaten(key, slot, balanced: true, leftover: fromSlot), child: const Text('✓ Mangé, équilibré')),
                   OutlinedButton(key: const Key('meal-other'), onPressed: () => _otherMeal(key, current: slot), child: const Text('Autre chose…')),
+                  OutlinedButton.icon(
+                    key: const Key('meal-compose'),
+                    onPressed: () => showMealComposeSheet(context, logic: logic, monday: monday, ymd: today, moment: moment),
+                    icon: const Icon(Icons.restaurant_menu_rounded, size: 18),
+                    label: Text(slot != null && slot.isComposed ? 'Recomposer' : 'Composer'),
+                  ),
                 ]),
             ]),
           ),
-          title('CETTE SEMAINE', 'midi · soir'),
+          title('CETTE SEMAINE', 'matin · midi · soir'),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(16)),
@@ -384,12 +394,14 @@ class _MealSheetState extends State<MealSheet> {
                 Padding(
                   padding: const EdgeInsets.only(top: 5),
                   child: Row(children: [
-                    SizedBox(width: 38, child: Text(m, style: TextStyle(fontSize: 11, color: mute))),
+                    SizedBox(width: 38, child: Text(kMealMomentShort[m] ?? m, style: TextStyle(fontSize: 11, color: mute))),
                     for (final d in _days)
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: Container(
+                          child: GestureDetector(
+                            onTap: () => showMealComposeSheet(context, logic: logic, monday: monday, ymd: d, moment: m),
+                            child: Container(
                             height: 28,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
@@ -405,6 +417,7 @@ class _MealSheetState extends State<MealSheet> {
                                 color: v.cells[mealKey(d, m)] == MealCell.ok ? const Color(0xFF0F1A0C) : (v.cells[mealKey(d, m)] == MealCell.other ? _kAmber : mute),
                               ),
                             ),
+                          ),
                           ),
                         ),
                       ),

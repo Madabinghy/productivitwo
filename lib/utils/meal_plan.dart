@@ -5,7 +5,36 @@ import 'package:productivitwo_v1/models.dart';
 /// `{plans: {<lundi>: {<ymd|midi|soir>: {recipeId?, title, portions, out?}}},
 /// shopping: {<lundi>: {checked: [clés], extra: [{label, qty}]}}}`.
 
-const kMealMoments = ['midi', 'soir'];
+/// Créneaux d'un jour, dans l'ordre (petit-déj ajouté le 2026-11-04, Repas en 3 familles).
+const kMealMoments = ['petit-dej', 'midi', 'soir'];
+const kBreakfast = 'petit-dej';
+
+/// Libellés courts (grille) et longs.
+const kMealMomentShort = {'petit-dej': 'matin', 'midi': 'midi', 'soir': 'soir'};
+const kMealMomentLabel = {'petit-dej': 'Petit-déj', 'midi': 'Midi', 'soir': 'Soir'};
+String mealMomentTitle(String m) => switch (m) { 'petit-dej' => 'CE MATIN', 'midi' => 'CE MIDI', _ => 'CE SOIR' };
+
+/// Une brique d'un repas composé (Repas en 3 familles) : un produit et ses
+/// familles (`utils/meal_families.dart`).
+class MealComponent {
+  final String label;
+  final List<String> families;
+  const MealComponent(this.label, this.families);
+
+  Map<String, dynamic> toJson() => {'label': label, 'families': families};
+
+  static MealComponent? from(Object? raw) {
+    if (raw is! Map) return null;
+    final l = '${raw['label'] ?? ''}'.trim();
+    if (l.isEmpty) return null;
+    return MealComponent(l, [if (raw['families'] is List) for (final f in raw['families'] as List) '$f']);
+  }
+
+  @override
+  bool operator ==(Object other) => other is MealComponent && other.label == label && other.families.join(',') == families.join(',');
+  @override
+  int get hashCode => Object.hash(label, families.join(','));
+}
 
 String mealKey(String ymd, String moment) => '$ymd|$moment';
 
@@ -20,11 +49,19 @@ class PlannedMeal {
   final String? ateWhat;
   /// Case créée seulement pour noter un repas (rien n'était prévu) : l'effacer la vide.
   final bool noted;
-  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false, this.ate, this.ateWhat, this.noted = false});
+  /// Repas composé (Repas en 3 familles, 2026-11-04) : les briques choisies.
+  final List<MealComponent> components;
+  const PlannedMeal({this.recipeId, required this.title, this.portions = 1, this.out = false, this.ate, this.ateWhat, this.noted = false, this.components = const []});
+
+  bool get isComposed => components.isNotEmpty;
 
   /// Le repas noté (ou effacé avec null) ; [what] = ce qu'on a mangé à la place du plat prévu.
   PlannedMeal withAte(String? v, {String? what}) =>
-      PlannedMeal(recipeId: recipeId, title: title, portions: portions, out: out, ate: v, ateWhat: v == null ? null : what, noted: noted);
+      PlannedMeal(recipeId: recipeId, title: title, portions: portions, out: out, ate: v, ateWhat: v == null ? null : what, noted: noted, components: components);
+
+  /// Même repas, autres portions (le menu de la semaine).
+  PlannedMeal withPortions(int n) =>
+      PlannedMeal(recipeId: recipeId, title: title, portions: n.clamp(1, 12), out: out, ate: ate, ateWhat: ateWhat, noted: noted, components: components);
 
   Map<String, dynamic> toJson() => {
         if (recipeId != null) 'recipeId': recipeId,
@@ -34,6 +71,7 @@ class PlannedMeal {
         if (ate != null) 'ate': ate,
         if (ateWhat != null) 'ateWhat': ateWhat,
         if (noted) 'noted': true,
+        if (components.isNotEmpty) 'components': [for (final c in components) c.toJson()],
       };
 
   static PlannedMeal? from(Object? raw) {
@@ -46,6 +84,11 @@ class PlannedMeal {
       ate: raw['ate'] as String?,
       ateWhat: raw['ateWhat'] as String?,
       noted: raw['noted'] == true,
+      components: [
+        if (raw['components'] is List)
+          for (final c in raw['components'] as List)
+            if (MealComponent.from(c) != null) MealComponent.from(c)!,
+      ],
     );
   }
 }
