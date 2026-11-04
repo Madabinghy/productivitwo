@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/workouts.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show kSportAccent;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
+import 'package:productivitwo_v1/widgets/workout_history.dart' show showExerciseFiche, showWorkoutsSheet;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 // Séances de muscu, lot 2 (maquette validée « Séances de muscu », 2026-11-04) : Ma séance → Régler un exercice →
@@ -39,6 +40,7 @@ class WorkoutHub extends StatefulWidget {
 class _WorkoutHubState extends State<WorkoutHub> {
   AppLogic get logic => widget.logic;
   String? _templateId;
+
   /// Séance libre : la liste vit ici, sans séance type.
   List<TemplateItem> _freeItems = [];
   final _add = TextEditingController();
@@ -148,7 +150,11 @@ class _WorkoutHubState extends State<WorkoutHub> {
       return s + i.sets * (45 + (e?.restSec ?? kDefaultRestSec));
     });
     return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
-      const Text('SPORT · SÉANCE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kSportAccent)),
+      Row(children: [
+        const Expanded(child: Text('SPORT · SÉANCE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kSportAccent))),
+        if (liveWorkouts(logic.workouts).isNotEmpty)
+          TextButton(key: const ValueKey('hub-history'), onPressed: () => showWorkoutsSheet(context, logic: logic), child: const Text('Mes séances ›')),
+      ]),
       Row(children: [
         Expanded(child: Text(t?.name ?? 'Séance libre', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
         if (t != null) IconButton(tooltip: 'Renommer, lieu, retirer', onPressed: () => _editTemplate(t), icon: const Icon(Icons.edit_outlined)),
@@ -210,7 +216,8 @@ class _WorkoutHubState extends State<WorkoutHub> {
             key: ValueKey('dis-$i-${items[i].exerciseId}'),
             direction: DismissDirection.endToStart,
             onDismissed: (_) => _removeItem(i),
-            background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: Icon(Icons.delete_outline, color: cs.error)),
+            background:
+                Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: Icon(Icons.delete_outline, color: cs.error)),
             child: _itemTile(cs, i, items[i]),
           ),
         ),
@@ -259,7 +266,10 @@ class _WorkoutHubState extends State<WorkoutHub> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(children: [
-            CircleAvatar(radius: 18, backgroundColor: kSportAccent.withValues(alpha: .18), child: Text('${i + 1}', style: const TextStyle(color: kSportAccent, fontWeight: FontWeight.w800))),
+            CircleAvatar(
+                radius: 18,
+                backgroundColor: kSportAccent.withValues(alpha: .18),
+                child: Text('${i + 1}', style: const TextStyle(color: kSportAccent, fontWeight: FontWeight.w800))),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -277,6 +287,12 @@ class _WorkoutHubState extends State<WorkoutHub> {
                 ),
               ]),
             ),
+            if (last.isNotEmpty)
+              IconButton(
+                tooltip: 'Progression de l\'exercice',
+                onPressed: () => showExerciseFiche(context, logic: logic, exerciseId: e.id),
+                icon: const Icon(Icons.show_chart, color: kSportAccent),
+              ),
           ]),
         ),
       ),
@@ -334,8 +350,7 @@ Future<(String, String?, bool)?> showTemplateEditor(BuildContext context, {Strin
             },
             child: const Text('Enregistrer', style: TextStyle(fontWeight: FontWeight.w800)),
           ),
-          if (canDelete)
-            TextButton(onPressed: () => Navigator.of(ctx).pop((ctrl.text, where, true)), child: const Text('Retirer cette séance type')),
+          if (canDelete) TextButton(onPressed: () => Navigator.of(ctx).pop((ctrl.text, where, true)), child: const Text('Retirer cette séance type')),
         ]),
       );
     }),
@@ -494,7 +509,9 @@ class _ExerciseEditorState extends State<_ExerciseEditor> {
             decoration: BoxDecoration(border: Border.all(color: kSportAccent, width: 2), borderRadius: BorderRadius.circular(16)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
-                const Expanded(child: Text('REPOS ENTRE DEUX SÉRIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSportAccent))),
+                const Expanded(
+                    child:
+                        Text('REPOS ENTRE DEUX SÉRIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSportAccent))),
                 Text(restLabel(_rest), key: const ValueKey('ex-rest'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
               ]),
               const SizedBox(height: 8),
@@ -543,6 +560,7 @@ class WorkoutPlayer extends StatefulWidget {
   final AppLogic logic;
   final List<TemplateItem> items;
   final WorkoutTemplate? template;
+
   /// Faux en test : pas d'alarme, pas d'écran allumé, pas de chrono.
   final bool sideEffects;
   const WorkoutPlayer({super.key, required this.logic, required this.items, this.template, this.sideEffects = true});
@@ -580,7 +598,8 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
     super.initState();
     final now = DateTime.now();
     final t = widget.template;
-    _w = Workout(id: _newId(), templateId: t?.id, name: t?.name ?? 'Séance libre', place: t?.place, ymd: logic.livedTodayYmd, startAt: now.millisecondsSinceEpoch);
+    _w = Workout(
+        id: _newId(), templateId: t?.id, name: t?.name ?? 'Séance libre', place: t?.place, ymd: logic.livedTodayYmd, startAt: now.millisecondsSinceEpoch);
     _loadPlanned();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
     if (widget.sideEffects) {
@@ -840,13 +859,16 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
           Row(children: [
             if (e.kind == ExerciseKind.weight) ...[
               _big('POIDS', _kg == null ? '—' : '${kgLabel(_kg!)} kg', () => setState(() => _kg = math.max(0, (_kg ?? 0) - e.stepKg)),
-                  () => setState(() => _kg = (_kg ?? 0) + e.stepKg), key: const ValueKey('set-kg')),
+                  () => setState(() => _kg = (_kg ?? 0) + e.stepKg),
+                  key: const ValueKey('set-kg')),
               const SizedBox(width: 10),
             ],
             if (e.kind == ExerciseKind.duration)
-              _big('SECONDES', '$_secs', () => setState(() => _secs = math.max(5, _secs - 5)), () => setState(() => _secs += 5), key: const ValueKey('set-secs'))
+              _big('SECONDES', '$_secs', () => setState(() => _secs = math.max(5, _secs - 5)), () => setState(() => _secs += 5),
+                  key: const ValueKey('set-secs'))
             else
-              _big('RÉPÉTITIONS', '$_reps', () => setState(() => _reps = math.max(0, _reps - 1)), () => setState(() => _reps++), key: const ValueKey('set-reps')),
+              _big('RÉPÉTITIONS', '$_reps', () => setState(() => _reps = math.max(0, _reps - 1)), () => setState(() => _reps++),
+                  key: const ValueKey('set-reps')),
           ]),
           const SizedBox(height: 8),
           Text(
@@ -891,7 +913,9 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
       Row(children: [
         Flexible(child: TextButton(onPressed: _openList, child: const Text('Liste des exercices', overflow: TextOverflow.ellipsis))),
         const Spacer(),
-        Flexible(child: TextButton(key: const ValueKey('ex-skip'), onPressed: _skipExercise, child: const Text('Passer cet exercice', overflow: TextOverflow.ellipsis))),
+        Flexible(
+            child: TextButton(
+                key: const ValueKey('ex-skip'), onPressed: _skipExercise, child: const Text('Passer cet exercice', overflow: TextOverflow.ellipsis))),
       ]),
     ]);
   }
@@ -963,7 +987,8 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text('${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')}',
-                  key: const ValueKey('rest-left'), style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w900, fontFeatures: [FontFeature.tabularFigures()])),
+                  key: const ValueKey('rest-left'),
+                  style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w900, fontFeatures: [FontFeature.tabularFigures()])),
               Text('sur ${restLabel(_restTotal)}', style: TextStyle(color: mute)),
             ]),
           ]),
@@ -1018,7 +1043,9 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
     final prev = _w.templateId == null ? null : lastWorkoutOf(_w.templateId!, _history, beforeMs: _w.startAt);
     final better = sum.byExercise.values.where((d) => d.kind == DeltaKind.better).length;
     final worse = sum.byExercise.values.where((d) => d.kind == DeltaKind.worse).length;
-    final title = prev == null ? 'Séance faite' : (better > worse ? 'Mieux que ${_dayLabel(prev.ymd).split(' ').first}' : (better == worse ? 'Comme la dernière fois' : 'Un peu en dessous'));
+    final title = prev == null
+        ? 'Séance faite'
+        : (better > worse ? 'Mieux que ${_dayLabel(prev.ymd).split(' ').first}' : (better == worse ? 'Comme la dernière fois' : 'Un peu en dessous'));
     final ids = <String>[for (final s in _w.sets) s.exerciseId].toSet().toList();
     final nextTime = <String>[
       for (final it in widget.items)
@@ -1039,9 +1066,11 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
           ),
         );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('SÉANCE TERMINÉE · ${_w.name.toUpperCase()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSportAccent)),
+      Text('SÉANCE TERMINÉE · ${_w.name.toUpperCase()}',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: kSportAccent)),
       Text(title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-      Text('${sum.durationMin} min · ${sum.sets} séries${sum.avgRest == null ? '' : ' · repos moyen ${restLabel(sum.avgRest!)}'}', style: TextStyle(fontSize: 13, color: mute)),
+      Text('${sum.durationMin} min · ${sum.sets} séries${sum.avgRest == null ? '' : ' · repos moyen ${restLabel(sum.avgRest!)}'}',
+          style: TextStyle(fontSize: 13, color: mute)),
       const SizedBox(height: 12),
       Row(children: [
         stat('VOLUME', sum.volume > 0 ? '${sum.volume.round()} kg' : '${sum.reps} reps',
@@ -1073,18 +1102,24 @@ class _WorkoutPlayerState extends State<WorkoutPlayer> {
                     };
               return Card(
                 margin: const EdgeInsets.only(bottom: 6),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Expanded(child: Text(logic.gym.exercises[id]?.name ?? 'Exercice', style: const TextStyle(fontWeight: FontWeight.w700))),
-                      Text(rec ? 'RECORD' : (d?.label ?? ''), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => showExerciseFiche(context, logic: logic, exerciseId: id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(child: Text(logic.gym.exercises[id]?.name ?? 'Exercice', style: const TextStyle(fontWeight: FontWeight.w700))),
+                        Text(rec ? 'RECORD' : (d?.label ?? ''), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+                      ]),
+                      Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: now.map(setLabel).join(', ')),
+                            if (before.isNotEmpty) TextSpan(text: '  /  ${before.map(setLabel).join(', ')}', style: TextStyle(color: mute)),
+                          ]),
+                          style: const TextStyle(fontSize: 13)),
                     ]),
-                    Text.rich(TextSpan(children: [
-                      TextSpan(text: now.map(setLabel).join(', ')),
-                      if (before.isNotEmpty) TextSpan(text: '  /  ${before.map(setLabel).join(', ')}', style: TextStyle(color: mute)),
-                    ]), style: const TextStyle(fontSize: 13)),
-                  ]),
+                  ),
                 ),
               );
             }),

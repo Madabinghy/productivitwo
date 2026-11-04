@@ -912,7 +912,16 @@ liste des séries face à avant, « Série faite · repos … », Liste des exer
 `CoupAlarm` qui sonne téléphone en veille, « Garder 1 min 45 pour cet exercice » = `setExerciseRest`, ENSUITE, « J'y vais » ; le repos
 réellement pris est noté sur la série suivante) → BILAN (`summarize` : titre « Mieux que ven. », volume et écart %, durée, records,
 exercice par exercice aujourd'hui / avant, « La prochaine fois », « Enregistrer la séance »). La séance est écrite après chaque série
-(rien de perdu si l'app se ferme). **Lot 3 à venir** : fiche d'un exercice, Mes séances (semaine, mois), une séance passée.
+(rien de perdu si l'app se ferme). **Lot 3 livré (`widgets/workout_history.dart`)** : MES SÉANCES
+(`showWorkoutsSheet`, « Mes séances › » de la feuille Sport et de Ma séance) : « n séances cette semaine / ce mois-ci », durée · kg
+soulevés · semaine (mois) dernière, Semaine = 7 cases avec les séances du jour (tap = la séance), Mois = calendrier (jours de séance
+pleins) + nombre par séance type, DERNIÈRES SÉANCES (durée · exos · séries · volume, écart de volume % face à la même séance type).
+UNE SÉANCE PASSÉE (`showWorkoutDetail`) : jour, heures, volume · répétitions · records (et lesquels) face à la fois d'avant, LE CONTENU
+série par série par exercice (RECORD ou écart, repos moyen, volume ; tap = fiche de l'exercice), « Refaire cette séance » (séance type
+si elle existe, sinon `itemsFromWorkout`). FICHE D'UN EXERCICE (`showExerciseFiche`, icône courbe sur une ligne de Ma séance, carte du
+bilan, contenu d'une séance) : n séances depuis …, repos réglé, RECORD, DEPUIS LE DÉBUT (poids ou reps), VOLUME / dernière, courbe
+Poids · Volume · Reps · Repos (`exerciseHistory`, `curveValue`), DERNIÈRES SÉANCES (`setsLine` + repos moyen réellement pris),
+« Réglages · repos, pas de poids ». Logique pure ajoutée : `ExerciseSession`, `periodSummary`, `volumeLabel`. **Les 3 lots sont livrés.**
 
 ## Courses générales (2026-11-02, maquette validée « Courses générales »)
 

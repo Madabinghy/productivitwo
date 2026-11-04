@@ -124,4 +124,25 @@ void main() {
     expect(itemLabel(bench, const TemplateItem(exerciseId: 'bench', sets: 4, reps: 10, weightKg: 42.5)), '4 × 10 à 42,5 kg · repos 1 min 30');
     expect(itemLabel(pushups, const TemplateItem(exerciseId: 'push', sets: 3)), '3 × max · poids du corps · repos 1 min');
   });
+
+  test('lot 3 : historique d\'un exercice, courbes, refaire, période', () {
+    final h = exerciseHistory('bench', [thursday, monday]);
+    expect(h.map((x) => x.workout.id), ['w1', 'w2']);
+    expect(h.last.topKg, 40);
+    expect(curveValue(h.first, ExerciseCurve.volume), 40 * 39);
+    expect(curveValue(h.first, ExerciseCurve.rest), isNull);
+    expect(curveValue(exerciseHistory('plank', [monday]).single, ExerciseCurve.reps), 85);
+    expect(setsLine(h.first.sets), '10, 10, 10, 9 à 40 kg');
+    expect(setsLine([s('p', 22), s('p', 18)]), '22, 18');
+    final items = itemsFromWorkout(monday);
+    expect(items.map((i) => i.exerciseId), ['bench', 'push', 'plank']);
+    expect(items.first.sets, 4);
+    expect(items.first.weightKg, 40);
+    expect(items.last.reps, 45);
+    final p = periodSummary([monday, thursday]);
+    expect(p.count, 2);
+    expect(p.minutes, 104);
+    expect(volumeLabel(14200), '14 200 kg');
+    expect(volumeLabel(980), '980 kg');
+  });
 }

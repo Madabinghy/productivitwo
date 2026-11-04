@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
+import 'package:productivitwo_v1/widgets/workout_history.dart' show showWorkoutsSheet;
 import 'package:productivitwo_v1/widgets/workout_screens.dart' show showWorkoutHub;
 
 const kSportAccent = Color(0xFFF07C4C);
@@ -198,10 +199,17 @@ class _SportSheetState extends State<SportSheet> {
           icon: const Icon(Icons.fitness_center),
           label: const Text('Séance de muscu · séries et repos', style: TextStyle(fontWeight: FontWeight.w700)),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(onPressed: _openPicker, child: const Text('Mes activités de sport ›')),
-        ),
+        Row(children: [
+          if (logic.workouts.any((w) => !w.deleted && w.sets.isNotEmpty))
+            Flexible(
+              child: TextButton(
+                  key: const ValueKey('open-workouts'),
+                  onPressed: () => showWorkoutsSheet(context, logic: logic),
+                  child: const Text('Mes séances ›', overflow: TextOverflow.ellipsis)),
+            ),
+          const Spacer(),
+          Flexible(child: TextButton(onPressed: _openPicker, child: const Text('Mes activités de sport ›', overflow: TextOverflow.ellipsis))),
+        ]),
         title('8 SEMAINES', 'temps actif par semaine'),
         _card(cs, Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(height: 120, child: _WeeksChart(weeks: weeks, colors: colors, target: weeklyTarget)),
