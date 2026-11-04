@@ -143,6 +143,9 @@ class AppLogic implements HuntStore {
   void addListener(void Function() l) => _listeners.add(l);
   void removeListener(void Function() l) => _listeners.remove(l);
 
+  /// Les mêmes écouteurs vus comme un [Listenable] (ListenableBuilder, feuilles qui se redessinent sur onChange).
+  late final Listenable listenable = _AppLogicListenable(this);
+
   /// Mode du jour observé par la racine (thème / ambiance) : mis à jour à
   /// chaque onChange, sans que l'arbre entier dépende d'AppLogic.
   static final ValueNotifier<DayMode> modeNotifier = ValueNotifier(DayMode.normal);
@@ -5137,3 +5140,11 @@ class _MiniHistogramPainter extends CustomPainter {
   }
 }
 
+class _AppLogicListenable implements Listenable {
+  final AppLogic logic;
+  _AppLogicListenable(this.logic);
+  @override
+  void addListener(VoidCallback listener) => logic.addListener(listener);
+  @override
+  void removeListener(VoidCallback listener) => logic.removeListener(listener);
+}
