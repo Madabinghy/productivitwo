@@ -259,7 +259,7 @@ class _FlowPainter extends CustomPainter {
         canvas.drawCircle(Offset(cx(i), y(b)), 3.5, Paint()..color = _kLine);
       }
       final sb = s[sel].balance;
-      if (sb != null) canvas.drawCircle(Offset(cx(sel), y(sb)), 4.5, Paint()..color = _kLine);
+      if (sb != null) canvas.drawCircle(Offset(cx(sel), y(sb)), compact ? 2.5 : 4.5, Paint()..color = _kLine);
     } else if (!compact) {
       _text(canvas, 'pas encore de solde recopié', Offset(l + w / 2, top + bh / 2), align: TextAlign.center);
     }
