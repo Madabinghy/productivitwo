@@ -4965,7 +4965,7 @@ class _AppRootState extends State<AppRoot>
               _Tab.dashboard => const BottomNavigationBarItem(
                   icon: Icon(Icons.space_dashboard_outlined),
                   activeIcon: Icon(Icons.space_dashboard_rounded),
-                  label: 'Ma vie'),
+                  label: 'Organisation'),
               _Tab.stats => const BottomNavigationBarItem(
                   icon: Icon(Icons.donut_small_outlined),
                   activeIcon: Icon(Icons.donut_small),
