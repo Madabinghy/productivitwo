@@ -1979,8 +1979,6 @@ class _AppRootState extends State<AppRoot>
 
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
-  late final AnimationController _tabFadeController;
-  late final Animation<double> _tabFade;
 
   // Garde anti-doublon confetti : score 100% → max 1 fois par jour
   String _lastConfettiDate = '';
@@ -1994,12 +1992,6 @@ class _AppRootState extends State<AppRoot>
     _tick = ValueNotifier<int>(0);
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 2));
-    _tabFadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-      value: 1.0,
-    );
-    _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
 
     _startMinuteHeartbeat();
     _startConnectivityListener();
@@ -2222,7 +2214,6 @@ class _AppRootState extends State<AppRoot>
     _inboxSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
-    _tabFadeController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -3732,13 +3723,15 @@ class _AppRootState extends State<AppRoot>
 
 
 
-    return FadeTransition(
-      opacity: _tabFade,
-      child: IndexedStack(
-        index: _tabIndex(_tab),
+    // Changement d'onglet instantané (2026-11-04, retour user : une petite
+    // seconde de latence) : plus de fondu, et un onglet caché n'est plus
+    // reconstruit à chaque tap (`_TabFreeze`) — seul celui qu'on ouvre l'est.
+    final active = _tabIndex(_tab);
+    return IndexedStack(
+        index: active,
         children: [
-          _buildObjectivesBody(context),
-          GoalsView(
+          _TabFreeze(active: active == 0, child: _buildObjectivesBody(context)),
+          _TabFreeze(active: active == 1, child: GoalsView(
             visible: _tab == _Tab.projets,
             logic: logic,
             domains: _state?.domains ?? [],
@@ -3768,9 +3761,9 @@ class _AppRootState extends State<AppRoot>
                 ));
               }
             },
-          ),
+          )),
           // Onglet Aujourd'hui : programme du jour + planif du lendemain.
-          TodayView(
+          _TabFreeze(active: active == 2, child: TodayView(
             key: _todayKey,
             logic: logic,
             badges: _badges,
@@ -3838,15 +3831,14 @@ class _AppRootState extends State<AppRoot>
                 _focusTask = null;
               });
             },
-          ),
+          )),
           // Onglet « Actions » (index 3) : liste GTD par projet + contexte du
           // moment — remplace « Projets » quand le Gantt est en retrait.
-          ActionsView(logic: logic),
+          _TabFreeze(active: active == 3, child: ActionsView(logic: logic)),
           // Onglet « Stats » (index 4) : l'ancien Accueil (tableau de bord),
           // promu onglet principal — jauges, temps, domaines, retards.
           const SizedBox.shrink(), // Domaines : fusionné dans Ma vie (2026-11-01)
         ],
-      ),
     );
   }
 
@@ -4980,7 +4972,6 @@ class _AppRootState extends State<AppRoot>
             : 0,
         onTap: (i) {
           final tapped = _visibleTabs[i];
-          _tabFadeController.forward(from: 0);
           setState(() => _tab = tapped);
         },
         type: BottomNavigationBarType.fixed,
@@ -7383,3 +7374,27 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(_DashedLinePainter old) => old.color != color;
 }
 
+/// Onglet de la pile : caché, il garde le dernier widget construit (même
+/// instance → Flutter ne reconstruit pas son sous-arbre) et ses animations
+/// sont coupées ; il se reconstruit dès qu'il redevient visible. Le passage
+/// à caché prend encore une fois la nouvelle config (`visible: false`).
+class _TabFreeze extends StatefulWidget {
+  final bool active;
+  final Widget child;
+  const _TabFreeze({required this.active, required this.child});
+
+  @override
+  State<_TabFreeze> createState() => _TabFreezeState();
+}
+
+class _TabFreezeState extends State<_TabFreeze> {
+  Widget? _last;
+  bool _wasActive = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.active || _wasActive || _last == null) _last = widget.child;
+    _wasActive = widget.active;
+    return TickerMode(enabled: widget.active, child: _last!);
+  }
+}
