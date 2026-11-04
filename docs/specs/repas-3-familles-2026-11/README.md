@@ -34,7 +34,7 @@ Légumineuses = féculent ET protéine.
    Soir ; une rangée de pastilles par famille avec ce qu'on a au placard ; assiette à 3 cases ; « Valider » dès 2
    familles). Petit-déj : rangées limitées aux produits déjà pris le matin (appris), sinon défauts pain · céréales ·
    œufs · yaourt · fruits.
-3. **Suggestions + MCP** (suggestions livrées au lot 2 ; reste le MCP) — score local (3 familles +3 / 2 : +1 ; produit Frais ou Fruits et légumes acheté il y a
+3. **Suggestions + MCP** (livré : suggestions au lot 2, MCP `get_meal_options` / `plan_meals`) — score local (3 familles +3 / 2 : +1 ; produit Frais ou Fruits et légumes acheté il y a
    > 3 j : +2 ; combinaison déjà validée : +1 ; même protéine qu'au repas précédent : −2, hors petit-déj ;
    identique < 3 j : −3), 3 meilleures, « Je prends » en un tap. MCP `get_meal_options(date, slot)` et
    `plan_meals(meals[], apply)`.

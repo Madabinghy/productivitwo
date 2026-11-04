@@ -34,6 +34,8 @@ exports.executeGetDocuments = executeGetDocuments;
 exports.executeGetArchives = executeGetArchives;
 exports.executeGetShoppingList = executeGetShoppingList;
 exports.executeRecordReceipt = executeRecordReceipt;
+exports.executeGetMealOptions = executeGetMealOptions;
+exports.executePlanMeals = executePlanMeals;
 exports.executeGetPantry = executeGetPantry;
 exports.executeUpdatePantry = executeUpdatePantry;
 exports.executeManageAisles = executeManageAisles;
@@ -103,6 +105,7 @@ exports.nowInParis = nowInParis;
 const expenses_mcp_1 = require("./expenses_mcp");
 const pantry_1 = require("./pantry");
 const meal_families_1 = require("./meal_families");
+const meal_plan_mcp_1 = require("./meal_plan_mcp");
 const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
@@ -1307,6 +1310,51 @@ async function executeRecordReceipt(uid, args) {
     };
     await metaRef.set(patch, { merge: true });
     return `✅ Enregistré : ticket conservé (visible dans Finances) et ${Object.keys(expenses).length} dépense(s).\n${summary}`;
+}
+/** get_meal_options : composer un repas (Repas en 3 familles) — le créneau, le placard par famille, à finir, les derniers repas. */
+async function executeGetMealOptions(uid, args = {}) {
+    var _a, _b, _c, _d, _e, _f;
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const meta = ((_a = snap.data()) !== null && _a !== void 0 ? _a : {});
+    const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+    const today = (0, push_rules_1.todayParis)(new Date(Date.now() - dayStartMin * 60000));
+    const ymd = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : today;
+    const moment = args.moment ? (0, meal_plan_mcp_1.parseMoment)(args.moment) : null;
+    if (args.moment && !moment)
+        return "❌ moment : petit-dej · midi · soir.";
+    const g = (_b = meta.groceries) !== null && _b !== void 0 ? _b : {};
+    return (0, meal_plan_mcp_1.mealOptionsText)({
+        ymd,
+        moment,
+        meals: ((_c = meta.meals) !== null && _c !== void 0 ? _c : {}),
+        f: { families: (_d = g.families) !== null && _d !== void 0 ? _d : {}, memory: (_e = g.memory) !== null && _e !== void 0 ? _e : {}, pantry: (_f = g.pantry) !== null && _f !== void 0 ? _f : {} },
+    });
+}
+/** plan_meals : poser (ou vider) des repas composés ; apply:false = aperçu. */
+async function executePlanMeals(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _l;
+    const list = ((_a = args.meals) !== null && _a !== void 0 ? _a : []).filter(Boolean);
+    if (!list.length)
+        return "❌ meals vide (au moins un {date, moment, components}).";
+    if (list.length > 21)
+        return "❌ 21 repas au plus par appel (une semaine).";
+    const ref = db_1.db.doc(`users/${uid}/data/meta`);
+    const snap = await ref.get();
+    const meta = ((_b = snap.data()) !== null && _b !== void 0 ? _b : {});
+    const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+    const today = (0, push_rules_1.todayParis)(new Date(Date.now() - dayStartMin * 60000));
+    const g = (_c = meta.groceries) !== null && _c !== void 0 ? _c : {};
+    const { writes, errors } = (0, meal_plan_mcp_1.planMeals)(list, ((_d = meta.meals) !== null && _d !== void 0 ? _d : {}), { families: (_e = g.families) !== null && _e !== void 0 ? _e : {}, memory: (_f = g.memory) !== null && _f !== void 0 ? _f : {}, pantry: (_g = g.pantry) !== null && _g !== void 0 ? _g : {} }, today);
+    const body = [...writes.map((w) => w.text), ...errors.map((e) => `❌ ${e}`)].join("\n");
+    if (args.apply !== true || !writes.length) {
+        return `${body}\n\n${writes.length ? "Rien n'est enregistré : montre ces repas à l'utilisateur, puis rappelle plan_meals avec apply:true." : "Rien à enregistrer."}`;
+    }
+    const plans = {};
+    for (const w of writes)
+        ((_h = plans[_l = w.monday]) !== null && _h !== void 0 ? _h : (plans[_l] = {}))[w.key] = (_j = w.value) !== null && _j !== void 0 ? _j : db_1.FieldValue.delete();
+    await ref.set({ meals: { plans } }, { merge: true });
+    return `✅ ${writes.length} repas enregistré(s) — visibles dans la feuille Repas de l'app.\n${body}`;
 }
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
 async function executeGetPantry(uid, args = {}) {

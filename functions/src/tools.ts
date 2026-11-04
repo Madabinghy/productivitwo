@@ -1612,6 +1612,71 @@ const RECORD_RECEIPT_TOOL = {
   },
 };
 
+// ── Repas en 3 familles (data/meta.meals, 2026-11-04) ─────────────────────
+
+const GET_MEAL_OPTIONS_TOOL = {
+  name: "get_meal_options",
+  description:
+    "Pour composer un repas avec l'utilisateur (« qu'est-ce que je mange ce soir ? », « prévois mes repas jusqu'à " +
+    "dimanche ») : ce qui est déjà prévu sur le créneau, ce qu'il a au placard rangé par famille (protéines · féculents · " +
+    "fibres · accompagnements), ce qui est à finir, et ses derniers repas composés. Un repas = une brique par famille, " +
+    "2 familles sur 3 suffisent. Ensuite : propose, puis plan_meals.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      date: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+      moment: { type: "string", description: "petit-dej · midi · soir (défaut : les trois)" },
+    },
+  },
+};
+
+const PLAN_MEALS_TOOL = {
+  name: "plan_meals",
+  description:
+    "Pose des repas COMPOSÉS dans le menu de la semaine de l'app (créneaux petit-dej · midi · soir) : chaque repas = des " +
+    "briques (« Côte de porc », « Riz », « Haricots verts »), au moins 2 familles sur 3 parmi protéines · féculents · " +
+    "fibres ; les accompagnements (ail, oignon, sauce) peuvent s'ajouter. La famille de chaque brique est celle retenue " +
+    "pour le mot, sinon devinée ; précise family seulement si elle ne va pas de soi. Workflow : get_meal_options, " +
+    "propose, plan_meals apply:false (aperçu), puis apply:true après accord. clear:true vide un créneau.",
+  inputSchema: {
+    type: "object",
+    required: ["meals"],
+    properties: {
+      meals: {
+        type: "array",
+        description: "Repas (21 au plus)",
+        items: {
+          type: "object",
+          required: ["moment"],
+          properties: {
+            date: { type: "string", description: "YYYY-MM-DD (défaut : aujourd'hui)" },
+            moment: { type: "string", description: "petit-dej · midi · soir" },
+            components: {
+              type: "array",
+              description: "Briques : un libellé, ou {label, family}",
+              items: {
+                anyOf: [
+                  { type: "string" },
+                  {
+                    type: "object",
+                    required: ["label"],
+                    properties: {
+                      label: { type: "string" },
+                      family: { type: "string", description: "proteines · feculents · fibres · accompagnement (ou « feculents,proteines »)" },
+                    },
+                  },
+                ],
+              },
+            },
+            clear: { type: "boolean", description: "true = vider ce créneau" },
+          },
+        },
+      },
+      apply: { type: "boolean", description: "false (défaut) = aperçu ; true = enregistrer" },
+    },
+  },
+};
+
 // ── Mes placards (data/meta.groceries.pantry, 2026-11-03) ──────────────────
 
 const GET_PANTRY_TOOL = {
@@ -1841,6 +1906,8 @@ CHECK_SHOPPING_ITEM_TOOL,
 RECORD_RECEIPT_TOOL,
 GET_PANTRY_TOOL,
 UPDATE_PANTRY_TOOL,
+GET_MEAL_OPTIONS_TOOL,
+PLAN_MEALS_TOOL,
 MANAGE_AISLES_TOOL,
 LIST_EXPENSES_TOOL,
 DELETE_EXPENSES_TOOL,

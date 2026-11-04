@@ -1,6 +1,7 @@
 import { expenseLine, expensesIn, planDelete, planExpenseUpdate, planReceiptUpdate, type ExpenseDoc, type ReceiptPatch } from "./expenses_mcp";
 import { addAisle, aisleFor, DEFAULT_AISLES, foldWords, OTHER_AISLE, pantryText, parseState, removeAisle, renameAisle, resolveAisle, STATE_LABEL, type PantryDoc } from "./pantry";
 import { parseFamilies, familiesText, FAMILY_LABEL } from "./meal_families";
+import { mealOptionsText, parseMoment, planMeals, type MealsDoc, type PlanMealInput } from "./meal_plan_mcp";
 import type { AisleState } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
@@ -1483,6 +1484,46 @@ async function executeRecordReceipt(
   };
   await metaRef.set(patch, { merge: true });
   return `✅ Enregistré : ticket conservé (visible dans Finances) et ${Object.keys(expenses).length} dépense(s).\n${summary}`;
+}
+
+/** get_meal_options : composer un repas (Repas en 3 familles) — le créneau, le placard par famille, à finir, les derniers repas. */
+async function executeGetMealOptions(uid: string, args: { date?: string; moment?: string } = {}): Promise<string> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const meta = (snap.data() ?? {}) as Record<string, any>;
+  const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+  const today = todayParis(new Date(Date.now() - dayStartMin * 60000));
+  const ymd = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : today;
+  const moment = args.moment ? parseMoment(args.moment) : null;
+  if (args.moment && !moment) return "❌ moment : petit-dej · midi · soir.";
+  const g = meta.groceries ?? {};
+  return mealOptionsText({
+    ymd,
+    moment,
+    meals: (meta.meals ?? {}) as MealsDoc,
+    f: { families: g.families ?? {}, memory: g.memory ?? {}, pantry: g.pantry ?? {} },
+  });
+}
+
+/** plan_meals : poser (ou vider) des repas composés ; apply:false = aperçu. */
+async function executePlanMeals(uid: string, args: { meals?: PlanMealInput[]; apply?: boolean }): Promise<string> {
+  const list = (args.meals ?? []).filter(Boolean);
+  if (!list.length) return "❌ meals vide (au moins un {date, moment, components}).";
+  if (list.length > 21) return "❌ 21 repas au plus par appel (une semaine).";
+  const ref = db.doc(`users/${uid}/data/meta`);
+  const snap = await ref.get();
+  const meta = (snap.data() ?? {}) as Record<string, any>;
+  const dayStartMin = typeof meta.dayStartMin === "number" ? meta.dayStartMin : 300;
+  const today = todayParis(new Date(Date.now() - dayStartMin * 60000));
+  const g = meta.groceries ?? {};
+  const { writes, errors } = planMeals(list, (meta.meals ?? {}) as MealsDoc, { families: g.families ?? {}, memory: g.memory ?? {}, pantry: g.pantry ?? {} }, today);
+  const body = [...writes.map((w) => w.text), ...errors.map((e) => `❌ ${e}`)].join("\n");
+  if (args.apply !== true || !writes.length) {
+    return `${body}\n\n${writes.length ? "Rien n'est enregistré : montre ces repas à l'utilisateur, puis rappelle plan_meals avec apply:true." : "Rien à enregistrer."}`;
+  }
+  const plans: Record<string, Record<string, unknown>> = {};
+  for (const w of writes) (plans[w.monday] ??= {})[w.key] = w.value ?? FieldValue.delete();
+  await ref.set({ meals: { plans } }, { merge: true });
+  return `✅ ${writes.length} repas enregistré(s) — visibles dans la feuille Repas de l'app.\n${body}`;
 }
 
 /** get_pantry : ce que l'utilisateur a chez lui, par rayon. */
@@ -5469,7 +5510,7 @@ export {
   executeSaveDocument,
   executeGetDocuments,
   executeGetArchives,
-  executeGetShoppingList, executeRecordReceipt, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses, executeUpdateReceipt, executeUpdateExpense,
+  executeGetShoppingList, executeRecordReceipt, executeGetMealOptions, executePlanMeals, executeGetPantry, executeUpdatePantry, executeManageAisles, executeListExpenses, executeDeleteExpenses, executeUpdateReceipt, executeUpdateExpense,
   executeAddShoppingItem,
   executeCheckShoppingItem,
   executeRestoreItem,

@@ -1090,6 +1090,12 @@ posé), IDÉE AVEC CE QUE TU AS (« Je prends » · « Autre idée »), une rang
 dès 2. Entrées : bouton « Composer » / « Recomposer » de la carte CE MATIN / MIDI / SOIR de la feuille Repas, tap sur une case de
 la grille CETTE SEMAINE (trois rangées matin · midi · soir), « Composer avec ce que j'ai » en tête du choix d'un repas dans « Les
 repas de la semaine » (trois cases par jour).
+**Lot 3 livré (MCP repas)** (⚠️ `firebase deploy --only functions`) : logique pure `functions/src/meal_plan_mcp.ts` (`parseMoment`
+petit-dej · midi · soir et alias, `covered`, `composedTitle` aligné sur l'app, `toComponent` — famille donnée sinon celle du mot —,
+`composedHistory`, `toFinish`, `mealOptionsText`, `planMeals` : refuse un repas à moins de 2 familles, garde `ate` / `ateWhat`).
+`get_meal_options(date?, moment?)` = créneau(x), placard par famille, À FINIR, derniers repas composés, protéine du repas d'avant ;
+`plan_meals(meals:[{date, moment, components: ["Riz" | {label, family}], clear?}], apply)` écrit
+`data/meta.meals.plans.<lundi>.<ymd|moment>` (`{title, portions: 1, components}`), aperçu par défaut.
 
 ## Finances, 100 % manuel (2026-11-02, maquette validée « Suivi des finances »)
 
