@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/workouts.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef, timeContextsWith;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
@@ -1975,6 +1976,48 @@ class AppLogic implements HuntStore {
     finances = finances.copyWith(paid: {...finances.paid, month: m});
     onChange();
     await sync?.setFinancePaid(month, recurringId, amount == null ? null : m[recurringId]!.toJson());
+  }
+
+  /// Séances de muscu (2026-11-04, `utils/workouts.dart`) : exercices et séances types (`data/meta.gym`) et
+  /// séances faites (`workouts`, relues en direct par le flux de main.dart).
+  Gym gym = const Gym();
+  List<Workout> workouts = const [];
+
+  /// Crée ou met à jour un exercice. Un nom déjà connu (sans accents ni casse) réutilise l'exercice existant.
+  Future<Exercise> saveExercise(Exercise e) async {
+    final known = gym.exercises.containsKey(e.id) ? null : exerciseByName(gym, e.name);
+    final x = known == null ? e : known.copyWith(gear: e.gear, kind: e.kind, restSec: e.restSec, stepKg: e.stepKg);
+    gym = gym.copyWith(exercises: {...gym.exercises, x.id: x});
+    onChange();
+    await sync?.setGymExercise(x.id, x.toJson());
+    return x;
+  }
+
+  /// Repos retenu pour un exercice (« Garder 1 min 45 pour cet exercice »).
+  Future<void> setExerciseRest(String exerciseId, int restSec) async {
+    final e = gym.exercises[exerciseId];
+    if (e == null) return;
+    await saveExercise(e.copyWith(restSec: restSec.clamp(5, 900)));
+  }
+
+  Future<void> saveWorkoutTemplate(WorkoutTemplate t) async {
+    gym = gym.copyWith(templates: {...gym.templates, t.id: t});
+    onChange();
+    await sync?.setGymTemplate(t.id, t.toJson());
+  }
+
+  /// Retrait doux : la séance type disparaît des listes, l'historique la garde.
+  Future<void> removeWorkoutTemplate(String id) async {
+    final t = gym.templates[id];
+    if (t == null) return;
+    await saveWorkoutTemplate(t.copyWith(deleted: true));
+  }
+
+  /// Enregistre (ou réécrit) une séance faite.
+  Future<void> saveWorkout(Workout w) async {
+    workouts = [...workouts.where((x) => x.id != w.id), w];
+    onChange();
+    await sync?.saveWorkout(w.toJson());
   }
 
   /// Courses générales (`data/meta.groceries`, `utils/groceries.dart`, 2026-11-02).
