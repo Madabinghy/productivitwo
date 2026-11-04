@@ -23,6 +23,9 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   avec `hideProjectsTab`, l'onglet Actions revient à la place de Projets). Avant : Ma vie / Projets / Actions / Aujourd'hui (depuis le
   2026-11-01 Objectifs et Domaines sont fusionnés dans **Ma vie** — `_Tab.dashboard`, `_Tab.stats` ne s'affiche plus et pointe
   sur Ma vie ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
+  **Changement d'onglet instantané** (2026-11-04, retour user : une petite seconde de latence) : plus de fondu au tap, et la pile
+  (`IndexedStack` de `_buildBody`) enveloppe chaque onglet dans `_TabFreeze` (main.dart) — caché, il garde son dernier widget (même
+  instance, sous-arbre non reconstruit, animations coupées par `TickerMode`) ; seul l'onglet ouvert se reconstruit.
   **Actions mobile** (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10/README.md`,
   `lib/widgets/actions_view.dart`) : jamais vide, groupée par urgence (Maintenant · Aujourd'hui · En retard · Cette
   semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
