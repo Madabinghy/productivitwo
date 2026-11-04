@@ -1613,7 +1613,7 @@ cap de tes objectifs ») → `showSeasonCapSheet` (`SeasonCapView` : durée, obj
 objectif », « Lancer la saison · n objectifs » ; saison en cours = ses objectifs, état, cibles réglables, « Reposer le cap » ; une nouvelle
 saison reprend ce que le dernier bilan a gardé / ajusté) ; dans chaque tuile dont le domaine porte un objectif de saison : ligne
 `SeasonGoalLine` (point violet, nom, état vert / ambre) et, pour une métrique, le mini-graphique `SeasonMetricPainter` (fenêtre de la saison
-en violet clair, trajectoire en pointillés jusqu'à la cible, relevés, trait d'aujourd'hui) ; Finances garde la courbe du solde avec la cible
+en violet clair, trajectoire en pointillés du DÉPART DE L'OBJECTIF (valeur de départ, `objectiveStart`) jusqu'à sa cible — comme la fiche, retour user 2026-11-04 : voir le chemin parcouru face au plan d'origine —, chemin des relevés qui part du même point, relevés, trait d'aujourd'hui) ; Finances garde la courbe du solde avec la cible
 en pointillés violets (`FinanceFlowMini(targetCents:)`, objectif en €). **Lot 2 livré** : la ligne de saison d'une tuile ouvre
 `showSeasonGoalSheet` (`SeasonGoalView2` : SAISON n · DOMAINE, état, semaine k / N ; métrique = grand `SeasonMetricPainter`, « fin · 90 kg
 le … », dernier relevé · attendu aujourd'hui · reste en n sem., Noter un relevé · Changer la cible ; rythme = une barre par semaine de la
