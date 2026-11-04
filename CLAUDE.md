@@ -1545,8 +1545,15 @@ objectif », « Lancer la saison · n objectifs » ; saison en cours = ses objec
 saison reprend ce que le dernier bilan a gardé / ajusté) ; dans chaque tuile dont le domaine porte un objectif de saison : ligne
 `SeasonGoalLine` (point violet, nom, état vert / ambre) et, pour une métrique, le mini-graphique `SeasonMetricPainter` (fenêtre de la saison
 en violet clair, trajectoire en pointillés jusqu'à la cible, relevés, trait d'aujourd'hui) ; Finances garde la courbe du solde avec la cible
-en pointillés violets (`FinanceFlowMini(targetCents:)`, objectif en €). **Lot 2 à venir** : fiche d'un objectif de saison, bilan de fin
-(Garder · Ajuster · Laisser, en tête d'Aujourd'hui le lundi qui suit).
+en pointillés violets (`FinanceFlowMini(targetCents:)`, objectif en €). **Lot 2 livré** : la ligne de saison d'une tuile ouvre
+`showSeasonGoalSheet` (`SeasonGoalView2` : SAISON n · DOMAINE, état, semaine k / N ; métrique = grand `SeasonMetricPainter`, « fin · 90 kg
+le … », dernier relevé · attendu aujourd'hui · reste en n sem., Noter un relevé · Changer la cible ; rythme = une barre par semaine de la
+saison, `seasonRhythmWeeks` (semaine en cours mesurée à ce jour), vert ≥ 85 % ; CE QUI LE FAIT AVANCER · CETTE SEMAINE = engagements
+fait / cible ; « Fiche de l'objectif › »). Bilan : `SeasonBilanCard` en tête d'Aujourd'hui (et le bandeau d'Organisation « SAISON n
+TERMINÉE ») tant qu'une saison close n'a pas son bilan → `showSeasonBilanSheet` (`SeasonBilanView` : « k objectifs sur n tenus », réussie
+ou non, par objectif atteint / pas atteint + Garder · Ajuster (cible demandée pour une métrique) · Laisser ; « Lancer la saison n+1 » fige
+le résultat (`closeSeasonBilan`) puis ouvre le cap, qui reprend les objectifs gardés / ajustés ; « Fermer le bilan, sans nouvelle
+saison »). **Les 2 lots sont livrés.**
 **Routine acquise** (handoff `docs/specs/routine-acquise-2026-10/README.md`, logique pure `utils/acquired.dart`, écrans
 `widgets/acquired_view.dart`) : proposée une fois au palier de 66 j (carte Aujourd'hui, interrupteur de la fiche routine) ;
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),

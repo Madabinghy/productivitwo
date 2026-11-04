@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/season_widgets.dart' show SeasonBilanCard, showSeasonBilanSheet;
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
@@ -717,6 +718,15 @@ class TodayViewState extends State<TodayView> {
                   PendingRunCard(logic: widget.logic, badges: widget.badges),
                   // Badges en cartes (2026-11-01) : les cartes gagnées se retournent.
                   CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
+                  // Saisons (2026-11-04) : le bilan d'une saison close, une fois, en tête.
+                  if (widget.sync case final sync?)
+                    SeasonBilanCard(
+                      logic: widget.logic,
+                      onOpen: (season) => showSeasonBilanSheet(context, logic: widget.logic, season: season, objectives: _objectives, sync: sync, projects: widget.logic.currentProjects)
+                          .then((_) {
+                        if (mounted) setState(() {});
+                      }),
+                    ),
                   ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
