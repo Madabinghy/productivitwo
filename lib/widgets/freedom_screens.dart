@@ -3,6 +3,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
+import 'package:productivitwo_v1/urge_session_store.dart';
+import 'package:productivitwo_v1/utils/urge_session.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/finances.dart' show euros, parseEuros;
 import 'package:productivitwo_v1/utils/freedom.dart';
@@ -435,15 +438,29 @@ class _FreedomViewState extends State<FreedomView> {
 
 // ── Le moment de l'envie ─────────────────────────────────────────────────────
 
-Future<void> showUrgeScreen(BuildContext context, {required AppLogic logic, required String id}) =>
-    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic, id: id)));
+/// Ouvre l'écran de l'envie : reprend l'envie en cours de cette chose s'il y en a
+/// une (le minuteur a continué pendant qu'on faisait autre chose).
+Future<void> showUrgeScreen(BuildContext context, {required AppLogic logic, required String id}) async {
+  final pending = await UrgeSessionStore.load();
+  if (!context.mounted) return;
+  final resume = pending != null && pending.freedomId == id ? pending : null;
+  await Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic, id: id, resume: resume)));
+}
+
+/// Rouvre l'envie en cours, quelle que soit la chose (carte d'Aujourd'hui, notification).
+Future<void> reopenPendingUrge(BuildContext context, {required AppLogic logic}) async {
+  final pending = await UrgeSessionStore.load();
+  if (pending == null || !context.mounted) return;
+  await showUrgeScreen(context, logic: logic, id: pending.freedomId);
+}
 
 class UrgeScreen extends StatefulWidget {
   final AppLogic logic;
-  /// Faux en test : pas de minuteur.
+  /// Faux en test : pas de minuteur, ni alarme.
   final bool ticking;
   final String id;
-  const UrgeScreen({super.key, required this.logic, required this.id, this.ticking = true});
+  final PendingUrge? resume;
+  const UrgeScreen({super.key, required this.logic, required this.id, this.ticking = true, this.resume});
 
   @override
   State<UrgeScreen> createState() => _UrgeScreenState();
@@ -451,15 +468,25 @@ class UrgeScreen extends StatefulWidget {
 
 class _UrgeScreenState extends State<UrgeScreen> {
   AppLogic get logic => widget.logic;
-  final _start = DateTime.now();
-  int _intensity = 3;
-  String? _trigger;
-  String? _parade;
+  late PendingUrge _u = widget.resume ?? PendingUrge(freedomId: widget.id, startMs: DateTime.now().millisecondsSinceEpoch);
+  final List<String> _extraParades = [];
   Timer? _tick;
+
+  DateTime get _start => _u.start;
 
   @override
   void initState() {
     super.initState();
+    if (widget.resume == null) {
+      UrgeSessionStore.save(_u);
+      if (widget.ticking) {
+        final name = logic.freedomOf(widget.id).plan?.name;
+        CoupAlarm.scheduleUrge(logic,
+            at: _u.endsAt, title: 'Les 10 minutes sont passées', body: '${name == null || name.isEmpty ? 'Ton envie' : name} : alors, ça a été ?');
+      }
+    }
+    final p = _u.parade;
+    if (p != null && !(logic.freedomOf(widget.id).plan?.parades.contains(p) ?? false) && !kFreedomParades.contains(p)) _extraParades.add(p);
     if (widget.ticking) _tick = Timer.periodic(const Duration(seconds: 1), (_) => mounted ? setState(() {}) : null);
   }
 
@@ -469,17 +496,50 @@ class _UrgeScreenState extends State<UrgeScreen> {
     super.dispose();
   }
 
+  void _update(PendingUrge u) {
+    setState(() => _u = u);
+    UrgeSessionStore.save(u);
+  }
+
+  /// Quitter sans rien arrêter : le minuteur continue et sonnera au bout.
+  void _goAway() {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final e = _u.endsAt;
+    Navigator.of(context).pop();
+    if (!_u.isOver(DateTime.now())) {
+      messenger?.showClosingSnackBar(SnackBar(
+        content: Text('Le minuteur continue · il sonnera à ${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+  }
+
+  Future<void> _cancel() async {
+    await UrgeSessionStore.clear();
+    if (widget.ticking) unawaited(CoupAlarm.cancelUrge());
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _addParade() async {
+    final p = await _askText(context, 'Ce que j\'ai fait', hint: 'ce qui t\'a aidé à laisser passer l\'envie');
+    if (p == null || p.isEmpty || !mounted) return;
+    setState(() => _extraParades.add(p));
+    _update(_u.copyWith(parade: p));
+  }
+
   Future<void> _finish(bool passed) async {
     final u = FreedomUrge(
       id: _id(),
-      at: _start.millisecondsSinceEpoch,
-      intensity: _intensity,
-      trigger: _trigger,
-      parade: _parade,
+      at: _u.startMs,
+      intensity: _u.intensity,
+      trigger: _u.trigger,
+      parade: _u.parade,
       passed: passed,
-      durationSec: DateTime.now().difference(_start).inSeconds,
+      durationSec: math.min(DateTime.now().difference(_start).inSeconds, kUrgeWaveSec),
     );
     await logic.logUrge(widget.id, u);
+    await UrgeSessionStore.clear();
+    if (widget.ticking) unawaited(CoupAlarm.cancelUrge());
     if (!mounted) return;
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -487,7 +547,7 @@ class _UrgeScreenState extends State<UrgeScreen> {
     if (passed) {
       messenger.showClosingSnackBar(SnackBar(content: Text('Envie surmontée · ${urgesOvercome(logic.freedomOf(widget.id))} en tout'), duration: const Duration(seconds: 3)));
     } else {
-      await showSlipSheet(nav.context, logic: logic, id: widget.id, trigger: _trigger);
+      await showSlipSheet(nav.context, logic: logic, id: widget.id, trigger: _u.trigger);
     }
   }
 
@@ -497,25 +557,73 @@ class _UrgeScreenState extends State<UrgeScreen> {
     final mute = cs.onSurface.withValues(alpha: .6);
     final f = logic.freedomOf(widget.id);
     final p = f.plan;
-    final elapsed = DateTime.now().difference(_start).inSeconds;
-    final left = math.max(0, kUrgeWaveSec - elapsed);
+    final now = DateTime.now();
+    final elapsed = now.difference(_start).inSeconds;
+    final left = _u.secondsLeft(now);
+    final over = left == 0;
     final best = bestParade(f);
     final rates = {for (final r in paradeRates(f)) r.parade: r};
     final breath = ['Inspire', 'Bloque', 'Expire'][(elapsed % 14) < 4 ? 0 : ((elapsed % 14) < 8 ? 1 : 2)];
     final triggers = {...?p?.triggers, ...kFreedomTriggers}.take(8).toList();
-    final parades = [...?p?.parades];
+    final parades = <String>[...?p?.parades];
+    // À la fin, on demande ce qui a été fait : sans parades réglées, les idées par défaut.
+    if (over && parades.isEmpty) parades.addAll(kFreedomParades);
+    for (final x in _extraParades) {
+      if (!parades.contains(x)) parades.add(x);
+    }
     if (best != null && parades.remove(best)) parades.insert(0, best);
     final hasSupport = p?.supportPhone != null && p!.supportPhone!.isNotEmpty;
+    final paradeChips = Wrap(spacing: 6, runSpacing: 6, children: [
+      for (final pa in parades)
+        ChoiceChip(
+          label: Text(rates[pa] != null && rates[pa]!.tried >= 3 ? '$pa · ${rates[pa]!.passed}/${rates[pa]!.tried}' : pa),
+          selected: _u.parade == pa,
+          showCheckmark: false,
+          selectedColor: kFreeAccent,
+          side: pa == best ? const BorderSide(color: kFreeAccent) : null,
+          labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _u.parade == pa ? _freeInk : null),
+          onSelected: (_) => _update(_u.parade == pa ? _u.copyWith(clearParade: true) : _u.copyWith(parade: pa)),
+        ),
+      if (hasSupport && !over)
+        ActionChip(
+          avatar: const Icon(Icons.call, size: 16),
+          label: Text('Appeler ${p.supportName?.isNotEmpty == true ? p.supportName : ''}'.trim()),
+          onPressed: () {
+            _update(_u.copyWith(parade: 'Appeler ${p.supportName ?? ''}'.trim()));
+            launchUrl(Uri(scheme: 'tel', path: p.supportPhone));
+          },
+        ),
+      ActionChip(key: const ValueKey('urge-add-parade'), avatar: const Icon(Icons.add, size: 16), label: const Text('Autre'), onPressed: _addParade),
+    ]);
     return Scaffold(
       backgroundColor: const Color(0xFF0E1A16),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 20), children: [
           Row(children: [
             Expanded(child: _k('ENVIE · ${TimeOfDay.fromDateTime(_start).format(context)}', kUrgeAccent)),
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Je m\'arrête')),
+            if (!over)
+              TextButton.icon(
+                key: const ValueKey('urge-away'),
+                onPressed: _goAway,
+                icon: const Icon(Icons.north_east, size: 16),
+                label: const Text('Faire autre chose'),
+              ),
           ]),
-          _k('ELLE EST FORTE COMMENT ?', mute),
-          const SizedBox(height: 6),
+          if (over) ...[
+            const SizedBox(height: 6),
+            const Text('Les 10 minutes sont passées.', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            Text('Alors, ça a été ?', style: TextStyle(fontSize: 15, color: mute)),
+            const SizedBox(height: 16),
+            _k('QU\'AS-TU FAIT ?', mute),
+            const SizedBox(height: 6),
+            paradeChips,
+            const SizedBox(height: 14),
+            _k('ELLE ÉTAIT FORTE COMMENT ?', mute),
+            const SizedBox(height: 6),
+          ] else
+            _k('ELLE EST FORTE COMMENT ?', mute),
+          if (!over) const SizedBox(height: 6),
           Row(children: [
             for (var i = 1; i <= 5; i++) ...[
               if (i > 1) const SizedBox(width: 5),
@@ -523,79 +631,62 @@ class _UrgeScreenState extends State<UrgeScreen> {
                 child: ChoiceChip(
                   key: ValueKey('urge-$i'),
                   label: SizedBox(width: double.infinity, child: Text('$i', textAlign: TextAlign.center)),
-                  selected: _intensity == i,
+                  selected: _u.intensity == i,
                   showCheckmark: false,
                   selectedColor: kUrgeAccent,
-                  labelStyle: TextStyle(fontWeight: FontWeight.w900, color: _intensity == i ? _urgeInk : null),
-                  onSelected: (_) => setState(() => _intensity = i),
+                  labelStyle: TextStyle(fontWeight: FontWeight.w900, color: _u.intensity == i ? _urgeInk : null),
+                  onSelected: (_) => _update(_u.copyWith(intensity: i)),
                 ),
               ),
             ],
           ]),
           const SizedBox(height: 8),
-          _pickChips(triggers, {if (_trigger != null) _trigger!}, (t) => setState(() => _trigger = _trigger == t ? null : t), accent: kUrgeAccent, ink: _urgeInk),
-          const SizedBox(height: 14),
-          Center(
-            child: SizedBox(
-              width: 190,
-              height: 190,
-              child: Stack(alignment: Alignment.center, children: [
-                SizedBox(
-                  width: 190,
-                  height: 190,
-                  child: CircularProgressIndicator(
-                    value: left / kUrgeWaveSec,
-                    strokeWidth: 14,
-                    backgroundColor: cs.surfaceContainerHighest,
-                    valueColor: const AlwaysStoppedAnimation(kFreeAccent),
+          _pickChips(triggers, {if (_u.trigger != null) _u.trigger!}, (t) => _update(_u.trigger == t ? _u.copyWith(clearTrigger: true) : _u.copyWith(trigger: t)),
+              accent: kUrgeAccent, ink: _urgeInk),
+          if (!over) ...[
+            const SizedBox(height: 14),
+            Center(
+              child: SizedBox(
+                width: 190,
+                height: 190,
+                child: Stack(alignment: Alignment.center, children: [
+                  SizedBox(
+                    width: 190,
+                    height: 190,
+                    child: CircularProgressIndicator(
+                      value: left / kUrgeWaveSec,
+                      strokeWidth: 14,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      valueColor: const AlwaysStoppedAnimation(kFreeAccent),
+                    ),
                   ),
-                ),
-                Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text('${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900)),
-                  Text('une envie passe en 10 min', style: TextStyle(fontSize: 12, color: mute)),
+                  Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text('${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900)),
+                    Text('une envie passe en 10 min', style: TextStyle(fontSize: 12, color: mute)),
+                  ]),
                 ]),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text('$breath · inspire 4 s, bloque 4 s, expire 6 s', textAlign: TextAlign.center, style: TextStyle(color: mute)),
-          if (p != null && p.why.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest.withValues(alpha: .5),
-                borderRadius: BorderRadius.circular(10),
-                border: const Border(left: BorderSide(color: kFreeAccent, width: 3)),
               ),
-              child: Text('« ${p.why} »', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic)),
             ),
-          ],
-          if (parades.isNotEmpty || hasSupport) ...[
+            const SizedBox(height: 8),
+            Text('$breath · inspire 4 s, bloque 4 s, expire 6 s', textAlign: TextAlign.center, style: TextStyle(color: mute)),
+            const SizedBox(height: 4),
+            Text('Tu peux faire autre chose : le minuteur continue et sonnera au bout.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: mute)),
+            if (p != null && p.why.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(10),
+                  border: const Border(left: BorderSide(color: kFreeAccent, width: 3)),
+                ),
+                child: Text('« ${p.why} »', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic)),
+              ),
+            ],
             const SizedBox(height: 14),
             _k('UNE PARADE MAINTENANT', mute),
             const SizedBox(height: 6),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final pa in parades)
-                ChoiceChip(
-                  label: Text(rates[pa] != null && rates[pa]!.tried >= 3 ? '$pa · ${rates[pa]!.passed}/${rates[pa]!.tried}' : pa),
-                  selected: _parade == pa,
-                  showCheckmark: false,
-                  selectedColor: kFreeAccent,
-                  side: pa == best ? const BorderSide(color: kFreeAccent) : null,
-                  labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _parade == pa ? _freeInk : null),
-                  onSelected: (_) => setState(() => _parade = _parade == pa ? null : pa),
-                ),
-              if (hasSupport)
-                ActionChip(
-                  avatar: const Icon(Icons.call, size: 16),
-                  label: Text('Appeler ${p.supportName?.isNotEmpty == true ? p.supportName : ''}'.trim()),
-                  onPressed: () {
-                    setState(() => _parade = 'Appeler ${p.supportName ?? ''}'.trim());
-                    launchUrl(Uri(scheme: 'tel', path: p.supportPhone));
-                  },
-                ),
-            ]),
+            paradeChips,
           ],
           const SizedBox(height: 18),
           Row(children: [
@@ -604,7 +695,7 @@ class _UrgeScreenState extends State<UrgeScreen> {
                 key: const ValueKey('urge-passed'),
                 style: FilledButton.styleFrom(backgroundColor: kFreeAccent, foregroundColor: _freeInk, minimumSize: const Size.fromHeight(52)),
                 onPressed: () => _finish(true),
-                child: const Text('Elle est passée', style: TextStyle(fontWeight: FontWeight.w900)),
+                child: Text(over ? 'Ça a été' : 'Elle est passée', style: const TextStyle(fontWeight: FontWeight.w900)),
               ),
             ),
             const SizedBox(width: 8),
@@ -617,8 +708,120 @@ class _UrgeScreenState extends State<UrgeScreen> {
               ),
             ),
           ]),
+          const SizedBox(height: 6),
+          Center(
+            child: TextButton(
+              key: const ValueKey('urge-cancel'),
+              onPressed: _cancel,
+              child: Text('Fausse alerte · ne pas la compter', style: TextStyle(color: mute)),
+            ),
+          ),
         ]),
       ),
+    );
+  }
+}
+
+/// Envie en cours, écran quitté (2026-11-04) : en tête d'Aujourd'hui, le temps
+/// qui reste et « Revenir » ; au bout des 10 min, l'écran se rouvre une fois de
+/// lui-même pour demander comment ça s'est passé.
+class PendingUrgeCard extends StatefulWidget {
+  final AppLogic logic;
+  const PendingUrgeCard({super.key, required this.logic});
+
+  @override
+  State<PendingUrgeCard> createState() => _PendingUrgeCardState();
+}
+
+class _PendingUrgeCardState extends State<PendingUrgeCard> with WidgetsBindingObserver {
+  static int? _autoOpenedFor;
+  static bool _open = false;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    UrgeSessionStore.load().then((_) => _refresh());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    setState(() {});
+    final u = UrgeSessionStore.current;
+    // Le minuteur de la carte ne tourne que pendant une envie.
+    if (u == null) {
+      _tick?.cancel();
+      _tick = null;
+    } else {
+      _tick ??= Timer.periodic(const Duration(seconds: 15), (_) => _refresh());
+    }
+    if (u != null && u.isOver(DateTime.now()) && _autoOpenedFor != u.startMs && !_open) {
+      _autoOpenedFor = u.startMs;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reopen();
+      });
+    }
+  }
+
+  Future<void> _reopen() async {
+    if (_open) return;
+    _open = true;
+    try {
+      await reopenPendingUrge(context, logic: widget.logic);
+    } finally {
+      _open = false;
+    }
+    _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = UrgeSessionStore.current;
+    if (u == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final over = u.isOver(now);
+    final name = widget.logic.freedomOf(u.freedomId).plan?.name;
+    final left = (u.secondsLeft(now) / 60).ceil();
+    return Container(
+      key: const ValueKey('urge-pending-card'),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: kUrgeAccent.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kUrgeAccent.withValues(alpha: .5)),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text((over ? 'Envie · les 10 min sont passées' : 'Envie en cours · reste $left min').toUpperCase(),
+                style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .7))),
+            const SizedBox(height: 3),
+            Text(over ? 'Alors, ça a été ?' : 'Tiens bon${name == null || name.isEmpty ? '' : ' · $name'}. Le minuteur sonnera au bout.',
+                style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .8))),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        FilledButton(
+          onPressed: _reopen,
+          style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: _urgeInk),
+          child: Text(over ? 'Répondre' : 'Revenir', style: const TextStyle(fontWeight: FontWeight.w800)),
+        ),
+      ]),
     );
   }
 }

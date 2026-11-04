@@ -87,4 +87,39 @@ class CoupAlarm {
     } catch (_) {}
     await NotificationService.cancelLanding();
   }
+
+  static const _urgeId = 46;
+
+  /// Fin des 10 minutes d'une envie (Liberté, 2026-11-04) : sonne même écran quitté.
+  static Future<void> scheduleUrge(AppLogic logic, {required DateTime at, required String title, required String body}) async {
+    if (kIsWeb) return;
+    final ringtone = ringtoneByKey(logic.state.alarmSound);
+    try {
+      await Alarm.stop(_urgeId);
+      if (at.isAfter(DateTime.now())) {
+        await Alarm.set(
+          alarmSettings: AlarmSettings(
+            id: _urgeId,
+            dateTime: at,
+            assetAudioPath: 'assets/audio/${ringtone.asset}',
+            loopAudio: false,
+            vibrate: true,
+            warningNotificationOnKill: false,
+            androidFullScreenIntent: false,
+            volumeSettings: VolumeSettings.fade(volume: 0.9, fadeDuration: const Duration(seconds: 1), volumeEnforced: false),
+            notificationSettings: NotificationSettings(title: title, body: body, stopButton: 'OK'),
+          ),
+        );
+      }
+    } catch (_) {}
+    await NotificationService.scheduleUrgeEnd(title: title, body: body, at: at, ringtone: ringtone);
+  }
+
+  static Future<void> cancelUrge() async {
+    if (kIsWeb) return;
+    try {
+      await Alarm.stop(_urgeId);
+    } catch (_) {}
+    await NotificationService.cancelUrgeEnd();
+  }
 }

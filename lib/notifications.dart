@@ -77,6 +77,8 @@ class NotificationService {
   static const _timerEndNotifId = 30;
   static const _coupEndNotifId = 31;
   static const _landingNotifId = 32;
+  static const _urgeEndNotifId = 33;
+  static const kPayloadUrge = 'urge';
   // Défis programmés (ids 40000 / 50000 / 60000 dérivés du block.id) : plus
   // armés depuis le 2026-10-30, seulement annulés (`cancelChallengeAll`).
 
@@ -420,6 +422,29 @@ class NotificationService {
   static Future<void> cancelLanding() async {
     if (!_supported) return;
     await _plugin.cancel(_landingNotifId);
+  }
+
+  /// Fin des 10 minutes d'une envie (Liberté) : filet si l'app est tuée ; le tap rouvre l'écran de l'envie.
+  static Future<void> scheduleUrgeEnd({required String title, required String body, required DateTime at, AlarmRingtone? ringtone}) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_urgeEndNotifId);
+    if (!at.isAfter(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+      _urgeEndNotifId,
+      title,
+      body,
+      tz.TZDateTime.from(at, tz.local),
+      _alarmDetails(ringtone ?? kAlarmRingtones.first, 'Fin des 10 minutes d\'une envie'),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: kPayloadUrge,
+    );
+  }
+
+  static Future<void> cancelUrgeEnd() async {
+    if (!_supported) return;
+    await _plugin.cancel(_urgeEndNotifId);
   }
 
   // ── Challenge programmé ─────────────────────────────────────────────────────

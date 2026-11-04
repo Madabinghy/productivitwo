@@ -72,6 +72,7 @@ import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActi
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
+import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -716,6 +717,8 @@ class TodayViewState extends State<TodayView> {
                   RechargeCard(logic: widget.logic),
                   _bedtimeCard(),
                   PendingRunCard(logic: widget.logic, badges: widget.badges),
+                  // Liberté (2026-11-04) : une envie en cours, écran quitté pour faire autre chose.
+                  PendingUrgeCard(logic: widget.logic),
                   // Badges en cartes (2026-11-01) : les cartes gagnées se retournent.
                   CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
                   // Saisons (2026-11-04) : le bilan d'une saison close, une fois, en tête.
