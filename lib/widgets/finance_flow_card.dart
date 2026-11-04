@@ -156,13 +156,33 @@ class _ChartGeom {
   static const gap = 18.0;
 }
 
+/// Version mini (tuile Finances d'Organisation) : la courbe du solde et les barres entré / sorti, sans légendes.
+class FinanceFlowMini extends StatelessWidget {
+  final Finances finances;
+  final String todayYmd;
+  final int days;
+  final double height;
+  const FinanceFlowMini({super.key, required this.finances, required this.todayYmd, this.days = 30, this.height = 48});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final s = flowSeries(finances, todayYmd, days: days);
+    return CustomPaint(
+      size: Size(double.infinity, height),
+      painter: _FlowPainter(s, s.length - 1, cs.onSurface.withValues(alpha: .55), cs.onSurface.withValues(alpha: .08), cs.surface, compact: true),
+    );
+  }
+}
+
 class _FlowPainter extends CustomPainter {
   final List<DayFlow> s;
   final int sel;
   final Color mute;
   final Color grid;
   final Color surface;
-  _FlowPainter(this.s, this.sel, this.mute, this.grid, this.surface);
+  final bool compact;
+  _FlowPainter(this.s, this.sel, this.mute, this.grid, this.surface, {this.compact = false});
 
   void _text(Canvas c, String t, Offset at, {TextAlign align = TextAlign.right, Color? color, FontWeight? weight}) {
     final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 9.5, color: color ?? mute, fontWeight: weight)), textDirection: TextDirection.ltr)..layout();
@@ -178,7 +198,7 @@ class _FlowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const l = _ChartGeom.left, r = _ChartGeom.right;
+    final l = compact ? 0.0 : _ChartGeom.left, r = compact ? 0.0 : _ChartGeom.right;
     final n = s.length;
     final w = size.width - l - r;
     final step = w / n;
@@ -188,7 +208,7 @@ class _FlowPainter extends CustomPainter {
       ..strokeWidth = 1;
 
     // ── Solde ──
-    const top = 6.0, bh = _ChartGeom.balanceH;
+    final top = compact ? 2.0 : 6.0, bh = compact ? size.height * .58 : _ChartGeom.balanceH;
     final vals = [for (final d in s) if (d.balance != null) d.balance!];
     if (vals.isNotEmpty) {
       var mn = vals.reduce(math.min).toDouble(), mx = vals.reduce(math.max).toDouble();
@@ -200,7 +220,7 @@ class _FlowPainter extends CustomPainter {
       mn -= pad;
       mx += pad;
       double y(num v) => top + (mx - v) / (mx - mn) * (bh - top);
-      for (var k = 0; k <= 2; k++) {
+      for (var k = 0; k <= 2 && !compact; k++) {
         final v = (mn + (mx - mn) * k / 2).round();
         canvas.drawLine(Offset(l, y(v)), Offset(size.width - r, y(v)), gridP);
         _text(canvas, _k(v), Offset(l - 5, y(v)));
@@ -220,7 +240,7 @@ class _FlowPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2
             ..strokeJoin = StrokeJoin.round);
-      for (var i = 0; i < n; i++) {
+      for (var i = 0; i < n && !compact; i++) {
         final b = s[i].balance;
         if (b == null || !s[i].checked) continue;
         canvas.drawCircle(Offset(cx(i), y(b)), 5, Paint()..color = surface);
@@ -228,19 +248,21 @@ class _FlowPainter extends CustomPainter {
       }
       final sb = s[sel].balance;
       if (sb != null) canvas.drawCircle(Offset(cx(sel), y(sb)), 4.5, Paint()..color = _kLine);
-    } else {
+    } else if (!compact) {
       _text(canvas, 'pas encore de solde recopié', Offset(l + w / 2, top + bh / 2), align: TextAlign.center);
     }
 
     // ── Rentrées / sorties (échelle racine : un loyer n'écrase pas les cafés) ──
-    final fTop = bh + _ChartGeom.gap;
-    final fh = size.height - fTop - 14;
+    final fTop = bh + (compact ? 3 : _ChartGeom.gap);
+    final fh = size.height - fTop - (compact ? 0 : 14);
     final mid = fTop + fh / 2;
     final peak = s.fold<int>(1, (a, d) => math.max(a, math.max(d.inCents, d.outCents)));
     double h(int v) => math.sqrt(v / peak) * (fh / 2 - 2);
     canvas.drawLine(Offset(l, mid), Offset(size.width - r, mid), gridP);
-    _text(canvas, 'entré', Offset(l - 5, fTop + 6));
-    _text(canvas, 'sorti', Offset(l - 5, fTop + fh - 6));
+    if (!compact) {
+      _text(canvas, 'entré', Offset(l - 5, fTop + 6));
+      _text(canvas, 'sorti', Offset(l - 5, fTop + fh - 6));
+    }
     final bw = math.max(1.5, step - (n > 40 ? 1 : 2));
     for (var i = 0; i < n; i++) {
       final x0 = l + step * i + (step - bw) / 2;
@@ -257,6 +279,7 @@ class _FlowPainter extends CustomPainter {
       }
     }
 
+    if (compact) return;
     // ── Jour touché + dates ──
     canvas.drawLine(Offset(cx(sel), top), Offset(cx(sel), size.height - 14),
         Paint()

@@ -455,6 +455,21 @@ class _NightsChart extends StatelessWidget {
   }
 }
 
+/// Version mini des nuits (tuile Sommeil d'Organisation) : les mêmes barres, sans heures ni jours.
+class SleepNightsMini extends StatelessWidget {
+  final List<SleepNight?> nights;
+  final List<DateTime> bedDays;
+  final int target;
+  final double height;
+  const SleepNightsMini({super.key, required this.nights, required this.bedDays, required this.target, this.height = 48});
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        size: Size(double.infinity, height),
+        painter: _NightsPainter(nights, bedDays, target, null, Theme.of(context).colorScheme.onSurface, MaterialLocalizations.of(context), compact: true),
+      );
+}
+
 class _NightsPainter extends CustomPainter {
   static const left = 30.0;
   final List<SleepNight?> nights;
@@ -463,7 +478,8 @@ class _NightsPainter extends CustomPainter {
   final ({int bed, int durationMin})? planned;
   final Color ink;
   final MaterialLocalizations loc;
-  _NightsPainter(this.nights, this.bedDays, this.target, this.planned, this.ink, this.loc);
+  final bool compact;
+  _NightsPainter(this.nights, this.bedDays, this.target, this.planned, this.ink, this.loc, {this.compact = false});
 
   /// Minutes depuis 18:00 la veille du lendemain.
   int _m(DateTime t, DateTime pivot) {
@@ -492,12 +508,13 @@ class _NightsPainter extends CustomPainter {
     }
     lo = (lo ~/ 60) * 60;
     hi = ((hi + 59) ~/ 60) * 60;
-    const top = 6.0, bottom = 18.0;
+    final left = compact ? 0.0 : _NightsPainter.left;
+    final top = compact ? 1.0 : 6.0, bottom = compact ? 1.0 : 18.0;
     final plotH = size.height - top - bottom;
     double y(int m) => top + (m - lo) / (hi - lo) * plotH;
     final grid = Paint()..color = ink.withValues(alpha: .08);
     final step = (hi - lo) > 13 * 60 ? 180 : 120;
-    for (var m = lo; m <= hi; m += step) {
+    for (var m = lo; m <= hi && !compact; m += step) {
       canvas.drawLine(Offset(left, y(m)), Offset(size.width, y(m)), grid);
       final tp = TextPainter(
           text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontSize: 10, color: ink.withValues(alpha: .4))),
@@ -518,7 +535,7 @@ class _NightsPainter extends CustomPainter {
         ..strokeWidth = 1);
     }
     final colW = (size.width - left) / nights.length;
-    final barW = (colW * .62).clamp(6.0, 18.0);
+    final barW = (colW * .62).clamp(compact ? 4.0 : 6.0, 18.0);
     for (var i = 0; i < nights.length; i++) {
       final n = nights[i];
       final cx = left + colW * i + colW / 2;
@@ -528,7 +545,7 @@ class _NightsPainter extends CustomPainter {
         final paint = Paint()..color = (short ? _kShort : _kOk).withValues(alpha: last ? 1 : .8);
         for (final s in n.spans) {
           canvas.drawRRect(
-              RRect.fromRectAndRadius(Rect.fromLTRB(cx - barW / 2, y(_m(s.start, n.pivot)), cx + barW / 2, y(_m(s.end, n.pivot))), const Radius.circular(5)),
+              RRect.fromRectAndRadius(Rect.fromLTRB(cx - barW / 2, y(_m(s.start, n.pivot)), cx + barW / 2, y(_m(s.end, n.pivot))), Radius.circular(compact ? 3 : 5)),
               paint);
         }
         if (last) {
@@ -541,6 +558,7 @@ class _NightsPainter extends CustomPainter {
                 ..strokeWidth = 1.5);
         }
       }
+      if (compact) continue;
       // Une nuit porte le nom du jour du coucher (lundi = lundi → mardi).
       final label = _days[bedDays[i].weekday - 1].substring(0, 2);
       final tp = TextPainter(text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
