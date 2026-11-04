@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/utils/meals.dart' show sortDishes;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent, showDishSheet, showDishesSheet;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
+import 'package:productivitwo_v1/widgets/meal_compose_sheet.dart' show showMealComposeSheet;
 
 const _days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 const _months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -87,6 +88,15 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
               const SizedBox(height: 4),
               Text('Un plat de plusieurs portions remplit aussi les midis suivants.', style: TextStyle(fontSize: 12.5, color: mute)),
               const SizedBox(height: 8),
+              ListTile(
+                key: const Key('week-compose'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.restaurant_menu_rounded, color: kMealAccent),
+                title: Text(cur != null && cur.isComposed ? 'Recomposer avec ce que j’ai' : 'Composer avec ce que j’ai', style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('une brique par famille, deux familles suffisent', style: TextStyle(fontSize: 12, color: mute)),
+                onTap: () => Navigator.pop(ctx, 'compose'),
+              ),
+              const Divider(),
               if (src != null) ...[
                 Text('Ici : les restes de « ${src.title} »', style: const TextStyle(fontWeight: FontWeight.w800, color: kMealAccent)),
                 ListTile(
@@ -150,7 +160,10 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
       },
     );
     if (!mounted || choice == null) return;
-    if (choice is Recipe) {
+    if (choice == 'compose') {
+      final i = key.indexOf('|');
+      await showMealComposeSheet(context, logic: logic, monday: monday, ymd: key.substring(0, i), moment: key.substring(i + 1));
+    } else if (choice is Recipe) {
       await logic.setMeal(monday, key, PlannedMeal(recipeId: choice.id, title: choice.title, portions: choice.portions));
     } else if (choice == 'out') {
       await logic.setMeal(monday, key, const PlannedMeal(title: 'Dehors / libre', out: true));
@@ -158,9 +171,9 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
       await logic.setMeal(monday, key, null);
     } else if ((choice == 'remove' || choice == 'noLeft') && srcKey != null && src != null) {
       final portions = choice == 'remove' ? removeLeftoverAt(week.slots, _ymds, key)!.portions : 1;
-      await logic.setMeal(monday, srcKey, PlannedMeal(recipeId: src.recipeId, title: src.title, portions: portions, out: src.out, ate: src.ate));
+      await logic.setMeal(monday, srcKey, src.withPortions(portions));
     } else if ((choice == 'less' || choice == 'more') && cur != null) {
-      await logic.setMeal(monday, key, PlannedMeal(recipeId: cur.recipeId, title: cur.title, portions: (cur.portions + (choice == 'more' ? 1 : -1)).clamp(1, 12), out: cur.out, ate: cur.ate));
+      await logic.setMeal(monday, key, cur.withPortions(cur.portions + (choice == 'more' ? 1 : -1)));
     } else if (choice == 'new') {
       await showDishSheet(context, sync: widget.sync, all: _all, logic: widget.logic);
     }
@@ -197,13 +210,13 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => _pick(key, '${_days[i]} ${moment == 'midi' ? 'midi' : 'soir'}'),
+                onTap: () => _pick(key, '${_days[i]} ${kMealMomentShort[moment] ?? moment}'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
                     SizedBox(
                       width: 70,
-                      child: Text('${_days[i]} $moment', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ymd == today ? kMealAccent : mute)),
+                      child: Text('${_days[i]} ${kMealMomentShort[moment] ?? moment}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ymd == today ? kMealAccent : mute)),
                     ),
                     Expanded(
                       child: Text(
@@ -240,6 +253,8 @@ class _MealWeekSheetState extends State<MealWeekSheet> {
               style: TextStyle(fontSize: 12.5, color: mute)),
           for (final (i, ymd) in _ymds.indexed) ...[
             const SizedBox(height: 10),
+            slot(ymd, 'petit-dej', i),
+            const SizedBox(height: 5),
             slot(ymd, 'midi', i),
             const SizedBox(height: 5),
             slot(ymd, 'soir', i),

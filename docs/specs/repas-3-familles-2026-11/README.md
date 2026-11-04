@@ -29,12 +29,12 @@ Légumineuses = féculent ET protéine.
    `Groceries.families`, `AppLogic.setFoodFamilies`, `FirestoreSync.setFoodFamily`, `pantryByFamily`. MCP :
    `record_receipt` lignes `{family}`, `update_pantry {family}` (`""` = automatique), `get_pantry` sans filtre
    ajoute « PAR FAMILLE ». Rien de visible dans l'app.
-2. **Petit-déj + composer un repas** — créneau `petit-dej` (feuille Repas, Les repas de la semaine, `mealWeekView`
+2. **Petit-déj + composer un repas** (livré, avec les suggestions locales du lot 3) — créneau `petit-dej` (feuille Repas, Les repas de la semaine, `mealWeekView`
    : avant 10 h 30 = petit-déj), `PlannedMeal.components`, écran « Composer un repas » (sélecteur Petit-déj · Midi ·
    Soir ; une rangée de pastilles par famille avec ce qu'on a au placard ; assiette à 3 cases ; « Valider » dès 2
    familles). Petit-déj : rangées limitées aux produits déjà pris le matin (appris), sinon défauts pain · céréales ·
    œufs · yaourt · fruits.
-3. **Suggestions + MCP** — score local (3 familles +3 / 2 : +1 ; produit Frais ou Fruits et légumes acheté il y a
+3. **Suggestions + MCP** (suggestions livrées au lot 2 ; reste le MCP) — score local (3 familles +3 / 2 : +1 ; produit Frais ou Fruits et légumes acheté il y a
    > 3 j : +2 ; combinaison déjà validée : +1 ; même protéine qu'au repas précédent : −2, hors petit-déj ;
    identique < 3 j : −3), 3 meilleures, « Je prends » en un tap. MCP `get_meal_options(date, slot)` et
    `plan_meals(meals[], apply)`.

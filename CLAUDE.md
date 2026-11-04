@@ -1075,6 +1075,21 @@ deux places), `withFamilies`. `Groceries.families`, `AppLogic.setFoodFamilies`, 
 `firebase deploy --only functions`) : `record_receipt` lignes `{family}` (retenue pour le mot), `update_pantry {family}`
 (`""` = automatique), `get_pantry` sans filtre ajoute « PAR FAMILLE ». Lots 2-4 (petit-déj + composer un repas,
 suggestions + MCP repas, placards par famille) : voir le handoff.
+**Lot 2 livré (petit-déj + composer un repas)** : `kMealMoments` = `petit-dej · midi · soir` (`kMealMomentShort` matin · midi ·
+soir, `kMealMomentLabel`, `mealMomentTitle` CE MATIN / CE MIDI / CE SOIR) ; `momentOfMeal` / `currentMealMoment` : avant 10 h 30
+(`kBreakfastEndMin`) = petit-déj ; `mealWeekView` affiche le petit-déj mais les chiffres (équilibrés, comptés, midis sans rien)
+restent sur midi et soir ; les restes ne vont toujours qu'aux midis. `PlannedMeal.components` (`MealComponent {label, families}`,
+`isComposed`, conservés par `withAte` / `withPortions`). Logique pure `utils/meal_compose.dart` : `coveredFamilies`,
+`isValidMeal` (≥ 2 familles), `composedTitle` (protéines · féculents · fibres), `sidesOf`, `isBreakfastItem` (appris
+`learnedBreakfast` ou mots `kBreakfastKeywords`), `composedHistory`, `optionsFor` (placard par famille, filtré au petit-déj),
+`suggestMeals` → `MealIdea` (3 familles +3 / 2 : +1 ; Frais ou Fruits et légumes acheté il y a > 3 j, ou bientôt fini, +2 « … à
+finir » ; déjà composé +1 ; même protéine qu'au repas d'avant −2 hors petit-déj ; identique ≤ 3 j −3 ; 3 idées). Écran
+`widgets/meal_compose_sheet.dart` (`showMealComposeSheet(logic, monday, ymd, moment)`) : sélecteur Petit-déj · Midi · Soir (✓ si
+posé), IDÉE AVEC CE QUE TU AS (« Je prends » · « Autre idée »), une rangée de pastilles par famille (couleurs `kFamilyColors`,
+« Autre » = brique tapée), « Avec (facultatif) » pour les accompagnements, assiette à 3 cases, « Valider · n familles sur 3 »
+dès 2. Entrées : bouton « Composer » / « Recomposer » de la carte CE MATIN / MIDI / SOIR de la feuille Repas, tap sur une case de
+la grille CETTE SEMAINE (trois rangées matin · midi · soir), « Composer avec ce que j'ai » en tête du choix d'un repas dans « Les
+repas de la semaine » (trois cases par jour).
 
 ## Finances, 100 % manuel (2026-11-02, maquette validée « Suivi des finances »)
 
