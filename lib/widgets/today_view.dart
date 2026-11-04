@@ -1823,6 +1823,7 @@ class TodayViewState extends State<TodayView> {
       now: now,
       perfectToday: facts != null && isPerfectSoFar(facts),
       emberStock: widget.logic.emberLedgerNow().available,
+      excusedToday: widget.logic.excusedRoutinesToday(),
     );
   }
 

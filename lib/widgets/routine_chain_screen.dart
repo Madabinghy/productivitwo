@@ -134,13 +134,13 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
       _passed.add(s.id);
       _laterMenu = false;
     });
-    _toast('Pas aujourd\'hui : ${s.activity.name}');
+    _toast(logic.notTodayMessage(s.activity), long: true);
   }
 
-  void _toast(String t) {
+  void _toast(String t, {bool long = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showClosingSnackBar(SnackBar(content: Text(t), duration: const Duration(milliseconds: 2600)));
+      ..showClosingSnackBar(SnackBar(content: Text(t), duration: Duration(milliseconds: long ? 6000 : 2600)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────
