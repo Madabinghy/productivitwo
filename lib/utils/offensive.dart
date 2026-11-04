@@ -16,6 +16,14 @@ import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
 /// deep work 90 min reste à part (un seul gros bloc). Logique pure.
 const kOffensiveKind = 'offensive';
 const kOffensiveDurations = [10, 15, 25];
+
+/// « Illimité » (2026-11-04, retour user) : pas de minuteur ni d'alarme, plongé dans l'action ;
+/// un coup se compte en silence à chaque tranche de [kUnlimitedCoupMin] min, sans point d'étape.
+const kOffensiveUnlimited = 0;
+const kUnlimitedCoupMin = 25;
+
+/// Minutes d'un coup : la durée choisie, ou la tranche silencieuse de l'illimité.
+int coupMinutes(int duration) => duration == kOffensiveUnlimited ? kUnlimitedCoupMin : duration;
 const kOffensivePauseEvery = 3;
 const kOffensiveCountedMin = 3;
 const kOffensiveTiers = [1, 5, 15];

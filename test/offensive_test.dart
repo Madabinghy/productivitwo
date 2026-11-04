@@ -91,4 +91,10 @@ void main() {
     expect(frontsForActivity(fronts, 'autre').length, 3);
     expect(frontsForActivity(fronts, null).length, 3);
   });
+
+  test('illimité : un coup compte toutes les 25 min, sans minuteur choisi', () {
+    expect(coupMinutes(kOffensiveUnlimited), 25);
+    expect(coupMinutes(15), 15);
+    expect(kOffensiveDurations.contains(kOffensiveUnlimited), isFalse);
+  });
 }
