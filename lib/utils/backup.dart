@@ -60,6 +60,7 @@ const List<String> kBackupMetaKeys = [
   'finances',
   'groceries',
   'gym',
+  'freedom',
   'mirrorActivities',
   'interventionTemplates',
   'ganttVisible',
