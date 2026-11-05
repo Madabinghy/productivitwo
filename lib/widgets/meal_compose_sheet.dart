@@ -37,8 +37,9 @@ class MealComposeSheet extends StatefulWidget {
 
 class _MealComposeSheetState extends State<MealComposeSheet> {
   late String _moment = widget.moment;
-  // Une brique par famille qui compte ; accompagnements à part (plusieurs).
-  final Map<String, MealComponent> _pick = {};
+  // Les briques choisies par famille qui compte (plusieurs possibles depuis le 2026-11-05 : œufs ET
+  // bacon) ; accompagnements à part.
+  final Map<String, List<MealComponent>> _pick = {};
   final Set<String> _sides = {};
   int _idea = 0;
   bool _loaded = false;
@@ -62,7 +63,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
       for (final c in cur.components) {
         if (countsInMeal(c.families)) {
           for (final f in c.families) {
-            if (kMealFamilies.contains(f)) _pick[f] = c;
+            if (kMealFamilies.contains(f)) _add(f, c);
           }
         } else {
           _sides.add(c.label);
@@ -75,23 +76,37 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
   List<MealComponent> get _components {
     final seen = <String>{};
     return [
-      for (final c in _pick.values)
-        if (seen.add(normLabel(c.label))) c,
+      for (final f in kMealFamilies)
+        for (final c in _pick[f] ?? const <MealComponent>[])
+          if (seen.add(normLabel(c.label))) c,
       for (final s in _sides) MealComponent(s, const [kAccompagnement]),
     ];
   }
 
+  bool _has(String family, String label) => (_pick[family] ?? const []).any((x) => normLabel(x.label) == normLabel(label));
+
+  void _add(String family, MealComponent c) {
+    if (_has(family, c.label)) return;
+    (_pick[family] ??= []).add(c);
+  }
+
+  void _remove(String label) {
+    for (final l in _pick.values) {
+      l.removeWhere((x) => normLabel(x.label) == normLabel(label));
+    }
+    _pick.removeWhere((_, l) => l.isEmpty);
+  }
+
+  /// Toucher une brique l'ajoute (à toutes ses familles) ou la retire ; plusieurs par famille.
   void _toggle(String family, MealComponent c) {
     setState(() {
-      if (_pick[family]?.label == c.label) {
-        // Retirer : la brique quitte toutes ses familles.
-        _pick.removeWhere((_, v) => v.label == c.label);
+      if (_has(family, c.label)) {
+        _remove(c.label);
       } else {
-        _pick.removeWhere((_, v) => v.label == c.label);
         for (final f in c.families) {
-          if (kMealFamilies.contains(f)) _pick[f] = c;
+          if (kMealFamilies.contains(f)) _add(f, c);
         }
-        if (!c.families.contains(family)) _pick[family] = c;
+        if (!c.families.contains(family)) _add(family, c);
       }
     });
   }
@@ -162,7 +177,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
 
     Widget chip(String family, MealComponent c) {
       final color = kFamilyColors[family]!;
-      final on = family == kAccompagnement ? _sides.contains(c.label) : _pick[family]?.label == c.label;
+      final on = family == kAccompagnement ? _sides.contains(c.label) : _has(family, c.label);
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: FilterChip(
@@ -184,7 +199,14 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     }
 
     Widget row(String family) {
-      final list = opts[family] ?? const <MealComponent>[];
+      // Une brique choisie reste dans sa rangée même si le placard ne la propose pas à ce moment
+      // (bug user 2026-11-05 : « Bacon » tapé au petit-déj était choisi sans se voir).
+      final base = opts[family] ?? const <MealComponent>[];
+      final list = [
+        ...base,
+        for (final c in _pick[family] ?? const <MealComponent>[])
+          if (!base.any((b) => normLabel(b.label) == normLabel(c.label))) c,
+      ];
       final color = kFamilyColors[family]!;
       return Padding(
         padding: const EdgeInsets.only(top: 14),
@@ -216,12 +238,13 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     }
 
     Widget plateCell(String family) {
-      final c = _pick[family];
+      final chosen = _pick[family] ?? const <MealComponent>[];
+      final c = chosen.isEmpty ? null : chosen.map((x) => x.label).join(' + ');
       final color = kFamilyColors[family]!;
       return Expanded(
         child: Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: c != null ? color.withValues(alpha: .2) : null,
             border: c == null ? Border.all(color: cs.outlineVariant) : null,
@@ -229,7 +252,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
             Text(familyLabel(family).replaceAll(RegExp(r's$'), ''), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-            Text(c?.label ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c == null ? mute : null)),
+            Text(c ?? '—', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c == null ? mute : null)),
           ]),
         ),
       );
@@ -299,7 +322,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
         ),
       ],
       const SizedBox(height: 16),
-      Text(idea != null ? 'Ou compose : une brique par famille' : 'Une brique par famille, deux familles suffisent',
+      Text(idea != null ? 'Ou compose : une ou plusieurs briques par famille' : 'Deux familles suffisent, plusieurs briques possibles',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: mute)),
       for (final f in kMealFamilies) row(f),
       if (sides.isNotEmpty || _sides.isNotEmpty) ...[

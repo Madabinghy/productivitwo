@@ -139,4 +139,34 @@ void main() {
     expect(logic.mealWeek('2026-11-02').slots[mealKey('2026-11-04', 'soir')]!.title, 'Côtes de porc · Riz');
     await tester.pump(const Duration(seconds: 5)); // la SnackBar se ferme
   });
+
+  testWidgets('petit-déj : plusieurs protéines (œufs + bacon), une brique hors placard reste visible', (tester) async {
+    tester.view.physicalSize = const Size(780, 3200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.groceries = _pantry([_p('Œufs', 'Frais'), _p('Pain', 'Épicerie'), _p('Côte de porc', 'Frais')]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealComposeSheet(logic: logic, monday: '2026-11-02', ymd: '2026-11-04', moment: 'petit-dej'))));
+    await tester.pump();
+    // Pas proposée au petit-déj, mais choisie : elle apparaît dans sa rangée.
+    expect(find.byKey(const Key('compose-proteines-côte de porc')), findsNothing);
+    await tester.tap(find.byKey(const Key('compose-proteines-œufs')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-other-proteines')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('compose-other-text')), 'Côte de porc');
+    await tester.tap(find.text('Ajouter'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilterChip>(find.byKey(const Key('compose-proteines-côte de porc'))).selected, isTrue);
+    expect(tester.widget<FilterChip>(find.byKey(const Key('compose-proteines-œufs'))).selected, isTrue);
+    expect(find.text('Œufs + Côte de porc'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('compose-feculents-pain')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-save')));
+    await tester.pump();
+    final slot = logic.mealWeek('2026-11-02').slots[mealKey('2026-11-04', 'petit-dej')]!;
+    expect(slot.components.map((c) => c.label), containsAll(['Œufs', 'Côte de porc', 'Pain']));
+    await tester.pump(const Duration(seconds: 5));
+  });
 }
