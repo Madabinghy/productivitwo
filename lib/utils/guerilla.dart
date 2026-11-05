@@ -1,5 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusToday, isFocusedOn;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/routine_moments.dart' show RoutineDay, kMomentAllDay, kMomentAny;
 
@@ -91,7 +91,7 @@ List<GuerillaCoup> buildGuerillaQueue({
     for (final t in p.tasks) {
       if (t.status == 'done') continue;
       for (final a in t.actions) {
-        if (a.done || !isFocusedOn(a, now) || !seen.add(a.id)) continue;
+        if (a.done || !isFocusedOn(a, focusToday(now)) || !seen.add(a.id)) continue;
         final chrono = a.linkedActivityId ?? p.linkedActivityId;
         if (!usable(chrono)) continue;
         actions.add(GuerillaCoup(

@@ -593,7 +593,7 @@ jamais un bloc. C'est la **date par défaut d'une action** ; `dueDate` ne sert q
 démarche). Logique pure `utils/actions_logic.dart` : `focusDateOf`, `isFocusedOn(a, day)`, `isStaleFocus` (visée passée, non
 faite = « à re-viser », pas rouge), `workDate(a, t)` = jour visé sinon échéance effective (c'est elle qui ORDONNE : `nextAction`,
 file d'un bloc, groupes), `focusLabel` (« visée aujourd'hui / demain / hier / il y a n j / 3 nov. ») ; `isOverdueAction` ne
-regarde que l'échéance. File d'un bloc (`block_queue.dart`) : visées aujourd'hui (ou avant) EN TÊTE, puis retards, puis par
+regarde que l'échéance. **« Aujourd'hui » des jours visés = la journée vécue** (2026-11-05, retour user : à 1 h, une action visée aujourd'hui partait sur demain et une visée de la veille passait « à re-viser » dès minuit) : `focusToday()` (`utils/actions_logic.dart`, bascule `focusDayStartMin` posée par main.dart et le shell web à l'arrivée de `data/meta.dayStartMin`) sert à la création (« À faire aujourd'hui »), à « Viser demain », au choix d'un jour (`pickFocusDay`), aux tuiles, listes, fiches et enjeux (`buildStakeBoard` sur sa `dayStartMin`), comme le widget iOS. File d'un bloc (`block_queue.dart`) : visées aujourd'hui (ou avant) EN TÊTE, puis retards, puis par
 date de travail (`QueueItem.focus` / `focusedToday` / `work`). Actions mobile : l'essentiel inclut les visées aujourd'hui et
 les à re-viser. MCP : `focusDate` sur les objets action de `push_gantt` / `add_task` / `update_task` (préservé au re-push) et
 `add_activity_action`, `update_action {focusDate | clearFocusDate}` (`action_patch.ts`), `DATING_RULES` dans `WRITING_RULES`

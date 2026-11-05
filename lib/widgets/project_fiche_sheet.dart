@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, effectiveDueDate, flowTaskOf, focusLabel, kFlowTaskId;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, effectiveDueDate, flowTaskOf, focusLabel, focusToday, kFlowTaskId;
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 import 'package:productivitwo_v1/utils/default_estimate.dart' show defaultEstimateFor;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
@@ -128,8 +128,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
   }
 
   Future<void> _focusTomorrow(TaskAction a) async {
-    final t = DateTime.now().add(const Duration(days: 1));
-    a.focusDate = DateTime(t.year, t.month, t.day);
+    a.focusDate = focusToday().add(const Duration(days: 1));
     await widget.sync.patchActionOf(p, a);
     _skipToday();
   }
@@ -305,7 +304,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
           ListTile(
               leading: const Icon(Icons.wb_sunny_outlined),
               title: const Text('Jour visé'),
-              subtitle: a.focusDate == null ? null : Text(focusLabel(a.focusDate!, DateTime.now())),
+              subtitle: a.focusDate == null ? null : Text(focusLabel(a.focusDate!, focusToday())),
               onTap: () => Navigator.pop(ctx, 'focus')),
           ListTile(leading: const Icon(Icons.check_circle_outline), title: const Text('Marquer faite'), onTap: () => Navigator.pop(ctx, 'done')),
           ListTile(
@@ -390,7 +389,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
         detail: [
           task.id == kFlowTaskId ? 'Au fil de l\'eau' : task.title,
           if (due != null) actionDueLabel(due, now),
-          if (a.focusDate != null) '☀ ${focusLabel(a.focusDate!, now)}',
+          if (a.focusDate != null) '☀ ${focusLabel(a.focusDate!, focusToday(now))}',
           if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
         ].join(' · '),
         current: identical(a, m.next?.action) || a.id == m.next?.action.id,

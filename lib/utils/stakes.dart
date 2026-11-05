@@ -7,7 +7,7 @@ import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
-import 'package:productivitwo_v1/utils/lived_day.dart' show kDefaultDayStartMin, livedNowMin;
+import 'package:productivitwo_v1/utils/lived_day.dart' show kDefaultDayStartMin, livedDate, livedNowMin;
 import 'package:productivitwo_v1/utils/reprise.dart' show kRepriseHold;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 
@@ -537,8 +537,10 @@ StakeBoard buildStakeBoard({
     }
   }
   void focusGain(TaskAction a, {Project? p, ProjectTask? t, Activity? owner}) {
-    final focused = isFocusedOn(a, today);
-    if (!focused && !isStaleFocus(a, today)) return;
+    final lived = livedDate(now, dayStartMin);
+    final fday = DateTime(lived.year, lived.month, lived.day);
+    final focused = isFocusedOn(a, fday);
+    if (!focused && !isStaleFocus(a, fday)) return;
     if (paroleIds.contains(a.id) && !a.done) {
       add(
         StakeGesture(
@@ -577,7 +579,7 @@ StakeBoard buildStakeBoard({
       ),
       StakeGain(
         kind: StakeGainKind.focus,
-        label: focused ? 'visée aujourd’hui' : focusLabel(a.focusDate!, today),
+        label: focused ? 'visée aujourd’hui' : focusLabel(a.focusDate!, fday),
         detail: p == null ? owner?.name : '${p.title}${t == null ? '' : ' › ${t.title}'}',
         weight: focused ? 20 : 8,
         sourceId: 'focus:${a.id}',

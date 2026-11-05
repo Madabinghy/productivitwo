@@ -1201,7 +1201,7 @@ class _ActionsViewState extends State<ActionsView> {
     _filtersBarNow = (c) => _filtersBar(c, contexts.toList(), active, domains, activeDomains, roots, hiddenByFilters);
     // Tâche pas encore commencée → « À venir » (sauf action déjà au programme
     // du jour : on l'a décidé, elle reste devant).
-    final today0 = _day(DateTime.now());
+    final today0 = focusToday();
     final plannedIds = _todayActionIds;
     bool upcoming(_Entry e) =>
         e.task != null && isUpcomingTask(e.task!, today0) && !plannedIds.contains(e.action.id);
@@ -1716,7 +1716,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   List<Widget> _byUrgencySections(
       ColorScheme cs, List<_Entry> shown, List<_Entry> all, List<Project> needNext) {
-    final today = _day(DateTime.now());
+    final today = focusToday();
     final weekEnd = today.add(const Duration(days: 7));
     final nowMin = widget.logic.livedNowMinNow;
     final todayIds = _todayActionIds;
@@ -2100,7 +2100,7 @@ class _ActionsViewState extends State<ActionsView> {
   /// JOUR VISÉ (2026-10-30) : aujourd'hui · demain · lundi · date · retirer.
   /// Une intention, jamais une échéance. Persistée comme le reste.
   Future<void> _pickFocusDay(_Entry e) async {
-    final pick = await pickFocusDay(context, current: e.action.focusDate, today: _day(DateTime.now()));
+    final pick = await pickFocusDay(context, current: e.action.focusDate, today: focusToday());
     if (pick == null) return;
     e.action.focusDate = switch (pick) { FocusDay(:final day) => day, FocusClear() => null };
     await _persistEntry(e);
@@ -2111,7 +2111,7 @@ class _ActionsViewState extends State<ActionsView> {
   Future<void> _focusTomorrow(_Entry e) async {
     final a = e.action;
     final before = a.focusDate;
-    a.focusDate = _day(DateTime.now()).add(const Duration(days: 1));
+    a.focusDate = focusToday().add(const Duration(days: 1));
     await _persistEntry(e);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -2134,7 +2134,7 @@ class _ActionsViewState extends State<ActionsView> {
   /// reste de la feuille (`_persistEntry`).
   Future<void> _pickDueDate(_Entry e) async {
     final a = e.action;
-    final today = _day(DateTime.now());
+    final today = focusToday();
     final taskDue = e.task?.endDate == null ? null : _day(e.task!.endDate!);
     final toSunday = 7 - today.weekday;
     final endOfWeek = today.add(Duration(days: toSunday == 0 ? 7 : toSunday));
@@ -2206,7 +2206,7 @@ class _ActionsViewState extends State<ActionsView> {
   Widget _entryTile(ColorScheme cs, _Entry e,
       {bool showHolder = false, bool planned = false, String? startLabel}) {
     final isNew = e.task != null && startsToday(e.task!, today0OrNow());
-    final today = _day(DateTime.now());
+    final today = focusToday();
     final due = _dueOf(e);
     final late = due != null && due.isBefore(today);
     final a = e.action;
@@ -2312,7 +2312,7 @@ class _ActionsViewState extends State<ActionsView> {
   /// (Détail, Fait, Viser un jour, Caser, Ouvrir le projet) derrière son ⋯.
   void _openFocus(_Entry e) {
     final a = e.action;
-    final today = _day(DateTime.now());
+    final today = focusToday();
     final hasSteps = a.checklist.isNotEmpty;
     showActionFocusScreen(context,
         logic: widget.logic,
@@ -2397,7 +2397,7 @@ class _ActionsViewState extends State<ActionsView> {
           if (mounted) setState(() {});
         }
         Future<void> persist() => _persistEntry(e);
-        final today = _day(DateTime.now());
+        final today = focusToday();
         final due = _dueOf(e);
         final late = due != null && due.isBefore(today);
         final planned = _todayActionIds.contains(a.id);

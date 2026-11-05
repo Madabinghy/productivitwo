@@ -2,6 +2,18 @@ import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, kDefaultDayStartMin;
+
+/// Bascule de la journée vécue pour les jours visés (2026-11-05, retour user : à 1 h, « aujourd'hui » est
+/// encore la veille, comme les routines et le programme). Posée par l'app (mobile et web) quand
+/// `data/meta.dayStartMin` arrive.
+int focusDayStartMin = kDefaultDayStartMin;
+
+/// « Aujourd'hui » des jours visés : la journée vécue, à minuit.
+DateTime focusToday([DateTime? now]) {
+  final d = livedDate(now ?? DateTime.now(), focusDayStartMin);
+  return DateTime(d.year, d.month, d.day);
+}
 
 /// Logique pure de l'onglet Actions (refonte web § 5) — testable sans widget.
 

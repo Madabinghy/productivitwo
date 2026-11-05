@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, clientRoots, inClient, rootProjectOf, kFlowTaskId;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusToday, isFolderProject, clientRoots, inClient, rootProjectOf, kFlowTaskId;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show coupProjectIds;
@@ -578,8 +578,7 @@ class _GoalsViewState extends State<GoalsView> {
 
   Future<void> _aimTomorrow(TaskAction a, {Project? project, Activity? owner}) async {
     final prev = a.focusDate;
-    final t = DateTime.now();
-    a.focusDate = DateTime(t.year, t.month, t.day + 1);
+    a.focusDate = focusToday().add(const Duration(days: 1));
     Future<void> save() async {
       if (project != null) {
         await _sync.patchActionOf(project, a);
@@ -707,7 +706,7 @@ class _GoalsViewState extends State<GoalsView> {
   List<Widget> _actionsTop(ColorScheme cs, DateTime now) {
     final logic = widget.logic;
     if (logic == null) return const [];
-    final today = DateTime(now.year, now.month, now.day);
+    final today = focusToday(now);
     final parole = logic.paroles[logic.livedTodayYmd]?.ids.toSet() ?? const <String>{};
     final program = {for (final b in logic.todayBlocks) if (b.status == 'pending' && b.actionId != null) b.actionId!};
     final list = todayActions(projects: _projects, activities: widget.activities, today: today, paroleIds: parole, programActionIds: program);

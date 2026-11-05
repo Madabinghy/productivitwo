@@ -43,7 +43,7 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTod
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, overdueActionCount, stopTargetCandidates, stopTaskCandidates;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusDayStartMin, isFocusedOn, overdueActionCount, stopTargetCandidates, stopTaskCandidates;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show countsForBadges;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/claude_link.dart';
@@ -1881,6 +1881,7 @@ class _AppRootState extends State<AppRoot>
         return;
       }
       logic.dayStartMin = start;
+      focusDayStartMin = start;
       logic.momentWindows = windows;
       logic.badgeHunts = hunts;
       logic.emberSpends = spends;
