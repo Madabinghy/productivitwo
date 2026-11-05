@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -73,4 +74,30 @@ void main() {
     expect(find.text(euros(183000)), findsOneWidget);
     expect(find.textContaining('sur ton compte'), findsOneWidget);
   });
+
+  for (final nature in ['money', 'work']) {
+    testWidgets('changer la nature d\'un domaine ne fait pas disparaître sa tuile ($nature)', (tester) async {
+      SharedPreferences.setMockInitialValues({'life_natures': '{"s":"$nature"}'});
+      tester.view.physicalSize = const Size(720, 4000);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      final now = DateTime.now();
+      final t0 = DateTime(now.year, now.month, now.day, 0, 1);
+      final st = AppState(
+        domains: [Domain(id: 'f', name: 'Finances'), Domain(id: 's', name: 'Spiritualité')],
+        activities: [Activity(id: 'g', domainId: 's', name: 'GDS', role: ActivityRole.generic, type: 'time', goalMin: 45, createdAt: DateTime(2026))],
+        sessions: [Session(activityId: 'g', startAt: t0, endAt: t0.add(const Duration(minutes: 50)))],
+        habitProgress: [],
+      );
+      final logic = AppLogic(st, () {})..dayStartMin = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: LifeView(logic: logic, sync: FirestoreSync(), projects: const [], onOpenDomain: (d) async => null, onOpenSleep: () {}, onManageDomains: () {})),
+      ));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('SPIRITUALITÉ'), findsOneWidget);
+      expect(find.text('FINANCES'), findsOneWidget);
+      if (nature == 'work') expect(find.textContaining('sur le rythme'), findsOneWidget);
+    });
+  }
 }
