@@ -34,7 +34,7 @@ List<String> sidesOf(Iterable<MealComponent> cs) => [for (final c in cs) if (!co
 /// Mots d'un petit-déj « par défaut » (avant d'avoir appris ses habitudes).
 const kBreakfastKeywords = [
   'pain', 'baguette', 'biscotte', 'brioche', 'cereale', 'muesli', 'flocon', 'avoine', 'galette', 'crepe',
-  'oeuf', 'yaourt', 'yogourt', 'skyr', 'fromage blanc', 'lait', 'jambon', 'fromage',
+  'oeuf', 'yaourt', 'yogourt', 'skyr', 'fromage blanc', 'lait', 'jambon', 'fromage', 'bacon', 'saucisse', 'saumon fume', 'avocat',
   'fruit', 'banane', 'pomme', 'poire', 'orange', 'clementine', 'mandarine', 'kiwi', 'fraise', 'framboise', 'myrtille',
   'raisin', 'ananas', 'mangue', 'papaye', 'compote', 'jus',
   'beurre', 'confiture', 'miel', 'pate a tartiner',
