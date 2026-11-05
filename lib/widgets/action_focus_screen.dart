@@ -465,7 +465,11 @@ class _FocusScreenState extends State<_FocusScreen> {
             ),
             opt(25, 'Un sprint', 'le chrono, rien d\'autre'),
             if (est != null && est != 25 && est != 90) opt(est, 'L\'estimation', 'le chrono sur ≈ ${fmtMin(est)}'),
-            opt(90, 'Deep work', 'bloc posé dans le programme à partir de maintenant · badge Deep work', deep: true),
+            opt(90, 'Deep work',
+                _project != null
+                    ? 'aucun minuteur · le bloc s’écrit dans ton programme, fait dès 30 min'
+                    : 'bloc posé dans le programme à partir de maintenant · badge Deep work',
+                deep: true),
             if (_project != null)
               ListTile(
                 leading: const SizedBox(width: 44, child: Center(child: ModeGlyph(kind: kOffensiveKind, size: 24, color: Color(0xFFFF8A4C)))),
@@ -484,7 +488,10 @@ class _FocusScreenState extends State<_FocusScreen> {
       _openOffensive();
       return;
     }
-    if (picked == 90) {
+    if (picked == 90 && _project != null) {
+      // Deep work d'une action de projet = l'offensive sans minuteur, à partir de cette action (2026-11-05).
+      _openOffensive(deepWork: true);
+    } else if (picked == 90) {
       await _deepWork();
     } else {
       _start(minutes: picked);
@@ -492,12 +499,13 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   /// La page focus laisse la place à l'offensive, front et première action posés.
-  void _openOffensive() {
+  void _openOffensive({bool deepWork = false}) {
     final p = _project;
     if (p == null) return;
     final nav = Navigator.of(context);
     nav.pop();
-    nav.push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, projectId: p.id, firstActionId: a.id)));
+    nav.push(MaterialPageRoute(
+        fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, projectId: p.id, firstActionId: a.id, deepWork: deepWork)));
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────
