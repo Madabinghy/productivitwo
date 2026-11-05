@@ -358,11 +358,12 @@ class _LifeViewState extends State<LifeView> {
                     Text('$n envie${n > 1 ? 's' : ''} surmontée${n > 1 ? 's' : ''}', style: TextStyle(fontSize: 12, color: mute)),
                   ]),
                 ),
-                FilledButton(
+                // Discret (retour user 2026-11-05) : un bouton coloré se lisait comme une invitation à l'envie.
+                TextButton(
                   key: ValueKey('life-freedom-urge-$id'),
-                  style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: const Color(0xFF2A1606)),
+                  style: TextButton.styleFrom(foregroundColor: mute, textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                   onPressed: () => showUrgeScreen(context, logic: logic, id: id).then(refresh),
-                  child: const Text("J'ai une envie", style: TextStyle(fontWeight: FontWeight.w800)),
+                  child: const Text("J'ai une envie"),
                 ),
               ]),
             ),
