@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/meal_families.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart';
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 
 /// Couleurs des familles (maquette « Repas en 3 familles »).
 const kFamilyColors = {
@@ -37,6 +38,9 @@ class MealComposeSheet extends StatefulWidget {
 
 class _MealComposeSheetState extends State<MealComposeSheet> {
   late String _moment = widget.moment;
+  // Le jour composé (retour user 2026-11-05 : préparer vendredi depuis la feuille d'aujourd'hui).
+  late String _ymd = widget.ymd;
+  String get _monday => _mondayOf(_ymd);
   // Les briques choisies par famille qui compte (plusieurs possibles depuis le 2026-11-05 : œufs ET
   // bacon) ; accompagnements à part.
   final Map<String, List<MealComponent>> _pick = {};
@@ -45,7 +49,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
   bool _loaded = false;
 
   AppLogic get logic => widget.logic;
-  String get _key => mealKey(widget.ymd, _moment);
+  String get _key => mealKey(_ymd, _moment);
 
   @override
   void initState() {
@@ -58,7 +62,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     _pick.clear();
     _sides.clear();
     _idea = 0;
-    final cur = logic.mealWeek(widget.monday).slots[_key];
+    final cur = logic.mealWeek(_monday).slots[_key];
     if (cur != null && cur.isComposed) {
       for (final c in cur.components) {
         if (countsInMeal(c.families)) {
@@ -112,9 +116,9 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
   }
 
   Future<void> _save(List<MealComponent> cs) async {
-    final cur = logic.mealWeek(widget.monday).slots[_key];
+    final cur = logic.mealWeek(_monday).slots[_key];
     final meal = PlannedMeal(title: composedTitle(cs), components: cs, ate: cur?.ate, ateWhat: cur?.ateWhat);
-    await logic.setMeal(widget.monday, _key, meal);
+    await logic.setMeal(_monday, _key, meal);
     if (mounted) await Navigator.of(context).maybePop();
   }
 
@@ -159,6 +163,60 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(content: Text('$label2 ajouté au repas et à tes placards'), duration: const Duration(seconds: 3)));
   }
 
+  void _goDay(String ymd) => setState(() {
+        _ymd = ymd;
+        _loaded = false;
+      });
+
+  /// Les 7 jours de la semaine du jour composé, ‹ › pour changer de semaine ; un point = un repas déjà posé.
+  Widget _dayStrip(ColorScheme cs, Color mute) {
+    final monday = DateTime.parse(_monday);
+    final today = ymdOf(DateTime.now());
+    final week = logic.mealWeek(_monday);
+    String shift(int days) => ymdOf(DateTime(monday.year, monday.month, monday.day + days));
+    return Row(children: [
+      IconButton(
+        key: const Key('compose-prev-week'),
+        visualDensity: VisualDensity.compact,
+        tooltip: 'Semaine d’avant',
+        onPressed: () => _goDay(shift(-7 + DateTime.parse(_ymd).weekday - 1)),
+        icon: const Icon(Icons.chevron_left_rounded),
+      ),
+      for (var i = 0; i < 7; i++)
+        Expanded(child: Builder(builder: (_) {
+          final y = shift(i);
+          final on = y == _ymd;
+          final has = kMealMoments.any((m) => week.slots[mealKey(y, m)] != null);
+          final d = DateTime.parse(y);
+          return InkWell(
+            key: Key('compose-day-$y'),
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _goDay(y),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: on ? kMealAccent.withValues(alpha: .22) : null,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: on ? kMealAccent : Colors.transparent, width: 1.5),
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(_kDays[i], style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: mute)),
+                Text('${d.day}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: y == today ? kMealAccent : null)),
+                Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: has ? kMealAccent : Colors.transparent)),
+              ]),
+            ),
+          );
+        })),
+      IconButton(
+        key: const Key('compose-next-week'),
+        visualDensity: VisualDensity.compact,
+        tooltip: 'Semaine d’après',
+        onPressed: () => _goDay(shift(7 + DateTime.parse(_ymd).weekday - 1)),
+        icon: const Icon(Icons.chevron_right_rounded),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_loaded) _loadCurrent();
@@ -167,9 +225,9 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     final history = composedHistory(logic.meals);
     final learned = learnedBreakfast(history);
     final opts = optionsFor(logic.groceries, _moment, learned: learned);
-    final ideas = suggestMeals(g: logic.groceries, ymd: widget.ymd, moment: _moment, history: history);
+    final ideas = suggestMeals(g: logic.groceries, ymd: _ymd, moment: _moment, history: history);
     final idea = ideas.isEmpty ? null : ideas[_idea % ideas.length];
-    final week = logic.mealWeek(widget.monday);
+    final week = logic.mealWeek(_monday);
     final picked = _components;
     final covered = coveredFamilies(picked);
     final valid = covered.length >= 2;
@@ -259,7 +317,9 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
     }
 
     return ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(20, 8, 20, 32), children: [
-      const Text('Composer un repas', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+      Text('Composer · ${_dayTitle(_ymd)}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 8),
+      _dayStrip(cs, mute),
       const SizedBox(height: 10),
       SegmentedButton<String>(
         key: const Key('compose-moment'),
@@ -267,7 +327,7 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
           for (final m in kMealMoments)
             ButtonSegment(
               value: m,
-              label: Text('${kMealMomentLabel[m]}${week.slots[mealKey(widget.ymd, m)] != null ? ' ✓' : ''}'),
+              label: Text('${kMealMomentLabel[m]}${week.slots[mealKey(_ymd, m)] != null ? ' ✓' : ''}'),
             ),
         ],
         selected: {_moment},
@@ -354,4 +414,23 @@ class _MealComposeSheetState extends State<MealComposeSheet> {
       ),
     ]);
   }
+}
+
+const _kDays = ['lu', 'ma', 'me', 'je', 've', 'sa', 'di'];
+const _kDayNames = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const _kMonths = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+String _mondayOf(String ymd) {
+  final d = DateTime.parse(ymd);
+  return ymdOf(DateTime(d.year, d.month, d.day - (d.weekday - 1)));
+}
+
+/// « aujourd'hui » · « demain » · « vendredi 6 nov. ».
+String _dayTitle(String ymd) {
+  final d = DateTime.parse(ymd);
+  final n = DateTime.now();
+  final diff = DateTime(d.year, d.month, d.day).difference(DateTime(n.year, n.month, n.day)).inDays;
+  if (diff == 0) return 'aujourd’hui';
+  if (diff == 1) return 'demain';
+  return '${_kDayNames[d.weekday - 1]} ${d.day} ${_kMonths[d.month - 1]}';
 }

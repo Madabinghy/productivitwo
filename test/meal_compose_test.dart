@@ -100,7 +100,7 @@ void main() {
     logic.groceries = _pantry([_p('Côte de porc', 'Frais'), _p('Riz', 'Épicerie')]);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealComposeSheet(logic: logic, monday: '2026-11-02', ymd: '2026-11-04', moment: 'soir'))));
     await tester.pump();
-    expect(find.text('Composer un repas'), findsOneWidget);
+    expect(find.textContaining('Composer · '), findsOneWidget);
     expect(find.byKey(const Key('compose-idea')), findsOneWidget);
     await tester.tap(find.byKey(const Key('compose-proteines-côte de porc')));
     await tester.pump();
@@ -113,6 +113,37 @@ void main() {
     final slot = logic.mealWeek('2026-11-02').slots[mealKey('2026-11-04', 'soir')]!;
     expect(slot.title, 'Côte de porc · Riz');
     expect(slot.components.length, 2);
+  });
+
+  testWidgets('composer un autre jour : le jour choisi reçoit le repas, celui du départ ne bouge pas', (tester) async {
+    tester.view.physicalSize = const Size(780, 3200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Santé')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.groceries = _pantry([_p('Côte de porc', 'Frais'), _p('Riz', 'Épicerie')]);
+    await logic.setMeal('2026-11-02', mealKey('2026-11-05', 'midi'),
+        const PlannedMeal(title: 'Bacon · Riz', components: [MealComponent('Bacon', [kProteines]), MealComponent('Riz', [kFeculents])]));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealComposeSheet(logic: logic, monday: '2026-11-02', ymd: '2026-11-05', moment: 'midi'))));
+    await tester.pump();
+    expect(find.byKey(const Key('compose-feculents-riz')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('compose-day-2026-11-06')));
+    await tester.pump();
+    expect(find.textContaining(RegExp('Composer · (aujourd’hui|demain|vendredi 6)')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('compose-proteines-côte de porc')));
+    await tester.tap(find.byKey(const Key('compose-feculents-riz')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-save')));
+    await tester.pump();
+    final week = logic.mealWeek('2026-11-02').slots;
+    expect(week[mealKey('2026-11-06', 'midi')]!.title, 'Côte de porc · Riz');
+    expect(week[mealKey('2026-11-05', 'midi')]!.title, 'Bacon · Riz');
+    // Semaine d'après : le même jour de la semaine suivante.
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MealComposeSheet(logic: logic, monday: '2026-11-02', ymd: '2026-11-06', moment: 'midi'))));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('compose-next-week')));
+    await tester.pump();
+    expect(find.byKey(const Key('compose-day-2026-11-13')), findsOneWidget);
   });
 
   testWidgets('« Autre » : la brique tapée va au placard, s\'affiche choisie dans sa rangée', (tester) async {
