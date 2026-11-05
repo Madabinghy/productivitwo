@@ -19,6 +19,7 @@ struct ProductivitwoWidgetBundle: WidgetBundle {
         FocusTaskWidget()       // Visées aujourd'hui
         WatchWidget()
         ProjectsWidget()        // Projet du moment
+        DomainsWidget()         // Mes domaines (tuiles d'Organisation)
         // Live Activity « minuteur » (iOS 16.1+).
         if #available(iOS 16.1, *) {
             TimerLiveActivity()

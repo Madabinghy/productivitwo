@@ -1,7 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
-import 'package:productivitwo_v1/widgets/life_view.dart' show LifeView;
+import 'package:productivitwo_v1/widgets/life_view.dart' show LifeView, LifeViewState;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
 import 'package:productivitwo_v1/widgets/sport_sheet.dart' show showSportSheet, kSportAccent;
@@ -1933,6 +1933,7 @@ class _AppRootState extends State<AppRoot>
   // Onglet unique Aujourd'hui (handoff iOS 2026-09, PR 2) : toute navigation
   // « vers Maintenant » atterrit ici, carte MAINTENANT en tête.
   final _todayKey = GlobalKey<TodayViewState>();
+  final _lifeKey = GlobalKey<LifeViewState>();
   _Tab _goNowTab() {
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _todayKey.currentState?.scrollToTop());
@@ -2268,6 +2269,18 @@ class _AppRootState extends State<AppRoot>
         'sniper' => 'run:$kSniperKind',
         _ => NotificationService.kPayloadToday,
       });
+      return;
+    }
+    // Widget « Mes domaines » (2026-11-05) → la tuile du domaine dans Organisation :
+    //   com.madabinghy.productivitwo://domain/<domainId>
+    if (uri.host == 'domain' && uri.pathSegments.isNotEmpty) {
+      if (_state == null) {
+        _pendingDeepLink = uri;
+        return;
+      }
+      final id = uri.pathSegments.first;
+      setState(() => _tab = _Tab.dashboard);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _lifeKey.currentState?.openDomain(id));
       return;
     }
     // Widget Projets → ouvrir un projet :
@@ -6010,6 +6023,7 @@ class _AppRootState extends State<AppRoot>
   /// haut d'Objectifs y bascule (plus d'écran poussé).
   Widget _buildObjectivesBody(BuildContext context) {
     return LifeView(
+      key: _lifeKey,
       logic: logic,
       sync: _sync,
       badges: _badges,

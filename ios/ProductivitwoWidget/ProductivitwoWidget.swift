@@ -6,6 +6,7 @@
 
 import WidgetKit
 import SwiftUI
+import UIKit
 import Foundation
 import AppIntents
 
@@ -1094,5 +1095,229 @@ struct ProjectsWidget: Widget {
         .configurationDisplayName("Projet du moment")
         .description("Le projet qui compte maintenant : ses briques et la prochaine action")
         .supportedFamilies([.systemMedium])
+    }
+}
+
+
+// MARK: - Mes domaines (2026-11-05, maquette validée « Widgets iOS Mes domaines »)
+// L'app dessine chaque tuile d'Organisation en image (home_widget/dom_<id>.png de l'App Group,
+// lib/widgets/life_view.dart → WidgetService.exportDomains) et dépose domains_json. Le widget ne
+// calcule rien : il place les images et mène à la tuile (…://domain/<id>).
+
+struct WDomain: Decodable {
+    let id: String
+    let name: String
+    let color: UInt32
+    let link: String
+    let rank: Int
+    let wide: Bool
+    let img: String
+    let imgWide: String?
+}
+
+struct WDomains: Decodable {
+    let bg: UInt32
+    let at: Double
+    let domains: [WDomain]
+}
+
+private func loadWDomains() -> WDomains? {
+    guard let s = appDefaults()?.string(forKey: "domains_json"), let data = s.data(using: .utf8) else { return nil }
+    return try? JSONDecoder().decode(WDomains.self, from: data)
+}
+
+private func domainImage(_ key: String) -> UIImage? {
+    guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return nil }
+    return UIImage(contentsOfFile: dir.appendingPathComponent("home_widget/\(key).png").path)
+}
+
+private func domainURL(_ d: WDomain) -> URL {
+    URL(string: appScheme + d.link) ?? URL(string: appScheme + "today")!
+}
+
+struct DomainEntity: AppEntity {
+    let id: String
+    let name: String
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Domaine"
+    static var defaultQuery = DomainEntityQuery()
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+}
+
+struct DomainEntityQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [DomainEntity] {
+        allDomainEntities().filter { identifiers.contains($0.id) }
+    }
+    func suggestedEntities() async throws -> [DomainEntity] { allDomainEntities() }
+}
+
+private func allDomainEntities() -> [DomainEntity] {
+    (loadWDomains()?.domains ?? []).map { DomainEntity(id: $0.id, name: $0.name) }
+}
+
+struct DomainsConfigIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Mes domaines"
+    static var description = IntentDescription("Les tuiles d'Organisation : celles que tu choisis, ou les plus en retard.")
+    @Parameter(title: "Choisir pour moi", default: true) var auto: Bool
+    @Parameter(title: "Case 1") var case1: DomainEntity?
+    @Parameter(title: "Case 2") var case2: DomainEntity?
+    @Parameter(title: "Case 3") var case3: DomainEntity?
+    @Parameter(title: "Case 4") var case4: DomainEntity?
+}
+
+struct DomainsEntry: TimelineEntry {
+    let date: Date
+    let data: WDomains?
+    let auto: Bool
+    let chosen: [String]
+}
+
+struct DomainsProvider: AppIntentTimelineProvider {
+    private func entry(_ c: DomainsConfigIntent) -> DomainsEntry {
+        let chosen = [c.case1, c.case2, c.case3, c.case4].map { $0?.id ?? "" }
+        return DomainsEntry(date: Date(), data: loadWDomains(), auto: c.auto, chosen: chosen)
+    }
+    func placeholder(in context: Context) -> DomainsEntry {
+        DomainsEntry(date: Date(), data: loadWDomains(), auto: true, chosen: [])
+    }
+    func snapshot(for configuration: DomainsConfigIntent, in context: Context) async -> DomainsEntry {
+        entry(configuration)
+    }
+    func timeline(for configuration: DomainsConfigIntent, in context: Context) async -> Timeline<DomainsEntry> {
+        // Les images changent quand l'app les redessine (reloadAllTimelines) ; relecture toutes les heures en filet.
+        Timeline(entries: [entry(configuration)], policy: .after(Date().addingTimeInterval(3600)))
+    }
+}
+
+/// Les domaines à montrer : les cases choisies (dans l'ordre, cases vides sautées), sinon les plus en retard.
+private func pickDomains(_ e: DomainsEntry, count: Int) -> [WDomain] {
+    guard let all = e.data?.domains, !all.isEmpty else { return [] }
+    if !e.auto {
+        var out: [WDomain] = []
+        for id in e.chosen.prefix(count) where !id.isEmpty {
+            if let d = all.first(where: { $0.id == id }) { out.append(d) }
+        }
+        if !out.isEmpty { return out }
+    }
+    return Array(all.sorted { $0.rank < $1.rank }.prefix(count))
+}
+
+struct DomainCellView: View {
+    let d: WDomain
+    let wide: Bool
+    var body: some View {
+        if let img = domainImage(wide ? (d.imgWide ?? d.img) : d.img) {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(d.name.uppercased())
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Color(hex: d.color))
+                Text("Ouvre Organisation dans l'app")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(kText3)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
+struct DomainsEmptyView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("MES DOMAINES")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(kGreenLight)
+            Text("Ouvre Organisation dans l'app pour dessiner tes tuiles.")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(kText2)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(URL(string: appScheme + "today"))
+    }
+}
+
+struct DomainsWidgetView: View {
+    @Environment(\.widgetFamily) var family
+    let entry: DomainsEntry
+
+    private var sep: Color { Color.white.opacity(0.07) }
+
+    @ViewBuilder
+    private func linked(_ ds: [WDomain], _ i: Int) -> some View {
+        if i < ds.count {
+            Link(destination: domainURL(ds[i])) { DomainCellView(d: ds[i], wide: false) }
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private var small: some View {
+        if let d = pickDomains(entry, count: 1).first {
+            DomainCellView(d: d, wide: false).widgetURL(domainURL(d))
+        } else {
+            DomainsEmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var medium: some View {
+        let ds = pickDomains(entry, count: 2)
+        if ds.isEmpty {
+            DomainsEmptyView()
+        } else if ds.count == 1 && !entry.auto && ds[0].wide {
+            // Un domaine d'entretien choisi seul : la grille routines × jours sur toute la largeur.
+            DomainCellView(d: ds[0], wide: true).widgetURL(domainURL(ds[0]))
+        } else {
+            HStack(spacing: 0) {
+                linked(ds, 0)
+                sep.frame(width: 1).padding(.vertical, 14)
+                linked(ds, 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var large: some View {
+        let ds = pickDomains(entry, count: 4)
+        if ds.isEmpty {
+            DomainsEmptyView()
+        } else {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) { linked(ds, 0); sep.frame(width: 1); linked(ds, 1) }
+                sep.frame(height: 1)
+                HStack(spacing: 0) { linked(ds, 2); sep.frame(width: 1); linked(ds, 3) }
+            }
+        }
+    }
+
+    var body: some View {
+        Group {
+            switch family {
+            case .systemSmall: small
+            case .systemLarge: large
+            default: medium
+            }
+        }
+        .containerBackground(Color(hex: entry.data?.bg ?? 0x0C1C14), for: .widget)
+    }
+}
+
+struct DomainsWidget: Widget {
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: "DomainsWidget", intent: DomainsConfigIntent.self, provider: DomainsProvider()) { entry in
+            DomainsWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Mes domaines")
+        .description("Les tuiles d'Organisation : un, deux ou quatre domaines.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }

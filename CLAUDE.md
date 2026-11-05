@@ -2153,6 +2153,21 @@ le MCP (`log_routine_hit`, `mark_block_done` avec le doc du bloc, `mark_checklis
 Liens de l'app (`_handleDeepLink`, main.dart) : `…://perfect` · `program` · `today` · `guerilla` · `offensive` (→
 `TodayViewState.openRun`) · `project/<id>`. Pas de confirmation possible dans un widget : la coche est directe. ⚠️ `FlutterDeepLinkingEnabled = false` dans `ios/Runner/Info.plist` (2026-10-31, bug : depuis Flutter 3.27 le moteur poussait en plus une route vide `/perfect`… au-dessus de l'app — fond gris, page qui glisse) : les liens passent par `app_links` seul.
 
+## Widget iOS « Mes domaines » (2026-11-05, maquette validée)
+
+Les tuiles d'Organisation sur l'écran d'accueil, en trois tailles : petit = 1 domaine, moyen = 2 (un domaine d'entretien choisi
+seul = sa grille routines × jours pleine largeur), grand = 4 en 2 × 2. Réglage (appui long › Modifier le widget,
+`DomainsConfigIntent`) : « Choisir pour moi » (défaut : les domaines les plus en retard, `domainPace`, `utils/domain_widget.dart`)
+ou Case 1 → 4 (`DomainEntity`, liste lue dans `domains_json`). **L'app dessine, le widget place** : `LifeView` (Organisation) rend
+chaque tuile en image sans son pied (`_tile(forWidget: true)` → `_widgetCell`, cadre `_widgetFrame` : thème, localisations, texte
+sans agrandissement) via `WidgetService.exportDomains` → `HomeWidget.renderFlutterWidget` (`home_widget/dom_<id>.png` de l'App Group,
+170 × 170, et `dom_<id>_wide.png` 340 × 158, ×2,5) puis `domains_json {bg, at, domains:[{id, name, color, link, rank, wide, img,
+imgWide?}]}` par le canal `setString` + `reload`. Export au plus toutes les 10 min (tout de suite si la liste change), au build
+d'Organisation et toutes les 20 min même onglet caché (`Timer.periodic` + `setState`). Tap = `…://domain/<id>` → `_handleDeepLink`
+(main.dart) passe sur Organisation et `LifeViewState.openDomain` rejoue le tap de la tuile (page du domaine, ou feuille Sommeil /
+Sport / Repas / Finances). Swift : `DomainsWidget` (`AppIntentConfiguration`, `contentMarginsDisabled`) en fin de
+`ProductivitwoWidget.swift`. Pas de coche depuis le widget.
+
 ## MCP local (`mcp-server/index.js`)
 
 Serveur stdio pour Claude Desktop. Variables d'env requises :
