@@ -34,6 +34,11 @@ import 'package:productivitwo_v1/widgets/finance_flow_card.dart' show FinanceFlo
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show computeObjectiveTrajectory;
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/utils/freedom.dart';
+import 'package:productivitwo_v1/utils/tile_charts.dart';
+import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
+import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart';
 
 const _kNight = Color(0xFF7FB2E8);
@@ -45,6 +50,8 @@ const _natureColors = {
   DomainNature.money: kMoneyAccent,
 };
 const _kNaturesPref = 'life_natures';
+/// Domaines de travail dont la tuile montre les briques du projet du moment (au lieu du cumul).
+const _kBricksPref = 'life_tile_bricks';
 /// Hauteur commune des tuiles de Ma vie (à l'échelle du texte 1).
 const kLifeTileHeight = 192.0;
 /// Hauteur des mini-graphiques des tuiles.
@@ -81,6 +88,7 @@ class _LifeViewState extends State<LifeView> {
   AppLogic get logic => widget.logic;
   List<StrategicObjective> _objectives = FicheCache.objectives ?? const [];
   Map<String, DomainNature> _overrides = const {};
+  Set<String> _bricks = const {};
 
   @override
   void initState() {
@@ -93,6 +101,8 @@ class _LifeViewState extends State<LifeView> {
       final p = await SharedPreferences.getInstance();
       final raw = p.getString(_kNaturesPref);
       if (raw != null && mounted) setState(() => _overrides = parseNatures(Map<String, dynamic>.from(jsonDecode(raw) as Map)));
+      final b = p.getStringList(_kBricksPref);
+      if (b != null && mounted) setState(() => _bricks = b.toSet());
     } catch (_) {}
     try {
       final o = await FicheCache.objectivesFast(widget.sync);
@@ -109,9 +119,32 @@ class _LifeViewState extends State<LifeView> {
 
   DomainNature _natureOf(Domain d) => _overrides[d.id] ?? guessNature(d, logic.state.activities);
 
+  /// Le projet du moment d'un domaine (vivant, hors dossiers), s'il y en a un.
+  Project? _projectOf(Domain d, DateTime now) {
+    final all = widget.projects;
+    final live = [
+      for (final p in all)
+        if (p.domainId == d.id && p.status == 'active' && !p.paused && !isFolderProject(p, all) && p.tasks.isNotEmpty) p,
+    ];
+    if (live.isEmpty) return null;
+    final ranked = rankProjectMoments(live, logic.state.sessions, now);
+    return ranked.isEmpty ? live.first : ranked.first.project;
+  }
+
+  Future<void> _toggleBricks(Domain d) async {
+    final next = {..._bricks};
+    if (!next.remove(d.id)) next.add(d.id);
+    setState(() => _bricks = next);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_kBricksPref, next.toList());
+    } catch (_) {}
+  }
+
   Future<void> _pickNature(Domain d) async {
     final cur = _natureOf(d);
-    final n = await showModalBottomSheet<DomainNature>(
+    final canBricks = cur == DomainNature.work && _projectOf(d, DateTime.now()) != null;
+    final n = await showModalBottomSheet<Object>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
@@ -124,6 +157,14 @@ class _LifeViewState extends State<LifeView> {
             padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Text('Elle choisit la tuile et ce qui s’ouvre au tap. Rien d’autre ne change.', style: TextStyle(fontSize: 12.5)),
           ),
+          if (canBricks)
+            SwitchListTile(
+              key: const Key('life-bricks-toggle'),
+              value: _bricks.contains(d.id),
+              title: const Text('Briques du projet du moment'),
+              subtitle: const Text('à la place du cumul de la semaine', style: TextStyle(fontSize: 12)),
+              onChanged: (_) => Navigator.pop(ctx, 'bricks'),
+            ),
           for (final n in DomainNature.values)
             ListTile(
               leading: Text(kNatureEmoji[n]!, style: const TextStyle(fontSize: 20)),
@@ -136,7 +177,8 @@ class _LifeViewState extends State<LifeView> {
         ]),
       ),
     );
-    if (n == null || n == cur) return;
+    if (n == 'bricks') return _toggleBricks(d);
+    if (n is! DomainNature || n == cur) return;
     setState(() => _overrides = {..._overrides, d.id: n});
     try {
       final p = await SharedPreferences.getInstance();
@@ -455,8 +497,15 @@ class _LifeViewState extends State<LifeView> {
             value = w.routinesTotal == 0 ? (w.doneMin == 0 ? '—' : fmtMin(w.doneMin)) : '${w.routinesReached} / ${w.routinesTotal}';
             sub = w.routinesTotal == 0 ? 'cette semaine' : 'routines au rythme';
           }
-          if (w.resting) sub = 'en veille';
           viz = _domainDays(cs, d, w, n, now, c);
+          // Un graphique par nature (maquette validée 2026-11-05).
+          final chart = _natureChart(cs, d, w, n, now, c);
+          if (chart != null) {
+            value = chart.value;
+            sub = chart.sub;
+            viz = chart.viz;
+          }
+          if (w.resting) sub = 'en veille';
         }
     }
     // Objectif de saison chiffré : sa trajectoire de saison (fenêtre, pointillés jusqu'à la cible), sauf Finances (courbe du solde + cible).
@@ -517,6 +566,153 @@ class _LifeViewState extends State<LifeView> {
           ]),
         ),
       ),
+    );
+  }
+
+  /// Le graphique de la nature du domaine, ou null (on garde alors les barres des 7 jours).
+  ({String value, String sub, Widget viz})? _natureChart(ColorScheme cs, Domain d, DomainWeek w, DomainNature n, DateTime now, Color c) {
+    final st = logic.state;
+    final today = livedDate(now, logic.dayStartMin);
+    final day = DateTime(today.year, today.month, today.day);
+    final dc = domainColor(d.id, st.activeDomains) ?? c;
+    final routines = [for (final a in st.activities) if (!a.deleted && a.isHabit && a.domainId == d.id) a];
+    switch (n) {
+      case DomainNature.work:
+        // ④ Briques du projet du moment, si choisies et s'il y en a un.
+        if (_bricks.contains(d.id)) {
+          final p = _projectOf(d, now);
+          if (p != null) {
+            final row = projectBricks(p, day);
+            return (
+              value: '${row.done} / ${row.total}',
+              sub: '${p.title}${row.late > 0 ? ' · ${row.late} en retard' : ''}',
+              viz: SizedBox(height: kLifeVizHeight, child: Align(alignment: Alignment.bottomCenter, child: ProgressBricks(row: row, height: 18, gap: 2))),
+            );
+          }
+        }
+        // ① Le cumul de la fenêtre face au rythme.
+        final start = DateTime(day.year, day.month, day.day - (w.daysElapsed - 1));
+        final daily = dailyMinutesByDomain(st.sessions, st.activities, start, w.daysElapsed, now: now)[d.id] ?? List<int>.filled(w.daysElapsed, 0);
+        final cc = cumulChart(daily, perDay: w.resting ? 0 : w.goalMinDay, windowDays: w.windowDays);
+        return (
+          value: cc.done == 0 ? '—' : fmtMin(cc.done),
+          sub: '${w.windowDays == 7 ? 'depuis lundi' : 'sur la quinzaine'} · ${cumulLabel(cc, fmtMin)}',
+          viz: SizedBox(height: kLifeVizHeight, width: double.infinity, child: CustomPaint(painter: _CumulPainter(cc, dc, cs.onSurface))),
+        );
+      case DomainNature.practice:
+        // ② Le calendrier des 28 derniers jours (le temps, sinon les coches de ses routines).
+        final start = DateTime(day.year, day.month, day.day - 27);
+        var daily = dailyMinutesByDomain(st.sessions, st.activities, start, 28, now: now)[d.id] ?? List<int>.filled(28, 0);
+        var goal = w.goalMinDay;
+        if (daily.every((m) => m == 0) && routines.isNotEmpty) {
+          final ids = {for (final r in routines) r.id};
+          daily = List<int>.filled(28, 0);
+          for (final h in st.habitHits) {
+            if (!ids.contains(h.habitId)) continue;
+            final hd = livedDate(h.ts, logic.dayStartMin);
+            final i = DateTime(hd.year, hd.month, hd.day).difference(start).inDays;
+            if (i >= 0 && i < 28) daily[i]++;
+          }
+          goal = 0;
+        }
+        final weekStart = day.weekday - 1;
+        final weekMin = daily.sublist(28 - 1 - weekStart).fold(0, (a, b) => a + b);
+        return (
+          value: '${activeDays(daily)} / 28 jours',
+          sub: w.doneMin > 0 || weekMin > 0 ? '${fmtMin(w.doneMin)} cette semaine' : 'rien cette semaine',
+          viz: _calendarViz(cs, calendarLevels(daily, goal: goal), day, dc),
+        );
+      case DomainNature.upkeep:
+      case DomainNature.tracking:
+        // ③ Routines × jours, celles qui décrochent d'abord.
+        final rows = routineGrid(routines: routines, hits: st.habitHits, now: now, dayStartMin: logic.dayStartMin);
+        if (rows.isEmpty) return null;
+        final behind = rows.where((r) => r.behind).length;
+        return (
+          value: '${rows.length - behind} / ${rows.length}',
+          sub: behind == 0 ? 'routines au rythme' : 'au rythme · $behind à rattraper',
+          viz: _routineGridViz(cs, rows, dc),
+        );
+      default:
+        return null;
+    }
+  }
+
+  /// ② 28 cases, 4 semaines de 7 jours (la dernière finit aujourd'hui), plus foncées selon le jour.
+  Widget _calendarViz(ColorScheme cs, List<int> levels, DateTime today, Color c) {
+    const alpha = [0.0, .3, .52, .76, 1.0];
+    return SizedBox(
+      height: kLifeVizHeight,
+      child: Column(children: [
+        for (var r = 0; r < 4; r++) ...[
+          if (r > 0) const SizedBox(height: 3),
+          Expanded(
+            child: Row(children: [
+              for (var j = 0; j < 7; j++) ...[
+                if (j > 0) const SizedBox(width: 3),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: levels[r * 7 + j] == 0 ? cs.onSurface.withValues(alpha: .08) : c.withValues(alpha: alpha[levels[r * 7 + j]]),
+                      borderRadius: BorderRadius.circular(3),
+                      border: r * 7 + j == 27 ? Border.all(color: cs.onSurface.withValues(alpha: .85), width: 1.2) : null,
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  /// ③ Une ligne par routine (4 au plus, celles qui décrochent d'abord), une case par jour de la semaine.
+  Widget _routineGridViz(ColorScheme cs, List<RoutineRow> rows, Color c) {
+    final shown = rows.take(4).toList();
+    final todayIdx = livedDate(DateTime.now(), logic.dayStartMin).weekday - 1;
+    Color cell(RoutineCell k) => switch (k) {
+          RoutineCell.done => c,
+          RoutineCell.partial => c.withValues(alpha: .4),
+          RoutineCell.missed => cs.onSurface.withValues(alpha: .1),
+          RoutineCell.future => Colors.transparent,
+        };
+    return SizedBox(
+      height: kLifeVizHeight,
+      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+        for (final (i, r) in shown.indexed) ...[
+          if (i > 0) const SizedBox(height: 3),
+          SizedBox(
+            height: (kLifeVizHeight - 3 * (shown.length - 1)) / (shown.length < 4 ? 4 : shown.length),
+            child: Row(children: [
+              SizedBox(
+                width: 44,
+                child: Text(r.routine.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 8.5, height: 1, fontWeight: FontWeight.w700, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .7))),
+              ),
+              for (var j = 0; j < 7; j++) ...[
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: cell(r.cells[j]),
+                      borderRadius: BorderRadius.circular(2),
+                      border: j == todayIdx
+                          ? Border.all(color: cs.onSurface.withValues(alpha: .8), width: 1)
+                          : (r.cells[j] == RoutineCell.future ? Border.all(color: cs.onSurface.withValues(alpha: .1), width: .8) : null),
+                    ),
+                  ),
+                ),
+              ],
+              SizedBox(
+                width: 22,
+                child: Text(r.right, textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 8.5, height: 1, fontWeight: FontWeight.w800, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .6))),
+              ),
+            ]),
+          ),
+        ],
+      ]),
     );
   }
 
@@ -595,4 +791,62 @@ class _LifeViewState extends State<LifeView> {
           ],
         ]),
       );
+}
+
+/// ① Le cumul de la fenêtre (trait plein, aire claire) face à la droite attendue (pointillés) ;
+/// les jours à venir en fond plus clair.
+class _CumulPainter extends CustomPainter {
+  final CumulChart c;
+  final Color color;
+  final Color ink;
+  _CumulPainter(this.c, this.color, this.ink);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = c.windowDays;
+    final mx = c.scaleMax.toDouble();
+    double x(int i) => size.width * i / n;
+    double y(num v) => size.height - 2 - (size.height - 6) * (v / mx);
+    final past = c.cumul.length;
+    canvas.drawRect(Rect.fromLTWH(x(past), 0, size.width - x(past), size.height), Paint()..color = ink.withValues(alpha: .05));
+    if (c.perDay > 0) {
+      final dash = Paint()
+        ..color = ink.withValues(alpha: .45)
+        ..strokeWidth = 1.4;
+      final end = Offset(size.width, y(c.perDay * n));
+      final start = Offset(0, y(0));
+      const seg = 4.0;
+      final len = (end - start).distance;
+      for (var t = 0.0; t < len; t += seg * 2) {
+        final a = start + (end - start) * (t / len);
+        final b = start + (end - start) * ((t + seg).clamp(0, len) / len);
+        canvas.drawLine(a, b, dash);
+      }
+    }
+    final pts = [Offset(0, y(0)), for (var i = 0; i < past; i++) Offset(x(i + 1), y(c.cumul[i]))];
+    final area = Path()..moveTo(pts.first.dx, size.height);
+    for (final p in pts) {
+      area.lineTo(p.dx, p.dy);
+    }
+    area
+      ..lineTo(pts.last.dx, size.height)
+      ..close();
+    canvas.drawPath(area, Paint()..color = color.withValues(alpha: .18));
+    final line = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final p in pts.skip(1)) {
+      line.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(
+        line,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round);
+    canvas.drawCircle(pts.last, 3.4, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_CumulPainter o) => o.c.cumul.join(',') != c.cumul.join(',') || o.c.perDay != c.perDay || o.color != color;
 }
