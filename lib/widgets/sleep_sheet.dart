@@ -455,7 +455,8 @@ class _NightsChart extends StatelessWidget {
   }
 }
 
-/// Version mini des nuits (tuile Sommeil d'Organisation) : les mêmes barres, sans heures ni jours.
+/// Version mini des nuits (tuile Sommeil d'Organisation) : les mêmes barres, sans les jours ; l'heure du haut
+/// et celle du bas en repère à gauche (retour user 2026-11-05 : resituer coucher et lever).
 class SleepNightsMini extends StatelessWidget {
   final List<SleepNight?> nights;
   final List<DateTime> bedDays;
@@ -508,8 +509,8 @@ class _NightsPainter extends CustomPainter {
     }
     lo = (lo ~/ 60) * 60;
     hi = ((hi + 59) ~/ 60) * 60;
-    final left = compact ? 0.0 : _NightsPainter.left;
-    final top = compact ? 1.0 : 6.0, bottom = compact ? 1.0 : 18.0;
+    final left = compact ? 24.0 : _NightsPainter.left;
+    final top = compact ? 5.0 : 6.0, bottom = compact ? 5.0 : 18.0;
     final plotH = size.height - top - bottom;
     double y(int m) => top + (m - lo) / (hi - lo) * plotH;
     final grid = Paint()..color = ink.withValues(alpha: .08);
@@ -521,6 +522,16 @@ class _NightsPainter extends CustomPainter {
           textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset(0, y(m) - 6));
+    }
+    if (compact) {
+      for (final m in [lo, hi]) {
+        canvas.drawLine(Offset(left, y(m)), Offset(size.width, y(m)), grid);
+        final tp = TextPainter(
+            text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontSize: 9, color: ink.withValues(alpha: .5))),
+            textDirection: TextDirection.ltr)
+          ..layout();
+        tp.paint(canvas, Offset(0, y(m) - tp.height / 2));
+      }
     }
     if (planned != null) {
       final pb = planned!.bed + 6 * 60;
