@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,8 @@ import 'package:productivitwo_v1/utils/objective_trajectory.dart' show computeOb
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/utils/freedom.dart';
 import 'package:productivitwo_v1/utils/tile_charts.dart';
+import 'package:productivitwo_v1/utils/domain_widget.dart';
+import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
@@ -48,6 +51,12 @@ const _natureColors = {
   DomainNature.sessions: Color(0xFFF07C4C),
   DomainNature.meals: Color(0xFF7CC96A),
   DomainNature.money: kMoneyAccent,
+};
+const _kSheetNames = {
+  DomainNature.night: 'Sommeil',
+  DomainNature.sessions: 'Sport',
+  DomainNature.meals: 'Repas',
+  DomainNature.money: 'Finances',
 };
 const _kNaturesPref = 'life_natures';
 /// Domaines de travail dont la tuile montre les briques du projet du moment (au lieu du cumul).
@@ -81,19 +90,52 @@ class LifeView extends StatefulWidget {
   });
 
   @override
-  State<LifeView> createState() => _LifeViewState();
+  State<LifeView> createState() => LifeViewState();
 }
 
-class _LifeViewState extends State<LifeView> {
+class LifeViewState extends State<LifeView> {
   AppLogic get logic => widget.logic;
   List<StrategicObjective> _objectives = FicheCache.objectives ?? const [];
   Map<String, DomainNature> _overrides = const {};
   Set<String> _bricks = const {};
+  /// Ce que touche chaque tuile (feuille ou page du domaine) : le widget iOS y mène.
+  final _taps = <String, VoidCallback>{};
+  Timer? _refresh;
+  DateTime? _exportedAt;
+  String? _exportedIds;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Le widget « Mes domaines » suit même quand l'onglet est caché (_TabFreeze ne le reconstruit plus).
+    _refresh = Timer.periodic(const Duration(minutes: 20), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
+  }
+
+  /// Lien du widget : ce que fait le tap sur la tuile du domaine.
+  void openDomain(String id) {
+    final tap = _taps[id];
+    if (tap != null) return tap();
+    final d = logic.state.activeDomains.where((x) => x.id == id).firstOrNull;
+    if (d != null) widget.onOpenDomain(d);
+  }
+
+  /// Dessine les tuiles pour le widget, au plus toutes les 10 minutes (tout de suite si la liste change).
+  void _exportWidget(List<({WidgetDomain domain, Widget square, Widget? wide})> cells, Color bg) {
+    final ids = cells.map((c) => c.domain.id).join(',');
+    final at = _exportedAt;
+    if (ids == _exportedIds && at != null && DateTime.now().difference(at).inMinutes < 10) return;
+    _exportedAt = DateTime.now();
+    _exportedIds = ids;
+    WidgetService.exportDomains(cells: cells, bg: bg.toARGB32());
   }
 
   Future<void> _load() async {
@@ -266,6 +308,7 @@ class _LifeViewState extends State<LifeView> {
     final seenSheet = <DomainNature>{};
 
     final tiles = <(Widget, bool)>[];
+    final cells = <({WidgetDomain domain, Widget square, Widget? wide})>[];
     for (final d in sorted) {
       var n = _natureOf(d);
       if (_natureColors.containsKey(n)) {
@@ -283,7 +326,22 @@ class _LifeViewState extends State<LifeView> {
       // Routines × jours sur toute la largeur : les noms se lisent (retour user 2026-11-05).
       final wide = _wideGrid(d, n);
       tiles.add((_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, wide: wide), wide));
+      cells.add((
+        domain: WidgetDomain(
+          id: d.id,
+          name: _kSheetNames[n] ?? d.name,
+          color: (_natureColors[n] ?? domainColor(d.id, st.activeDomains) ?? cs.primary).toARGB32(),
+          link: 'domain/${d.id}',
+          pace: domainPace(weeks[d.id]),
+          wide: wide,
+        ),
+        square: _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, forWidget: true)),
+        wide: wide ? _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, wide: true, forWidget: true)) : null,
+      ));
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _exportWidget(cells, cs.surface);
+    });
 
     return SafeArea(
       child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 120), children: [
@@ -426,7 +484,7 @@ class _LifeViewState extends State<LifeView> {
       logic.state.activities.any((a) => !a.deleted && a.isHabit && a.domainId == d.id && a.habitFreq != HabitFreq.monthly);
 
   Widget _tile(ColorScheme cs, Domain d, DomainNature n, DomainWeek? w, List<StrategicObjective> objs, Map<String, ObjectiveProgress> progress, DateTime now,
-      {bool wide = false}) {
+      {bool wide = false, bool forWidget = false}) {
     final st = logic.state;
     final mute = cs.onSurface.withValues(alpha: .55);
     final c = _natureColors[n] ?? domainColor(d.id, st.activeDomains) ?? cs.primary;
@@ -544,6 +602,8 @@ class _LifeViewState extends State<LifeView> {
       }
     }
     final behind = w != null && w.hasGoal && !w.resting && w.doneMin < w.expectedMin * .95;
+    if (forWidget) return _widgetCell(cs, eyebrow, value, sub, viz ?? _bars(const [0, 0, 0, 0, 0, 0, 0], c, cs), c, behind);
+    _taps[d.id] = onTap;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: .35),
       borderRadius: BorderRadius.circular(16),
@@ -590,6 +650,28 @@ class _LifeViewState extends State<LifeView> {
       ),
     );
   }
+
+  /// Le cadre hors écran d'une image du widget : thème, localisations et textes de l'app, sans agrandissement.
+  Widget _widgetFrame(Widget child) => InheritedTheme.captureAll(
+        context,
+        MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+          child: Localizations.override(context: context, child: Material(type: MaterialType.transparency, child: child)),
+        ),
+      );
+
+  /// Une case du widget « Mes domaines » : la tuile sans son pied (pas de place), comme la maquette.
+  Widget _widgetCell(ColorScheme cs, String eyebrow, String value, String sub, Widget viz, Color c, bool behind) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(eyebrow, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: .8, color: c)),
+          const SizedBox(height: 3),
+          Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: behind ? _kAmber : cs.onSurface)),
+          Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: .6))),
+          const Spacer(),
+          viz,
+        ]),
+      );
 
   /// Le graphique de la nature du domaine, ou null (on garde alors les barres des 7 jours).
   ({String value, String sub, Widget viz})? _natureChart(ColorScheme cs, Domain d, DomainWeek w, DomainNature n, DateTime now, Color c, {bool wide = false}) {

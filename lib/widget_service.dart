@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show Size, Widget;
 import 'package:home_widget/home_widget.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -19,6 +20,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn;
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart' show perfectDayTile;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/domain_widget.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
 import 'package:productivitwo_v1/utils/mode.dart' show kModeLabels;
@@ -95,6 +97,37 @@ class WidgetService {
 
   /// Pousse l'état courant vers tous les widgets home screen.
   /// Appelé depuis _saveAndRefresh(), au chargement initial, et sur le stream projets.
+  /// Taille logique d'une case du widget « Mes domaines » (petit, moitié du moyen, quart du grand)
+  /// et de la case pleine largeur (grille routines × jours du moyen).
+  static const domainCellSize = Size(170, 170);
+  static const domainWideSize = Size(340, 158);
+  static bool _domainsBusy = false;
+
+  /// Widget « Mes domaines » (2026-11-05) : chaque tuile d'Organisation dessinée en image
+  /// dans l'espace partagé (`home_widget/dom_<id>.png`), puis `domains_json`. iOS seulement.
+  static Future<void> exportDomains({
+    required List<({WidgetDomain domain, Widget square, Widget? wide})> cells,
+    required int bg,
+  }) async {
+    if (kIsWeb || !Platform.isIOS || _domainsBusy) return;
+    _domainsBusy = true;
+    try {
+      await HomeWidget.setAppGroupId(_kAppGroup);
+      for (final c in cells) {
+        await HomeWidget.renderFlutterWidget(c.square, key: domainImageKey(c.domain.id), logicalSize: domainCellSize, pixelRatio: 2.5);
+        if (c.wide != null) {
+          await HomeWidget.renderFlutterWidget(c.wide!, key: domainImageKey(c.domain.id, wide: true), logicalSize: domainWideSize, pixelRatio: 2.5);
+        }
+      }
+      final json = jsonEncode(domainsWidgetJson([for (final c in cells) c.domain], bg: bg, at: DateTime.now()));
+      await _kIosWidgetChannel.invokeMethod('setString', {'key': 'domains_json', 'value': json});
+      await _kIosWidgetChannel.invokeMethod('reload');
+    } catch (_) {
+    } finally {
+      _domainsBusy = false;
+    }
+  }
+
   static Future<void> update(AppLogic logic) async {
     if (kIsWeb) return; // web : pas de widgets natifs (Platform.* crasherait)
     if (!Platform.isIOS && !Platform.isAndroid) return;
