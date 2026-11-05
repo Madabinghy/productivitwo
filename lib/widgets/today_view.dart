@@ -22,7 +22,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart' show showProjectFiche;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, kFlowTaskId;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusToday, isFocusedOn, kFlowTaskId;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
@@ -1107,7 +1107,7 @@ class TodayViewState extends State<TodayView> {
     );
     final bc = widget.badges;
     final board = stakes ?? StakeBoard.empty;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = focusToday(now);
     final projectTile = projectsTile(widget.logic.currentProjects, today, sessions: st.sessions, skipped: _projectSkipped);
     return [
       DashboardTiles(
@@ -1415,8 +1415,7 @@ class TodayViewState extends State<TodayView> {
   void _openFocusedActionsSheet() {
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
+        final today = focusToday();
         bool focusedToday(TaskAction a) {
           final f = a.focusDate;
           return isFocusedOn(a, today) || (a.done && f != null && f.year == today.year && f.month == today.month && f.day == today.day);
@@ -1642,8 +1641,7 @@ class TodayViewState extends State<TodayView> {
       widget.logic.onChange();
       return;
     }
-    final t = DateTime.now().add(const Duration(days: 1));
-    e.action.focusDate = choice == 'tomorrow' ? DateTime(t.year, t.month, t.day) : null;
+    e.action.focusDate = choice == 'tomorrow' ? focusToday().add(const Duration(days: 1)) : null;
     await _saveFocusedItem(sync, e);
   }
 

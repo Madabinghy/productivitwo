@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, shortDateFr;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, focusToday, shortDateFr;
 
 /// Choix d'un JOUR VISÉ (2026-10-30) : aujourd'hui · demain · lundi prochain ·
 /// une date · retirer. Une intention, jamais une échéance : rien n'est jamais
@@ -31,7 +31,7 @@ DateTime nextMonday(DateTime today) {
 /// Null = annulé. [current] = jour visé actuel (pour « Retirer » et la date
 /// initiale du calendrier).
 Future<FocusPick?> pickFocusDay(BuildContext context, {DateTime? current, DateTime? today}) {
-  final t = _day(today ?? DateTime.now());
+  final t = _day(today ?? focusToday());
   final tomorrow = t.add(const Duration(days: 1));
   final monday = nextMonday(t);
   return showModalBottomSheet<FocusPick>(

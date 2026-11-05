@@ -3,7 +3,7 @@ import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr, rootProjectOf, focusLabel, isStaleFocus;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr, rootProjectOf, focusLabel, focusToday, isStaleFocus;
 import 'package:productivitwo_v1/widgets/focus_day_sheet.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
@@ -165,10 +165,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     return widget.activities.where((x) => x.id == id).firstOrNull;
   }
 
-  DateTime get _today {
-    final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day);
-  }
+  DateTime get _today => focusToday();
 
   /// Émoji de tête du titre (rôle de séance 📝 / 🎯 / ✅, ou tout autre pictogramme
   /// posé par Claude) : il passe dans la pastille, le titre reste du texte.
@@ -948,7 +945,7 @@ class _ActionFicheState extends State<_ActionFiche> {
 
   Future<void> _pickFocus() async {
     final now = DateTime.now();
-    final pick = await pickFocusDay(context, current: a.focusDate, today: DateTime(now.year, now.month, now.day));
+    final pick = await pickFocusDay(context, current: a.focusDate, today: focusToday(now));
     if (pick == null) return;
     a.focusDate = switch (pick) { FocusDay(:final day) => day, FocusClear() => null };
     await _persist();
@@ -1006,7 +1003,7 @@ class _ActionFicheState extends State<_ActionFiche> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = focusToday(now);
     final due = effectiveDueDate(a, widget.task);
     final late = !a.done && due != null && DateTime(due.year, due.month, due.day).isBefore(today);
     final running = widget.logic?.state.sessions.where((s) => s.endAt == null && !s.deleted && s.actionId == a.id).firstOrNull;

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show flowTaskOf, isFolderProject, isUpcomingTask, kFlowTaskId;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show flowTaskOf, focusToday, isFolderProject, isUpcomingTask, kFlowTaskId;
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
@@ -217,7 +217,7 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
   final action = TaskAction(
     title: title,
     estimatedMin: defaultEstimateFor(title),
-    focusDate: DateTime(now.year, now.month, now.day),
+    focusDate: focusToday(now),
     focusSetAt: now,
   );
   if (o.activity != null) {

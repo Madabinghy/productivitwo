@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel, focusToday;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
@@ -912,7 +912,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     final open = [for (var i = 0; i < bloc.queue.length; i++) if (!bloc.queue[i].action.done) i];
     final est = queueEstimateMin([for (final i in open) bloc.queue[i]]);
     final remaining = _remaining(bloc);
-    final today = DateTime.now();
+    final today = focusToday();
     return [
       Text(bloc.block.timeBlock != null ? 'SUR QUOI TU PARS ? · ${open.length}' : 'LA FILE DU BLOC · ${open.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
       const SizedBox(height: 8),
