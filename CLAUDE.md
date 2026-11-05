@@ -1782,7 +1782,7 @@ lanceur d'activités (heures de l'activité + l'année, jauges fines). Compteurs
 
 « Je ne veux pas mélanger les cartes de badge avec les compteurs et les séries de routine » : l'album montre d'abord les badges (familles hors
 séries), puis deux rangées de PILES — SÉRIES DE ROUTINE et TES COMPTEURS — une pile par cadre (bronze · argent · or · légendaire) plus
-« En route » (commencées sans cadre, ne compte pas). Logique pure `utils/badge_cards.dart` : `cardPiles(deck)` (8 `CardPile {kind, rarity,
+« En route » (commencées sans cadre, ne compte pas). **Placées au-dessus de MES BADGES** (2026-11-05, retour user) : sous « À aller chercher », avant l'étagère et les familles. Logique pure `utils/badge_cards.dart` : `cardPiles(deck)` (8 `CardPile {kind, rarity,
 cards}`, `won` = au moins une carte, `name` « Séries or »), `pileStarted`, et `cardAlbum` compte chaque pile gagnée comme UNE carte (total =
 badges + 8 piles). Widget `widgets/card_pile_view.dart` (`CardPileView` : dos décalés, cadre de la pile, icône flamme / sablier, nombre ;
 `showCardPileSheet` : les cartes de la pile en grille, tap = fiche). En-tête : TES n CARTES / À GAGNER y ajoutent les piles ; la ligne

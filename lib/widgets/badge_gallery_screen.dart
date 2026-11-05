@@ -188,6 +188,8 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             if (_facts case final f?) _inPlayButton(deck, f, atTop: true),
             // Les cartes à aller chercher (2026-11-03, maquette validée).
             _questsSection(deck),
+            // Séries de routine et compteurs juste au-dessus de « Mes badges » (2026-11-05, retour user).
+            _piles(deck),
             _shelf(deck),
             // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
             if (_facts case final f?) _inPlayButton(deck, f),
@@ -195,7 +197,6 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             for (final f in BadgeFamily.values)
               if (f != BadgeFamily.routines) _family(deck, f),
             if (widget.logic.freedomCardsHidden && widget.logic.freedoms.isNotEmpty) _freedomHiddenLine(),
-            _piles(deck),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
