@@ -2165,7 +2165,7 @@ sans agrandissement) via `WidgetService.exportDomains` → `HomeWidget.renderFlu
 imgWide?}]}` par le canal `setString` + `reload`. Export au plus toutes les 10 min (tout de suite si la liste change), au build
 d'Organisation et toutes les 20 min même onglet caché (`Timer.periodic` + `setState`). Tap = `…://domain/<id>` → `_handleDeepLink`
 (main.dart) passe sur Organisation et `LifeViewState.openDomain` rejoue le tap de la tuile (page du domaine, ou feuille Sommeil /
-Sport / Repas / Finances). Swift : `DomainsWidget` (`AppIntentConfiguration`, `contentMarginsDisabled`) en fin de
+Sport / Repas / Finances). Les images ne sont construites que quand l'export est dû (closures dans `_exportWidget`). Organisation est une colonne construite une fois (`SingleChildScrollView` + `Column`, plus de `ListView` paresseuse : saccade en remontant, retour user 2026-11-05). Swift : `DomainsWidget` (`AppIntentConfiguration`, `contentMarginsDisabled`) en fin de
 `ProductivitwoWidget.swift`. Pas de coche depuis le widget.
 
 ## MCP local (`mcp-server/index.js`)

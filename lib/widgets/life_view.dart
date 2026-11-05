@@ -129,13 +129,17 @@ class LifeViewState extends State<LifeView> {
   }
 
   /// Dessine les tuiles pour le widget, au plus toutes les 10 minutes (tout de suite si la liste change).
-  void _exportWidget(List<({WidgetDomain domain, Widget square, Widget? wide})> cells, Color bg) {
+  /// Les images ne sont construites que quand l'export est dû (pas à chaque dessin de la page).
+  void _exportWidget(List<({WidgetDomain domain, Widget Function() square, Widget Function()? wide})> cells, Color bg) {
     final ids = cells.map((c) => c.domain.id).join(',');
     final at = _exportedAt;
     if (ids == _exportedIds && at != null && DateTime.now().difference(at).inMinutes < 10) return;
     _exportedAt = DateTime.now();
     _exportedIds = ids;
-    WidgetService.exportDomains(cells: cells, bg: bg.toARGB32());
+    WidgetService.exportDomains(
+      cells: [for (final c in cells) (domain: c.domain, square: c.square(), wide: c.wide?.call())],
+      bg: bg.toARGB32(),
+    );
   }
 
   Future<void> _load() async {
@@ -308,7 +312,7 @@ class LifeViewState extends State<LifeView> {
     final seenSheet = <DomainNature>{};
 
     final tiles = <(Widget, bool)>[];
-    final cells = <({WidgetDomain domain, Widget square, Widget? wide})>[];
+    final cells = <({WidgetDomain domain, Widget Function() square, Widget Function()? wide})>[];
     for (final d in sorted) {
       var n = _natureOf(d);
       if (_natureColors.containsKey(n)) {
@@ -335,16 +339,20 @@ class LifeViewState extends State<LifeView> {
           pace: domainPace(weeks[d.id]),
           wide: wide,
         ),
-        square: _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, forWidget: true)),
-        wide: wide ? _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, wide: true, forWidget: true)) : null,
+        square: () => _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, forWidget: true)),
+        wide: wide ? () => _widgetFrame(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, wide: true, forWidget: true)) : null,
       ));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _exportWidget(cells, cs.surface);
     });
 
+    // Une seule colonne construite une fois (plus de ListView paresseuse) : en remontant, l'en-tête, la saison et
+    // la ligne de la semaine se reconstruisaient en plein défilement (saccade retour user 2026-11-05).
     return SafeArea(
-      child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 120), children: [
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(child: Text('Organisation', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
           // Objectifs : la liste complète (rushs, veille, archivés, création) ; les tuiles portent chacune le leur.
@@ -372,7 +380,8 @@ class LifeViewState extends State<LifeView> {
           _section(mute, 'OBJECTIFS SANS DOMAINE'),
           for (final o in orphan) _objectiveLine(cs, o, progress[o.id], cs.primary),
         ],
-      ]),
+        ]),
+      ),
     );
   }
 
