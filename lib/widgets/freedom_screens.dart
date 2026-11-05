@@ -368,18 +368,26 @@ class _FreedomViewState extends State<FreedomView> {
         stat(trend == null ? '—' : '${trend > 0 ? '+' : '−'}${trend.abs()} %', 'force des envies en 7 j', c: trend == null ? null : (trend <= 0 ? _green : _amber)),
       ]),
       const SizedBox(height: 12),
-      FilledButton(
-        key: const ValueKey('freedom-urge'),
-        style: FilledButton.styleFrom(backgroundColor: kUrgeAccent, foregroundColor: _urgeInk, minimumSize: const Size.fromHeight(58)),
-        onPressed: () => showUrgeScreen(context, logic: logic, id: widget.id),
-        child: const Text('J\'ai une envie', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-      ),
-      const SizedBox(height: 6),
-      OutlinedButton(
-        key: const ValueKey('freedom-slip'),
-        onPressed: () => showSlipSheet(context, logic: logic, id: widget.id),
-        child: Text(stop ? 'Noter un écart' : 'Noter une fois'),
-      ),
+      // Deux gestes discrets côte à côte (retour user 2026-11-05) : pas d'appel à l'action coloré vers l'envie.
+      Row(children: [
+        Expanded(
+          child: OutlinedButton(
+            key: const ValueKey('freedom-urge'),
+            style: OutlinedButton.styleFrom(foregroundColor: mute),
+            onPressed: () => showUrgeScreen(context, logic: logic, id: widget.id),
+            child: const Text('J\'ai une envie'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton(
+            key: const ValueKey('freedom-slip'),
+            style: OutlinedButton.styleFrom(foregroundColor: mute),
+            onPressed: () => showSlipSheet(context, logic: logic, id: widget.id),
+            child: Text(stop ? 'Noter un écart' : 'Noter une fois'),
+          ),
+        ),
+      ]),
       const SizedBox(height: 14),
       _k('CES 14 JOURS · ENVIES', mute),
       const SizedBox(height: 6),
