@@ -938,7 +938,7 @@ gratuites. Pas de jalons santé : caps neutres. **Lot 1 livré (données + logiq
 supportName?, supportPhone?, warned}`, `FreedomUrge {at, intensity 1-5, trigger?, parade?, passed, durationSec?}`, `FreedomSlip {at,
 count, triggers, next?}` (écart en Arrêter, consommation en Réduire), `Freedom {plan, urges, slips}`, une par chose, dans `data/meta.freedoms.<id>` (`parseFreedoms`, `activeFreedomIds` : plan posé, par date de départ)
 (`parseFreedom`, `FirestoreSync.setFreedomPlan(id, …)` / `setFreedomUrge(id, …)` / `setFreedomSlip(id, …)`, flux meta de main.dart via `_freedomJson`, `freedoms` dans
-`kBackupMetaKeys`). Calculs : `freeSince` (départ ou dernier écart), `freeLabel` (« 12 j 6 h »), `urgesOvercome`, `freeDaysTotal` /
+`kBackupMetaKeys`). Calculs : `freeSince` (départ ou dernier écart ; le départ = `FreedomPlan.startAt`, l'heure exacte de création, depuis le 2026-11-05 — retour user, « libre depuis 20 h » partait de minuit ; un plan d'avant sans `startAt` part de minuit, `startMoment`), `freeLabel` (« 12 j 6 h »), `urgesOvercome`, `freeDaysTotal` /
 `savedCents` (coût × jours sans écart, Arrêter seulement), `nextMilestone` / `milestoneLabel` (`kFreedomMilestones` 1 · 3 · 7 · 14 · 30 ·
 60 · 90 · 180 · 365 j), `usedThisPeriod` / `overLimit` (Réduire), `urgeDays` (barres 14 j), `meanIntensity` / `intensityTrendPct` (7 j
 face aux 7 d'avant), `urgeHeat` (semaine / week-end × 6 moments), `triggerShares`, `paradeRates` / `bestParade` (≥ 3 essais),

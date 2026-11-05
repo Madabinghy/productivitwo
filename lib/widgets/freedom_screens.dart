@@ -112,6 +112,7 @@ class _FreedomSetupState extends State<FreedomSetup> {
       period: _period,
       unit: _unit.text.trim().isEmpty ? 'fois' : _unit.text.trim(),
       startYmd: _old?.startYmd ?? ymdOf(DateTime.now()),
+      startAt: _old == null ? DateTime.now().millisecondsSinceEpoch : _old!.startAt,
       costPerDay: cost,
       why: _why.text.trim(),
       triggers: [for (final t in _triggerOptions) if (_triggers.contains(t)) t],

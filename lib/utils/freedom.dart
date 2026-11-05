@@ -25,6 +25,9 @@ class FreedomPlan {
   /// Ce qu'on compte, facultatif (« fois », « verres », « minutes »).
   final String unit;
   final String startYmd;
+  /// Heure exacte du départ (ms) : le compteur « libre depuis » part de là ; absente (plans d'avant le
+  /// 2026-11-05) = minuit du jour de départ.
+  final int? startAt;
   /// Ce que ça coûte par jour, en centimes (facultatif).
   final int? costPerDay;
   final String why;
@@ -41,6 +44,7 @@ class FreedomPlan {
     this.period = FreedomPeriod.week,
     this.unit = 'fois',
     required this.startYmd,
+    this.startAt,
     this.costPerDay,
     this.why = '',
     this.triggers = const [],
@@ -57,6 +61,7 @@ class FreedomPlan {
         'period': period.name,
         'unit': unit,
         'startYmd': startYmd,
+        if (startAt != null) 'startAt': startAt,
         if (costPerDay != null) 'costPerDay': costPerDay,
         if (why.isNotEmpty) 'why': why,
         'triggers': triggers,
@@ -76,6 +81,7 @@ class FreedomPlan {
       period: j['period'] == 'day' ? FreedomPeriod.day : FreedomPeriod.week,
       unit: (j['unit'] as String?)?.trim().isNotEmpty == true ? j['unit'] as String : 'fois',
       startYmd: j['startYmd'] as String,
+      startAt: (j['startAt'] as num?)?.toInt(),
       costPerDay: (j['costPerDay'] as num?)?.toInt(),
       why: (j['why'] ?? '').toString(),
       triggers: strs(j['triggers']),
@@ -94,6 +100,7 @@ class FreedomPlan {
     FreedomPeriod? period,
     String? unit,
     String? startYmd,
+    int? startAt,
     int? costPerDay,
     bool clearCost = false,
     String? why,
@@ -110,6 +117,7 @@ class FreedomPlan {
         period: period ?? this.period,
         unit: unit ?? this.unit,
         startYmd: startYmd ?? this.startYmd,
+        startAt: startAt ?? this.startAt,
         costPerDay: clearCost ? null : (costPerDay ?? this.costPerDay),
         why: why ?? this.why,
         triggers: triggers ?? this.triggers,
@@ -246,10 +254,13 @@ List<String> activeFreedomIds(Map<String, Freedom> all) {
 
 DateTime _start(FreedomPlan p) => DateTime.parse(p.startYmd);
 
+/// L'instant du départ : l'heure exacte posée à la création, sinon minuit du jour de départ.
+DateTime startMoment(FreedomPlan p) => p.startAt != null ? DateTime.fromMillisecondsSinceEpoch(p.startAt!) : _start(p);
+
 /// Arrêter : libre depuis le départ, ou depuis le dernier écart.
 DateTime freeSince(Freedom f) {
   final p = f.plan!;
-  final start = _start(p);
+  final start = startMoment(p);
   final slips = f.slipList;
   if (slips.isEmpty) return start;
   final last = DateTime.fromMillisecondsSinceEpoch(slips.last.at);

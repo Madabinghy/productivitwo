@@ -37,6 +37,14 @@ void main() {
     expect(freeLabel(const Duration(minutes: 20)), '20 min');
   });
 
+  test('libre depuis l\'heure exacte du départ (sinon minuit)', () {
+    final exact = Freedom(plan: FreedomPlan(name: 'X', startYmd: '2026-11-04', startAt: at(4, 11)));
+    expect(freeSince(exact), DateTime.fromMillisecondsSinceEpoch(at(4, 11)));
+    expect(parseFreedom(exact.toJson()).plan!.startAt, at(4, 11));
+    final old = Freedom(plan: FreedomPlan(name: 'X', startYmd: '2026-11-04'));
+    expect(freeSince(old), DateTime(2026, 11, 4));
+  });
+
   test('argent pas dépensé : jours sans écart × coût ; prochain cap', () {
     final f = Freedom(plan: plan, slips: {'s': FreedomSlip(id: 's', at: at(1, 22))});
     // du 23 oct. au 3 nov. inclus = 12 jours, dont 1 avec écart.
