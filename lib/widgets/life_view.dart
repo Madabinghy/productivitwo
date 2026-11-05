@@ -272,6 +272,9 @@ class _LifeViewState extends State<LifeView> {
         // Nature à feuille déjà prise par un autre domaine : la tuile reste, en tuile de domaine
         // (bug user 2026-11-05 : elle disparaissait sans un mot).
         if (seenSheet.contains(n)) {
+          // Nature devinée (Sport ET Musculation) : la feuille couvre déjà les deux, une seule tuile.
+          // Nature choisie à la main : la tuile reste, en tuile de domaine.
+          if (!_overrides.containsKey(d.id)) continue;
           n = _fallbackNature(d);
         } else {
           seenSheet.add(n);

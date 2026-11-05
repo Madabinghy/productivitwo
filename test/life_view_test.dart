@@ -100,4 +100,19 @@ void main() {
       if (nature == 'work') expect(find.textContaining('sur le rythme'), findsOneWidget);
     });
   }
+
+  testWidgets('deux domaines de sport devinés : une seule tuile Sport', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'm', name: 'Musculation'), Domain(id: 'sp', name: 'Sport')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: LifeView(logic: logic, sync: FirestoreSync(), projects: const [], onOpenDomain: (d) async => null, onOpenSleep: () {}, onManageDomains: () {})),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('SPORT'), findsOneWidget);
+  });
 }
