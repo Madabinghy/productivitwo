@@ -20,6 +20,33 @@ void main() {
     expect(seasonEndFor('2026-11-02', weeks: 4), '2026-11-29');
   });
 
+  test('objectif qui court au-delà de la saison : cible = sa ligne à la fin de la saison', () {
+    final livres = StrategicObjective(
+      id: 'livres',
+      title: 'Lire 12 livres',
+      startDate: DateTime(2026, 9, 1),
+      endDate: DateTime(2027, 6, 30),
+      metric: ObjectiveMetric(label: 'Livres', unit: 'livres', startValue: 0, targetValue: 12),
+      readings: [ObjectiveReading(date: '2026-11-01', value: 2)],
+    );
+    // Ligne 0 → 12 du 1er septembre au 30 juin : un peu moins de 4 au 6 décembre.
+    final t = seasonMetricTarget(livres, '2026-12-06')!;
+    expect(t, greaterThan(3));
+    expect(t, lessThan(4.5));
+    expect(goalFor(livres, seasonEnd: '2026-12-06').target, t);
+    expect(goalFor(livres).target, 12);
+    // Objectif qui finit avant la saison : sa cible.
+    expect(seasonMetricTarget(livres, '2027-07-04'), 12);
+    // Saison ouverte avec la cible finale : relue sur la ligne.
+    final s = withSeasonOpened(const [], [goalFor(livres)], '2026-11-09', weeks: 4).single;
+    expect(effectiveSeasonGoal(s, s.goals.single, livres).target, seasonMetricTarget(livres, s.end));
+    final v = seasonGoalView(s, s.goals.single, livres, todayYmd: '2026-11-10');
+    expect(v.goal.target, seasonMetricTarget(livres, s.end));
+    // Cible réglée à la main : intacte.
+    final manual = s.goals.single.copyWith(target: 10);
+    expect(effectiveSeasonGoal(s, manual, livres).target, 10);
+  });
+
   test('ouvrir, saison en cours, reposer le cap, bilan à voir', () {
     final g = goalFor(poids());
     expect(g.kind, SeasonGoalKind.metric);
