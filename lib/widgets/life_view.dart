@@ -265,14 +265,21 @@ class _LifeViewState extends State<LifeView> {
     // Une seule tuile Sommeil / Sport / Repas, même si deux domaines en ont la nature.
     final seenSheet = <DomainNature>{};
 
-    final tiles = <Widget>[];
+    final tiles = <(Widget, bool)>[];
     for (final d in sorted) {
-      final n = _natureOf(d);
+      var n = _natureOf(d);
       if (_natureColors.containsKey(n)) {
-        if (seenSheet.contains(n)) continue;
-        seenSheet.add(n);
+        // Nature à feuille déjà prise par un autre domaine : la tuile reste, en tuile de domaine
+        // (bug user 2026-11-05 : elle disparaissait sans un mot).
+        if (seenSheet.contains(n)) {
+          n = _fallbackNature(d);
+        } else {
+          seenSheet.add(n);
+        }
       }
-      tiles.add(_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now));
+      // Routines × jours sur toute la largeur : les noms se lisent (retour user 2026-11-05).
+      final wide = _wideGrid(d, n);
+      tiles.add((_tile(cs, d, n, weeks[d.id], byDomain[d.id] ?? const [], progress, now, wide: wide), wide));
     }
 
     return SafeArea(
@@ -297,7 +304,7 @@ class _LifeViewState extends State<LifeView> {
         _section(mute, 'MES DOMAINES', right: 'appui long = nature'),
         LayoutBuilder(builder: (ctx, c) {
           final w = (c.maxWidth - 8) / 2;
-          return Wrap(spacing: 8, runSpacing: 8, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
+          return Wrap(spacing: 8, runSpacing: 8, children: [for (final (t, wide) in tiles) SizedBox(width: wide ? c.maxWidth : w, child: t)]);
         }),
         _freedomTile(cs, mute),
         if (orphan.isNotEmpty) ...[
@@ -404,7 +411,19 @@ class _LifeViewState extends State<LifeView> {
     );
   }
 
-  Widget _tile(ColorScheme cs, Domain d, DomainNature n, DomainWeek? w, List<StrategicObjective> objs, Map<String, ObjectiveProgress> progress, DateTime now) {
+  /// Nature de repli d'un domaine dont la nature à feuille est déjà prise : Pratique s'il a du temps, sinon Entretien.
+  DomainNature _fallbackNature(Domain d) {
+    final acts = logic.state.activities.where((a) => !a.deleted && a.domainId == d.id);
+    return acts.any((a) => !a.isHabit) ? DomainNature.practice : DomainNature.upkeep;
+  }
+
+  /// La tuile prend toute la largeur quand elle montre la grille routines × jours.
+  bool _wideGrid(Domain d, DomainNature n) =>
+      (n == DomainNature.upkeep || n == DomainNature.tracking) &&
+      logic.state.activities.any((a) => !a.deleted && a.isHabit && a.domainId == d.id && a.habitFreq != HabitFreq.monthly);
+
+  Widget _tile(ColorScheme cs, Domain d, DomainNature n, DomainWeek? w, List<StrategicObjective> objs, Map<String, ObjectiveProgress> progress, DateTime now,
+      {bool wide = false}) {
     final st = logic.state;
     final mute = cs.onSurface.withValues(alpha: .55);
     final c = _natureColors[n] ?? domainColor(d.id, st.activeDomains) ?? cs.primary;
@@ -499,7 +518,7 @@ class _LifeViewState extends State<LifeView> {
           }
           viz = _domainDays(cs, d, w, n, now, c);
           // Un graphique par nature (maquette validée 2026-11-05).
-          final chart = _natureChart(cs, d, w, n, now, c);
+          final chart = _natureChart(cs, d, w, n, now, c, wide: wide);
           if (chart != null) {
             value = chart.value;
             sub = chart.sub;
@@ -570,7 +589,7 @@ class _LifeViewState extends State<LifeView> {
   }
 
   /// Le graphique de la nature du domaine, ou null (on garde alors les barres des 7 jours).
-  ({String value, String sub, Widget viz})? _natureChart(ColorScheme cs, Domain d, DomainWeek w, DomainNature n, DateTime now, Color c) {
+  ({String value, String sub, Widget viz})? _natureChart(ColorScheme cs, Domain d, DomainWeek w, DomainNature n, DateTime now, Color c, {bool wide = false}) {
     final st = logic.state;
     final today = livedDate(now, logic.dayStartMin);
     final day = DateTime(today.year, today.month, today.day);
@@ -631,7 +650,7 @@ class _LifeViewState extends State<LifeView> {
         return (
           value: '${rows.length - behind} / ${rows.length}',
           sub: behind == 0 ? 'routines au rythme' : 'au rythme · $behind à rattraper',
-          viz: _routineGridViz(cs, rows, dc),
+          viz: _routineGridViz(cs, rows, dc, wide: wide),
         );
       default:
         return null;
@@ -668,7 +687,7 @@ class _LifeViewState extends State<LifeView> {
   }
 
   /// ③ Une ligne par routine (4 au plus, celles qui décrochent d'abord), une case par jour de la semaine.
-  Widget _routineGridViz(ColorScheme cs, List<RoutineRow> rows, Color c) {
+  Widget _routineGridViz(ColorScheme cs, List<RoutineRow> rows, Color c, {bool wide = false}) {
     final shown = rows.take(4).toList();
     final todayIdx = livedDate(DateTime.now(), logic.dayStartMin).weekday - 1;
     Color cell(RoutineCell k) => switch (k) {
@@ -686,9 +705,9 @@ class _LifeViewState extends State<LifeView> {
             height: (kLifeVizHeight - 3 * (shown.length - 1)) / (shown.length < 4 ? 4 : shown.length),
             child: Row(children: [
               SizedBox(
-                width: 44,
+                width: wide ? 130 : 44,
                 child: Text(r.routine.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 8.5, height: 1, fontWeight: FontWeight.w700, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .7))),
+                    style: TextStyle(fontSize: wide ? 10.5 : 8.5, height: 1, fontWeight: FontWeight.w700, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .7))),
               ),
               for (var j = 0; j < 7; j++) ...[
                 const SizedBox(width: 2),
@@ -705,9 +724,9 @@ class _LifeViewState extends State<LifeView> {
                 ),
               ],
               SizedBox(
-                width: 22,
+                width: wide ? 34 : 22,
                 child: Text(r.right, textAlign: TextAlign.right,
-                    style: TextStyle(fontSize: 8.5, height: 1, fontWeight: FontWeight.w800, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .6))),
+                    style: TextStyle(fontSize: wide ? 10.5 : 8.5, height: 1, fontWeight: FontWeight.w800, color: r.behind ? _kAmber : cs.onSurface.withValues(alpha: .6))),
               ),
             ]),
           ),
