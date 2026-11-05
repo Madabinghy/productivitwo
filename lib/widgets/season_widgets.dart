@@ -165,7 +165,20 @@ class _SeasonCapViewState extends State<SeasonCapView> {
   late List<StrategicObjective> _objectives = widget.objectives.where((o) => o.status == 'active').toList();
   int _weeks = kSeasonWeeks;
   final Map<String, SeasonGoal> _picked = {};
+  /// Cibles réglées à la main : elles ne suivent plus la durée de la saison.
+  final Set<String> _manual = {};
   bool _renew = false;
+
+  String get _end => seasonEndFor(logic.livedTodayYmd, weeks: _weeks);
+
+  void _setWeeks(int w) {
+    _weeks = w;
+    for (final o in _objectives) {
+      final g = _picked[o.id];
+      if (g == null || g.kind != SeasonGoalKind.metric || _manual.contains(o.id)) continue;
+      _picked[o.id] = g.copyWith(target: seasonMetricTarget(o, _end));
+    }
+  }
 
   @override
   void initState() {
@@ -176,7 +189,10 @@ class _SeasonCapViewState extends State<SeasonCapView> {
       for (final g in last.goals) {
         if (g.decision == SeasonDecision.drop) continue;
         final o = _objectives.where((x) => x.id == g.objectiveId).firstOrNull;
-        if (o != null) _picked[o.id] = goalFor(o).copyWith(target: g.decision == SeasonDecision.adjust ? g.target : null);
+        if (o != null) {
+          _picked[o.id] = goalFor(o, seasonEnd: _end).copyWith(target: g.decision == SeasonDecision.adjust ? g.target : null);
+          if (g.decision == SeasonDecision.adjust) _manual.add(o.id);
+        }
       }
     }
   }
@@ -216,7 +232,7 @@ class _SeasonCapViewState extends State<SeasonCapView> {
     if (o == null || !mounted) return;
     setState(() {
       _objectives = [..._objectives, o];
-      if (_picked.length < kSeasonMaxGoals) _picked[o.id] = goalFor(o);
+      if (_picked.length < kSeasonMaxGoals) _picked[o.id] = goalFor(o, seasonEnd: _end);
     });
   }
 
@@ -254,7 +270,7 @@ class _SeasonCapViewState extends State<SeasonCapView> {
               showCheckmark: false,
               selectedColor: kSeasonAccent,
               labelStyle: TextStyle(fontWeight: FontWeight.w800, color: _weeks == w ? _seasonInk : null),
-              onSelected: (_) => setState(() => _weeks = w),
+              onSelected: (_) => setState(() => _setWeeks(w)),
             ),
           ),
         ],
@@ -287,7 +303,7 @@ class _SeasonCapViewState extends State<SeasonCapView> {
     final mute = cs.onSurface.withValues(alpha: .6);
     final g = _picked[o.id];
     final on = g != null;
-    final base = g ?? goalFor(o);
+    final base = g ?? goalFor(o, seasonEnd: _end);
     final domain = logic.state.domains.where((d) => d.id == o.domainId).firstOrNull?.name;
     final sub = [
       if (domain != null) domain,
@@ -308,7 +324,7 @@ class _SeasonCapViewState extends State<SeasonCapView> {
               if (on) {
                 _picked.remove(o.id);
               } else if (_picked.length < kSeasonMaxGoals) {
-                _picked[o.id] = goalFor(o);
+                _picked[o.id] = goalFor(o, seasonEnd: _end);
               }
             }),
             child: Padding(
@@ -336,7 +352,12 @@ class _SeasonCapViewState extends State<SeasonCapView> {
                     borderRadius: BorderRadius.circular(10),
                     onTap: () async {
                       final v = await _askTarget(base);
-                      if (v != null) setState(() => _picked[o.id] = base.copyWith(target: v));
+                      if (v != null) {
+                        setState(() {
+                          _picked[o.id] = base.copyWith(target: v);
+                          _manual.add(o.id);
+                        });
+                      }
                     },
                     child: _chip('${seasonNum(base.target ?? 0)} ${base.unit ?? ''}'.trim(), kSeasonAccent, const Color(0xFF241D38)),
                   )
@@ -538,7 +559,7 @@ class _SeasonGoalView2State extends State<SeasonGoalView2> {
   late StrategicObjective _o = widget.objective;
 
   Season get _season => logic.seasons.where((x) => x.n == widget.season.n).firstOrNull ?? widget.season;
-  SeasonGoal get _goal => _season.goalOf(widget.goal.objectiveId) ?? widget.goal;
+  SeasonGoal get _goal => effectiveSeasonGoal(_season, _season.goalOf(widget.goal.objectiveId) ?? widget.goal, _o);
 
   @override
   Widget build(BuildContext context) {

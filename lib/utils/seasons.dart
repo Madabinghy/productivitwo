@@ -1,6 +1,7 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show mondayOf, ymdOf;
 import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show expectedMetricAt, objectiveStart;
 
 /// Saisons, refonte 2026-11-04 (maquette validée « Saisons et objectifs ») : une
 /// saison = la PÉRIODE DE TES OBJECTIFS. On pose le cap au début (durée 4 · 6 ·
@@ -174,13 +175,39 @@ List<Season> wonSeasons(List<Season> seasons) => [for (final s in seasons) if (!
 // ── Un objectif dans la saison ───────────────────────────────────────────────
 
 /// Le but posé pour [o] en ouvrant une saison : métrique = dernier relevé (sinon
-/// départ) → cible de l'objectif ; sinon le rythme hebdo de ses engagements.
-SeasonGoal goalFor(StrategicObjective o) {
+/// départ) → là où la ligne de l'objectif arrive à [seasonEnd] (sa cible s'il finit
+/// avant) ; sinon le rythme hebdo de ses engagements.
+SeasonGoal goalFor(StrategicObjective o, {String? seasonEnd}) {
   final m = o.metric;
   if (m == null) return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.rhythm);
   final sorted = [...o.readings]..sort((a, b) => a.date.compareTo(b.date));
   final last = sorted.isEmpty ? null : sorted.last.value;
-  return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.metric, from: last ?? m.startValue, target: m.targetValue, unit: m.unit);
+  final target = seasonEnd == null ? m.targetValue : seasonMetricTarget(o, seasonEnd)!;
+  return SeasonGoal(objectiveId: o.id, name: o.title, kind: SeasonGoalKind.metric, from: last ?? m.startValue, target: target, unit: m.unit);
+}
+
+/// Cible de saison d'un objectif chiffré (retour user 2026-11-05 : 12 livres
+/// jusqu'en juin, visés en 4 semaines) : la valeur de sa ligne départ → cible au
+/// soir de [seasonEndYmd], arrondie au dixième ; sa cible s'il finit avant.
+double? seasonMetricTarget(StrategicObjective o, String seasonEndYmd) {
+  final m = o.metric;
+  if (m == null) return null;
+  final end = o.endDate;
+  final seasonEnd = DateTime.parse(seasonEndYmd).add(const Duration(hours: 23, minutes: 59));
+  if (end == null || !end.isAfter(seasonEnd)) return m.targetValue;
+  final v = expectedMetricAt(m, objectiveStart(o), end, seasonEnd);
+  return (v * 10).round() / 10;
+}
+
+/// Le but d'une saison tel qu'il doit se lire : une saison ouverte avant le
+/// 2026-11-05 a pu garder la cible FINALE d'un objectif qui court au-delà ;
+/// elle est ramenée à la ligne de l'objectif à la fin de la saison.
+SeasonGoal effectiveSeasonGoal(Season s, SeasonGoal g, StrategicObjective? o) {
+  final m = o?.metric;
+  if (g.kind != SeasonGoalKind.metric || m == null || g.target == null) return g;
+  if ((g.target! - m.targetValue).abs() > 1e-9) return g;
+  final t = seasonMetricTarget(o!, s.end);
+  return t == null || (t - g.target!).abs() < 1e-9 ? g : g.copyWith(target: t);
 }
 
 enum SeasonGoalState { onTrack, behind, reached, missed, none }
@@ -226,6 +253,7 @@ SeasonGoalView seasonGoalView(
   List<Session> sessions = const [],
   List<HabitHit> hits = const [],
 }) {
+  g = effectiveSeasonGoal(s, g, o);
   final closed = s.isOverOn(todayYmd);
   final day = closed ? s.end : todayYmd;
   if (g.kind == SeasonGoalKind.metric) {

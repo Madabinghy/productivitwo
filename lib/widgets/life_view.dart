@@ -184,7 +184,7 @@ class _LifeViewState extends State<LifeView> {
     if (s == null) return null;
     for (final g in s.goals) {
       final o = _objectives.where((x) => x.id == g.objectiveId).firstOrNull;
-      if (o != null && _domainOf(o) == d.id) return (s, g, o);
+      if (o != null && _domainOf(o) == d.id) return (s, effectiveSeasonGoal(s, g, o), o);
     }
     return null;
   }
