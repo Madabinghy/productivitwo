@@ -97,4 +97,19 @@ void main() {
     expect(coupMinutes(15), 15);
     expect(kOffensiveDurations.contains(kOffensiveUnlimited), isFalse);
   });
+
+  test('Deep work : bloc posé à l\'heure de maintenant, fait dès 30 min, retiré en dessous', () {
+    final start = DateTime(2026, 11, 5, 14, 07);
+    final b = liveDeepBlock(now: start, dayStartMin: 300, projectId: 'p', projectTitle: 'CM — Nombres');
+    expect(b.timeBlock, 'deep');
+    expect(b.startTime, '14:05');
+    expect(b.title, 'Deep work · CM — Nombres');
+    expect(b.projectId, 'p');
+    expect(b.status, 'pending');
+    expect(settledLiveDeep(liveDeepBlock(now: start, dayStartMin: 300), start, start.add(const Duration(minutes: 29))), isNull);
+    final done = settledLiveDeep(b, start, start.add(const Duration(minutes: 52)))!;
+    expect(done.status, 'done');
+    expect(done.durationMin, 55);
+    expect(done.doneBy, 'deepwork');
+  });
 }

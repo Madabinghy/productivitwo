@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject,
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/project_health.dart' show ganttOrder, nextAction;
 import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
 
 /// Offensive (maquette validée 2026-10-30) : l'équivalent de la Guérilla quand
 /// on est EN FORME. On choisit un FRONT (un projet, ou « tout mélanger » = la
@@ -24,6 +25,39 @@ const kUnlimitedCoupMin = 25;
 
 /// Minutes d'un coup : la durée choisie, ou la tranche silencieuse de l'illimité.
 int coupMinutes(int duration) => duration == kOffensiveUnlimited ? kUnlimitedCoupMin : duration;
+
+/// Deep work = l'offensive sans minuteur (2026-11-05, retour user : fusion du bloc Deep work et de
+/// l'Illimité). Au lancement, un bloc Deep work (`timeBlock:"deep"`) est posé dans le programme à
+/// l'heure de maintenant ; à la fin, il prend la durée réelle et passe fait dès [kDeepSessionMin] min,
+/// sinon il est retiré (une session trop courte ne laisse pas un bloc raté dans la journée).
+const kDeepSessionMin = 30;
+const kLiveDeepPlanMin = 90;
+
+ScheduleBlock liveDeepBlock({required DateTime now, required int dayStartMin, String? projectId, String? projectTitle}) {
+  final min = (livedNowMin(now, dayStartMin) ~/ 5) * 5;
+  final hh = ((min ~/ 60) % 24).toString().padLeft(2, '0');
+  final mm = (min % 60).toString().padLeft(2, '0');
+  return ScheduleBlock(
+    startTime: '$hh:$mm',
+    durationMin: kLiveDeepPlanMin,
+    title: projectTitle == null || projectTitle.isEmpty ? 'Deep work' : 'Deep work · $projectTitle',
+    category: projectId != null ? 'project' : 'personal',
+    projectId: projectId,
+    timeBlock: 'deep',
+  );
+}
+
+/// Le bloc à la fin de la session : durée réelle (arrondie aux 5 min, au moins la durée tenue),
+/// fait dès [kDeepSessionMin] min ; null = à retirer.
+ScheduleBlock? settledLiveDeep(ScheduleBlock b, DateTime startedAt, DateTime endedAt) {
+  final min = endedAt.difference(startedAt).inMinutes;
+  if (min < kDeepSessionMin) return null;
+  b.durationMin = ((min + 4) ~/ 5) * 5;
+  b.status = 'done';
+  b.doneAt = endedAt;
+  b.doneBy = 'deepwork';
+  return b;
+}
 const kOffensivePauseEvery = 3;
 const kOffensiveCountedMin = 3;
 const kOffensiveTiers = [1, 5, 15];

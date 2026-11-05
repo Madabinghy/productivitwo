@@ -11,7 +11,7 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistI
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
 import 'package:productivitwo_v1/utils/landing.dart';
-import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowMin;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowMin, docForNewBlock;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
@@ -42,10 +42,12 @@ const _amber = Color(0xFFF2C14E);
 /// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
 /// [projectId] = front déjà choisi (fiche projet, page focus) ; [firstActionId] = l'action par laquelle commencer.
 /// [activityId] = Deep work visé sur une activité : seuls les projets qui la servent sont proposés (tous si aucun).
-Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume, String? projectId, String? firstActionId, String? activityId}) {
+/// [deepWork] = Deep work présélectionné (aucun minuteur, bloc posé dans le programme).
+Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
+    {PendingRun? resume, String? projectId, String? firstActionId, String? activityId, bool deepWork = false}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId, activityId: activityId)));
+      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId, activityId: activityId, deepWork: deepWork)));
 }
 
 enum _Phase { setup, coup, pause, back, end }
@@ -56,7 +58,8 @@ class OffensiveScreen extends StatefulWidget {
   final String? projectId;
   final String? firstActionId;
   final String? activityId;
-  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId, this.activityId});
+  final bool deepWork;
+  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId, this.activityId, this.deepWork = false});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -92,6 +95,10 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   /// Bloc Deep work dans lequel tourne l'offensive, et la fin déjà demandée (« On continue ? » une fois par fin).
   String? _deepId;
   String? _deepAsked;
+  /// Bloc Deep work posé par l'offensive en mode Deep work (2026-11-05) : son doc et le début de la session.
+  String? _liveDeepId;
+  String? _liveDeepDoc;
+  DateTime? _liveDeepFrom;
   bool _sheetOpen = false;
   /// Reprise après être resté dedans : ce qui est passé sans toi, à régler avant de replonger.
   List<ScheduleBlock> _missed = const [];
@@ -119,6 +126,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final pre = fronts.indexWhere((f) => f.project.id == widget.projectId);
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
+    if (widget.deepWork) _duration = kOffensiveUnlimited;
     final r = widget.resume;
     if (r != null) _restore(r);
   }
@@ -127,6 +135,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final front = r.extra['front']?.toString();
     _front = front == null || front.isEmpty ? null : front;
     _duration = r.intOf('duration') ?? 15;
+    _liveDeepId = r.extra['liveDeep']?.toString();
+    _liveDeepDoc = r.extra['liveDeepDoc']?.toString();
+    final ldf = r.intOf('liveDeepFrom');
+    _liveDeepFrom = ldf == null ? null : DateTime.fromMillisecondsSinceEpoch(ldf);
+    if (_liveDeepId != null) _deepId = _liveDeepId;
     _won = r.done;
     _chronoSec = r.intOf('chronoSec') ?? 0;
     _startedAt = r.startedAt;
@@ -223,6 +236,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _cur != null) 'cur': _cur!.action.id,
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
         'own': _ownChrono,
+        if (_liveDeepId != null) 'liveDeep': _liveDeepId,
+        if (_liveDeepDoc != null) 'liveDeepDoc': _liveDeepDoc,
+        if (_liveDeepFrom case final f?) 'liveDeepFrom': f.millisecondsSinceEpoch,
         'passed': _passed.toList(),
         'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
         'total': _actionsDone.values.fold(0, (s, l) => s + l.length),
@@ -261,11 +277,47 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (_queue.isEmpty) return;
     if (_runningBefore != null) logic.stopActive(notify: false);
     _startedAt = now;
+    if (_unlimited) _openLiveDeep(now);
     for (final t in _queue) {
       _before.putIfAbsent(t.project.id, () => planSnapshot(t.project, now));
     }
     _index = 0;
     _startCoup();
+  }
+
+  /// Deep work : le bloc s'écrit dans le programme du jour, à l'heure de maintenant, visé sur le front.
+  /// Rien de posé quand l'offensive tourne déjà dans un bloc Deep work prévu.
+  void _openLiveDeep(DateTime now) {
+    if (currentDeepBlock(logic.todayBlocks, now, logic.dayStartMin) != null) return;
+    final front = _front == null ? null : logic.currentProjects.where((p) => p.id == _front).firstOrNull;
+    final b = liveDeepBlock(now: now, dayStartMin: logic.dayStartMin, projectId: front?.id, projectTitle: front?.title);
+    final doc = docForNewBlock(logic.livedTodayYmd, now, logic.dayStartMin);
+    _liveDeepId = b.id;
+    _liveDeepDoc = doc;
+    _liveDeepFrom = now;
+    _deepId = b.id;
+    logic.sync?.upsertScheduleBlock(doc, b, rememberMirror: false);
+  }
+
+  /// Fin de la session Deep work : le bloc prend la durée réelle, fait dès 30 min, sinon retiré.
+  void _settleLiveDeep() {
+    final id = _liveDeepId, doc = _liveDeepDoc, from = _liveDeepFrom;
+    if (id == null || doc == null || from == null) return;
+    _liveDeepId = null;
+    final now = DateTime.now();
+    final b = logic.todayBlocks.where((x) => x.id == id).firstOrNull ??
+        liveDeepBlock(now: from, dayStartMin: logic.dayStartMin)
+      ..id = id;
+    if (b.status != 'pending') return;
+    final settled = settledLiveDeep(b, from, now);
+    final min = now.difference(from).inMinutes;
+    if (settled == null) b.status = 'deleted';
+    logic.sync?.upsertScheduleBlock(doc, settled ?? b, rememberMirror: false);
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+      content: Text(settled == null
+          ? 'Deep work de $min min : moins de $kDeepSessionMin min, le bloc est retiré du programme'
+          : 'Bloc Deep work ${settled.startTime} · ${settled.durationMin} min · fait'),
+    ));
   }
 
   void _startCoup({DateTime? endsAt}) {
@@ -324,7 +376,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final blocks = logic.todayBlocks;
     _deepId ??= currentDeepBlock(blocks, now, logic.dayStartMin)?.id;
     final deep = _deepId == null ? null : blocks.where((b) => b.id == _deepId).firstOrNull;
-    if (deep == null || deep.status != 'pending' || _sheetOpen) return;
+    // Le bloc posé par le mode Deep work suit la session : pas de « On continue ? ».
+    if (deep == null || deep.id == _liveDeepId || deep.status != 'pending' || _sheetOpen) return;
     final end = blockEndMin(deep);
     if (livedNowMin(now, logic.dayStartMin) < end) return;
     final key = '${deep.id}@$end';
@@ -585,6 +638,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     CoupAlarm.cancelLanding();
     if (lastCoupWon) _won++;
     _stopOwnChrono();
+    _settleLiveDeep();
     setState(() => _phase = _Phase.end);
   }
 
@@ -719,7 +773,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         ),
       );
 
-  /// Le grand choix « Illimité » (2026-11-04, retour user) : plongé dans l'action, sans minuteur.
+  /// Le grand choix « Deep work » (ex-« Illimité », fusion 2026-11-05) : plongé dans l'action, sans minuteur,
+  /// le bloc s'écrit dans le programme et passe fait dès 30 min.
   Widget _unlimitedChoice() {
     final on = _unlimited;
     return Material(
@@ -746,9 +801,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Illimité', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: on ? kOffensiveAccent : Colors.white)),
+                Text('Deep work', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: on ? kOffensiveAccent : Colors.white)),
                 const SizedBox(height: 2),
-                const Text('Plongé dans l’action, aucun minuteur. Un coup compte en silence toutes les 25 min.',
+                const Text('Aucun minuteur. Le bloc Deep work s’écrit dans ton programme, fait dès 30 min.',
                     style: TextStyle(fontSize: 12.5, height: 1.3, color: _text2)),
               ]),
             ),
@@ -920,7 +975,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text('$mm:$ss', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
-              Text(_unlimited ? '∞ illimité' : 'reste sur $_duration', style: const TextStyle(fontSize: 11, color: _text3)),
+              Text(_unlimited ? '∞ deep work' : 'reste sur $_duration', style: const TextStyle(fontSize: 11, color: _text3)),
             ]),
           ]),
         ),
@@ -993,7 +1048,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       const SizedBox(height: 8),
       Text(
         _unlimited
-            ? 'Illimité : rien ne sonne. Chaque tranche de 25 min compte un coup, en silence.'
+            ? 'Deep work : rien ne sonne. Le bloc s’écrit dans ton programme, fait dès $kDeepSessionMin min.'
             : t.chronoActivityId == null
             ? 'Au bout de $_duration:00, le coup est gagné même sans finir.'
             : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == t.chronoActivityId).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
