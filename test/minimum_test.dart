@@ -6,7 +6,7 @@ void main() {
     var p = withMinimumStarted(const [], '2026-11-05', ['eau', 'repas'], '2026-11-06');
     expect(currentMinimum(p, '2026-11-06')?.keep, ['eau', 'repas']);
     expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-06'), {'2026-11-05', '2026-11-06'});
-    expect(minimumFrozenDaysOf('eau', p, '2026-11-06'), isEmpty);
+    expect(minimumFrozenDaysOf('eau', p, '2026-11-06'), {'2026-11-05'}, reason: 'hier gelé pour toutes');
     expect(minimumCheckDue(p.last, '2026-11-08'), isFalse);
     expect(minimumCheckDue(p.last, '2026-11-09'), isTrue);
     p = withMinimumExtended(p, '2026-11-09');
@@ -47,5 +47,18 @@ void main() {
     expect(climbsDone(p), ['2026-11-09']);
     expect(minimumFrozenDaysOf('cuisine', p, '2026-11-10').contains('2026-11-09'), isFalse);
     expect(parseMinimumPeriods(minimumPeriodsToJson(p)).single.revived, {'vaisselle': '2026-11-08', 'cuisine': '2026-11-09'});
+  });
+
+  test('passé au minimum le lendemain : hier gelé pour toutes, même les gardées', () {
+    final p = withMinimumStarted(const [], '2026-11-05', ['eau'], '2026-11-06');
+    expect(p.single.keepFrom, '2026-11-06');
+    expect(minimumFrozenDaysOf('eau', p, '2026-11-06'), {'2026-11-05'});
+    expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-06'), {'2026-11-05', '2026-11-06'});
+    expect(minimumHeldDays(p, {'eau': {'2026-11-05'}}, '2026-11-07'), isEmpty);
+    // Période écrite avant keepFrom (ouverte le 6, checkAt le 9) : relue avec keepFrom = le 6.
+    final legacy = parseMinimumPeriods([{'from': '2026-11-05', 'keep': ['eau'], 'checkAt': '2026-11-09'}]);
+    expect(legacy.single.keepFrom, '2026-11-06');
+    final today = parseMinimumPeriods([{'from': '2026-11-06', 'keep': ['eau'], 'checkAt': '2026-11-09'}]);
+    expect(today.single.keepFrom, '2026-11-06');
   });
 }

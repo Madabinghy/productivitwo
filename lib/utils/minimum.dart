@@ -31,13 +31,18 @@ class MinimumPeriod {
   final Map<String, String> revived;
   /// Jour où la dernière série a été ravivée (remontée finie), sinon null.
   final String? climbDone;
-  const MinimumPeriod({required this.from, this.to, required this.keep, required this.checkAt, this.climb = false, this.revived = const {}, this.climbDone});
+  /// Premier jour où les routines gardées comptent (bug user 2026-11-06 : passé au minimum le lendemain d'une journée cassée,
+  /// hier doit être gelé pour TOUTES les routines, le minimum ne compte qu'à partir d'aujourd'hui).
+  final String keepFrom;
+  const MinimumPeriod({required this.from, this.to, required this.keep, required this.checkAt, this.climb = false, this.revived = const {}, this.climbDone, String? keepFrom})
+      : keepFrom = keepFrom ?? from;
 
   Map<String, dynamic> toJson() => {
         'from': from,
         if (to != null) 'to': to,
         'keep': keep,
         'checkAt': checkAt,
+        if (keepFrom != from) 'keepFrom': keepFrom,
         if (climb) 'climb': true,
         if (revived.isNotEmpty) 'revived': revived,
         if (climbDone != null) 'climbDone': climbDone,
@@ -48,12 +53,22 @@ class MinimumPeriod {
     final f = raw['from'], t = raw['to'], c = raw['checkAt'], k = raw['keep'];
     if (f is! String || !_re.hasMatch(f)) return null;
     if (t != null && (t is! String || !_re.hasMatch(t) || t.compareTo(f) < 0)) return null;
-    final rv = raw['revived'], cd = raw['climbDone'];
+    final rv = raw['revived'], cd = raw['climbDone'], kf = raw['keepFrom'];
+    final check = c is String && _re.hasMatch(c) ? c : minShift(f, kMinimumCheckDays);
+    // Période d'avant ce champ : ouverte le jour de checkAt − 3 ; si c'était le lendemain de son début (hier compris), les
+    // routines gardées ne comptent qu'à partir de ce jour-là (au plus le lendemain du début).
+    String legacyKeepFrom() {
+      final opened = minShift(check, -kMinimumCheckDays);
+      final next = minShift(f, 1);
+      if (opened.compareTo(f) <= 0) return f;
+      return opened.compareTo(next) < 0 ? opened : next;
+    }
     return MinimumPeriod(
       from: f,
       to: t as String?,
       keep: k is List ? [for (final x in k) if (x is String) x] : const [],
-      checkAt: c is String && _re.hasMatch(c) ? c : minShift(f, kMinimumCheckDays),
+      checkAt: check,
+      keepFrom: kf is String && _re.hasMatch(kf) ? kf : legacyKeepFrom(),
       climb: raw['climb'] == true,
       revived: rv is Map ? {for (final e in rv.entries) if (e.key is String && e.value is String && _re.hasMatch(e.value as String)) e.key as String: e.value as String} : const {},
       climbDone: cd is String && _re.hasMatch(cd) ? cd : null,
@@ -70,6 +85,7 @@ class MinimumPeriod {
         climb: climb ?? this.climb,
         revived: revived ?? this.revived,
         climbDone: climbDone ?? this.climbDone,
+        keepFrom: keepFrom,
       );
 
   /// Remontée en cours : choisie, période close, pas finie.
@@ -116,7 +132,14 @@ Set<String> minimumDaysUpTo(List<MinimumPeriod> periods, String todayYmd) {
 Set<String> minimumFrozenDaysOf(String activityId, List<MinimumPeriod> periods, String todayYmd) {
   final out = <String>{};
   for (final p in periods) {
-    if (p.keep.contains(activityId) || p.from.compareTo(todayYmd) > 0) continue;
+    if (p.from.compareTo(todayYmd) > 0) continue;
+    if (p.keep.contains(activityId)) {
+      // Gardée : gelée seulement avant keepFrom (hier pris avec le minimum).
+      for (final d in minimumDaysUpTo([p], todayYmd)) {
+        if (d.compareTo(p.keepFrom) < 0) out.add(d);
+      }
+      continue;
+    }
     out.addAll(minimumDaysUpTo([p], todayYmd));
     if (!p.climb || p.to == null) continue;
     final back = p.revived[activityId] ?? p.climbDone;
@@ -166,7 +189,7 @@ List<String> climbsDone(List<MinimumPeriod> periods) => [for (final p in periods
 /// Ouvre une période du [fromYmd] (aujourd'hui, ou hier) avec les routines [keep]. Une période en cours est remplacée.
 List<MinimumPeriod> withMinimumStarted(List<MinimumPeriod> periods, String fromYmd, List<String> keep, String todayYmd) {
   final kept = [for (final p in periods) if (!p.covers(todayYmd)) p];
-  final next = [...kept, MinimumPeriod(from: fromYmd, keep: keep, checkAt: minShift(todayYmd, kMinimumCheckDays))];
+  final next = [...kept, MinimumPeriod(from: fromYmd, keep: keep, checkAt: minShift(todayYmd, kMinimumCheckDays), keepFrom: todayYmd)];
   return next.length > _kKept ? next.sublist(next.length - _kKept) : next;
 }
 
@@ -199,7 +222,7 @@ List<String> minimumHeldDays(List<MinimumPeriod> periods, Map<String, Set<String
   final out = <String>[];
   for (final d in minimumDaysUpTo(periods, minShift(todayYmd, -1)).toList()..sort()) {
     final p = minimumOn(periods, d);
-    if (p == null) continue;
+    if (p == null || d.compareTo(p.keepFrom) < 0) continue;
     final keep = [for (final id in p.keep) if (reached.containsKey(id)) id];
     if (keep.isEmpty) continue;
     if (keep.every((id) => reached[id]!.contains(d))) out.add(d);
