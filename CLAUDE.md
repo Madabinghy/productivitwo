@@ -643,8 +643,8 @@ barre = enjeux tenus avec un trait à l'heure de la journée 8 h → 22 h (`dayE
 avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / Focus), ouvert = « CE QUE ÇA RAPPORTE » (une jauge
 `StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
 (`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,
-`showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE ; depuis le 2026-10-30 (retour user) il est EN TÊTE
-d'Aujourd'hui, au-dessus de MAINTENANT ; le tableau du jour « Ta journée » / « Ce soir » est TOUT EN HAUT, sous l'en-tête, à la place de
+`showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE ; depuis le 2026-10-30 (retour user) il était EN TÊTE
+d'Aujourd'hui, au-dessus de MAINTENANT — depuis le 2026-11-06 (retour user) il passe SOUS MAINTENANT et la zone coach ; le tableau du jour « Ta journée » / « Ce soir » est TOUT EN HAUT, sous l'en-tête, à la place de
 l'ancienne carte « journée gagnée » (`_dayWinCard`, retirée le 2026-10-30 ; `adaptDayGoalOnOpen` tourne toujours) ; **les enjeux ne sont plus
 sur la page** (2026-10-30) : tap sur « Ta journée » (ou sur « Ce soir », compact sur la page : `EveningLedgerCard(compact: true)`) =
 feuille `_openStakesSheet` (tableau ou bilan complet du soir + `StakesList` — le soir, ENCORE POSSIBLE CE SOIR passe EN TÊTE, le bilan dessous ; un +1 garde la feuille ouverte, chrono / focus la ferment) ; le **programme du jour n'est plus sur la

@@ -757,9 +757,7 @@ class TodayViewState extends State<TodayView> {
                     if (mounted) setState(() {});
                   }),
                   if (_morningCard(cs, now, text3) case final card?) card,
-                  // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
-                  // sous le programme (retour user 2026-10-30).
-                  ..._parallelSection(cs, stakes),
+                  // MAINTENANT avant le tableau de bord (retour user 2026-11-06).
                   const SizedBox(height: 16),
                   NowCard(
                     badges: widget.badges,
@@ -829,6 +827,8 @@ class TodayViewState extends State<TodayView> {
                     tabOpens: _tabOpens,
                     onLaunch: widget.onNowLaunch ?? widget.onLaunch,
                   ),
+                  const SizedBox(height: 12),
+                  ..._parallelSection(cs, stakes),
                 ],
                 // Programme du jour : dans une feuille ouverte par la tuile
                 // PROGRAMME (retour user 2026-10-30) ; Demain reste sur la page.
