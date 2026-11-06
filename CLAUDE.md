@@ -1940,6 +1940,23 @@ routines gelées · elles t'attendent · Changer » ; question due : « Comment 
 une braise » pendant la période. Entrées : « Ça dure · passer au minimum » dans la carte Perdu hier (dès 2 séries cassées, gèle hier
 et aujourd'hui), « Pas en forme en ce moment ? Passer au minimum » en bas de la feuille Journée parfaite. ⓘ `kRuleMinimum`.
 
+## Luttes : veilleuse, remontée, Tenir bon (2026-11-06, maquette validée « Journée difficile », lot 3)
+
+On récompense ce qui demande du courage — tenir le minimum, remonter pas à pas, gagner contre la flemme, contre une envie, contre une
+journée difficile — jamais le fait d'entrer dans le minimum. **Veilleuse** (`MinimumCard._veilleuse`) : « Tu gardes le feu · n
+journées tenues au minimum », barre Tenir bon, SOUS LA CENDRE = les séries gelées avec leur longueur. **Remontée** : « Ça va mieux »
+propose « Pas à pas » (`AppLogic.startClimb`, `withClimbStarted` : la période s'arrête hier, `MinimumPeriod.climb`) ou « Tout d'un
+coup » ; pendant la remontée les routines non gardées restent gelées jusqu'à être ravivées (`revived {id: ymd}`,
+`minimumFrozenDaysOf`), une par jour (`ClimbCard` en tête d'Aujourd'hui : « k / N séries ravivées », Raviver, « En raviver une de
+plus », « Tout reprendre d'un coup » ; tuile « REMONTÉE »), finie quand tout est ravivé (`climbDone`, `withRevived`,
+`AppLogic.reviveRoutines`) ; les jours de remontée restent neutres pour les journées (`minimumNeutralDays`). ⓘ `kRuleClimb`.
+**Famille Luttes** (`BadgeFamily.struggles`, fond `#3A2440`, encre `#FFC27A`, ruban LUTTES) : Malgré tout, Guérilla, Reprise et
+Offensive y passent (elles étaient en Discipline) + deux nouvelles — `tenir-bon` (symbole `reed`, `kHoldOnTiers` 3 · 7 · 14 · 30
+journées tenues au minimum, `minimumHeldDays`) et `remontee` (symbole `climb`, `kClimbTiers` 1 · 3 · 5, `climbsDone`). Les cartes
+d'envies restent en Liberté (privées). **Tes luttes** (`showStrugglesSheet`, lien « Tes luttes › » sous la famille dans l'album et
+dans la carte de remontée) : contre la flemme (Malgré tout, guérillas) · contre les envies (privé, seulement si Liberté existe) ·
+contre les journées difficiles (Tenir bon, remontées, reprises).
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /

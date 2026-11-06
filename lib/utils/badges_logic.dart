@@ -32,7 +32,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart' show isLetGoBlock;
 /// (`measured: false`) : elle compte dans le total, à 0. Discipline se mesure
 /// sur les pointages d'élan (`moodMarks`, lot 2, `utils/elan_logic.dart`).
 
-enum BadgeFamily { routines, objectives, days, discipline, chain, actions, time, freedom }
+enum BadgeFamily { routines, objectives, days, discipline, chain, actions, time, freedom, struggles }
 
 String badgeFamilyLabel(BadgeFamily f) => switch (f) {
       BadgeFamily.routines => 'Séries de routine',
@@ -43,9 +43,13 @@ String badgeFamilyLabel(BadgeFamily f) => switch (f) {
       BadgeFamily.actions => 'Actions accomplies',
       BadgeFamily.time => 'Temps investi',
       BadgeFamily.freedom => 'Liberté',
+      BadgeFamily.struggles => 'Luttes',
     };
 
 const kRoutineTiers = [3, 7, 21, 66, 100];
+/// Tenir bon : journées tenues au minimum. La remontée : remontées finies.
+const kHoldOnTiers = [3, 7, 14, 30];
+const kClimbTiers = [1, 3, 5];
 const kTrajectoryTiers = [4, 8, 12];
 const kReadingTiers = [8, 20];
 const kActionTiers = [10, 50, 100, 250, 500, 1000, 5000, 10000];
@@ -654,7 +658,7 @@ BadgeDeck computeBadges({
   // Journées closes : les journées parfaites forgent les braises, qui
   // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
   final todayYmd0 = ymdOf(livedDate(now, dayStartMin));
-  final minimumDays = minimumDaysUpTo(minimumPeriods, todayYmd0);
+  final minimumDays = minimumNeutralDays(minimumPeriods, todayYmd0);
   final hardSet = {...hardDays, ...minimumDays};
   // Une journée difficile (ou au minimum) est neutre : ni parfaite, ni solide, aucune braise.
   final days = [
@@ -850,7 +854,7 @@ BadgeDeck computeBadges({
   final disc = disciplineStats(
       marks: moodMarks, schedules: schedules, hits: habitHits, activities: activities, dayStartMin: dayStartMin, sessions: sessions, doneActions: doneActionsOf(projects, activities));
   out.add(BadgeState(
-    def: const BadgeDef(id: 'malgre-tout', family: BadgeFamily.discipline, name: 'Malgré tout', symbol: 'anvil', tiers: kDisciplineTiers, unit: 'victoires', unitLong: 'victoires sur la flemme'),
+    def: const BadgeDef(id: 'malgre-tout', family: BadgeFamily.struggles, name: 'Malgré tout', symbol: 'anvil', tiers: kDisciplineTiers, unit: 'victoires', unitLong: 'victoires sur la flemme'),
     level: _levelOf(kDisciplineTiers, disc.wins.length),
     value: disc.wins.length,
     tierDates: [for (final t in kDisciplineTiers) t <= disc.wins.length ? _day(disc.wins[t - 1]) : null],
@@ -952,7 +956,7 @@ BadgeDeck computeBadges({
   final inProgress = reprisesNow.entries.where((e) => !e.value.completedToday && e.value.held > 0).toList()
     ..sort((a, b) => b.value.held.compareTo(a.value.held));
   out.add(BadgeState(
-    def: const BadgeDef(id: 'reprise', family: BadgeFamily.discipline, name: 'Reprise', symbol: 'rebound', tiers: kRepriseTiers, unit: 'reprises', unitLong: 'reprises'),
+    def: const BadgeDef(id: 'reprise', family: BadgeFamily.struggles, name: 'Reprise', symbol: 'rebound', tiers: kRepriseTiers, unit: 'reprises', unitLong: 'reprises'),
     level: _levelOf(kRepriseTiers, repriseEvents.length),
     value: repriseEvents.length,
     tierDates: [for (final t in kRepriseTiers) t <= repriseEvents.length ? DateTime.parse(repriseEvents[t - 1].$2.ymd) : null],
@@ -961,6 +965,31 @@ BadgeDeck computeBadges({
       if (inProgress.isNotEmpty) ('En cours', '${routineName[inProgress.first.key]} · ${inProgress.first.value.held} / $kRepriseHold j'),
       if (repriseEvents.isNotEmpty) ('La dernière', '${repriseEvents.last.$1} · ${_fmtDate(DateTime.parse(repriseEvents.last.$2.ymd))}'),
       if (longestGap != null) ('Plus longue coupure reprise', '${_plural(longestGap.$2.gap, 'jour', 'jours')} · ${longestGap.$1}'),
+    ],
+  ));
+  // Luttes (2026-11-06, maquette « Journée difficile ») : Tenir bon = journées tenues au minimum, La remontée =
+  // toutes les séries ravivées après une période au minimum. On récompense tenir et remonter, jamais l'entrée.
+  final held = minimumHeldDays(minimumPeriods, {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)}, todayYmd);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'tenir-bon', family: BadgeFamily.struggles, name: 'Tenir bon', symbol: 'reed', tiers: kHoldOnTiers, unit: 'j', unitLong: 'journées tenues au minimum'),
+    level: _levelOf(kHoldOnTiers, held.length),
+    value: held.length,
+    tierDates: [for (final t in kHoldOnTiers) t <= held.length ? DateTime.parse(held[t - 1]) : null],
+    facts: [
+      ('Journées tenues au minimum', '${held.length}'),
+      ('Périodes au minimum', '${minimumPeriods.length}'),
+      if (held.isNotEmpty) ('La dernière', _fmtDate(DateTime.parse(held.last))),
+    ],
+  ));
+  final climbs = climbsDone(minimumPeriods);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'remontee', family: BadgeFamily.struggles, name: 'La remontée', symbol: 'climb', tiers: kClimbTiers, unit: 'remontées', unitLong: 'remontées finies'),
+    level: _levelOf(kClimbTiers, climbs.length),
+    value: climbs.length,
+    tierDates: [for (final t in kClimbTiers) t <= climbs.length ? DateTime.parse(climbs[t - 1]) : null],
+    facts: [
+      ('Remontées finies', '${climbs.length}'),
+      if (climbs.isNotEmpty) ('La dernière', _fmtDate(DateTime.parse(climbs.last))),
     ],
   ));
   // Enchaîner (règle 2026-10) : une session compte dès 3 choses faites d'affilée, sortie ou pas
@@ -989,7 +1018,7 @@ BadgeDeck computeBadges({
   final guerillas = chainRuns.where(guerillaCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
   final lift = guerillaLift(chainRuns);
   out.add(BadgeState(
-    def: const BadgeDef(id: 'guerilla', family: BadgeFamily.discipline, name: 'Guérilla', symbol: 'bolt', tiers: kGuerillaTiers, unit: 'guérillas', unitLong: 'guérillas de 3 coups et plus'),
+    def: const BadgeDef(id: 'guerilla', family: BadgeFamily.struggles, name: 'Guérilla', symbol: 'bolt', tiers: kGuerillaTiers, unit: 'guérillas', unitLong: 'guérillas de 3 coups et plus'),
     level: _levelOf(kGuerillaTiers, guerillas.length),
     value: guerillas.length,
     tierDates: [for (final t in kGuerillaTiers) t <= guerillas.length ? _day(guerillas[t - 1].endedAt) : null],
@@ -1004,7 +1033,7 @@ BadgeDeck computeBadges({
   // Offensive (2026-10-30) : en forme, à fond — une offensive compte dès 3 coups gagnés.
   final offensives = chainRuns.where(offensiveCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
   out.add(BadgeState(
-    def: const BadgeDef(id: 'offensive', family: BadgeFamily.discipline, name: 'Offensive', symbol: 'arrow', tiers: kOffensiveTiers, unit: 'offensives', unitLong: 'offensives de 3 coups et plus'),
+    def: const BadgeDef(id: 'offensive', family: BadgeFamily.struggles, name: 'Offensive', symbol: 'arrow', tiers: kOffensiveTiers, unit: 'offensives', unitLong: 'offensives de 3 coups et plus'),
     level: _levelOf(kOffensiveTiers, offensives.length),
     value: offensives.length,
     tierDates: [for (final t in kOffensiveTiers) t <= offensives.length ? _day(offensives[t - 1].endedAt) : null],

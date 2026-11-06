@@ -62,7 +62,7 @@ import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName, bedtimePrompt;
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
-import 'package:productivitwo_v1/widgets/minimum_view.dart' show MinimumCard, minimumTile, showMinimumSheet;
+import 'package:productivitwo_v1/widgets/minimum_view.dart' show ClimbCard, MinimumCard, minimumTile, showMinimumSheet;
 import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen, kPalierAmber;
@@ -745,6 +745,7 @@ class TodayViewState extends State<TodayView> {
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
                   MinimumCard(logic: widget.logic, onChanged: _onEmbersChanged),
+                  ClimbCard(logic: widget.logic, onChanged: _onEmbersChanged, badges: () => widget.badges?.deck?.badges ?? const []),
                   LostYesterdaySection(
                     logic: widget.logic,
                     onChanged: _onEmbersChanged,

@@ -467,6 +467,29 @@ class BadgePainter extends CustomPainter {
         line(40, 21, 40, 29);
         line(60, 21, 60, 29);
         polyline([41, 48, 47, 54, 59, 42], 5);
+      case 'reed':
+        // Tenir bon : un roseau qui plie sans casser.
+        final stem = Path()
+          ..moveTo(44, 64)
+          ..cubicTo(44, 48, 50, 34, 64, 24);
+        c.drawPath(stem, stroke(5));
+        final leaf = Path()
+          ..moveTo(46, 50)
+          ..cubicTo(36, 46, 32, 38, 30, 30);
+        c.drawPath(leaf, stroke(4));
+        c.drawOval(Rect.fromCenter(center: const Offset(65, 23), width: 9, height: 15), fill);
+        line(34, 64, 58, 64, 4);
+      case 'climb':
+        // La remontée : des marches, une flamme en haut.
+        polyline([26, 62, 38, 62, 38, 52, 50, 52, 50, 42, 62, 42, 62, 32], 5);
+        c.drawPath(
+            Path()
+              ..moveTo(70, 18)
+              ..cubicTo(74, 23, 77, 26, 77, 31)
+              ..arcToPoint(const Offset(63, 31), radius: const Radius.circular(7), clockwise: true)
+              ..cubicTo(63, 26, 67, 24, 70, 18)
+              ..close(),
+            fill);
       case 'rebound':
         // Reprise : trois quarts de cercle, tête pleine alignée sur l'arc (12 h).
         c.drawArc(Rect.fromCircle(center: const Offset(50, 42), radius: 14), 0, 1.5 * math.pi, false, stroke(6));

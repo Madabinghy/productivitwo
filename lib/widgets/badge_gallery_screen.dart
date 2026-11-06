@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/widgets/minimum_view.dart' show showStrugglesSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/widgets/card_pile_view.dart';
@@ -799,6 +800,16 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         head,
         if (f == BadgeFamily.freedom) _freedomPrivacy(),
+        if (f == BadgeFamily.struggles)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('open-struggles'),
+              onPressed: () => showStrugglesSheet(context, logic: widget.logic, badges: deck.badges),
+              style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+              child: const Text('Tes luttes ›', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+          ),
         const SizedBox(height: 10),
         Wrap(
           spacing: 10,
