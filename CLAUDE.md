@@ -1933,8 +1933,7 @@ keep, checkAt}`, `currentMinimum`, `minimumDaysUpTo`, `minimumFrozenDaysOf`, `wi
 `data/meta.minimumPeriods` (`setMetaFields`, flux meta de main.dart, `kBackupMetaKeys`) ; `AppLogic.minimumPeriods`, `minimumNow`,
 `frozenOf` ∪ minimum, `startMinimum(keep, fromYesterday:)` (hier compris s'il n'est pas déjà journée difficile ; hier est gelé pour TOUTES les routines, gardées comprises — `MinimumPeriod.keepFrom` = jour du choix, bug user 2026-11-06 : les gardées restaient cassées hier), `endMinimum`,
 `extendMinimum`, `setMinimumKeep`. Écrans `widgets/minimum_view.dart` : `showMinimumSheet` (« Qu'est-ce que tu tiens quand même ? »,
-cases à cocher, gardées avec leur série / « gelée », « Passer au minimum · n routines » ; `edit:` = changer) ; `MinimumCard` en tête
-d'Aujourd'hui (LE MINIMUM · JOUR n, « Ça va mieux », « Journée tenue au minimum · k / n », barre, routines gardées avec +1, « n
+cases à cocher, gardées avec leur série / « gelée », « Passer au minimum · n routines » ; `edit:` = changer) ; `MinimumCard` (plus en tête d'Aujourd'hui depuis le 2026-11-06, retour user : doublon de la tuile ; elle ne vit que dans la feuille ouverte par la tuile) (LE MINIMUM · JOUR n, « Ça va mieux », « Journée tenue au minimum · k / n », barre, routines gardées avec +1, « n
 routines gelées · elles t'attendent · Changer » ; question due : « Comment tu te sens ? » · Ça va mieux · Encore 3 jours) ; tuile
 « AU MINIMUM » à la place de Journée parfaite (`minimumTile`), tap = la carte en feuille ; bilan du soir sans « Journée parfaite ·
 une braise » pendant la période. Entrées : « Ça dure · passer au minimum » dans la carte Perdu hier (dès 2 séries cassées, gèle hier

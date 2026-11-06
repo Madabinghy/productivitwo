@@ -744,7 +744,7 @@ class TodayViewState extends State<TodayView> {
                     StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: widget.logic.lostSeriesYesterday().length),
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
-                  MinimumCard(logic: widget.logic, onChanged: _onEmbersChanged),
+                  // Le minimum : plus de carte sur la page, la tuile AU MINIMUM l'ouvre (retour user 2026-11-06).
                   ClimbCard(logic: widget.logic, onChanged: _onEmbersChanged, badges: () => widget.badges?.deck?.badges ?? const []),
                   LostYesterdaySection(
                     logic: widget.logic,
