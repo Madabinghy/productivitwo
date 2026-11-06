@@ -1965,6 +1965,7 @@ class _AppRootState extends State<AppRoot>
   StreamSubscription<List<Domain>>? _domainsSub;
   StreamSubscription<List<Project>>? _projectsSub;
   StreamSubscription<List<Session>>? _sessionsSub;
+  StreamSubscription<List<HabitHit>>? _hitsSub;
   StreamSubscription<List<CaptureItem>>? _inboxSub;
   int _inboxPendingCount = 0;
   List<Project> _dashboardProjects = [];
@@ -2213,6 +2214,7 @@ class _AppRootState extends State<AppRoot>
     _domainsSub?.cancel();
     _projectsSub?.cancel();
     _sessionsSub?.cancel();
+    _hitsSub?.cancel();
     _inboxSub?.cancel();
     _tick.dispose();
     _confettiController.dispose();
@@ -2614,6 +2616,18 @@ class _AppRootState extends State<AppRoot>
           LiveActivityService.instance.end();
         }
         setState(() {});
+      });
+      // +1 de routine posés ailleurs (widget de l'écran d'accueil, Siri, Claude) : sans ça,
+      // l'app ne les voyait qu'au lancement suivant (bug user 2026-11-06).
+      _hitsSub?.cancel();
+      _hitsSub = _sync.streamRecentHabitHits(2).listen((remote) {
+        if (!mounted || _state == null) return;
+        final known = {for (final h in _state!.habitHits) h.id};
+        final fresh = remote.where((h) => !known.contains(h.id)).toList();
+        if (fresh.isEmpty) return;
+        _state!.habitHits.addAll(fresh);
+        reconcileHabitStores(_state!, dayStartMin: logic.dayStartMin, now: DateTime.now());
+        logic.onChange();
       });
     }
 
