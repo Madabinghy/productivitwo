@@ -1921,6 +1921,25 @@ possible ; sinon « déjà prise le … · à nouveau possible le … »), puis 
 ⓘ `kRuleHardDay`. Web : pas encore (le deck web ne lit pas `hardDays`). Suite prévue : mode « Le minimum » (période difficile, lot 2)
 puis gamification (veilleuse, remontée, Tenir bon, famille Luttes, lot 3).
 
+## Le minimum (2026-11-06, maquette validée « Journée difficile », lot 2)
+
+Quand ça dure plus d'un jour (retour user : « je ne suis pas en forme ces temps-ci »). On garde 2 ou 3 routines, toutes les
+autres sont GELÉES le temps de la période (ni cassées, ni allongées ; une routine gelée faite quand même compte et allonge sa série).
+Une journée de la période qui tient les routines gardées = « journée tenue au minimum », sous son vrai nom : le jour est NEUTRE
+pour Journée parfaite / solide et les braises (`computeBadges(minimumPeriods:)`), Montre suisse et Métronome n'y réclament rien
+(`frozenAllOf`). Question tous les `kMinimumCheckDays` (3) jours. Logique pure `utils/minimum.dart` (`MinimumPeriod {from, to?,
+keep, checkAt}`, `currentMinimum`, `minimumDaysUpTo`, `minimumFrozenDaysOf`, `withMinimumStarted` / `Ended` (s'arrête hier) /
+`Extended` / `Keep`, `minimumCheckDue`, `minimumHeldDays`, `suggestMinimum` = les plus tenues sur 30 j) ; stockage
+`data/meta.minimumPeriods` (`setMetaFields`, flux meta de main.dart, `kBackupMetaKeys`) ; `AppLogic.minimumPeriods`, `minimumNow`,
+`frozenOf` ∪ minimum, `startMinimum(keep, fromYesterday:)` (hier compris s'il n'est pas déjà journée difficile), `endMinimum`,
+`extendMinimum`, `setMinimumKeep`. Écrans `widgets/minimum_view.dart` : `showMinimumSheet` (« Qu'est-ce que tu tiens quand même ? »,
+cases à cocher, gardées avec leur série / « gelée », « Passer au minimum · n routines » ; `edit:` = changer) ; `MinimumCard` en tête
+d'Aujourd'hui (LE MINIMUM · JOUR n, « Ça va mieux », « Journée tenue au minimum · k / n », barre, routines gardées avec +1, « n
+routines gelées · elles t'attendent · Changer » ; question due : « Comment tu te sens ? » · Ça va mieux · Encore 3 jours) ; tuile
+« AU MINIMUM » à la place de Journée parfaite (`minimumTile`), tap = la carte en feuille ; bilan du soir sans « Journée parfaite ·
+une braise » pendant la période. Entrées : « Ça dure · passer au minimum » dans la carte Perdu hier (dès 2 séries cassées, gèle hier
+et aujourd'hui), « Pas en forme en ce moment ? Passer au minimum » en bas de la feuille Journée parfaite. ⓘ `kRuleMinimum`.
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /

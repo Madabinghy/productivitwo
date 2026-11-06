@@ -121,7 +121,9 @@ class LostYesterdaySection extends StatefulWidget {
   final AppLogic logic;
   final bool all;
   final VoidCallback onChanged;
-  const LostYesterdaySection({super.key, required this.logic, required this.onChanged, this.all = false});
+  /// Ouvre le choix du minimum en prenant hier avec lui (`showMinimumSheet(fromYesterday: true)`).
+  final Future<bool?> Function()? onMinimum;
+  const LostYesterdaySection({super.key, required this.logic, required this.onChanged, this.all = false, this.onMinimum});
 
   @override
   State<LostYesterdaySection> createState() => _LostYesterdaySectionState();
@@ -141,7 +143,8 @@ class _LostYesterdaySectionState extends State<LostYesterdaySection> {
     if (lostAll.isEmpty) return const SizedBox.shrink();
     final canHard = logic.canDeclareYesterdayHard && lostAll.where((l) => !l.pending).length >= 2;
     final lost = lostAll.where((l) => widget.all || l.pending || l.rekindlable).toList();
-    if (lost.isEmpty && !canHard) return const SizedBox.shrink();
+    final canMin = widget.onMinimum != null && logic.minimumNow == null && lostAll.length >= 2;
+    if (lost.isEmpty && !canHard && !canMin) return const SizedBox.shrink();
     final ledger = logic.emberLedgerNow();
     final pending = lost.where((l) => l.pending).toList();
     final rest = lost.where((l) => !l.pending).toList()..sort((x, y) => y.length.compareTo(x.length));
@@ -187,6 +190,26 @@ class _LostYesterdaySectionState extends State<LostYesterdaySection> {
         ] else if (last != null && lostAll.length >= 2)
           Text('Journée difficile déjà prise le ${_dayLabel(last)} · à nouveau possible le ${_dayLabel(nextHardDayAfter(last))}',
               style: const TextStyle(fontSize: 12.5, color: kBText3)),
+        // Le minimum (2026-11-06) : quand ça dure, gèle hier et aujourd'hui, on choisit ce qu'on garde.
+        if (canMin) ...[
+          const SizedBox(height: 8),
+          OutlinedButton(
+            key: const ValueKey('lost-to-minimum'),
+            onPressed: () async {
+              final ok = await widget.onMinimum?.call();
+              if (ok == true) widget.onChanged();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: kBText,
+              side: BorderSide(color: kHardDayColor.withValues(alpha: .5)),
+              minimumSize: const Size.fromHeight(42),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+            ),
+            child: const Text('Ça dure · passer au minimum', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(height: 2),
+          const Text('gèle hier et aujourd’hui · tu choisis ce que tu gardes', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
+        ],
         for (final l in pending)
           Padding(
             padding: const EdgeInsets.only(top: 8),

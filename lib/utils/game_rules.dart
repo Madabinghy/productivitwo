@@ -59,6 +59,13 @@ const kRuleHardDay = GameRule('Journée difficile', [
   RuleCard('⏳', 'Rare', 'Une fois tous les 14 jours. Pour un oubli isolé, il y a les braises : une braise garde une série.'),
 ]);
 
+const kRuleMinimum = GameRule('Le minimum', [
+  RuleCard('🕯️', 'Une période difficile', 'Quand ça dure plus d’un jour : tu gardes 2 ou 3 routines, les autres sont gelées le temps qu’il faut.'),
+  RuleCard('⏸️', 'Gelées, pas gagnées', 'Les séries gelées ne cassent pas et ne s’allongent pas. Une routine gelée faite quand même compte et allonge sa série.'),
+  RuleCard('🌗', 'Tenue au minimum', 'Une journée qui tient ton minimum se gagne sous son vrai nom. Elle ne compte ni pour Journée parfaite, ni pour Métronome, ni pour Montre suisse, et ne forge pas de braise.'),
+  RuleCard('🔁', 'Tous les 3 jours', 'L’app te demande comment tu te sens. « Ça va mieux » : tout compte de nouveau dès aujourd’hui.'),
+]);
+
 const kRuleSeries = GameRule('Séries et flammes', [
   RuleCard('🔥', 'Une série', 'Une routine quotidienne atteinte chaque jour, sans trou, jusqu’à hier.'),
   RuleCard('🌙', 'La journée en cours',

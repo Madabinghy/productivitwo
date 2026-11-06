@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/hard_days.dart';
+import 'package:productivitwo_v1/utils/minimum.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
@@ -2334,8 +2335,41 @@ class AppLogic implements HuntStore {
     final own = frozenDaysOfActivity(activityId, freezes, livedTodayYmd);
     final dom = frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
     final hard = hardDaysUpTo(hardDays, livedTodayYmd);
-    if (own.isEmpty && hard.isEmpty) return dom;
-    return {...dom, ...own, ...hard};
+    final mini = minimumFrozenDaysOf(activityId, minimumPeriods, livedTodayYmd);
+    if (own.isEmpty && hard.isEmpty && mini.isEmpty) return dom;
+    return {...dom, ...own, ...hard, ...mini};
+  }
+
+  /// Le minimum (`data/meta.minimumPeriods`, 2026-11-06) : périodes difficiles, routines gardées, les autres gelées.
+  List<MinimumPeriod> minimumPeriods = const [];
+
+  MinimumPeriod? get minimumNow => currentMinimum(minimumPeriods, livedTodayYmd);
+
+  Future<void> _saveMinimum() async {
+    onChange();
+    await sync?.setMetaFields({'minimumPeriods': minimumPeriodsToJson(minimumPeriods)});
+  }
+
+  /// Passe au minimum avec [keep] ; [fromYesterday] = la période prend hier avec elle (séries cassées hier gelées).
+  Future<void> startMinimum(List<String> keep, {bool fromYesterday = false}) async {
+    final from = fromYesterday && !yesterdayIsHard ? livedYesterdayYmd : livedTodayYmd;
+    minimumPeriods = withMinimumStarted(minimumPeriods, from, keep, livedTodayYmd);
+    await _saveMinimum();
+  }
+
+  Future<void> endMinimum() async {
+    minimumPeriods = withMinimumEnded(minimumPeriods, livedTodayYmd);
+    await _saveMinimum();
+  }
+
+  Future<void> extendMinimum() async {
+    minimumPeriods = withMinimumExtended(minimumPeriods, livedTodayYmd);
+    await _saveMinimum();
+  }
+
+  Future<void> setMinimumKeep(List<String> keep) async {
+    minimumPeriods = withMinimumKeep(minimumPeriods, livedTodayYmd, keep);
+    await _saveMinimum();
   }
 
   /// Journées difficiles déclarées (`data/meta.hardDays`, 2026-11-06) : toutes les séries y sont gelées.

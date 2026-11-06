@@ -20,6 +20,7 @@ import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/hard_days.dart' show hardDaysUpTo;
+import 'package:productivitwo_v1/utils/minimum.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show isLetGoBlock;
 
@@ -637,6 +638,8 @@ BadgeDeck computeBadges({
   List<RestPeriod> freezes = const [],
   /// Journées difficiles (`data/meta.hardDays`) : toutes les séries gelées, la journée neutre.
   List<String> hardDays = const [],
+  /// Le minimum (`data/meta.minimumPeriods`) : routines non gardées gelées, la journée neutre pour les journées.
+  List<MinimumPeriod> minimumPeriods = const [],
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
@@ -650,8 +653,10 @@ BadgeDeck computeBadges({
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
   // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
-  final hardSet = hardDays.toSet();
-  // Une journée difficile est neutre : ni parfaite, ni solide, aucune braise.
+  final todayYmd0 = ymdOf(livedDate(now, dayStartMin));
+  final minimumDays = minimumDaysUpTo(minimumPeriods, todayYmd0);
+  final hardSet = {...hardDays, ...minimumDays};
+  // Une journée difficile (ou au minimum) est neutre : ni parfaite, ni solide, aucune braise.
   final days = [
     for (final d in scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired, excusedOf: excusedOf))
       hardSet.contains(d.ymd) ? DayScore(d.ymd, 0, 0, 0, 0) : d,
@@ -666,9 +671,12 @@ BadgeDeck computeBadges({
     final dom = frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
     final own = frozenDaysOfActivity(a.id, freezes, todayYmd);
     final hard = hardDaysUpTo(hardDays, todayYmd);
-    if (own.isEmpty && hard.isEmpty) return dom;
-    return {...dom, ...own, ...hard};
+    final mini = minimumFrozenDaysOf(a.id, minimumPeriods, todayYmd);
+    if (own.isEmpty && hard.isEmpty && mini.isEmpty) return dom;
+    return {...dom, ...own, ...hard, ...mini};
   }
+  // Montre suisse et Métronome : un jour au minimum ne réclame rien (jamais gagné avec trois routines).
+  Set<String> frozenAllOf(Activity a) => minimumDays.isEmpty ? frozenOf(a) : {...frozenOf(a), ...minimumDays};
   // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
   final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
   final embers = emberLedger(
@@ -796,12 +804,12 @@ BadgeDeck computeBadges({
   ));
   // Montre suisse et Métronome : les deux moitiés de la journée parfaite (2026-10-30).
   final closedYmds = [for (final d in days) d.ymd];
-  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, frozenOf: frozenOf);
+  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, frozenOf: frozenAllOf);
   final metro = metronomeDays(
     ymds: closedYmds,
     activities: activities,
     reachedDaysByRoutine: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
-    frozenOf: frozenOf,
+    frozenOf: frozenAllOf,
     acquired: acquired,
     excusedOf: excusedOf,
   );

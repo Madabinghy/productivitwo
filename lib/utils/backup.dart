@@ -49,6 +49,7 @@ const List<String> kBackupMetaKeys = [
   'restPeriods',
   'freezes',
   'hardDays',
+  'minimumPeriods',
   'acquired',
   'acquireAsked',
   'seasons',
