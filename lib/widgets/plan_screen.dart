@@ -14,7 +14,8 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/fiche_cache.dart' show FicheCache;
 import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf, linkMirrorsToSessions;
-import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks, livedYmd;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask;
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/planning.dart';
@@ -50,8 +51,9 @@ const _gold = Color(0xFFFFD27A);
 const _ember = Color(0xFFFFB27A);
 const _green = Color(0xFF7FD3A0);
 
-Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, bool week = false}) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges, startWeek: week)));
+Future<void> showPlanScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, bool week = false, VoidCallback? onOpenProgram}) {
+  return Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true, builder: (_) => PlanScreen(logic: logic, badges: badges, startWeek: week, onOpenProgram: onOpenProgram)));
 }
 
 enum _Step { cap, stakes, frame, fill, parole, done, weekStakes, weekDays, weekTimes, weekSpread, weekDone }
@@ -61,7 +63,9 @@ class PlanScreen extends StatefulWidget {
   final BadgeCenter? badges;
   /// Ouvre directement « La semaine » sur CE QUI SE JOUE (depuis la revue du dimanche).
   final bool startWeek;
-  const PlanScreen({super.key, required this.logic, this.badges, this.startWeek = false});
+  /// « Voir mon programme » de l'écran final (feuille Programme d'Aujourd'hui).
+  final VoidCallback? onOpenProgram;
+  const PlanScreen({super.key, required this.logic, this.badges, this.startWeek = false, this.onOpenProgram});
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -83,6 +87,9 @@ class _PlanScreenState extends State<PlanScreen> {
   List<ScheduleBlock> _blocks = const []; // journée vécue visée, nuit comprise
   List<PlanStake> _stakes = const [];
   final Set<String> _kept = {};
+  /// Routines écartées au moment de poser (« pas ce soir » / « pas demain ») : écrites dans `nowDoneByYmd`.
+  final Set<String> _excused = {};
+  bool _routinesOpen = false;
   List<PlannedBlock> _plan = const [];
   final List<PlanWant> _extra = [];
   final Set<String> _dropped = {};
@@ -225,6 +232,8 @@ class _PlanScreenState extends State<PlanScreen> {
     _kept
       ..clear()
       ..addAll(_stakes.where((s) => s.keep).map((s) => s.id));
+    final already = logic.nowDoneSet(_excuseYmd);
+    _kept.removeWhere((id) => id.startsWith('routine:') && already.contains(id.substring(8)));
     if (_tomorrow) {
       final ids = [
         for (final e in _paroleIndex.entries)
@@ -271,7 +280,9 @@ class _PlanScreenState extends State<PlanScreen> {
       if (!a.isHabit || logic.effectiveHabitFreq(a) != HabitFreq.daily || logic.isAcquired(a.id) || logic.isActivitySnoozed(a.id, day)) continue;
       final s = logic.habitCurrentStreak(a.id);
       if (s <= 0) continue;
-      out.add(PlanStake(id: 'routine:${a.id}', kind: PlanStakeKind.losing, title: '${a.name} · série $s j', detail: 'routine'));
+      // Fin de journée : une routine déjà atteinte ne se joue plus.
+      if (!_tomorrow && routineTodayCount(logic, a) >= logic.effectiveHabitTarget(a).clamp(1, 999999)) continue;
+      out.add(PlanStake(id: 'routine:${a.id}', kind: PlanStakeKind.losing, title: a.name, detail: 'série $s j'));
     }
     final facts = widget.badges?.todayFacts();
     for (final p in facts?.pace ?? const []) {
@@ -318,6 +329,53 @@ class _PlanScreenState extends State<PlanScreen> {
   List<PlanGap> get _gaps => freeGaps(_blocks, _effectiveWindow);
 
   int get _budget => (freeMinutes(_gaps) * fillRatio(_load)).round();
+
+  /// Clé de la journée vécue visée (`YYYYMMDD`, celle de `nowDoneByYmd`).
+  String get _excuseYmd => livedYmd(DateTime.now().add(Duration(days: _tomorrow ? 1 : 0)), logic.dayStartMin);
+
+  Color colorOf(String activityId) {
+    final tk = timeKindOf(activityId);
+    if (tk != null) return kTimeBlockColors[tk]!;
+    final a = logic.state.activities.where((x) => x.id == activityId).firstOrNull;
+    return domainColor(a?.domainId, logic.state.activeDomains) ?? kPlanAccent;
+  }
+
+  bool _isRoutine(PlanStake s) => s.id.startsWith('routine:');
+
+  /// Ce qu'un bloc proposé couvre : les enjeux cochés qui visent son activité.
+  List<String> _coveredBy(String activityId) => [
+        for (final s in _stakes)
+          if (s.activityId == activityId && _kept.contains(s.id)) s.title.startsWith('Préparer · ') ? s.title.substring(11) : s.title,
+      ];
+
+  String _evening(String tonight, String tomorrow) => _tomorrow ? tomorrow : tonight;
+
+  /// Écrit le choix des routines : décochée = écartée pour la journée visée, cochée = remise.
+  void _applyExcuses() {
+    final ids = logic.nowDoneSet(_excuseYmd);
+    _excused.clear();
+    for (final s in _stakes.where(_isRoutine)) {
+      final id = s.id.substring(8);
+      if (_kept.contains(s.id)) {
+        ids.remove(id);
+      } else {
+        ids.add(id);
+        _excused.add(id);
+      }
+    }
+    logic.setNowDone(_excuseYmd, ids);
+  }
+
+  void _restoreExcused() {
+    final ids = logic.nowDoneSet(_excuseYmd)..removeAll(_excused);
+    logic.setNowDone(_excuseYmd, ids);
+    setState(() {
+      for (final id in _excused) {
+        _kept.add('routine:$id');
+      }
+      _excused.clear();
+    });
+  }
 
   String _activityName(String id) => logic.state.activities.where((a) => a.id == id).map((a) => a.name).firstOrNull ?? 'Activité';
 
@@ -525,6 +583,7 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Future<void> _save() async {
+    _applyExcuses();
     final doc = _doc ?? DailySchedule(date: _ymd);
     for (final p in _plan) {
       doc.blocks.add(planOrTimeBlockOf(p));
@@ -694,49 +753,91 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Widget _stakesView() {
-    Widget group(String label, PlanStakeKind k) {
-      final list = _stakes.where((s) => s.kind == k).toList();
-      if (list.isEmpty) return const SizedBox.shrink();
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _section(label),
-        Container(
+    Widget box(List<PlanStake> list, {bool locked = false, bool routines = false}) => Container(
           decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
           child: Column(children: [
             for (var i = 0; i < list.length; i++) ...[
               if (i > 0) const Divider(height: 1, color: _line),
-              CheckboxListTile(
-                value: _kept.contains(list[i].id),
-                onChanged: k == PlanStakeKind.dated ? null : (v) => setState(() => v == true ? _kept.add(list[i].id) : _kept.remove(list[i].id)),
-                activeColor: kPlanAccent,
-                checkColor: _ink,
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                title: Text(list[i].title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
-                secondary: Text(list[i].detail,
-                    style: TextStyle(fontSize: 12, color: k == PlanStakeKind.losing ? _ember : (k == PlanStakeKind.behind ? _gold : _text3))),
-              ),
+              Builder(builder: (_) {
+                final st = list[i];
+                final on = _kept.contains(st.id);
+                final detail = routines && !on ? '${st.detail} s\'arrête' : st.detail;
+                return CheckboxListTile(
+                  key: ValueKey('stake-${st.id}'),
+                  value: on,
+                  onChanged: locked ? null : (v) => setState(() => v == true ? _kept.add(st.id) : _kept.remove(st.id)),
+                  activeColor: kPlanAccent,
+                  checkColor: _ink,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  title: Text(st.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: routines && !on ? _text3 : Colors.white)),
+                  secondary: Text(detail,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontSize: 12, color: routines ? _ember : (st.kind == PlanStakeKind.behind ? _gold : (st.kind == PlanStakeKind.losing ? _ember : _text3)))),
+                );
+              }),
             ],
           ]),
-        ),
-      ]);
-    }
+        );
 
-    final keptCount = _stakes.where((s) => _kept.contains(s.id)).length;
+    final dated = _stakes.where((x) => x.kind == PlanStakeKind.dated).toList();
+    final timed = _stakes.where((x) => x.kind != PlanStakeKind.dated && x.activityId != null).toList();
+    final routines = _stakes.where(_isRoutine).toList();
+    final notes = _stakes.where((x) => x.kind != PlanStakeKind.dated && x.activityId == null && !_isRoutine(x)).toList();
+    final timedCount = timed.where((x) => _kept.contains(x.id)).length;
+    final off = routines.where((x) => !_kept.contains(x.id)).toList();
+    final when = _evening('ce soir', 'demain');
+    final cta = [
+      timedCount == 0 ? 'Voir le temps' : 'Placer $timedCount chose${timedCount > 1 ? 's' : ''}',
+      if (off.isNotEmpty) 'écarter ${off.length}',
+    ].join(' · ');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _top(_tomorrow ? 'DEMAIN · CE QUI SE JOUE' : 'CE SOIR · CE QUI SE JOUE', 1),
-      _title(_tomorrow ? 'Ce qui se joue demain' : 'Ce qui se joue encore'),
-      const Text('Coche ce que tu veux tenir. Le reste attendra, sans culpabilité.', style: TextStyle(fontSize: 13.5, color: _text2)),
+      _title(_evening('Qu\'est-ce que tu veux placer ce soir ?', 'Qu\'est-ce que tu veux placer demain ?')),
+      const Text('Ce qui demande du temps devient un bloc dans ton programme.', style: TextStyle(fontSize: 13.5, color: _text2)),
       Expanded(
         child: ListView(children: [
           if (_stakes.isEmpty)
             const Padding(padding: EdgeInsets.all(24), child: Text('Rien de daté ni d\'urgent : journée libre à remplir.', style: TextStyle(color: _text2))),
-          group('DATÉ · NE BOUGE PAS', PlanStakeKind.dated),
-          group('SE PERD SI RIEN', PlanStakeKind.losing),
-          group('EN RETARD SUR LE RYTHME', PlanStakeKind.behind),
+          if (dated.isNotEmpty) ...[_section('DÉJÀ POSÉ · NE BOUGE PAS'), box(dated, locked: true)],
+          if (timed.isNotEmpty) ...[_section('À PLACER DANS LE TEMPS'), box(timed)],
+          if (notes.isNotEmpty) ...[_section('À NOTER · PAS DE BLOC'), box(notes)],
+          if (routines.isNotEmpty) ...[
+            _section('ROUTINES · PAS DE BLOC · DÉCOCHE = PAS ${when.toUpperCase()}'),
+            InkWell(
+              key: const ValueKey('plan-routines-fold'),
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => setState(() => _routinesOpen = !_routinesOpen),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                        off.isEmpty ? '${routines.length} routine${routines.length > 1 ? 's' : ''} à tenir · toutes cochées' : '${routines.length - off.length} tenue${routines.length - off.length > 1 ? 's' : ''} · ${off.length} écartée${off.length > 1 ? 's' : ''}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ),
+                  Text(_routinesOpen ? 'replier' : 'voir', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _ember)),
+                  Icon(_routinesOpen ? Icons.expand_less : Icons.expand_more, color: _ember, size: 20),
+                ]),
+              ),
+            ),
+            if (_routinesOpen) ...[const SizedBox(height: 6), box(routines, routines: true)],
+            if (off.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                    '${off.length} écartée${off.length > 1 ? 's' : ''} pour $when : Journée parfaite reste possible sans elle${off.length > 1 ? 's' : ''}, sans braise, et ${off.length > 1 ? 'leurs séries s\'arrêtent' : 'sa série s\'arrête'}.',
+                    style: const TextStyle(fontSize: 12.5, color: _gold, height: 1.35)),
+              ),
+          ],
         ]),
       ),
       const SizedBox(height: 10),
-      _primary('Tenir ces $keptCount · voir le temps', () => setState(() => _step = _Step.frame)),
+      _primary(cta, () => setState(() => _step = _Step.frame)),
     ]);
   }
 
@@ -806,14 +907,6 @@ class _PlanScreenState extends State<PlanScreen> {
     final total = _plan.fold<int>(0, (s, p) => s + p.minutes);
     final used = {for (final p in _plan) p.want.activityId};
     final others = logic.state.activeActivities.where((a) => !a.isHabit && a.goalMin > 0 && !isBasicNeedName(a.name) && !used.contains(a.id) && !logic.isActivitySnoozed(a.id, _day)).take(5).toList();
-    final domains = logic.state.activeDomains;
-    Color colorOf(String activityId) {
-      final tk = timeKindOf(activityId);
-      if (tk != null) return kTimeBlockColors[tk]!;
-      final a = logic.state.activities.where((x) => x.id == activityId).firstOrNull;
-      return domainColor(a?.domainId, domains) ?? kPlanAccent;
-    }
-
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _top(_tomorrow ? 'DEMAIN · REMPLIR' : 'CE SOIR · REMPLIR', 3),
       Row(children: [
@@ -891,6 +984,11 @@ class _PlanScreenState extends State<PlanScreen> {
                       Text('${hmOf(p.startMin)} → ${hmOf(p.endMin)}', style: const TextStyle(fontSize: 12, color: _text3)),
                       if (timeKindOf(p.want.activityId) != null && p.want.reason.isNotEmpty)
                         Text(p.want.reason, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: colorOf(p.want.activityId))),
+                      if (_coveredBy(p.want.activityId) case final c when c.isNotEmpty)
+                        Text('pour : ${c.join(' · ')}', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: Color(0xFFDFE6E1))),
+                      if (_coveredBy(p.want.activityId).length > 1)
+                        Text('${_coveredBy(p.want.activityId).length} choses en ${fmtMin(p.minutes)} : ≈ ${fmtMin(p.minutes ~/ _coveredBy(p.want.activityId).length)} chacune · touche pour allonger',
+                            style: const TextStyle(fontSize: 12, color: _gold)),
                     ]),
                   ),
                   if (timeKindOf(p.want.activityId) == null) Text(p.want.reason, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _gold)),
@@ -953,33 +1051,78 @@ class _PlanScreenState extends State<PlanScreen> {
           flex: 2,
           child: _tomorrow
               ? _primary('Suivant · ta parole', () => setState(() => _step = _Step.parole))
-              : _primary('Poser la fin de journée', _save),
+              : _primary(_plan.isEmpty ? 'Poser la fin de journée' : 'Ajouter au programme · ${_plan.length} bloc${_plan.length > 1 ? 's' : ''}', _save),
         ),
       ]),
     ]);
   }
 
   Widget _doneView() {
-    final total = _plan.fold<int>(0, (s, p) => s + p.minutes);
     final spent = _startedAt == null ? 0 : DateTime.now().difference(_startedAt!).inMinutes;
-    final kept = _stakes.where((s) => _kept.contains(s.id)).toList();
-    final left = _stakes.where((s) => !_kept.contains(s.id)).toList();
+    final left = _stakes.where((s) => !_kept.contains(s.id) && !_isRoutine(s) && s.kind != PlanStakeKind.dated).toList();
+    final held = _stakes.where((s) => _isRoutine(s) && _kept.contains(s.id)).length;
+    final excusedNames = [for (final s in _stakes) if (_isRoutine(s) && _excused.contains(s.id.substring(8))) s.title];
     final next = kCapTiers.firstWhere((t) => t > _capCount, orElse: () => kCapTiers.last);
+    final when = _evening('ce soir', 'demain');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _top(_tomorrow ? 'DEMAIN EST POSÉ' : 'LA FIN DE JOURNÉE EST POSÉE', 4),
-      _title('${_plan.length} bloc${_plan.length > 1 ? 's' : ''} · ${fmtMin(total)}'),
+      _title(_plan.isEmpty ? 'Rien d\'ajouté au programme' : 'Ajouté à ton programme'),
       Text('Planifié en ${spent < 1 ? 'moins d\'une' : spent} min${_chrono ? ' · chrono sur Planification' : ''}', style: const TextStyle(fontSize: 13.5, color: _text2)),
       Expanded(
         child: ListView(children: [
-          _section('CE QUE TU TIENS'),
-          for (final s in kept.take(8))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+          const SizedBox(height: 8),
+          for (final p in _plan)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
               child: Row(children: [
-                Expanded(child: Text(s.title, style: const TextStyle(fontSize: 14, color: Colors.white))),
-                Text(s.detail, style: const TextStyle(fontSize: 12.5, color: _text3)),
+                Container(width: 4, height: 34, decoration: BoxDecoration(color: colorOf(p.want.activityId), borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${p.want.title} · ${hmOf(p.startMin)} → ${hmOf(p.endMin)}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                    if (_coveredBy(p.want.activityId) case final c when c.isNotEmpty)
+                      Text('pour : ${c.join(' · ')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFFDFE6E1))),
+                  ]),
+                ),
               ]),
             ),
+          if (_plan.isNotEmpty && widget.onOpenProgram != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: OutlinedButton(
+                key: const ValueKey('plan-open-program'),
+                onPressed: () {
+                  _finish();
+                  widget.onOpenProgram!();
+                },
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFC8D4FF),
+                    minimumSize: const Size.fromHeight(46),
+                    side: BorderSide(color: kPlanAccent.withValues(alpha: .5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23))),
+                child: const Text('Voir mon programme', style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+          if (held > 0 || excusedNames.isNotEmpty) ...[
+            _section('ROUTINES'),
+            if (held > 0) Text('$held à tenir au fil de ${_evening('la soirée', 'la journée')}', style: const TextStyle(fontSize: 14, color: Colors.white)),
+            if (excusedNames.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Text('Écartée${excusedNames.length > 1 ? 's' : ''} $when : ', style: const TextStyle(fontSize: 13, color: _ember)),
+                  Text('${excusedNames.join(', ')} · série${excusedNames.length > 1 ? 's' : ''} arrêtée${excusedNames.length > 1 ? 's' : ''} · pas de braise · ',
+                      style: const TextStyle(fontSize: 13, color: _text3)),
+                  GestureDetector(
+                    key: const ValueKey('plan-restore-excused'),
+                    onTap: _restoreExcused,
+                    child: const Text('annuler', style: TextStyle(fontSize: 13, color: _text2, decoration: TextDecoration.underline)),
+                  ),
+                ]),
+              ),
+          ],
           if (left.isNotEmpty) ...[
             _section('LAISSÉ POUR PLUS TARD'),
             Text(left.map((s) => s.title).join(' · '), style: const TextStyle(fontSize: 13, color: _text3)),
