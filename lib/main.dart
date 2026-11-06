@@ -85,6 +85,7 @@ import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
 import 'package:productivitwo_v1/utils/rest_periods.dart' show parseRestPeriods;
+import 'package:productivitwo_v1/utils/hard_days.dart' show parseHardDays;
 import 'package:productivitwo_v1/utils/seasons.dart' show parseSeasons;
 import 'package:productivitwo_v1/utils/acquired.dart' show parseAcquired, parseAcquireAsked;
 import 'package:productivitwo_v1/gamification_flags.dart';
@@ -1832,6 +1833,7 @@ class _AppRootState extends State<AppRoot>
       final rest = parseRestDomains(m['restDomains']);
       final periods = parseRestPeriods(m['restPeriods']);
       final freezes = parseRestPeriods(m['freezes']);
+      final hardDays = parseHardDays(m['hardDays']);
       final seasons = parseSeasons(m['seasons']);
       final acquired = parseAcquired(m['acquired']);
       final asked = parseAcquireAsked(m['acquireAsked']);
@@ -1870,6 +1872,7 @@ class _AppRootState extends State<AppRoot>
           rest.toString() == logic.restDomains.toString() &&
           periods.map((x) => x.toJson().toString()).join('|') == logic.restPeriods.map((x) => x.toJson().toString()).join('|') &&
           freezes.map((x) => x.toJson().toString()).join('|') == logic.freezes.map((x) => x.toJson().toString()).join('|') &&
+          hardDays.join('|') == logic.hardDays.join('|') &&
           seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
           acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
           asked.length == logic.acquireAsked.length && asked.containsAll(logic.acquireAsked);
@@ -1919,6 +1922,7 @@ class _AppRootState extends State<AppRoot>
       logic.restDomains = rest;
       logic.restPeriods = periods;
       logic.freezes = freezes;
+      logic.hardDays = hardDays;
       logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;
       logic.acquired = acquired;
