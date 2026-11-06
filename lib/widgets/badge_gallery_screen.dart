@@ -130,6 +130,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         restPeriods: widget.logic.restPeriods,
         freezes: widget.logic.freezes,
         hardDays: widget.logic.hardDays,
+        minimumPeriods: widget.logic.minimumPeriods,
         restDomains: widget.logic.restDomains,
         seasons: widget.logic.seasons,
         acquired: widget.logic.acquired,

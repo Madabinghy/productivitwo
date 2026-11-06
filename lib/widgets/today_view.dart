@@ -62,6 +62,7 @@ import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName, bedtimePrompt;
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
+import 'package:productivitwo_v1/widgets/minimum_view.dart' show MinimumCard, minimumTile, showMinimumSheet;
 import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen, kPalierAmber;
@@ -743,7 +744,12 @@ class TodayViewState extends State<TodayView> {
                     StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: widget.logic.lostSeriesYesterday().length),
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
-                  LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged),
+                  MinimumCard(logic: widget.logic, onChanged: _onEmbersChanged),
+                  LostYesterdaySection(
+                    logic: widget.logic,
+                    onChanged: _onEmbersChanged,
+                    onMinimum: () => showMinimumSheet(context, logic: widget.logic, fromYesterday: true),
+                  ),
                   // Routine acquise : la proposition à 66 jours, l'alerte de décrochage.
                   AcquiredPrompts(logic: widget.logic, onChanged: () {
                     widget.badges?.load(refresh: true);
@@ -1116,7 +1122,7 @@ class TodayViewState extends State<TodayView> {
         objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: badgesTile(bc?.deck, board),
-        perfect: perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
+        perfect: minimumTile(widget.logic) ?? perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
         projects: projectTile,
         onProgram: _openProgramSheet,
@@ -1248,6 +1254,18 @@ class TodayViewState extends State<TodayView> {
   void _openPerfectDaySheet() {
     final bc = widget.badges;
     if (bc == null) return;
+    if (widget.logic.minimumNow != null) {
+      showFiche<void>(context, builder: (ctx, scroll) => StatefulBuilder(
+            builder: (ctx, setLocal) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
+              MinimumCard(logic: widget.logic, onChanged: () {
+                if (widget.logic.minimumNow == null && ctx.mounted) Navigator.pop(ctx);
+                if (ctx.mounted) setLocal(() {});
+                _onEmbersChanged();
+              }),
+            ]),
+          ));
+      return;
+    }
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
         final facts = bc.todayFacts();
@@ -1307,6 +1325,17 @@ class TodayViewState extends State<TodayView> {
             const FicheNote('Une journée parfaite forge une braise (3 au plus). Une braise rallume une série de routine cassée hier, si la routine est atteinte aujourd\'hui.'),
             const SizedBox(height: 8),
             EmberLedgerPanel(ledger: ledger, names: {for (final a in widget.logic.state.activities) a.id: a.name}),
+            const SizedBox(height: 14),
+            TextButton(
+              key: const ValueKey('perfect-to-minimum'),
+              onPressed: () async {
+                final ok = await showMinimumSheet(ctx, logic: widget.logic);
+                if (ok == true && ctx.mounted) Navigator.pop(ctx);
+                if (ok == true) _onEmbersChanged();
+              },
+              style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .7)),
+              child: const Text('Pas en forme en ce moment ? Passer au minimum', style: TextStyle(decoration: TextDecoration.underline)),
+            ),
           ],
         );
       });
@@ -1795,6 +1824,7 @@ class TodayViewState extends State<TodayView> {
             LostYesterdaySection(
               logic: widget.logic,
               all: true,
+              onMinimum: () => showMinimumSheet(context, logic: widget.logic, fromYesterday: true),
               onChanged: () {
                 _onEmbersChanged();
                 setLocal(() {});
@@ -1823,7 +1853,7 @@ class TodayViewState extends State<TodayView> {
       objectiveDays: facts?.objectiveDays ?? const [],
       dayStart: livedDayStart(now, widget.logic.dayStartMin),
       now: now,
-      perfectToday: facts != null && isPerfectSoFar(facts),
+      perfectToday: widget.logic.minimumNow == null && facts != null && isPerfectSoFar(facts),
       emberStock: widget.logic.emberLedgerNow().available,
       excusedToday: widget.logic.excusedRoutinesToday(),
     );
