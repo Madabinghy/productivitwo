@@ -1931,7 +1931,7 @@ pour Journée parfaite / solide et les braises (`computeBadges(minimumPeriods:)`
 keep, checkAt}`, `currentMinimum`, `minimumDaysUpTo`, `minimumFrozenDaysOf`, `withMinimumStarted` / `Ended` (s'arrête hier) /
 `Extended` / `Keep`, `minimumCheckDue`, `minimumHeldDays`, `suggestMinimum` = les plus tenues sur 30 j) ; stockage
 `data/meta.minimumPeriods` (`setMetaFields`, flux meta de main.dart, `kBackupMetaKeys`) ; `AppLogic.minimumPeriods`, `minimumNow`,
-`frozenOf` ∪ minimum, `startMinimum(keep, fromYesterday:)` (hier compris s'il n'est pas déjà journée difficile), `endMinimum`,
+`frozenOf` ∪ minimum, `startMinimum(keep, fromYesterday:)` (hier compris s'il n'est pas déjà journée difficile ; hier est gelé pour TOUTES les routines, gardées comprises — `MinimumPeriod.keepFrom` = jour du choix, bug user 2026-11-06 : les gardées restaient cassées hier), `endMinimum`,
 `extendMinimum`, `setMinimumKeep`. Écrans `widgets/minimum_view.dart` : `showMinimumSheet` (« Qu'est-ce que tu tiens quand même ? »,
 cases à cocher, gardées avec leur série / « gelée », « Passer au minimum · n routines » ; `edit:` = changer) ; `MinimumCard` en tête
 d'Aujourd'hui (LE MINIMUM · JOUR n, « Ça va mieux », « Journée tenue au minimum · k / n », barre, routines gardées avec +1, « n
