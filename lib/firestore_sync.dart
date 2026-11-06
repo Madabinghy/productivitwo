@@ -970,6 +970,15 @@ class FirestoreSync {
         (snap) => snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList());
   }
 
+  /// Temps réel (mobile) : hits des [days] derniers jours, pour voir aussitôt un +1 posé
+  /// ailleurs (widget de l'écran d'accueil, Siri, Claude).
+  Stream<List<HabitHit>> streamRecentHabitHits(int days) {
+    if (uid == null) return const Stream.empty();
+    final since = DateTime.now().subtract(Duration(days: days)).toUtc().toIso8601String();
+    return _col('habitHits').where('ts', isGreaterThanOrEqualTo: since).snapshots().map(
+        (snap) => snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList());
+  }
+
   // Temps réel (web) : pointages d'état et sessions d'Enchaîner, pour le deck
   // de badges et les cartes d'élan de l'app web.
   Stream<List<MoodMark>> streamMoodMarks() {

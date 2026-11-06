@@ -375,7 +375,9 @@ class HabitHit {
   static HabitHit from(Map j) => HabitHit(
         id: j['id'],
         habitId: j['habitId'],
-        ts: _parseDate(j['ts']),
+        // Heure locale : un hit écrit par le serveur (widget, Siri, Claude) est en UTC (« …Z ») ;
+        // la journée vécue se lit sur l'heure de l'horloge.
+        ts: _parseDate(j['ts']).toLocal(),
         contextActivityId: j['contextActivityId'],
       );
 }

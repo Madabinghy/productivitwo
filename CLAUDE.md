@@ -2140,6 +2140,8 @@ Les anciennes clés restent tant que les anciens widgets existent.
 
 ---
 
+**+1 posé ailleurs, vu en direct** (2026-11-06, bug user : un +1 depuis le widget Routines ne s'affichait pas dans l'app) : l'app ne relisait les hits qu'au lancement ; elle écoute désormais les hits des 2 derniers jours (`FirestoreSync.streamRecentHabitHits`, `_hitsSub` de main.dart : les nouveaux ids entrent dans l'état, `reconcileHabitStores`, `logic.onChange`) — widget, Siri, Claude. `HabitHit.from` relit `ts` en heure locale (le serveur écrit en UTC « …Z » : la journée vécue se trompait autour de la bascule).
+
 ## Widgets iOS — écrans (lot 2, 2026-10-31)
 
 `ios/ProductivitwoWidget/ProductivitwoWidget.swift` réécrit sur `today_json` (thème vert sombre, `TodayProvider` : une entrée à
