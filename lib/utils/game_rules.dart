@@ -53,6 +53,12 @@ const kRuleEmbers = GameRule('Braises', [
       'Une même série ne se rallume qu’une fois tous les 30 jours. Le jour comblé compte pour la série, pas pour la journée parfaite.'),
 ]);
 
+const kRuleHardDay = GameRule('Journée difficile', [
+  RuleCard('🧊', 'Hier était dur ?', 'Le lendemain, tu peux déclarer la journée difficile : toutes les séries cassées ce jour-là sont gelées, pas cassées.'),
+  RuleCard('⏸️', 'Gelée, pas gagnée', 'Les séries reprennent là où elles étaient, sans gagner de jour. Hier ne compte ni pour Journée parfaite, ni pour Métronome, ni pour Montre suisse, et ne forge pas de braise.'),
+  RuleCard('⏳', 'Rare', 'Une fois tous les 14 jours. Pour un oubli isolé, il y a les braises : une braise garde une série.'),
+]);
+
 const kRuleSeries = GameRule('Séries et flammes', [
   RuleCard('🔥', 'Une série', 'Une routine quotidienne atteinte chaque jour, sans trou, jusqu’à hier.'),
   RuleCard('🌙', 'La journée en cours',

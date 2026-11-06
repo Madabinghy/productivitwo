@@ -20,6 +20,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
+import 'package:productivitwo_v1/utils/hard_days.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 import 'package:productivitwo_v1/utils/groceries.dart';
 import 'package:productivitwo_v1/utils/pantry.dart';
@@ -2332,7 +2333,43 @@ class AppLogic implements HuntStore {
     if (a == null) return const {};
     final own = frozenDaysOfActivity(activityId, freezes, livedTodayYmd);
     final dom = frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
-    return own.isEmpty ? dom : {...dom, ...own};
+    final hard = hardDaysUpTo(hardDays, livedTodayYmd);
+    if (own.isEmpty && hard.isEmpty) return dom;
+    return {...dom, ...own, ...hard};
+  }
+
+  /// Journées difficiles déclarées (`data/meta.hardDays`, 2026-11-06) : toutes les séries y sont gelées.
+  List<String> hardDays = const [];
+
+  /// Hier, la journée vécue d'avant (`YYYY-MM-DD`).
+  String get livedYesterdayYmd => ymdOf(livedDate(DateTime.now(), dayStartMin).subtract(const Duration(days: 1)));
+
+  bool get yesterdayIsHard => hardDays.contains(livedYesterdayYmd);
+  bool get canDeclareYesterdayHard => canDeclareHardDay(hardDays, livedYesterdayYmd);
+  /// Dernière journée difficile avant hier, sinon null (pour dire quand elle redevient possible).
+  String? get lastHardDay => lastHardDayBefore(hardDays, livedYesterdayYmd);
+
+  Future<void> declareYesterdayHard() async {
+    hardDays = withHardDay(hardDays, livedYesterdayYmd);
+    onChange();
+    await sync?.setMetaFields({'hardDays': hardDays});
+  }
+
+  Future<void> cancelYesterdayHard() async {
+    hardDays = withoutHardDay(hardDays, livedYesterdayYmd);
+    onChange();
+    await sync?.setMetaFields({'hardDays': hardDays});
+  }
+
+  /// Séries qu'hier aurait cassées sans la journée difficile (pour dire « n séries gardées »).
+  List<LostSeries> lostSeriesIfNotHard() {
+    final saved = hardDays;
+    hardDays = withoutHardDay(hardDays, livedYesterdayYmd);
+    try {
+      return lostSeriesYesterday();
+    } finally {
+      hardDays = saved;
+    }
   }
 
   /// Gel en cours ou à venir d'une activité / routine, sinon null.

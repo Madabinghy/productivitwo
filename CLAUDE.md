@@ -1904,6 +1904,23 @@ de la fiche d'activité et de la fiche routine, à côté des puces **Cible** et
 `showFreezeSheet` : Aujourd'hui seulement · Pas avant lundi · Une semaine · Deux semaines · Choisir les dates (plage, peut commencer
 plus tard) · Dégeler. La « pause jusqu'à » des activités (`snoozedUntil`) reste à part (elle masque, ne gèle pas).
 
+## Journée difficile (2026-11-06, maquette validée « Journée difficile », lot 1)
+
+Retour user : une journée hors norme cassait 8 séries d'un coup ; plus de braises ne règle rien (une braise = une série). Le lendemain,
+on DÉCLARE hier journée difficile : toutes les séries de ce jour-là sont GELÉES (ni cassées, ni allongées), comme un jour de veille.
+Rare : une fois tous les `kHardDayCooldownDays` (14) jours. Le jour déclaré est NEUTRE (`computeBadges(hardDays:)` remplace son
+`DayScore` par un score vide) : ni Journée parfaite / solide, ni braise ; Métronome et Montre suisse le voient gelé (rien réclamé).
+Logique pure `utils/hard_days.dart` (`parseHardDays`, `canDeclareHardDay`, `lastHardDayBefore`, `nextHardDayAfter`, `withHardDay`,
+`withoutHardDay`, `hardDaysUpTo`) ; stockage `data/meta.hardDays` (liste `YYYY-MM-DD`, `setMetaFields`, flux meta de main.dart, dans
+`kBackupMetaKeys`) ; `AppLogic.hardDays`, `frozenOf` = veille ∪ gels ∪ journées difficiles, `declareYesterdayHard` /
+`cancelYesterdayHard`, `canDeclareYesterdayHard`, `lostSeriesIfNotHard`. Écran (`widgets/embers_view.dart`, `LostYesterdaySection`
+réécrite) : UNE carte « Hier, n séries se sont cassées » — « C'était une journée difficile » en premier (dès 2 séries cassées, si
+possible ; sinon « déjà prise le … · à nouveau possible le … »), puis « Ou garder une série » avec la braise (3 lignes compactes
+« Garder », le reste replié) ; feuille `showHardDaySheet` (CE QUE ÇA FAIT · CE QUE ÇA COÛTE · « Oui, je gèle la journée d'hier » ·
+« Non, j'utilise plutôt ma braise ») ; hier déclarée : « Hier gelée · n séries gardées » + « Annuler, je préfère perdre ces séries ».
+ⓘ `kRuleHardDay`. Web : pas encore (le deck web ne lit pas `hardDays`). Suite prévue : mode « Le minimum » (période difficile, lot 2)
+puis gamification (veilleuse, remontée, Tenir bon, famille Luttes, lot 3).
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /

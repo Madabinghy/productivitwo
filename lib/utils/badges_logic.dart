@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
+import 'package:productivitwo_v1/utils/hard_days.dart' show hardDaysUpTo;
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show isLetGoBlock;
 
@@ -634,6 +635,8 @@ BadgeDeck computeBadges({
   List<RestPeriod> restPeriods = const [],
   /// Gels d'une activité / routine (`data/meta.freezes`) : jours gelés en plus de la veille du domaine.
   List<RestPeriod> freezes = const [],
+  /// Journées difficiles (`data/meta.hardDays`) : toutes les séries gelées, la journée neutre.
+  List<String> hardDays = const [],
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
@@ -647,7 +650,12 @@ BadgeDeck computeBadges({
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
   // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
-  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired, excusedOf: excusedOf);
+  final hardSet = hardDays.toSet();
+  // Une journée difficile est neutre : ni parfaite, ni solide, aucune braise.
+  final days = [
+    for (final d in scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired, excusedOf: excusedOf))
+      hardSet.contains(d.ymd) ? DayScore(d.ymd, 0, 0, 0, 0) : d,
+  ];
 
   // Séries de routine : un badge par routine quotidienne active, par nom.
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()
@@ -657,7 +665,9 @@ BadgeDeck computeBadges({
   Set<String> frozenOf(Activity a) {
     final dom = frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
     final own = frozenDaysOfActivity(a.id, freezes, todayYmd);
-    return own.isEmpty ? dom : {...dom, ...own};
+    final hard = hardDaysUpTo(hardDays, todayYmd);
+    if (own.isEmpty && hard.isEmpty) return dom;
+    return {...dom, ...own, ...hard};
   }
   // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
   final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
