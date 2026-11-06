@@ -496,10 +496,12 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final count = t.dayTarget != null ? t.dayDone : t.weekDone;
     final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
     const size = 36.0;
+    // Gelée aujourd'hui (le minimum, une veille, un gel, une journée difficile) : un flocon sous l'anneau (retour user 2026-11-06).
+    final frozen = logic.frozenOf(t.activity.id).contains(logic.livedTodayYmd);
     return SizedBox(
       width: size,
       height: size,
-      child: Stack(alignment: Alignment.center, children: [
+      child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
         if (s.reached)
           Container(decoration: BoxDecoration(color: dc, shape: BoxShape.circle))
         else
@@ -519,6 +521,16 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
         else
           Text('$count',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: dc, fontFeatures: const [FontFeature.tabularFigures()])),
+        if (frozen)
+          Positioned(
+            bottom: -5,
+            child: Container(
+              key: ValueKey('launcher-frozen-${t.activity.id}'),
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, shape: BoxShape.circle),
+              child: Semantics(label: 'gelée aujourd’hui', child: const Icon(Icons.ac_unit_rounded, size: 13, color: Color(0xFF8FB8FF))),
+            ),
+          ),
       ]),
     );
   }
