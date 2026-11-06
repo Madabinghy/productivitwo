@@ -66,6 +66,12 @@ const kRuleMinimum = GameRule('Le minimum', [
   RuleCard('🔁', 'Tous les 3 jours', 'L’app te demande comment tu te sens. « Ça va mieux » : tout compte de nouveau dès aujourd’hui.'),
 ]);
 
+const kRuleClimb = GameRule('La remontée', [
+  RuleCard('🪜', 'Pas tout d’un coup', 'Après une période au minimum, tu ravives une série par jour, en plus de ton minimum. C’est comme ça qu’on ne rechute pas.'),
+  RuleCard('🔥', 'Sous la cendre', 'Les séries pas encore ravivées restent gelées, intactes. Une série ravivée compte de nouveau dès aujourd’hui.'),
+  RuleCard('🃏', 'Au bout', 'Toutes les séries ravivées : la carte « La remontée ». Tu peux aussi tout reprendre d’un coup.'),
+]);
+
 const kRuleSeries = GameRule('Séries et flammes', [
   RuleCard('🔥', 'Une série', 'Une routine quotidienne atteinte chaque jour, sans trou, jusqu’à hier.'),
   RuleCard('🌙', 'La journée en cours',

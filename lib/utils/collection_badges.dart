@@ -95,6 +95,7 @@ String familyRibbon(BadgeFamily f) => switch (f) {
       BadgeFamily.actions => 'ACTIONS',
       BadgeFamily.time => 'TEMPS',
       BadgeFamily.freedom => 'LIBERTÉ',
+      BadgeFamily.struggles => 'LUTTES',
     };
 
 /// Tous les badges de collection, dans l'ordre de l'étagère : Collectionneur,

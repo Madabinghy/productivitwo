@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays;
+import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays, BadgeState, kHoldOnTiers;
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart' show DashTile, TileMark;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/utils/minimum.dart';
@@ -30,6 +30,18 @@ bool _reached(AppLogic logic, Activity a) => routineTodayCount(logic, a) >= (a.h
 
 /// La tuile du tableau de bord pendant la période : « AU MINIMUM · k / n », à la place de Journée parfaite.
 DashTile? minimumTile(AppLogic logic) {
+  final c = logic.climbNow;
+  if (c != null && logic.minimumNow == null) {
+    final todo = _toRevive(logic, c);
+    final total = todo.length + c.revived.length;
+    return DashTile(
+      label: 'REMONTÉE',
+      badge: 'jour ${_climbDay(logic, c)}',
+      value: '${c.revived.length} / $total ravivées',
+      sub: _revivedToday(logic, c) ? 'une série ravivée aujourd’hui' : 'ravive une série aujourd’hui',
+      mini: [for (var i = 0; i < total; i++) i < c.revived.length ? TileMark.on : TileMark.off],
+    );
+  }
   final p = logic.minimumNow;
   if (p == null) return null;
   final kept = minimumKept(logic);
@@ -216,6 +228,7 @@ class MinimumCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
+        if (!due) _veilleuse(p, frozen),
         Text('Journée tenue au minimum · $done / ${kept.length}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: kBText)),
         const Text('sa propre couleur · ne compte pas pour Journée parfaite', style: TextStyle(fontSize: 11.5, color: kBText4)),
         const SizedBox(height: 8),
@@ -245,6 +258,50 @@ class MinimumCard extends StatelessWidget {
             child: const Text('Changer', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
           ),
         ]),
+      ]),
+    );
+  }
+
+  /// La veilleuse (lot 3) : « Tu gardes le feu », les journées tenues de la période, Tenir bon, les séries sous la cendre.
+  Widget _veilleuse(MinimumPeriod p, int frozen) {
+    final routines = _dailyRoutines(logic);
+    final reached = {for (final a in routines) a.id: routineReachedDays(a, logic.state.habitHits, dayStartMin: logic.dayStartMin)};
+    final heldHere = minimumHeldDays([p], reached, logic.livedTodayYmd).length;
+    final heldAll = minimumHeldDays(logic.minimumPeriods, reached, logic.livedTodayYmd).length;
+    final next = kHoldOnTiers.where((t) => t > heldAll).firstOrNull;
+    final asleep = [for (final a in routines) if (!p.keep.contains(a.id)) a]..sort((x, y) => logic.currentSeriesOf(y).compareTo(logic.currentSeriesOf(x)));
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.local_fire_department_rounded, size: 38 + (heldHere.clamp(0, 7) * 2).toDouble(), color: kVeilleuse),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Tu gardes le feu', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: kBText)),
+              Text(heldHere == 0 ? 'Ta première journée au minimum se joue aujourd’hui.' : '$heldHere journée${heldHere > 1 ? 's tenues' : ' tenue'} au minimum. La veilleuse brille un peu plus chaque jour.',
+                  style: const TextStyle(fontSize: 12.5, color: kBText3)),
+            ]),
+          ),
+        ]),
+        if (next != null) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            for (var i = 0; i < next; i++) ...[
+              if (i > 0) const SizedBox(width: 3),
+              Expanded(child: Container(height: 6, decoration: BoxDecoration(color: i < heldAll ? kVeilleuse : kBRaised, borderRadius: BorderRadius.circular(3)))),
+            ],
+          ]),
+          const SizedBox(height: 3),
+          Text('Tenir bon · $heldAll / $next jours pour la carte', style: const TextStyle(fontSize: 11.5, color: kBText4)),
+        ],
+        if (asleep.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('SOUS LA CENDRE · $frozen', style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
+          const SizedBox(height: 3),
+          Text(asleep.take(4).map((a) => '${a.name} ${logic.currentSeriesOf(a)} j').join(' · ') + (asleep.length > 4 ? '…' : ''),
+              style: const TextStyle(fontSize: 12.5, color: kBText3)),
+        ],
       ]),
     );
   }
@@ -282,26 +339,32 @@ class MinimumCard extends StatelessWidget {
   }
 
   Future<void> _better(BuildContext context, {bool confirm = true}) async {
-    if (confirm) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Ça va mieux ?'),
-          content: const Text('Toutes tes routines comptent de nouveau dès aujourd’hui. Tes séries gelées reprennent là où elles étaient.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Pas encore')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Je reprends tout')),
-          ],
-        ),
-      );
-      if (ok != true) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ça va mieux ?'),
+        content: const Text('Pas à pas : tu ravives une série par jour, en plus de ton minimum. C’est comme ça qu’on ne rechute pas. '
+            'Ou tu reprends tout d’un coup, dès aujourd’hui.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Pas encore')),
+          TextButton(key: const ValueKey('minimum-all'), onPressed: () => Navigator.pop(ctx, 'all'), child: const Text('Tout d’un coup')),
+          FilledButton(key: const ValueKey('minimum-climb'), onPressed: () => Navigator.pop(ctx, 'climb'), child: const Text('Pas à pas')),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    if (choice == 'climb') {
+      await logic.startClimb();
+    } else {
+      await logic.endMinimum();
     }
-    await logic.endMinimum();
     onChanged();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
-        content: Text('Tu reprends toutes tes routines · tes séries repartent d’où elles étaient'),
-        duration: Duration(seconds: 5),
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+        content: Text(choice == 'climb'
+            ? 'La remontée commence · ravive une série aujourd’hui'
+            : 'Tu reprends toutes tes routines · tes séries repartent d’où elles étaient'),
+        duration: const Duration(seconds: 5),
       ));
     }
   }
@@ -309,3 +372,199 @@ class MinimumCard extends StatelessWidget {
 
 /// Vert « tenue » du minimum.
 const kPalierGreenMin = Color(0xFF2FA36B);
+
+/// Flamme de la veilleuse.
+const kVeilleuse = Color(0xFFFFB347);
+
+List<Activity> _toRevive(AppLogic logic, MinimumPeriod c) =>
+    [for (final a in _dailyRoutines(logic)) if (!c.keep.contains(a.id) && !c.revived.containsKey(a.id)) a];
+
+int _climbDay(AppLogic logic, MinimumPeriod c) => c.to == null ? 1 : DateTime.parse(logic.livedTodayYmd).difference(DateTime.parse(c.to!)).inDays;
+
+bool _revivedToday(AppLogic logic, MinimumPeriod c) => c.revived.values.contains(logic.livedTodayYmd);
+
+/// La remontée (lot 3) : après « Ça va mieux · pas à pas », une série ravivée par jour en plus du minimum ; les autres
+/// restent sous la cendre, intactes. Au bout : la carte « La remontée ».
+class ClimbCard extends StatefulWidget {
+  final AppLogic logic;
+  final VoidCallback onChanged;
+  /// Les cartes du deck, pour « Tes luttes ».
+  final List<BadgeState> Function()? badges;
+  const ClimbCard({super.key, required this.logic, required this.onChanged, this.badges});
+
+  @override
+  State<ClimbCard> createState() => _ClimbCardState();
+}
+
+class _ClimbCardState extends State<ClimbCard> {
+  bool _more = false;
+
+  AppLogic get logic => widget.logic;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = logic.climbNow;
+    if (c == null || logic.minimumNow != null) return const SizedBox.shrink();
+    final todo = _toRevive(logic, c)..sort((x, y) => logic.currentSeriesOf(y).compareTo(logic.currentSeriesOf(x)));
+    final total = todo.length + c.revived.length;
+    final today = _revivedToday(logic, c);
+    final names = {for (final a in logic.state.activities) a.id: a.name};
+    final todayName = [for (final e in c.revived.entries) if (e.value == logic.livedTodayYmd) names[e.key] ?? ''].join(', ');
+    final open = !today || _more;
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 6),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: kVeilleuse.withValues(alpha: .45))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Text('REMONTÉE · JOUR ${_climbDay(logic, c)}', style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kVeilleuse)),
+          const InfoDot(kRuleClimb, size: 16),
+        ]),
+        const SizedBox(height: 2),
+        Text('${c.revived.length} / $total séries ravivées', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: kBText)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 5, runSpacing: 5, children: [
+          for (var i = 0; i < total; i++)
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < c.revived.length ? const Color(0xFFFF8A3D) : const Color(0xFF2A2622),
+                border: Border.all(color: i < c.revived.length ? const Color(0xFFFF8A3D) : const Color(0xFF3A342E)),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        const Text('Ton minimum + 1 série par jour. Pas tout d’un coup : c’est comme ça qu’on ne rechute pas.', style: TextStyle(fontSize: 12.5, color: kBText3)),
+        if (today) ...[
+          const SizedBox(height: 8),
+          Text('✓ $todayName ravivée aujourd’hui · la suivante demain', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: kPalierGreenMin)),
+          if (!_more)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _more = true),
+                style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+                child: const Text('En raviver une de plus', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
+              ),
+            ),
+        ],
+        if (open && todo.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text('AUJOURD’HUI, TU RAVIVES', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
+          for (final a in todo.take(4))
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+              child: Row(children: [
+                Expanded(child: Text(a.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: kBText))),
+                Text('${logic.currentSeriesOf(a)} j', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kBText3)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 32,
+                  child: FilledButton(
+                    key: ValueKey('revive-${a.id}'),
+                    onPressed: () => _revive([a.id]),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kVeilleuse,
+                      foregroundColor: const Color(0xFF2A1600),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                    ),
+                    child: const Text('Raviver', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ]),
+            ),
+          if (todo.length > 4) Text('+ ${todo.length - 4} autres sous la cendre', style: const TextStyle(fontSize: 12, color: kBText4)),
+        ],
+        Row(children: [
+          TextButton(
+            key: const ValueKey('climb-all'),
+            onPressed: () => _all(context, todo),
+            style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+            child: const Text('Tout reprendre d’un coup', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () => showStrugglesSheet(context, logic: logic, badges: widget.badges?.call() ?? const []),
+            style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+            child: const Text('Tes luttes ›', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _revive(List<String> ids) async {
+    await logic.reviveRoutines(ids);
+    setState(() => _more = false);
+    widget.onChanged();
+    if (mounted && logic.climbNow == null) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
+        content: Text('Toutes tes séries sont ravivées · carte « La remontée »'),
+        duration: Duration(seconds: 5),
+      ));
+    }
+  }
+
+  Future<void> _all(BuildContext context, List<Activity> todo) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tout reprendre d’un coup ?'),
+        content: Text('Les ${todo.length} séries encore sous la cendre comptent de nouveau dès aujourd’hui.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Pas à pas')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Tout reprendre')),
+        ],
+      ),
+    );
+    if (ok == true) await _revive([for (final a in todo) a.id]);
+  }
+}
+
+/// Tes luttes (lot 3) : ce que tu as gagné quand c'était dur — contre la flemme, contre les envies (privé), contre les
+/// journées difficiles. Chiffres tirés des cartes existantes.
+Future<void> showStrugglesSheet(BuildContext context, {required AppLogic logic, required List<BadgeState> badges}) {
+  BadgeState? b(String id) => badges.where((x) => x.def.id == id).firstOrNull;
+  int v(String id) => (b(id)?.value ?? 0).round();
+  final urges = b('liberte-envies');
+  Widget fight(String n, String what, String sub, {bool private = false}) => Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text(n, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: kBText)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(what, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: kBText))),
+            if (private)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: kBRaised, borderRadius: BorderRadius.circular(10)),
+                child: const Text('privé', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kBText3)),
+              ),
+          ]),
+          const SizedBox(height: 4),
+          Text(sub, style: const TextStyle(fontSize: 12.5, color: kBText3)),
+        ]),
+      );
+  return showFiche<void>(context, builder: (ctx, scroll) => ListView(
+        controller: scroll,
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+        children: [
+          const Text('Tes luttes', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: kBText)),
+          const SizedBox(height: 2),
+          const Text('Ce que tu as gagné quand c’était dur.', style: TextStyle(fontSize: 13, color: kBText3)),
+          fight('${v('malgre-tout')}', 'contre la flemme', 'victoires en Flemme · ${v('guerilla')} guérilla${v('guerilla') > 1 ? 's' : ''}'),
+          if (urges != null) fight('${v('liberte-envies')}', 'contre les envies', 'envies surmontées · le coach ne voit jamais ce chiffre', private: true),
+          fight('${v('tenir-bon')}', 'contre les journées difficiles',
+              'journées tenues au minimum · ${v('remontee')} remontée${v('remontee') > 1 ? 's' : ''} · ${v('reprise')} reprise${v('reprise') > 1 ? 's' : ''}'),
+          const SizedBox(height: 14),
+          const Text('On récompense ce qui demande du courage : tenir, remonter, gagner quand c’est dur. Jamais le fait d’entrer dans le minimum.',
+              style: TextStyle(fontSize: 12, color: kBText4)),
+        ],
+      ));
+}

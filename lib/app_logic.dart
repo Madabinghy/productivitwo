@@ -2362,6 +2362,22 @@ class AppLogic implements HuntStore {
     await _saveMinimum();
   }
 
+  /// La remontée en cours (lot 3), sinon null.
+  MinimumPeriod? get climbNow => currentClimb(minimumPeriods);
+
+  /// « Ça va mieux » pas à pas : la période s'arrête hier, les séries gelées attendent d'être ravivées une à une.
+  Future<void> startClimb() async {
+    minimumPeriods = withClimbStarted(minimumPeriods, livedTodayYmd);
+    await _saveMinimum();
+  }
+
+  /// Ravive [ids] : elles comptent de nouveau dès aujourd'hui.
+  Future<void> reviveRoutines(Iterable<String> ids) async {
+    final all = [for (final a in state.activeActivities) if (a.isHabit && a.habitFreq == HabitFreq.daily) a.id];
+    minimumPeriods = withRevived(minimumPeriods, ids, all, livedTodayYmd);
+    await _saveMinimum();
+  }
+
   Future<void> extendMinimum() async {
     minimumPeriods = withMinimumExtended(minimumPeriods, livedTodayYmd);
     await _saveMinimum();

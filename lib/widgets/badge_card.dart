@@ -41,6 +41,7 @@ Color familyArtColor(BadgeFamily f) => switch (f) {
       BadgeFamily.actions => const Color(0xFF2B4A2B),
       BadgeFamily.time => const Color(0xFF4A2B4A),
       BadgeFamily.freedom => const Color(0xFF1E4A3F),
+      BadgeFamily.struggles => const Color(0xFF3A2440),
     };
 
 /// Encre du symbole, par famille.
@@ -53,6 +54,7 @@ Color familyInkColor(BadgeFamily f) => switch (f) {
       BadgeFamily.actions => const Color(0xFFB8F08A),
       BadgeFamily.time => const Color(0xFFF0A8E8),
       BadgeFamily.freedom => const Color(0xFF6FD3B8),
+      BadgeFamily.struggles => const Color(0xFFFFC27A),
     };
 
 /// Couleurs du cadre et de l'encre de la rareté.

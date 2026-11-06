@@ -33,4 +33,19 @@ void main() {
     expect(suggestMinimum(reached, '2026-11-06', count: 2), ['lecture', 'eau']);
     expect(parseMinimumPeriods(minimumPeriodsToJson(p)).single.keep, ['eau', 'repas']);
   });
+
+  test('la remontée : une série ravivée compte de nouveau, finie quand tout est ravivé', () {
+    var p = withMinimumStarted(const [], '2026-11-04', ['eau'], '2026-11-04');
+    p = withClimbStarted(p, '2026-11-07');
+    expect(currentClimb(p), isNotNull);
+    expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-08'), {'2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08'});
+    p = withRevived(p, ['vaisselle'], ['eau', 'vaisselle', 'cuisine'], '2026-11-08');
+    expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-09').contains('2026-11-08'), isFalse);
+    expect(minimumFrozenDaysOf('cuisine', p, '2026-11-09').contains('2026-11-09'), isTrue);
+    p = withRevived(p, ['cuisine'], ['eau', 'vaisselle', 'cuisine'], '2026-11-09');
+    expect(currentClimb(p), isNull);
+    expect(climbsDone(p), ['2026-11-09']);
+    expect(minimumFrozenDaysOf('cuisine', p, '2026-11-10').contains('2026-11-09'), isFalse);
+    expect(parseMinimumPeriods(minimumPeriodsToJson(p)).single.revived, {'vaisselle': '2026-11-08', 'cuisine': '2026-11-09'});
+  });
 }
