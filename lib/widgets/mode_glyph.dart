@@ -5,7 +5,7 @@ import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 
 /// Icônes des modes (maquette validée 2026-11-03 « Modes en tuile ») :
 /// Guérilla = shuriken en plein vol vers le haut à droite, trois traînées ;
-/// Offensive = la percée (un mur fendu par la foudre, éclats) ; Sniper =
+/// Offensive = l'infini du Deep work (depuis le 2026-11-06, avant : la percée) ; Sniper =
 /// le viseur (`Icons.gps_fixed`, inchangé). Dessins SVG en noir, teintés par
 /// [color] (les opacités internes sont gardées).
 
@@ -14,13 +14,8 @@ const _shuriken = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 <g fill="none" stroke="#000" stroke-linecap="round"><path d="M3 21 9 15" stroke-width="2.1" stroke-opacity=".7"/><path d="M2 16 5.6 12.4" stroke-width="1.7" stroke-opacity=".45"/><path d="M8 22 11.6 18.4" stroke-width="1.7" stroke-opacity=".45"/></g>
 </svg>''';
 
-const _breach = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-<path fill="#000" fill-opacity=".5" d="M1.5 3.5h7l-2.6 7.3h3.4L6.6 20.5H1.5z"/>
-<path fill="#000" fill-opacity=".5" d="M22.5 3.5h-6.3l-1.6 6h3.2L14.4 20.5h8.1z"/>
-<path fill="#000" d="M14 1 8.5 11.5h4.2L10.2 23l7.6-13h-4.6z"/>
-<path fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".6" d="M4 22.5h3M17 22.5h3"/>
-<rect fill="#000" fill-opacity=".8" x="7.5" y="13.5" width="1.6" height="1.6" transform="rotate(20 8.3 14.3)"/>
-<rect fill="#000" fill-opacity=".8" x="16.6" y="6" width="1.5" height="1.5" transform="rotate(-15 17.3 6.7)"/>
+const _infinity = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<path fill="none" stroke="#000" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M12 12c-2-2.7-3.6-4-5.5-4a4 4 0 0 0 0 8c1.9 0 3.5-1.3 5.5-4s3.6-4 5.5-4a4 4 0 0 1 0 8c-1.9 0-3.5-1.3-5.5-4z"/>
 </svg>''';
 
 /// L'icône d'un mode (`kGuerillaKind`, `kOffensiveKind`, sinon le viseur).
@@ -35,7 +30,7 @@ class ModeGlyph extends StatelessWidget {
   Widget build(BuildContext context) {
     final svg = switch (kind) {
       kGuerillaKind => _shuriken,
-      kOffensiveKind => _breach,
+      kOffensiveKind => _infinity,
       _ => null,
     };
     if (svg == null) return Icon(Icons.gps_fixed, size: size, color: color, semanticLabel: semanticLabel);

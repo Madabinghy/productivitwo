@@ -68,7 +68,7 @@ class OffensiveScreen extends StatefulWidget {
 class _OffensiveScreenState extends State<OffensiveScreen> {
   late final List<OffensiveFront> _fronts;
   _Phase _phase = _Phase.setup;
-  int _duration = 15;
+  int _duration = kOffensiveUnlimited; // Deep work par défaut (retour user 2026-11-06)
   String? _front; // null = tout mélanger
   List<OffensiveTarget> _queue = const [];
   int _index = 0;
