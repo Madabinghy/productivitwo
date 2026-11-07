@@ -149,7 +149,9 @@ class _WeekViewState extends State<WeekView> {
     }
     _subs.clear();
     _byDay.clear();
-    for (final d in _dates) {
+    // La veille du premier jour aussi : la fin de sa nuit (Sommeil 22:00 →
+    // 06:00) se dessine en haut du lundi.
+    for (final d in [_dates.first.subtract(const Duration(days: 1)), ..._dates]) {
       final key = ymdOf(d);
       _subs.add(widget.sync.streamDailySchedule(key).listen((s) {
         if (!mounted) return;
@@ -744,28 +746,46 @@ class _WeekViewState extends State<WeekView> {
         ));
       }
 
+      // Un bloc qui passe minuit continue en haut de la colonne du lendemain
+      // (copie d'affichage, id « …~tail » ; tap = le bloc de la veille).
+      final prevDay = DateTime(d.year, d.month, d.day - 1);
+      final tails = <String, ScheduleBlock>{};
+      final tailBlocks = <ScheduleBlock>[];
+      for (final b in _dayBlocks(prevDay)) {
+        if (blockEndMin(b) <= 24 * 60 || blockStartMin(b) >= 24 * 60) continue;
+        final t = ScheduleBlock.from({
+          ...b.toJson(),
+          'id': '${b.id}~tail',
+          'startTime': '00:00',
+          'durationMin': math.min(blockEndMin(b) - 24 * 60, 24 * 60),
+        });
+        tails[t.id] = b;
+        tailBlocks.add(t);
+      }
       final blocks = [
-        for (final b in _dayBlocks(d))
+        for (final b in [...tailBlocks, ..._dayBlocks(d)])
           if (blockStartMin(b) < end && blockEndMin(b) > start) b,
       ];
       final lanes = overlapColumns(blocks);
       final laneW = math.max(0.0, colW - 6);
       for (final b in blocks) {
+        final origin = tails[b.id];
         final lane = lanes[b.id] ?? (col: 0, cols: 1);
         final dragging = _gDragId == b.id;
         final delta = dragging ? ((_gDy / ppm) / _kSnap).round() * _kSnap : 0;
         final shift = dragging && !_gResize ? (_gDx / math.max(colW, 1)).round().clamp(-i, _days - 1 - i).toInt() : 0;
         var s = blockStartMin(b), dur = b.durationMin;
         if (dragging && _gResize) {
-          dur = (dur + delta).clamp(_kSnap, 24 * 60 - s).toInt();
+          dur = (dur + delta).clamp(_kSnap, 24 * 60).toInt();
         } else if (dragging) {
-          s = (s + delta).clamp(0, 24 * 60 - dur).toInt();
+          s = (s + delta).clamp(0, 24 * 60 - _kSnap).toInt();
         }
         final top = y(math.max(s, start));
         final h = math.max((math.min(s + dur, end) - math.max(s, start)) * ppm - 2, 16.0);
         final bx = left + shift * colW + 3 + laneW * lane.col / lane.cols;
         final bw = laneW / lane.cols - (lane.cols > 1 ? 2 : 0);
-        final canDrag = _canGridDrag(b, d);
+        final canDrag = origin == null && _canGridDrag(b, d);
+        final crosses = origin == null && blockEndMin(b) > 24 * 60;
         children.add(Positioned(
           left: bx,
           width: bw,
@@ -776,8 +796,10 @@ class _WeekViewState extends State<WeekView> {
             child: Stack(fit: StackFit.expand, children: [
               GestureDetector(
                 key: ValueKey('week-block-${b.id}'),
-                onTap: () => _onGridBlockTap(b, d),
-                onSecondaryTapUp: b.gcalEventId == null && !past ? (e) => _openDotMenu(b, e.globalPosition) : null,
+                onTap: () => origin != null ? _onGridBlockTap(origin, prevDay) : _onGridBlockTap(b, d),
+                onSecondaryTapUp: origin == null && b.gcalEventId == null && !past
+                    ? (e) => _openDotMenu(b, e.globalPosition)
+                    : null,
                 onPanStart: canDrag ? (_) => _gridDragBegin(b, resize: false) : null,
                 onPanUpdate: canDrag
                     ? (e) => setState(() {
@@ -787,9 +809,11 @@ class _WeekViewState extends State<WeekView> {
                     : null,
                 onPanEnd: canDrag ? (_) => _gridCommit(b, d, ppm, colW) : null,
                 onPanCancel: canDrag ? () => setState(() => _gDragId = null) : null,
-                child: _gridBlock(b, d, _isDated(b, sessionIds), h, dragging),
+                child: origin != null
+                    ? _gridBlock(origin, prevDay, _isDated(origin, sessionIds), h, false, tail: true)
+                    : _gridBlock(b, d, _isDated(b, sessionIds), h, dragging),
               ),
-              if (canDrag)
+              if (canDrag && !crosses)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -882,14 +906,17 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
-  Widget _gridBlock(ScheduleBlock b, DateTime d, bool dated, double h, bool dragging) {
+  Widget _gridBlock(ScheduleBlock b, DateTime d, bool dated, double h, bool dragging, {bool tail = false}) {
     final done = b.status == 'done';
     final letGo = isLetGoBlock(b);
     final skipped = b.status == 'skipped' && !letGo;
     final past = d.isBefore(_today);
     final now = _nowMin;
-    final running = d == _today && b.status == 'pending' && blockStartMin(b) <= now && blockEndMin(b) > now;
-    final missed = !done && !letGo && b.gcalEventId == null &&
+    final running = b.status == 'pending' &&
+        (tail
+            ? DateTime(d.year, d.month, d.day + 1) == _today && blockEndMin(b) - 24 * 60 > now
+            : d == _today && blockStartMin(b) <= now && blockEndMin(b) > now);
+    final missed = !running && !done && !letGo && b.gcalEventId == null &&
         (past || (d == _today && blockEndMin(b) <= now)) && b.status == 'pending';
     final Color bg, border, fg;
     if (dated) {
@@ -909,7 +936,9 @@ class _WeekViewState extends State<WeekView> {
       border = running ? kBPrimary : const Color(0xFF2A4A3C);
       fg = missed ? kBText3 : kBText;
     }
-    final sub = done
+    final sub = tail && !running && !done
+        ? 'suite · jusqu’à ${_hhmm(blockEndMin(b) - 24 * 60)}'
+        : done
         ? 'fait · ${_fmtHm(b.durationMin)}'
         : letGo
             ? 'lâché'
@@ -989,7 +1018,7 @@ class _WeekViewState extends State<WeekView> {
     final fromKey = ymdOf(from);
     final oldStart = b.startTime, oldDur = b.durationMin;
     if (resize) {
-      final dur = (oldDur + delta).clamp(_kSnap, 24 * 60 - blockStartMin(b)).toInt();
+      final dur = (oldDur + delta).clamp(_kSnap, 24 * 60).toInt();
       if (dur == oldDur) return;
       setState(() => b.durationMin = dur);
       await widget.sync.upsertScheduleBlock(fromKey, b);
@@ -1000,7 +1029,7 @@ class _WeekViewState extends State<WeekView> {
       });
       return;
     }
-    final start = (blockStartMin(b) + delta).clamp(0, 24 * 60 - oldDur).toInt();
+    final start = (blockStartMin(b) + delta).clamp(0, 24 * 60 - _kSnap).toInt();
     if (shift == 0 && start == blockStartMin(b)) return;
     final target = _dates[i + shift];
     if (target.isBefore(_today)) {
