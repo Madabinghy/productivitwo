@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/parole.dart' show ParoleDay, kParoleMin;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/reading_due.dart';
@@ -443,7 +444,7 @@ StakeBoard buildStakeBoard({
           StakeGain(
             kind: StakeGainKind.week,
             label: 'semaine tenue ce soir',
-            detail: 'Encore $missing coche${missing > 1 ? 's' : ''} : la semaine est tenue ($streak d’affilée) et forge une braise.',
+            detail: 'Encore $missing coche${missing > 1 ? 's' : ''} : la semaine est tenue ($streak d’affilée)${kEmbersEnabled ? ' et forge une braise' : ''}.',
             weight: 18,
             sourceId: 'semaines-tenues',
           ),

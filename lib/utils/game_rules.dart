@@ -30,8 +30,6 @@ const kRulePerfectDay = GameRule('Journée parfaite', [
       'Une journée est parfaite quand chaque routine quotidienne est atteinte et chaque bloc du programme fait.'),
   RuleCard('🧹', 'Ce qui ne compte pas',
       'Les actions visées et les miroirs de ton agenda. Un bloc supprimé ou déplacé ne compte plus.'),
-  RuleCard('🔥', 'Elle forge une braise',
-      'Chaque journée parfaite met une braise de côté, trois au plus.'),
 ]);
 
 const kRuleLetGo = GameRule('Retirer un bloc', [
@@ -55,14 +53,14 @@ const kRuleEmbers = GameRule('Braises', [
 
 const kRuleHardDay = GameRule('Journée difficile', [
   RuleCard('🧊', 'Hier était dur ?', 'Le lendemain, tu peux déclarer la journée difficile : toutes les séries cassées ce jour-là sont gelées, pas cassées.'),
-  RuleCard('⏸️', 'Gelée, pas gagnée', 'Les séries reprennent là où elles étaient, sans gagner de jour. Hier ne compte ni pour Journée parfaite, ni pour Métronome, ni pour Montre suisse, et ne forge pas de braise.'),
-  RuleCard('⏳', 'Rare', 'Une fois tous les 14 jours. Pour un oubli isolé, il y a les braises : une braise garde une série.'),
+  RuleCard('⏸️', 'Gelée, pas gagnée', 'Les séries reprennent là où elles étaient, sans gagner de jour. Hier ne compte ni pour Journée parfaite, ni pour Métronome ni pour Montre suisse.'),
+  RuleCard('⏳', 'Rare', 'Une fois tous les 14 jours, pour une vraie journée difficile. Pour une absence prévue, gèle la routine à l’avance.'),
 ]);
 
 const kRuleMinimum = GameRule('Le minimum', [
   RuleCard('🕯️', 'Une période difficile', 'Quand ça dure plus d’un jour : tu gardes 2 ou 3 routines, les autres sont gelées le temps qu’il faut.'),
   RuleCard('⏸️', 'Gelées, pas gagnées', 'Les séries gelées ne cassent pas et ne s’allongent pas. Une routine gelée faite quand même compte et allonge sa série.'),
-  RuleCard('🌗', 'Tenue au minimum', 'Une journée qui tient ton minimum se gagne sous son vrai nom. Elle ne compte ni pour Journée parfaite, ni pour Métronome, ni pour Montre suisse, et ne forge pas de braise.'),
+  RuleCard('🌗', 'Tenue au minimum', 'Une journée qui tient ton minimum se gagne sous son vrai nom. Elle ne compte ni pour Journée parfaite, ni pour Métronome, ni pour Montre suisse.'),
   RuleCard('🔁', 'Tous les 3 jours', 'L’app te demande comment tu te sens. « Ça va mieux » : tout compte de nouveau dès aujourd’hui.'),
 ]);
 

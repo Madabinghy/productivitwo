@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -206,7 +207,7 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
       final held = week.state == WeekState.held || (week.state == WeekState.current && pct >= 80);
       verdict = held ? 'Semaine tenue · contrat à $pct %' : 'Contrat à $pct % · semaine pas tenue';
       detail = held
-          ? (streak > 0 ? '${streak + (week.state == WeekState.current ? 1 : 0)}ᵉ semaine tenue d’affilée' : 'Une semaine tenue forge une braise')
+          ? (streak > 0 ? '${streak + (week.state == WeekState.current ? 1 : 0)}ᵉ semaine tenue d’affilée' : kEmbersEnabled ? 'Une semaine tenue forge une braise' : 'Semaine tenue')
           : 'Il faut 80 % pour tenir la semaine.';
     }
     final sleep = sig['sleep'] as Map;

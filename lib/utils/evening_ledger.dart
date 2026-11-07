@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
@@ -62,7 +63,9 @@ EveningLedger buildEveningLedger({
   final calToday = DateTime(dayStart.year, dayStart.month, dayStart.day);
 
   // ── Braise : la journée parfaite en forge une à la bascule ────────────────
-  if (perfectToday && excusedToday > 0) {
+  if (!kEmbersEnabled) {
+    if (perfectToday) advanced.add(LedgerLine('✓', 'Journée parfaite', excusedToday > 0 ? '$excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}' : 'tout est tenu'));
+  } else if (perfectToday && excusedToday > 0) {
     advanced.add(LedgerLine(
       '✓',
       'Journée parfaite · $excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}',
@@ -77,7 +80,7 @@ EveningLedger buildEveningLedger({
   }
   // ── Braise : le dimanche, une semaine tenue en forge une aussi ────────────
   final week = deck?.weeks.thisWeek;
-  if (week != null && week.pct != null && calToday.weekday == DateTime.sunday && deck!.weeks.missing == 0) {
+  if (kEmbersEnabled && week != null && week.pct != null && calToday.weekday == DateTime.sunday && deck!.weeks.missing == 0) {
     final stock = emberStock + (perfectToday && excusedToday == 0 ? 1 : 0);
     advanced.add(LedgerLine(
       '+1',

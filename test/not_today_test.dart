@@ -4,7 +4,7 @@ import 'package:productivitwo_v1/utils/not_today.dart';
 
 void main() {
   test('message du « Pas aujourd\'hui » : journée parfaite possible, série coupée', () {
-    expect(notTodayLine('Pompes', series: 12), 'Pas aujourd\'hui : Pompes · ta journée parfaite reste possible (sans braise), la série de 12 j s\'arrête');
+    expect(notTodayLine('Pompes', series: 12), 'Pas aujourd\'hui : Pompes · ta journée parfaite reste possible, la série de 12 j s\'arrête');
     expect(notTodayLine('Pompes'), contains('pas de série en jeu'));
     expect(notTodayLine('Ménage', daily: false), 'Pas aujourd\'hui : Ménage');
   });

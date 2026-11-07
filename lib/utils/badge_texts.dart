@@ -139,12 +139,12 @@
     'semaines-tenues' => (
         what: 'Les semaines d’affilée où le contrat est tenu : au moins 80 % des routines engagées, du lundi au dimanche.',
         how: 'Tiens les routines rattachées à tes objectifs (toutes les routines s’il n’y en a aucune) : une semaine compte quand la moyenne de leurs parts faites atteint 80 %. '
-            'Les jours en veille réduisent la cible ; une semaine sans rien à tenir est enjambée. Chaque semaine tenue forge une braise. Paliers : 4, 12, 26 et 52 semaines.',
+            'Les jours en veille réduisent la cible ; une semaine sans rien à tenir est enjambée. Paliers : 4, 12, 26 et 52 semaines.',
       ),
     'reprise' => (
         what: 'Une routine coupée deux jours ou plus, puis tenue trois jours d’affilée.',
-        how: 'Après au moins deux jours sans atteindre une routine, atteins-la trois jours de suite : la reprise compte. Un seul jour manqué se rattrape avec une braise, '
-            'pas par une reprise ; les jours gelés par une veille ne comptent pas comme manqués. Paliers : 1, 5 et 15 reprises.',
+        how: 'Après au moins deux jours sans atteindre une routine, atteins-la trois jours de suite : la reprise compte. Un seul jour manqué ne fait pas une reprise ; '
+            'les jours gelés par une veille ne comptent pas comme manqués. Paliers : 1, 5 et 15 reprises.',
       ),
     'enchaineur' => (
         what: 'Des sessions du mode Enchaîner où tu as fait au moins trois choses d’affilée.',

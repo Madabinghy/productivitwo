@@ -19,3 +19,11 @@ final bool kGameLayerEnabled = false;
 /// cartes, partage. false = retirés de l'interface et du deck ; les badges
 /// restent des cartes simples dans l'album. Même principe `final`.
 final bool kCollectionMetaEnabled = false;
+
+/// Braises (audit 2026-11-07, décision user : trop de filets pour les séries) :
+/// false = plus de réserve à forger ni de série à rallumer dans l'interface ; la
+/// journée difficile, le minimum et le gel restent. Les rallumages déjà faits
+/// gardent leur jour comblé (le registre est toujours rejoué) : aucune série ne
+/// casse rétroactivement. Même principe `final`.
+final bool kEmbersEnabled = false;
+
