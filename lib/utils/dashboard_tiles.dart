@@ -27,7 +27,9 @@ class DashTile {
   final String? targetId;
   /// Tuile Badges : les plus belles cartes, en éventail (badges en cartes, lot 3).
   final List<BadgeState> fan;
-  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const [], this.targetId, this.fan = const []});
+  /// Tuile REMONTÉE (2026-11-07, retour user) : [mini] dessinée en escalier, une marche par série.
+  final bool stairs;
+  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const [], this.targetId, this.fan = const [], this.stairs = false});
 }
 
 /// Un morceau de la bande du programme : largeur = durée.

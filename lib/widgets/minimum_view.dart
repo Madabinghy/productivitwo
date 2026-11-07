@@ -39,7 +39,8 @@ DashTile? minimumTile(AppLogic logic) {
       badge: 'jour ${_climbDay(logic, c)}',
       value: '${c.revived.length} / $total ravivées',
       sub: _revivedToday(logic, c) ? 'une série ravivée aujourd’hui' : 'ravive une série aujourd’hui',
-      mini: [for (var i = 0; i < total; i++) i < c.revived.length ? TileMark.on : TileMark.off],
+      mini: [for (var i = 0; i < total; i++) i < c.revived.length ? TileMark.on : (i == c.revived.length ? TileMark.current : TileMark.off)],
+      stairs: true,
     );
   }
   final p = logic.minimumNow;
