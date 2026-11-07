@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -120,6 +122,7 @@ class _WeekViewState extends State<WeekView> {
       final p = await SharedPreferences.getInstance();
       if (!mounted) return;
       setState(() {
+        _zoom = (p.getDouble(_kZoomKey) ?? 1).clamp(.05, _kZoomMax).toDouble();
         final savedOn = p.getString(_kPrefStartSavedOn);
         final savedStart = p.getString(_kPrefStart);
         if (savedOn == ymdOf(_today) && savedStart != null) {
@@ -364,6 +367,87 @@ class _WeekViewState extends State<WeekView> {
 
   final ScrollController _gridScroll = ScrollController();
   bool _gridScrolled = false;
+  // Zoom vertical (×1 = la journée active remplit la hauteur ; au plus bas,
+  // les 24 h tiennent à l'écran). Ctrl / ⌘ + molette ou pincement, boutons.
+  double _zoom = 1;
+  double _zoomMin = .3;
+  static const _kZoomMax = 6.0, _kZoomKey = 'week_grid_zoom';
+  double _gPpm = 1;
+
+  void _zoomBy(double factor, {double? anchorY}) {
+    final next = (_zoom * factor).clamp(_zoomMin, _kZoomMax).toDouble();
+    if ((next - _zoom).abs() < .001) return;
+    final ctrl = _gridScroll;
+    if (ctrl.hasClients) {
+      final ay = anchorY ?? ctrl.position.viewportDimension / 2;
+      final minute = (ctrl.offset + ay - 6) / _gPpm;
+      final newPpm = _gPpm * next / _zoom;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !ctrl.hasClients) return;
+        ctrl.jumpTo(((minute * newPpm) + 6 - ay).clamp(0.0, ctrl.position.maxScrollExtent));
+      });
+    }
+    setState(() => _zoom = next);
+    SharedPreferences.getInstance().then((p) => p.setDouble(_kZoomKey, next)).catchError((_) => false);
+  }
+
+  void _onGridSignal(PointerSignalEvent e) {
+    if (e is PointerScaleEvent) {
+      _zoomBy(e.scale, anchorY: e.localPosition.dy);
+      return;
+    }
+    if (e is! PointerScrollEvent) return;
+    final keys = HardwareKeyboard.instance;
+    if (!keys.isControlPressed && !keys.isMetaPressed) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (ev) {
+      final dy = (ev as PointerScrollEvent).scrollDelta.dy;
+      if (dy == 0) return;
+      final box = _gridViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final ay = box == null ? null : box.globalToLocal(ev.position).dy;
+      _zoomBy(dy < 0 ? 1.15 : 1 / 1.15, anchorY: ay);
+    });
+  }
+
+  final GlobalKey _gridViewportKey = GlobalKey();
+
+  Widget _zoomControls() {
+    Widget btn(IconData icon, String tip, VoidCallback? onTap, Key key) => IconButton(
+          key: key,
+          tooltip: tip,
+          onPressed: onTap,
+          icon: Icon(icon, size: 16),
+          color: kBText2,
+          disabledColor: kBText4,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+        );
+    final atBase = (_zoom - 1).abs() < .01;
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(color: const Color(0x12FFFFFF), borderRadius: BorderRadius.circular(999)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        btn(Icons.remove_rounded, 'Dézoomer (Ctrl / ⌘ + molette)',
+            _zoom > _zoomMin + .001 ? () => _zoomBy(1 / 1.4) : null, const ValueKey('week-zoom-out')),
+        Tooltip(
+          message: atBase ? 'Les 24 h à l’écran' : 'Revenir à la journée active',
+          child: InkWell(
+            key: const ValueKey('week-zoom-reset'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _zoomBy(atBase ? _zoomMin / _zoom : 1 / _zoom),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(atBase ? '24 h' : '×${_zoom.toStringAsFixed(1)}',
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: kBText3, fontFeatures: _tabular)),
+            ),
+          ),
+        ),
+        btn(Icons.add_rounded, 'Zoomer (Ctrl / ⌘ + molette)',
+            _zoom < _kZoomMax ? () => _zoomBy(1.4) : null, const ValueKey('week-zoom-in')),
+      ]),
+    );
+  }
   Timer? _clockTick;
 
   int get _nowMin {
@@ -474,7 +558,11 @@ class _WeekViewState extends State<WeekView> {
   Widget _gridBody(double width, double height, Set<String> sessionIds) {
     final (:start, :end) = _gridRange();
     final range = end - start;
-    final ppm = math.max((height - 12) / math.max(_window.spanMin, 60), 0.7);
+    final base = math.max((height - 12) / math.max(_window.spanMin, 60), 0.7);
+    final fit = (height - 12) / range;
+    _zoomMin = math.min(1.0, fit / base);
+    final ppm = math.max(base * _zoom, fit);
+    _gPpm = ppm;
     final total = range * ppm + 12;
     final colW = math.max(0.0, (width - _kGutter) / _days);
     double y(int min) => (min - start) * ppm + 6;
@@ -728,7 +816,11 @@ class _WeekViewState extends State<WeekView> {
       });
     }
     final stack = SizedBox(height: total, width: width, child: Stack(clipBehavior: Clip.none, children: children));
-    return SingleChildScrollView(controller: _gridScroll, child: stack);
+    return Listener(
+      key: _gridViewportKey,
+      onPointerSignal: _onGridSignal,
+      child: SingleChildScrollView(controller: _gridScroll, child: stack),
+    );
   }
 
   Widget _gridBlock(ScheduleBlock b, DateTime d, bool dated, double h, bool dragging) {
@@ -1722,6 +1814,7 @@ class _WeekViewState extends State<WeekView> {
       ),
     ]);
     final controls = <Widget>[
+      _zoomControls(),
       _pillButton('Planifier avec Claude', primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
     // Sous ~1100 px, les commandes passent sous le titre au lieu de l'écraser.
