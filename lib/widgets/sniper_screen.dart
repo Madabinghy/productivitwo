@@ -425,8 +425,15 @@ class _SniperScreenState extends State<SniperScreen> {
     if (_phase != _Phase.shot || _endsAt == null || _pausedLeft != null) return;
     final left = _endsAt!.difference(DateTime.now()).inSeconds;
     _remaining = left > 0 ? left : 0;
-    // Une activité tombe pile au bout du minuteur ; une action attend « faite ».
-    if (_remaining == 0 && _aimed[_index].kind == SniperKind.timed) Future.microtask(_touch);
+    // Au bout du minuteur, l'alarme sonne mais rien n'enchaîne (retour user 2026-11-07) :
+    // le chrono continue, le temps en plus s'affiche, « Suivant » fait tomber la cible.
+  }
+
+  /// Secondes au-delà du minuteur (0 avant la fin) : le chrono, lui, continue.
+  int get _overSec {
+    if (_endsAt == null) return 0;
+    final left = _pausedLeft ?? _endsAt!.difference(DateTime.now()).inSeconds;
+    return left < 0 ? -left : 0;
   }
 
   void _arm(SniperTarget t) => CoupAlarm.schedule(logic, endsAt: _endsAt!, title: '◎ Touché', body: '${t.title} · ${t.minutes} min pile');
@@ -463,7 +470,7 @@ class _SniperScreenState extends State<SniperScreen> {
   void _togglePause() {
     if (_endsAt == null) return;
     if (_pausedLeft == null) {
-      _pausedLeft = _remaining;
+      _pausedLeft = _endsAt!.difference(DateTime.now()).inSeconds;
       CoupAlarm.cancel();
       _stopOwnChrono();
     } else {
@@ -493,7 +500,7 @@ class _SniperScreenState extends State<SniperScreen> {
     if (t.minutes == 0 || _shotStart == null) return t.cost;
     if (_endsAt == null) return t.minutes;
     final planned = _endsAt!.difference(_shotStart!).inSeconds;
-    final left = _pausedLeft ?? _remaining;
+    final left = _pausedLeft ?? _endsAt!.difference(DateTime.now()).inSeconds;
     return ((planned - left) / 60).round().clamp(0, 1 << 20);
   }
 
@@ -543,14 +550,22 @@ class _SniperScreenState extends State<SniperScreen> {
     _hit.add(t.key);
     _lastHit = t.key;
     _persist();
-    if (_nextIndex(_index) == null) {
+    final n = _nextIndex(_index);
+    // Le temps réellement tiré, temps en plus compris (le chrono a tourné jusque-là).
+    final fired = _fired[t.key];
+    if (t.minutes > 0 && fired != null) {
+      final gap = fired - t.cost;
+      ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+        content: Text('Touché · ${t.title} · ${fmtMin(fired)}${gap > 0 ? ' (+$gap min tracées)' : ''}'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+    if (n == null) {
       setState(() => _phase = _Phase.end);
       return;
     }
-    _breakSec = kSniperPauseMin * 60;
-    _phase = _Phase.hit;
-    _ticking();
-    setState(() {});
+    // Plus de compte à rebours entre deux tirs : « Suivant » vient de passer à la cible suivante.
+    _enter(n);
   }
 
   void _skip() {
@@ -1001,9 +1016,11 @@ class _SniperScreenState extends State<SniperScreen> {
     final t = _aimed[_index];
     final timed = t.minutes > 0;
     final total = timed ? (_endsAt != null && _shotStart != null ? _endsAt!.difference(_shotStart!).inSeconds : t.minutes * 60) : 1;
-    final left = _pausedLeft ?? _remaining;
-    final mm = (left ~/ 60).toString();
-    final ss = (left % 60).toString().padLeft(2, '0');
+    final over = timed ? _overSec : 0;
+    final left = (_pausedLeft ?? _remaining).clamp(0, 1 << 30).toInt();
+    final shown = over > 0 ? over : left;
+    final mm = (shown ~/ 60).toString();
+    final ss = (shown % 60).toString().padLeft(2, '0');
     final endAt = _endsAt == null ? null : TimeOfDay.fromDateTime(_endsAt!);
     final chrono = _ownChrono ? logic.runningActivity()?.name : null;
     final action = t.kind == SniperKind.action;
@@ -1024,15 +1041,18 @@ class _SniperScreenState extends State<SniperScreen> {
                       value: total <= 0 ? 1 : (1 - left / total).clamp(0, 1).toDouble(),
                       strokeWidth: 11,
                       backgroundColor: _card2,
-                      color: kSniperAccent,
+                      color: over > 0 ? _green : kSniperAccent,
                     ),
                   ),
                   Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('$mm:$ss', style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+                    Text('${over > 0 ? '+' : ''}$mm:$ss',
+                        style: TextStyle(fontSize: 46, fontWeight: FontWeight.w800, color: over > 0 ? _green : null, fontFeatures: const [FontFeature.tabularFigures()])),
                     Text(
                         _pausedLeft != null
                             ? 'en pause'
-                            : left == 0
+                            : over > 0
+                                ? 'en plus · le chrono continue'
+                                : left == 0
                                 ? 'temps écoulé'
                                 : 'sur ${t.minutes}:00${endAt == null ? '' : ' · fin à ${endAt.hour.toString().padLeft(2, '0')}:${endAt.minute.toString().padLeft(2, '0')}'}',
                         style: const TextStyle(fontSize: 12, color: _text3)),
@@ -1072,7 +1092,7 @@ class _SniperScreenState extends State<SniperScreen> {
       ),
       const SizedBox(height: 10),
       switch (t.kind) {
-        SniperKind.timed => _primary(left == 0 ? 'Touché' : 'Fait plus tôt · touché', _touch, height: 56),
+        SniperKind.timed => _primary(left == 0 ? 'Suivant ›' : 'Fait plus tôt · suivant', _touch, height: 56),
         SniperKind.action => _primary('Action faite', () => _touch(), height: 56),
         SniperKind.routine => _primary(timed && left > 0 ? 'Fait · +${t.delta}' : '+${t.delta} · touché', () => _touch(), height: 56),
         SniperKind.reading => _primary('Noter le relevé', _noteReading, height: 56),
@@ -1082,8 +1102,10 @@ class _SniperScreenState extends State<SniperScreen> {
         if (timed) ...[
           Expanded(child: _outline(_pausedLeft != null ? 'Reprendre' : 'Pause', _togglePause)),
           const SizedBox(width: 8),
-          Expanded(child: _outline('+5 min', _more)),
-          const SizedBox(width: 8),
+          if (over == 0) ...[
+            Expanded(child: _outline('+5 min', _more)),
+            const SizedBox(width: 8),
+          ],
         ],
         Expanded(child: _outline(action ? 'Pas finie · suivante' : 'Passer', _skip)),
       ]),
