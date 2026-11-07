@@ -94,4 +94,19 @@ void main() {
     expect(urgesOvercome(all['b']!), 0);
     expect(parseFreedoms(null), isEmpty);
   });
+
+  test('une envie validée deux fois ne compte qu’une fois', () {
+    final t = at(7, 21);
+    final f = parseFreedom({
+      'urges': {
+        'mz3k': {'at': t, 'intensity': 3, 'passed': true},
+        'mz9a': {'at': t, 'intensity': 3, 'passed': true},
+        urgeIdOf(at(7, 9)): {'at': at(7, 9), 'intensity': 2, 'passed': true},
+      },
+    });
+    expect(f.urges.length, 2);
+    expect(f.urges.containsKey('mz3k'), isTrue);
+    expect(urgesOvercome(f), 2);
+    expect(urgeIdOf(t), urgeIdOf(t));
+  });
 }

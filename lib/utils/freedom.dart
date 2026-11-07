@@ -210,13 +210,24 @@ class Freedom {
       Freedom(plan: clearPlan ? null : (plan ?? this.plan), urges: urges ?? this.urges, slips: slips ?? this.slips);
 }
 
+/// Id d'une envie = son début : deux validations de la même envie n'en font qu'une.
+String urgeIdOf(int startMs) => 'u$startMs';
+
 Freedom parseFreedom(dynamic raw) {
   if (raw is! Map) return const Freedom();
   final urges = <String, FreedomUrge>{};
   if (raw['urges'] is Map) {
+    // Deux envies au même début = la même validée deux fois (deux écrans ouverts,
+    // bug 2026-11-07) : on n'en garde qu'une, la première par id.
+    final byStart = <int, FreedomUrge>{};
     for (final e in (raw['urges'] as Map).entries) {
       final u = FreedomUrge.fromJson(e.key.toString(), e.value);
-      if (u != null) urges[u.id] = u;
+      if (u == null) continue;
+      final prev = byStart[u.at];
+      if (prev == null || u.id.compareTo(prev.id) < 0) byStart[u.at] = u;
+    }
+    for (final u in byStart.values) {
+      urges[u.id] = u;
     }
   }
   final slips = <String, FreedomSlip>{};
