@@ -7,6 +7,12 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf, stripLeadEmoji;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
+import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
+import 'package:productivitwo_v1/utils/planning.dart' show deepWorkTitle;
+import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/half_days.dart' show paceOn, minutesByActivityDay, ActivityPace;
 import 'package:productivitwo_v1/utils/week_stats.dart' show weekSummary, WeekSummary;
@@ -290,14 +296,20 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   Widget build(BuildContext context) {
+    final toPlace = _toPlace();
+    final showPlace = MediaQuery.sizeOf(context).width >= 1100;
     return Container(
       color: kBBg,
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _pageHeader(),
+        _pageHeader(toPlace: toPlace.length),
         const SizedBox(height: 14),
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (showPlace) ...[
+              SizedBox(width: 300, child: _placeColumn(toPlace)),
+              const SizedBox(width: 16),
+            ],
             Expanded(child: _weekGrid()),
             if (_openDay != null) ...[
               const SizedBox(width: 20),
@@ -497,7 +509,20 @@ class _WeekViewState extends State<WeekView> {
         width: colW,
         top: 0,
         bottom: 0,
-        child: MouseRegion(
+        child: DragTarget<_PlaceItem>(
+          onWillAcceptWithDetails: (_) => !past,
+          onMove: (det) {
+            final m = _slotFromGlobal(i, det.offset, start, end, ppm);
+            if (m != null && (_drop?.day != i || _drop?.min != m)) setState(() => _drop = (day: i, min: m, item: det.data));
+          },
+          onLeave: (_) {
+            if (_drop?.day == i) setState(() => _drop = null);
+          },
+          onAcceptWithDetails: (det) {
+            final m = _slotFromGlobal(i, det.offset, start, end, ppm) ?? _drop?.min ?? start;
+            _dropItem(det.data, d, m);
+          },
+          builder: (ctx, cand, rej) => MouseRegion(
           cursor: past ? MouseCursor.defer : SystemMouseCursors.click,
           onHover: past
               ? null
@@ -512,16 +537,44 @@ class _WeekViewState extends State<WeekView> {
             behavior: HitTestBehavior.opaque,
             onTapUp: past ? null : (e) => _addBlockOn(d, at: slotAt(e.localPosition.dy)),
             child: Container(
+              key: _colKeys[i],
               decoration: BoxDecoration(
-                color: isToday ? kBPrimary.withOpacity(.03) : Colors.transparent,
+                color: cand.isNotEmpty
+                    ? const Color(0xFF6AA8FF).withOpacity(.06)
+                    : (isToday ? kBPrimary.withOpacity(.03) : Colors.transparent),
                 border: const Border(left: BorderSide(color: kBLine)),
               ),
             ),
           ),
         ),
+        ),
       ));
+      final drop = _drop;
+      if (drop != null && drop.day == i) {
+        final dur = drop.item.defaultMin;
+        children.add(Positioned(
+          left: left + 3,
+          width: colW - 6,
+          top: y(drop.min) + 1,
+          height: math.max(math.min(dur, end - drop.min) * ppm - 2, 18),
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A3355),
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: const Color(0xFF6AA8FF), width: 2),
+              ),
+              child: Text('${drop.item.title} · ${_hhmm(drop.min)} → ${_hhmm(drop.min + dur)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kBText, fontFeatures: _tabular)),
+            ),
+          ),
+        ));
+      }
       final hover = _gHover;
-      if (hover != null && hover.day == i && _gDragId == null) {
+      if (hover != null && hover.day == i && _gDragId == null && _drop == null) {
         children.add(Positioned(
           left: left + 3,
           width: colW - 6,
@@ -803,6 +856,343 @@ class _WeekViewState extends State<WeekView> {
         actionLabel: 'Annuler', onAction: () async {
       await widget.sync.updateBlockStatus(toKey, copy.id, 'deleted');
       await widget.sync.updateBlockStatus(fromKey, b.id, 'pending');
+    });
+  }
+
+  // ── À placer cette semaine (2026-11-07, maquette « Cette semaine, à placer », lot 2) ──
+  // Ce que la semaine demande encore et qui n'a pas de place : minimum de la
+  // Montre suisse par activité, prépas de séance, projets en retard, échéances.
+  // Une ligne se glisse sur la grille ; ce qui est posé se retire du reste.
+
+  ({int day, int min, _PlaceItem item})? _drop;
+  final List<GlobalKey> _colKeys = List.generate(14, (_) => GlobalKey());
+
+  bool _isUpcoming(ScheduleBlock b, DateTime d) =>
+      !d.isBefore(_today) && (d != _today || blockEndMin(b) > _nowMin);
+
+  List<_PlaceItem> _toPlace() {
+    final last = _dates.last;
+    if (last.isBefore(_today)) return const [];
+    final from = _dates.first.isBefore(_today) ? _today : _dates.first;
+    final all = [for (final d in _dates) for (final b in _dayBlocks(d)) (d: d, b: b)];
+    final upcoming = [for (final e in all) if (e.b.status == 'pending' && _isUpcoming(e.b, e.d)) e.b];
+    final taskIds = {for (final e in all) if (e.b.taskId != null && (e.b.status != 'skipped' || isLetGoBlock(e.b))) e.b.taskId!};
+    final out = <_PlaceItem>[];
+
+    // Montre suisse : 7 × le minimum sur la semaine, moins le fait et le posé.
+    final minutes = minutesByActivityDay(_sessions, DateTime.now());
+    final ymds = {for (final d in _dates) ymdOf(d)};
+    final watch = <_PlaceItem>[];
+    for (final a in widget.activities) {
+      if (a.deleted || a.isHabit || a.goalMin <= 0 || isBasicNeedName(a.name)) continue;
+      final need = a.goalMin * _days;
+      var done = 0;
+      (minutes[a.id] ?? const <String, int>{}).forEach((k, v) {
+        if (ymds.contains(k)) done += v;
+      });
+      final planned = upcoming.where((b) => b.activityId == a.id && b.taskId == null).fold<int>(0, (s, b) => s + b.durationMin);
+      final left = need - done - planned;
+      if (left < 10) continue;
+      watch.add(_PlaceItem(
+        key: 'watch:${a.id}',
+        group: 'Montre suisse · reste',
+        title: a.name,
+        remainingMin: left,
+        defaultMin: math.min(left, 45),
+        color: domainColor(a.domainId, widget.domains) ?? kBPrimary,
+        make: (s, dur) => ScheduleBlock(startTime: _hhmm(s), durationMin: dur, title: a.name, category: 'personal', activityId: a.id),
+      ));
+    }
+    watch.sort((x, y) => y.remainingMin.compareTo(x.remainingMin));
+    out.addAll(watch.take(6));
+
+    // Séances de la fenêtre dont la prépa n'a pas encore de bloc.
+    final live = widget.projects.where((p) => p.status == 'active').toList();
+    for (final p in live) {
+      for (final iv in interventionsOf(p)) {
+        final prep = iv.prep;
+        if (prep == null || prep.status == 'done' || prep.status == 'skipped') continue;
+        if (iv.date.isBefore(from) || iv.date.isAfter(last.add(const Duration(days: 2)))) continue;
+        if (taskIds.contains(prep.id)) continue;
+        out.add(_PlaceItem(
+          key: 'prep:${prep.id}',
+          group: 'Séances à préparer',
+          title: 'Préparer · ${iv.title}',
+          sub: 'séance ${_dm(iv.date)}${iv.timeRange != null ? ' · ${iv.timeRange}' : ''}',
+          defaultMin: prep.estimatedMin ?? 60,
+          color: kBAttention,
+          make: (s, dur) => ScheduleBlock(
+            startTime: _hhmm(s),
+            durationMin: dur,
+            title: stripLeadEmoji(prep.title),
+            category: 'project',
+            projectId: p.id,
+            taskId: prep.id,
+            actionId: prep.actions.where((a) => !a.done).firstOrNull?.id,
+          ),
+        ));
+      }
+    }
+
+    // Projets en retard sur leur plan, sans Deep work visé dans la fenêtre.
+    final late = <(Project, int)>[];
+    for (final p in live) {
+      if (isFolderProject(p, widget.projects)) continue;
+      final plan = projectPlan(p, _today);
+      if (plan.delta >= 0) continue;
+      if (upcoming.any((b) => b.projectId == p.id && b.taskId == null)) continue;
+      late.add((p, -plan.delta));
+    }
+    late.sort((a, b) => b.$2.compareTo(a.$2));
+    for (final (p, n) in late.take(4)) {
+      out.add(_PlaceItem(
+        key: 'late:${p.id}',
+        group: 'Projets en retard',
+        title: p.title,
+        sub: '$n tâche${n > 1 ? 's' : ''} de retard · un Deep work visé',
+        defaultMin: 90,
+        color: const Color(0xFFFF8F86),
+        make: (s, dur) => ScheduleBlock(
+            startTime: _hhmm(s),
+            durationMin: dur,
+            title: deepWorkTitle(p.title),
+            category: 'project',
+            projectId: p.id,
+            timeBlock: 'deep'),
+      ));
+    }
+
+    // Échéances de la fenêtre (tâches ouvertes hors séance) sans bloc.
+    final due = <_PlaceItem>[];
+    for (final p in live) {
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped' || t.isMilestone || t.interventionId != null) continue;
+        if (t.id == 'gtd-flow' || taskIds.contains(t.id)) continue;
+        final end = t.endDate;
+        if (end == null) continue;
+        final d = dateOnly(end);
+        if (d.isBefore(from) || d.isAfter(last)) continue;
+        due.add(_PlaceItem(
+          key: 'due:${t.id}',
+          group: 'Échéances',
+          title: t.title,
+          sub: 'pour ${_dm(d)} · ${p.title}',
+          defaultMin: t.estimatedMin ?? 45,
+          color: domainColor(p.domainId, widget.domains) ?? kBPrimary,
+          sortKey: d,
+          make: (s, dur) => ScheduleBlock(
+            startTime: _hhmm(s),
+            durationMin: dur,
+            title: t.title,
+            category: 'project',
+            projectId: p.id,
+            taskId: t.id,
+            actionId: t.actions.where((a) => !a.done).firstOrNull?.id,
+          ),
+        ));
+      }
+    }
+    due.sort((a, b) => a.sortKey!.compareTo(b.sortKey!));
+    out.addAll(due.take(5));
+    return out;
+  }
+
+  static final _timeItems = [
+    _PlaceItem(
+      key: 'time:deep',
+      group: 'Poser du temps',
+      title: 'Deep work',
+      defaultMin: 90,
+      color: const Color(0xFF6AA8FF),
+      make: (s, dur) => ScheduleBlock(
+          startTime: '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}',
+          durationMin: dur,
+          title: 'Deep work',
+          category: 'project',
+          timeBlock: 'deep'),
+    ),
+    _PlaceItem(
+      key: 'time:small',
+      group: 'Poser du temps',
+      title: 'Petites choses',
+      defaultMin: 45,
+      color: const Color(0xFFFF9A5C),
+      make: (s, dur) => ScheduleBlock(
+          startTime: '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}',
+          durationMin: dur,
+          title: 'Petites choses',
+          category: 'personal',
+          timeBlock: 'small'),
+    ),
+  ];
+
+  Widget _placeColumn(List<_PlaceItem> items) {
+    final groups = <String, List<_PlaceItem>>{};
+    for (final it in items) {
+      (groups[it.group] ??= []).add(it);
+    }
+    final past = _dates.last.isBefore(_today);
+    return Container(
+      key: const ValueKey('week-place'),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1F17),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF2C5A45)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(
+            child: Text('À placer cette semaine',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kBText)),
+          ),
+          if (items.isNotEmpty)
+            Text('${items.length}', style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+            past
+                ? 'Cette semaine est passée.'
+                : items.isEmpty
+                    ? 'Tout ce que la semaine demande a sa place.'
+                    : 'Ce que ta semaine demande et qui n’a pas encore de place. Glisse une ligne sur un jour.',
+            style: const TextStyle(fontSize: 12, color: kBText3, height: 1.35)),
+        const SizedBox(height: 6),
+        Expanded(
+          child: ListView(children: [
+            for (final e in groups.entries) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 4),
+                child: Text(e.key.toUpperCase(),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+              ),
+              for (final it in e.value) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
+            ],
+          ]),
+        ),
+        if (!past) ...[
+          const SizedBox(height: 6),
+          const Text('POSER DU TEMPS',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+          const SizedBox(height: 6),
+          Row(children: [
+            for (final it in _timeItems) ...[
+              if (it != _timeItems.first) const SizedBox(width: 8),
+              Expanded(child: _draggable(it, _timeChip(it))),
+            ],
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  Widget _timeChip(_PlaceItem it) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: it.color.withOpacity(.14), borderRadius: BorderRadius.circular(999)),
+        child: Text(it.title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: it.color)),
+      );
+
+  Widget _placeRow(_PlaceItem it) => _draggable(
+        it,
+        Container(
+          key: ValueKey('week-place-${it.key}'),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0x09FFFFFF),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0x0DFFFFFF)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.drag_indicator, size: 16, color: kBText4),
+            const SizedBox(width: 6),
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: it.color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(it.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kBText)),
+                if (it.sub != null)
+                  Text(it.sub!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11.5, color: kBText3)),
+              ]),
+            ),
+            if (it.remainingMin > 0) ...[
+              const SizedBox(width: 6),
+              Text(_fmtHm(it.remainingMin),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kBAttention, fontFeatures: _tabular)),
+            ],
+          ]),
+        ),
+      );
+
+  Widget _draggable(_PlaceItem it, Widget child) => MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        child: Draggable<_PlaceItem>(
+          data: it,
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          onDragEnd: (_) {
+            if (_drop != null) setState(() => _drop = null);
+          },
+          feedback: Material(
+            color: Colors.transparent,
+            child: Transform.translate(
+              offset: const Offset(-20, -14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A3355),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: it.color, width: 1.5),
+                  boxShadow: const [BoxShadow(color: Color(0x80000000), blurRadius: 18, offset: Offset(0, 8))],
+                ),
+                child: Text(it.title,
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: kBText, decoration: TextDecoration.none)),
+              ),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: .45, child: child),
+          child: child,
+        ),
+      );
+
+  int? _slotFromGlobal(int i, Offset global, int start, int end, double ppm) {
+    final box = _colKeys[i].currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final dy = box.globalToLocal(global).dy;
+    return ((((dy - 6) / ppm + start) ~/ _kSnap) * _kSnap).clamp(start, end - _kSnap).toInt();
+  }
+
+  Future<void> _dropItem(_PlaceItem it, DateTime d, int startMin) async {
+    setState(() => _drop = null);
+    if (d.isBefore(_today)) {
+      _snack('On ne pose pas un bloc dans un jour passé.');
+      return;
+    }
+    final dur = await showDialog<int>(
+      context: context,
+      builder: (_) => _PlaceDurationDialog(
+        title: '${it.title} · ${_dm(d)} à ${_hhmm(startMin)}',
+        initial: it.defaultMin,
+        remaining: it.remainingMin,
+      ),
+    );
+    if (dur == null || !mounted) return;
+    final key = ymdOf(d);
+    final block = it.make(startMin, dur);
+    setState(() => (_byDay[key] ??= []).add(block));
+    await widget.sync.upsertScheduleBlock(key, block);
+    final left = it.remainingMin - dur;
+    _snack(
+        '« ${it.title} » posé ${_kDayLong[d.weekday - 1]} ${d.day} à ${_hhmm(startMin)}'
+        '${it.remainingMin > 0 ? (left >= 10 ? ' · il reste ${_fmtHm(left)}' : ' · couvert') : ''}',
+        actionLabel: 'Annuler', onAction: () async {
+      setState(() => _byDay[key]?.remove(block));
+      await widget.sync.updateBlockStatus(key, block.id, 'deleted');
     });
   }
 
@@ -1286,7 +1676,7 @@ class _WeekViewState extends State<WeekView> {
     return out;
   }
 
-  Widget _pageHeader() {
+  Widget _pageHeader({int toPlace = 0}) {
     final title = _days == 7
         ? 'Semaine du ${_start.day} ${_kMonthLong[_start.month - 1]}'
         : '14 jours à partir du ${_start.day} ${_kMonthShort[_start.month - 1]}';
@@ -1307,6 +1697,7 @@ class _WeekViewState extends State<WeekView> {
       '${_fmtHm(planned)} posées sur ${_fmtHm(cap)}',
       if (dated > 0) '$dated rendez-vous et séance${dated > 1 ? 's' : ''}',
       if (toDo > 0) '$toDo bloc${toDo > 1 ? 's' : ''} à faire',
+      if (toPlace > 0) '$toPlace à placer',
       if (contract != null && contract.engagements.isNotEmpty)
         'contrat ${contract.kept} / ${contract.engagements.length} au rythme',
     ].join(' · ');
@@ -1600,6 +1991,106 @@ class _CapacityDialogState extends State<_CapacityDialog> {
                     : null,
                 style: FilledButton.styleFrom(backgroundColor: kBPrimary, foregroundColor: kBBg),
                 child: const Text('Enregistrer'),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Une chose « à placer » : glissée sur la grille, elle devient un bloc.
+class _PlaceItem {
+  final String key;
+  final String group;
+  final String title;
+  final String? sub;
+  /// Ce qu'il manque encore (Montre suisse), 0 = rien à compter.
+  final int remainingMin;
+  final int defaultMin;
+  final Color color;
+  final DateTime? sortKey;
+  final ScheduleBlock Function(int startMin, int durationMin) make;
+  const _PlaceItem({
+    required this.key,
+    required this.group,
+    required this.title,
+    this.sub,
+    this.remainingMin = 0,
+    required this.defaultMin,
+    required this.color,
+    this.sortKey,
+    required this.make,
+  });
+}
+
+/// Au lâcher : la durée du bloc (« tout le reste » pour la Montre suisse).
+class _PlaceDurationDialog extends StatefulWidget {
+  final String title;
+  final int initial;
+  final int remaining;
+  const _PlaceDurationDialog({required this.title, required this.initial, required this.remaining});
+
+  @override
+  State<_PlaceDurationDialog> createState() => _PlaceDurationDialogState();
+}
+
+class _PlaceDurationDialogState extends State<_PlaceDurationDialog> {
+  late int _min = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final choices = {30, 45, 60, 90, if (widget.remaining >= 10 && widget.remaining <= 4 * 60) widget.remaining, widget.initial}
+        .toList()
+      ..sort();
+    final left = widget.remaining - _min;
+    return Dialog(
+      backgroundColor: const Color(0xFF10241B),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFF3A5A4A))),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kBText)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final m in choices)
+                InkWell(
+                  key: ValueKey('place-dur-$m'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => setState(() => _min = m),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: m == _min ? const Color(0xFF6AA8FF) : const Color(0x12FFFFFF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(_fmtHm(m),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: m == _min ? const Color(0xFF06142A) : kBText2)),
+                  ),
+                ),
+            ]),
+            if (widget.remaining > 0) ...[
+              const SizedBox(height: 8),
+              Text(left >= 10 ? 'il restera ${_fmtHm(left)} à placer' : 'couvert pour la semaine',
+                  style: const TextStyle(fontSize: 12, color: kBText3)),
+            ],
+            const SizedBox(height: 14),
+            Row(children: [
+              const Spacer(),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+              const SizedBox(width: 6),
+              FilledButton(
+                key: const ValueKey('place-confirm'),
+                style: FilledButton.styleFrom(backgroundColor: kBPrimary, foregroundColor: kBBg),
+                onPressed: () => Navigator.pop(context, _min),
+                child: const Text('Poser le bloc'),
               ),
             ]),
           ]),

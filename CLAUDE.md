@@ -158,8 +158,14 @@ rendez-vous agenda et séances en or `_isDated`, fait, lâché, déplacé, en co
 rouge « maintenant » ; **glisser** un bloc à faire = autre heure ou autre jour (`_gridCommit`, pas de 15 min : d'un jour à l'autre =
 copie à destination + origine `skipped` / `reporte`, comme le report au lendemain ; jamais un miroir agenda ni un jour passé), **bord
 bas** = durée, **clic sur un créneau vide** = nouveau bloc à ce quart d'heure (`_addBlockOn(at:)`), tap = « Modifier le bloc », clic
-droit = Déplacer à demain · Retirer. En-tête : « n blocs à faire » au lieu des tâches en retard / à caser. Suite : colonne « À placer
-cette semaine » (lot 2), ménage du rail (lot 3).
+droit = Déplacer à demain · Retirer. En-tête : « n blocs à faire » au lieu des tâches en retard / à caser. **À placer cette semaine** (lot 2, colonne de 300 px à
+gauche de la grille dès 1100 px, `_placeColumn` / `_toPlace` → `_PlaceItem`) : MONTRE SUISSE · RESTE (activités à minimum, hors
+besoins de base : 7 × minimum − chrono de la fenêtre − blocs à venir de l'activité, ≥ 10 min), SÉANCES À PRÉPARER (prépa 📝 ouverte
+d'une séance de la fenêtre + 2 j, sans bloc sur sa tâche), PROJETS EN RETARD (`projectPlan` en retard, sans bloc visé sur le projet →
+Deep work visé), ÉCHÉANCES (tâches ouvertes hors séance qui finissent dans la fenêtre, sans bloc) ; en bas, POSER DU TEMPS (Deep work ·
+Petites choses). Une ligne se GLISSE sur un jour (`Draggable` → `DragTarget` par colonne, fantôme à l'heure visée), au lâcher la durée
+(`_PlaceDurationDialog` : 30 · 45 · 1 h · 1 h 30 · tout le reste) puis le bloc est posé (`_dropItem`, « Annuler »), et la ligne se
+recalcule (« il reste … » / disparue). Suite : ménage du rail (lot 3).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
