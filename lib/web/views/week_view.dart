@@ -1203,12 +1203,19 @@ class _WeekViewState extends State<WeekView> {
         ? 'Semaine du ${_start.day} ${_kMonthLong[_start.month - 1]}'
         : '14 jours à partir du ${_start.day} ${_kMonthShort[_start.month - 1]}';
     final isCurrent = _days == 7 ? _start == weekStart(_today) : _start == _today;
-    final open = active - done;
-    final summary = _hideDone
-        ? '$open tâche${open > 1 ? 's' : ''} à faire · $late en retard · $toPlace à caser'
-            '${done > 0 ? ' · $done faite${done > 1 ? 's' : ''} masquée${done > 1 ? 's' : ''}' : ''}'
-        : '$done / $active tâche${active > 1 ? 's' : ''} active${active > 1 ? 's' : ''} faite${done > 1 ? 's' : ''}'
-            ' · $late en retard · $toPlace à caser';
+    final planned = [for (final d in _dates) plannedMin(_dayBlocks(d), window: _window)].fold<int>(0, (a, b) => a + b);
+    final cap = [for (final d in _dates) capacityMinFor(_capacity, d)].fold<int>(0, (a, b) => a + b);
+    final sessionIds = sessionTaskIdsOf(widget.projects);
+    final dated = [for (final d in _dates) ..._dayBlocks(d).where((b) => _isDated(b, sessionIds))].length;
+    final contract = _isCurrentWeek ? _contract() : null;
+    final summary = [
+      '${_fmtHm(planned)} posées sur ${_fmtHm(cap)}',
+      if (dated > 0) '$dated rendez-vous et séance${dated > 1 ? 's' : ''}',
+      if (late > 0) '$late tâche${late > 1 ? 's' : ''} en retard',
+      if (toPlace > 0) '$toPlace à caser',
+      if (contract != null && contract.engagements.isNotEmpty)
+        'contrat ${contract.kept} / ${contract.engagements.length} au rythme',
+    ].join(' · ');
     final titleBlock = Row(children: [
       _iconBtn(Icons.chevron_left, _days == 7 ? 'Semaine précédente' : '14 jours avant', () => _shift(-1)),
       _iconBtn(Icons.chevron_right, _days == 7 ? 'Semaine suivante' : '14 jours après', () => _shift(1)),
@@ -1238,12 +1245,7 @@ class _WeekViewState extends State<WeekView> {
     ]);
     final controls = <Widget>[
       _segmented(),
-      _pillButton(_hideDone ? 'Afficher le fait' : 'Masquer le fait',
-          icon: _hideDone ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-          onTap: () => _setHideDone(!_hideDone)),
-      _iconBtn(Icons.tune_outlined, 'Capacité par jour et journée active', _editCapacity),
-      _pillButton('Planifier la semaine avec Claude',
-          primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
+      _pillButton('Planifier avec Claude', primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
     // Sous ~1100 px, les commandes passent sous le titre au lieu de l'écraser.
     return LayoutBuilder(builder: (ctx, box) {
@@ -1377,18 +1379,37 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _dayHeaderRow() {
     return SizedBox(
-      height: 58,
+      height: 36,
       child: Row(children: [
         SizedBox(
           width: _leftW,
-          child: const Padding(
-            padding: EdgeInsets.only(left: 18),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('TÂCHES PAR DOMAINE',
-                  style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 18, right: 8),
+            child: Row(children: [
+              const Expanded(
+                child: Text('LES TÂCHES DE LA SEMAINE',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+              ),
+              Tooltip(
+                message: _hideDone ? 'Afficher les tâches faites' : 'Masquer les tâches faites',
+                child: InkWell(
+                  key: const ValueKey('week-hide-done'),
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _setHideDone(!_hideDone),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(_hideDone ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 14, color: kBText3),
+                      const SizedBox(width: 4),
+                      Text(_hideDone ? 'fait masqué' : 'fait visible',
+                          style: const TextStyle(fontSize: 11.5, color: kBText3)),
+                    ]),
+                  ),
+                ),
+              ),
+            ]),
           ),
         ),
         for (final d in _dates) Expanded(child: _dayHeader(d)),
@@ -1396,61 +1417,20 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
+  /// En-tête de colonne du Gantt : le jour seul (la charge vit dans LA SEMAINE).
   Widget _dayHeader(DateTime d) {
-    final key = ymdOf(d);
-    final blocks = _byDay[key] ?? const <ScheduleBlock>[];
-    final cap = capacityMinFor(_capacity, d);
-    final planned = plannedMin(blocks, window: _window);
-    final blocked = isBlockedDay(blocks, window: _window);
     final isToday = d == _today;
     final weekend = d.weekday >= 6;
-    final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
-    final gaugeColor = blocked ? kBAttention : (v >= 1 ? kBAlert : kBPrimary);
-    final nb = '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}';
-    final tip = blocked
-        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée active (${_window.label})'
-        : cap == 0
-            ? 'Jour de repos (capacité 0)${blocks.isEmpty ? '' : ' · $nb planifié${blocks.length > 1 ? 's' : ''}'}'
-            : '${_fmtHm(planned)} planifiées sur ${_fmtHm(cap)} de capacité · $nb'
-                '${planned >= cap ? ' · journée pleine' : ''}';
-    return Tooltip(
-      message: tip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: Container(
+    return Container(
       color: isToday ? kBPrimary.withOpacity(.10) : Colors.transparent,
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('${_kDayShort[d.weekday - 1]} ${d.day}',
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: isToday ? kBPrimary : (weekend ? kBText4 : kBText2),
-                fontFeatures: _tabular)),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: SizedBox(
-            height: 4,
-            child: Stack(children: [
-              Container(color: const Color(0x14FFFFFF)),
-              FractionallySizedBox(widthFactor: blocked ? 1 : v, child: Container(color: gaugeColor)),
-            ]),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          cap == 0
-              ? (blocks.isEmpty ? 'repos' : 'repos · $nb')
-              : blocked
-                  ? 'journée bloquée'
-                  : '${_fmtHm(planned)} / ${_fmtHm(cap)} · $nb',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.centerLeft,
+      child: Text('${_kDayShort[d.weekday - 1]} ${d.day}',
           style: TextStyle(
-              fontSize: 11, color: blocked ? kBAttention : kBText4, fontFeatures: _tabular),
-        ),
-      ]),
-      ),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: isToday ? kBPrimary : (weekend ? kBText4 : kBText2),
+              fontFeatures: _tabular)),
     );
   }
 
@@ -1877,14 +1857,13 @@ class _WeekViewState extends State<WeekView> {
                     decoration: BoxDecoration(color: kBAttention, borderRadius: BorderRadius.circular(1)))),
             'jalon'),
         const Spacer(),
-        const Flexible(
-          child: Text(
-            'Clic sur un jour = caser · glisser = déplacer · bord droit = échéance · clic droit = couleur · point = bloc (menu)',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 11, color: kBText4),
-          ),
+        const Tooltip(
+          message: 'Clic sur un jour = caser · glisser = déplacer · bord droit = échéance\nclic droit = couleur · point = bloc (menu)',
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.info_outline, size: 14, color: kBText4),
+            SizedBox(width: 4),
+            Text('Les gestes', style: TextStyle(fontSize: 11, color: kBText4)),
+          ]),
         ),
       ]),
     );
