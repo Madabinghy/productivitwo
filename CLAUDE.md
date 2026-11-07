@@ -1381,6 +1381,20 @@ vers le haut à droite, trois traînées ; Offensive = l'infini du Deep work (de
 Branché : ronds et tuile d'Aujourd'hui, MES MODES de Ma vie, écrans Guérilla / Offensive, boutons « Offensive sur ce projet » (fiche
 projet, projet déplié, page focus). Le widget iOS Lanceurs garde ses SF Symbols (⚡ / ↗).
 
+## MAINTENANT, la bonne chose (2026-11-07, maquette validée, 3 lots)
+
+UNE chose en grand, choisie dans un ordre fixe, avec la règle qui a gagné. **Lot 1 livré (l'ordre et le « parce que »)** : logique
+pure `utils/now_pick.dart` (`pickNow` → `NowPick {kind, block, current, stake, why}`) — un rendez-vous daté dans `kNowFixedLeadMin`
+(15) min (`nextFixed`, seul cas qui passe devant un chrono : « J'y vais » arrête le chrono et lance le bloc) · le chrono qui tourne ·
+le bloc en cours · ce qui se perd ce soir (gain `losesTonight` / `seriesTonight` / `tierTonight` des enjeux `buildStakeBoard`) · la
+parole (gain « Parole tenue ») · les visées (gain `focus`) — ces trois-là seulement s'il reste ≥ `kNowStakeRoomMin` (15) min avant le
+prochain bloc, jamais un geste « bloc » — · le prochain bloc · sinon le mode du moment (Flemme → Guérilla, Normal → Sniper, En forme →
+Offensive ; rien en recharge). `NowCard` : ligne « parce que : … » au-dessus du titre (ambre, braise pour ce qui se perd ; « dans
+10 min · un rendez-vous ne bouge pas »), et pour un enjeu ou le mode une carte courte (`_pickFrame` : raison, titre, avancement ·
+estimation, UN bouton `stakeButtonLabel` = +1 · Lancer · Focus · Noter le relevé, ou « Lancer Sniper » → `openRun`) ; branchée par
+`today_view.dart` (`stakes`, `onStake: _runStake`, `modeOfMoment`, `onMode: openRun`). Lots 2 (« Autre chose › » : les trois
+suivantes) et 3 (selon le moment : démarrer, bloc fini, ce soir il reste) à venir.
+
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 
 Poser demain en dix minutes le soir, la semaine le dimanche, à partir de ce qui se joue. **Lot 1 (logique pure)** :

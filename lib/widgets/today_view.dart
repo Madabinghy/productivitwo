@@ -761,6 +761,12 @@ class TodayViewState extends State<TodayView> {
                   const SizedBox(height: 16),
                   NowCard(
                     onGoToBed: _goToBed,
+                    stakes: stakes,
+                    onStake: _runStake,
+                    modeOfMoment: _modeKind == null
+                        ? null
+                        : (kind: _modeKind!, label: switch (_modeKind) { kGuerillaKind => 'Guérilla', kOffensiveKind => 'Offensive', _ => 'Sniper' }),
+                    onMode: openRun,
                     badges: widget.badges,
                     logic: widget.logic,
                     blocks: _liveBlocks,
