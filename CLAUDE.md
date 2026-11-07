@@ -245,6 +245,11 @@ colonne Engagements / Routines à droite (elles vivent dans Cette semaine et Auj
 ouvertes · au programme · visées aujourd'hui · en retard · à re-viser), recherche dans les titres (`_query`, dans `_filter`), « + Action »
 (action simple) ; dessous, les filtres en UNE ligne de menus (`_filterBar`, `_menuPill` : Je suis · J'ai · Domaine · Pour · En retard
 seulement, ✕ pour effacer, mêmes préférences qu'avant) et « En pause · n » ; la liste prend la page.
+**Par urgence** (lot 2, vue par défaut, bascule « Par urgence | Par projet » de l'en-tête, `_viewSwitch`, `web.actions.by_urgency`) :
+`_urgencyCard` range chaque action ouverte (filtres compris) dans la PREMIÈRE section qui la retient — AU PROGRAMME AUJOURD'HUI (bloc à
+faire du jour qui la vise, « bloc HH:MM ») · VISÉES AUJOURD'HUI · EN RETARD · À RE-VISER (ambre) · CETTE SEMAINE (date de travail à
+7 jours) · ENSUITE · UNE PAR PROJET (projets dont rien n'est encore listé) · SANS PROJET ; 6 lignes par section puis « + n autres » ;
+ligne `_entryRow` (« Projet › Tâche » au-dessus du titre, état, étapes, estimation). « Par projet » = l'ancienne liste.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
