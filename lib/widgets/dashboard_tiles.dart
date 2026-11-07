@@ -262,6 +262,27 @@ class _Tile extends StatelessWidget {
                   child: Container(width: 2, decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(1))),
                 ),
             ])),
+            ] else if (t.stairs && t.mini.isNotEmpty) ...[
+              // L'escalier de la remontée : une marche par série, ravivées en braise, la prochaine cerclée.
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 40,
+                child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  for (final (i, m) in t.mini.indexed)
+                    Expanded(
+                      child: Container(
+                        key: ValueKey('tile-step-$i'),
+                        height: 6 + 34 * (i + 1) / t.mini.length,
+                        margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                        decoration: BoxDecoration(
+                          color: m == TileMark.on ? const Color(0xFFFF8A3D) : const Color(0xFF1F2A24),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                          border: m == TileMark.current ? Border.all(color: const Color(0xFFFFC27A), width: 1.4) : null,
+                        ),
+                      ),
+                    ),
+                ]),
+              ),
             ] else if (t.mini.isNotEmpty) ...[
               const SizedBox(height: 6),
               Row(children: [
