@@ -183,7 +183,9 @@ DU MOMENT (`rankProjectMoments`, même classement que le mobile ; « parce que :
 `_reasonOf` ; briques, plan fait / attendu, prochaine action cochable, « Lancer le chrono » sur l'activité de l'action sinon du projet
 (`_startChrono`, ferme le chrono ouvert), « Ouvrir le projet », « Suivant › » = passé pour la session, `_skippedMoments`) puis POUR
 AUJOURD'HUI (`todayActions` : au programme du jour d'après `_byDay`, visées aujourd'hui, un retard par projet ; la parole n'est pas lue
-sur le web ; cochable, tap = projet sur la tâche).
+sur le web ; cochable, tap = projet sur la tâche). **Tableau du plus pressant** (lot 3) : en Actifs, l'ordre est celui de
+`rankProjectMoments` (un dossier prend la place de son sous-projet le mieux classé), puis l'échéance ; colonne « Projet · du plus
+pressant ».
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
 plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
 dans le shell ; **s'ouvre sur Vision** au clic sur un projet (essai 2026-10), sur **Plan d'action** quand elle vise
