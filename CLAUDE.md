@@ -1827,7 +1827,12 @@ semaine tenue) ni de série à rallumer dans l'interface : carte Perdu hier sans
 restent annulables ; la journée difficile s'offre dès UNE série cassée), plus de 🔥 k / 3 sur la tuile Journée parfaite, plus de
 BRAISES dans sa feuille ni dans « Badges en jeu », bilan du soir « Journée parfaite · tout est tenu », textes et règles sans
 braise. Le registre (`emberLedger`) est toujours rejoué : les jours déjà comblés le restent, aucune série ne casse après coup.
-Restent comme filets : journée difficile, Le minimum, gel, veille. Suite (à valider) : alléger le Sniper.
+Restent comme filets : journée difficile, Le minimum, gel, veille.
+**Sniper allégé** (lot 3, même jour, À L'ESSAI — le user pense que régler le tir fait l'intérêt du Sniper, il teste puis on
+décide) : flag `kSniperTuningEnabled = false` — le viseur devient une simple liste « CE QUI TOMBE » (tap = écarter / remettre),
+sans réglage − / + ni mini-tirs (`_stepper`), sans ordre à la main (`ReorderableListView`, « Ordre conseillé »), sans les chiffres
+précision · enjeux tombés · décision au bilan ; ⓘ `kRuleSniper` sans la carte « Ajuster le tir ». Le calcul du temps exact, les
+tirs, la pause et le badge restent. Revenir = repasser le flag à true (et remettre la carte de la règle).
 
 ## Badges en cartes (2026-11-01, maquette validée « Badges en cartes »)
 

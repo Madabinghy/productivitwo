@@ -27,3 +27,9 @@ final bool kCollectionMetaEnabled = false;
 /// casse rétroactivement. Même principe `final`.
 final bool kEmbersEnabled = false;
 
+/// Sniper allégé (audit 2026-11-07) : false = le viseur est une simple liste
+/// « ce qui tombe, avec combien de temps » (on écarte d'un tap) — plus de
+/// réglage − / + ni de mini-tirs, plus d'ordre à la main, plus de chiffres de
+/// précision au bilan. Le calcul du temps exact et l'enchaînement des tirs
+/// restent. Même principe `final`.
+final bool kSniperTuningEnabled = false;
