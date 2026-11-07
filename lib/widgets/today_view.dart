@@ -775,7 +775,7 @@ class TodayViewState extends State<TodayView> {
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
                   // Le minimum : plus de carte sur la page, la tuile AU MINIMUM l'ouvre (retour user 2026-11-06).
-                  ClimbCard(logic: widget.logic, onChanged: _onEmbersChanged, badges: () => widget.badges?.deck?.badges ?? const []),
+                  // La remontée aussi : la tuile REMONTÉE l'annonce et ouvre la carte (retour user 2026-11-07).
                   LostYesterdaySection(
                     logic: widget.logic,
                     onChanged: _onEmbersChanged,
@@ -1297,6 +1297,22 @@ class TodayViewState extends State<TodayView> {
   void _openPerfectDaySheet() {
     final bc = widget.badges;
     if (bc == null) return;
+    if (widget.logic.minimumNow == null && widget.logic.climbNow != null) {
+      showFiche<void>(context, builder: (ctx, scroll) => StatefulBuilder(
+            builder: (ctx, setLocal) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
+              ClimbCard(
+                logic: widget.logic,
+                badges: () => widget.badges?.deck?.badges ?? const [],
+                onChanged: () {
+                  if (widget.logic.climbNow == null && ctx.mounted) Navigator.pop(ctx);
+                  if (ctx.mounted) setLocal(() {});
+                  _onEmbersChanged();
+                },
+              ),
+            ]),
+          ));
+      return;
+    }
     if (widget.logic.minimumNow != null) {
       showFiche<void>(context, builder: (ctx, scroll) => StatefulBuilder(
             builder: (ctx, setLocal) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
