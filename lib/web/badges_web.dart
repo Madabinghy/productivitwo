@@ -156,7 +156,8 @@ class WebBadgesCard extends StatefulWidget {
   final List<ChainRun> chainRuns;
   final int dayStartMin;
   final bool folded;
-  final VoidCallback onToggleFold;
+  /// null = pas repliable (dans le tiroir d'Aujourd'hui).
+  final VoidCallback? onToggleFold;
   final WebHuntStore? huntStore;
   final List<ScheduleBlock> todayBlocks;
   /// Source partagée du deck (Aujourd'hui) ; sans elle, la carte a la sienne.
@@ -173,7 +174,7 @@ class WebBadgesCard extends StatefulWidget {
     required this.chainRuns,
     required this.dayStartMin,
     required this.folded,
-    required this.onToggleFold,
+    this.onToggleFold,
     this.huntStore,
     this.todayBlocks = const [],
     this.source,
@@ -257,7 +258,7 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
               Expanded(child: Text('· ${deck.seriesRunning} série${deck.seriesRunning > 1 ? 's' : ''} en cours', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kBText3))),
             ] else
               const Spacer(),
-            Icon(widget.folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
+            if (widget.onToggleFold != null) Icon(widget.folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
           ]),
         ),
         if (!widget.folded) ...[

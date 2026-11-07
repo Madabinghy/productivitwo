@@ -688,7 +688,10 @@ tout s'empile comme avant (`_sideColumn`). **MAINTENANT web = `pickNow`** (lot 2
 bloc en cours, se perd ce soir, parole, visées, prochain bloc ; pas de modes sur le web), ligne « parce que : … », carte d'un enjeu
 (`_stakeFrame` : titre, avancement, gains, UN bouton +1 · Lancer le chrono · Noter le relevé), « Autre chose › » (`_openOther`,
 `nowAlternatives`) et « Pas maintenant » (`_postponeStake` : plus tard aujourd'hui 2 h · viser demain pour une action de projet ;
-compteur de reports et « 5 minutes, maintenant » dès 2, mêmes clés SharedPreferences que le mobile, propres au navigateur).
+compteur de reports et « 5 minutes, maintenant » dès 2, mêmes clés SharedPreferences que le mobile, propres au navigateur). **Ménage** (lot 3) : « La journée en un coup d'œil » est
+retirée de MAINTENANT (la frise le montre) ; dans le tiroir les modules sont toujours dépliés, sans chevron (`_inDrawer` :
+`_isFolded` / `_foldHeader`, `onToggleFold` null pour `WebBadgesCard` / `WebObjectivesCard` / `SessionsCard`), un panneau vide dit
+« Rien ici aujourd'hui ».
 **Braises** (maquette validée 2026-10-30, « Braises de rattrapage », recommandations retenues) : une **journée parfaite** forge une
 braise (réserve `kEmberCap` = 3) ; une braise **rallume une série de routine cassée HIER**, à condition d'atteindre la routine AUJOURD'HUI
 (sinon elle ne coûte rien) ; une série ne se rallume qu'une fois tous les 30 jours (`kRekindleCooldownDays`) ; le jour comblé compte pour
