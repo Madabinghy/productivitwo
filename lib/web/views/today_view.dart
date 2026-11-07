@@ -50,17 +50,12 @@ import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
-// Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
-// chrono) · PROGRAMME DU JOUR (frise horaire à l'échelle) · CETTE SEMAINE
-// (à traiter, engagements, échéances).
+// Vue Aujourd'hui (web, remise en ordre 2026-11-07) : une colonne pour agir
+// (MAINTENANT · CE QUI SE JOUE · ENSUITE), la frise pour voir, et le reste
+// (routines, objectifs, chronos, semaine, collection) dans un tiroir ouvert
+// depuis le rail de droite.
 
 const _kCategoryColor = kBCategoryColor;
-const _kCategoryLabel = {
-  'project': 'Projets',
-  'routine': 'Routines',
-  'personal': 'Perso',
-  'break': 'Pauses',
-};
 
 const _kDays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 const _kMonths = [
@@ -1017,9 +1012,6 @@ class TodayViewState extends State<TodayView> {
 
   void _togglePanel(String key) {
     setState(() => _drawerKey = _drawerKey == key ? null : key);
-    // Le contenu du panneau est toujours déplié.
-    final fold = key == 'collection' ? 'badges' : key;
-    if (_drawerKey != null) _unfold(fold);
   }
 
   /// Pastille d'attention d'un bouton du rail (null = rien).
@@ -1099,7 +1091,8 @@ class TodayViewState extends State<TodayView> {
   /// Le panneau ouvert : les modules existants, dépliés, sous un titre et ×.
   Widget _drawer(String key) {
     final label = _kPanels.firstWhere((p) => p.key == key).label;
-    final List<Widget> body = switch (key) {
+    _inDrawer = true;
+    final List<Widget> raw = switch (key) {
       'routines' => [_routinesCard()],
       'objectives' => [_objectivesCard()],
       'chronos' => [_sessionsCard()],
@@ -1109,6 +1102,15 @@ class TodayViewState extends State<TodayView> {
           if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[const SizedBox(height: 18), _elanCard()],
         ],
     };
+    _inDrawer = false;
+    // Un module sans rien à montrer se réduit à rien : le dire.
+    final body = raw.where((w) => !(w is SizedBox && w.child == null && w.height == 0.0)).toList();
+    if (body.isEmpty) {
+      body.add(const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text('Rien ici aujourd’hui.', style: TextStyle(fontSize: 13, color: kBText3)),
+      ));
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(
@@ -1189,10 +1191,6 @@ class TodayViewState extends State<TodayView> {
         ),
       ),
     );
-  }
-
-  void _unfold(String key) {
-    if (_isFolded(key)) _toggleFold(key);
   }
 
   // En-tête : date + résumé, Demain, « Ta journée » et Planifier à droite
@@ -1454,8 +1452,6 @@ class TodayViewState extends State<TodayView> {
     final links = _nowLinks(pick);
     children.addAll([
       if (links != null) ...[const SizedBox(height: 12), links],
-      const Spacer(),
-      _dayGlance(),
     ]);
 
     return _card(
@@ -1867,8 +1863,6 @@ class TodayViewState extends State<TodayView> {
             ]),
           ),
         ),
-        const SizedBox(height: 18),
-        _dayGlance(),
         ]);
       }),
     );
@@ -2297,52 +2291,6 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
-  Widget _dayGlance() {
-    final entries = minutesByCategory(_blocks);
-    return Container(
-      padding: const EdgeInsets.only(top: 16),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('LA JOURNÉE EN UN COUP D\'ŒIL'),
-        const SizedBox(height: 10),
-        if (entries.isEmpty)
-          const Text('Rien de planifié.', style: TextStyle(fontSize: 12.5, color: kBText3))
-        else ...[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: SizedBox(
-              height: 10,
-              child: Row(children: [
-                for (var i = 0; i < entries.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 2),
-                  Expanded(
-                    flex: entries[i].min,
-                    child: Container(color: _kCategoryColor[entries[i].category]),
-                  ),
-                ],
-              ]),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(spacing: 14, runSpacing: 6, children: [
-            for (final e in entries)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                        color: _kCategoryColor[e.category],
-                        borderRadius: BorderRadius.circular(2))),
-                const SizedBox(width: 6),
-                Text('${_kCategoryLabel[e.category]} · ${_fmtHm(e.min)}',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: kBText2, fontFeatures: _tabular)),
-              ]),
-          ]),
-        ],
-      ]),
-    );
-  }
 
   // ── PROGRAMME DU JOUR : frise horaire ───────────────────────────────────────
 
@@ -3548,7 +3496,11 @@ class TodayViewState extends State<TodayView> {
   }
 
   /// Colonne de droite : (contenu des blocs) + routines + semaine.
-  bool _isFolded(String key) => _folded.contains(key);
+  /// Vrai pendant la construction du tiroir : les modules y sont toujours
+  /// dépliés, sans chevron (le tiroir a son propre titre et sa croix).
+  bool _inDrawer = false;
+
+  bool _isFolded(String key) => !_inDrawer && _folded.contains(key);
 
   void _toggleFold(String key) {
     setState(() => _folded.contains(key) ? _folded.remove(key) : _folded.add(key));
@@ -3559,6 +3511,7 @@ class TodayViewState extends State<TodayView> {
   /// En-tête d'un module repliable : toute la ligne replie / déplie (les
   /// liens qu'elle contient gardent leur action), chevron à droite.
   Widget _foldHeader(String key, Widget header) {
+    if (_inDrawer) return header;
     final folded = _isFolded(key);
     return InkWell(
       borderRadius: BorderRadius.circular(8),

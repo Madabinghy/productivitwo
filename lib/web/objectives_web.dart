@@ -20,7 +20,8 @@ class WebObjectivesCard extends StatelessWidget {
   final int dayStartMin;
   final String? runningActivityId;
   final bool folded;
-  final VoidCallback onToggleFold;
+  /// null = pas repliable (dans le tiroir d'Aujourd'hui).
+  final VoidCallback? onToggleFold;
   final int Function(Activity a) todayCount;
   final void Function(Activity a) onRoutinePlus;
   final void Function(String activityId) onStartActivity;
@@ -38,7 +39,7 @@ class WebObjectivesCard extends StatelessWidget {
     required this.dayStartMin,
     required this.runningActivityId,
     required this.folded,
-    required this.onToggleFold,
+    this.onToggleFold,
     required this.todayCount,
     required this.onRoutinePlus,
     required this.onStartActivity,
@@ -66,7 +67,7 @@ class WebObjectivesCard extends StatelessWidget {
             const Expanded(child: Text('OBJECTIFS DU JOUR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3))),
             Text('${days.length}', style: const TextStyle(fontSize: 12, color: kBText4)),
             const SizedBox(width: 6),
-            Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
+            if (onToggleFold != null) Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
           ]),
         ),
         if (!folded) ...[
