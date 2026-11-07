@@ -39,6 +39,8 @@ void main() {
     p = withClimbStarted(p, '2026-11-07');
     expect(currentClimb(p), isNotNull);
     expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-08'), {'2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08'});
+    // Une activité chronométrée revient dès le début de la remontée : seuls les jours au minimum restent gelés.
+    expect(minimumFrozenDaysOf('lecture-temps', p, '2026-11-08', routine: false), {'2026-11-04', '2026-11-05', '2026-11-06'});
     p = withRevived(p, ['vaisselle'], ['eau', 'vaisselle', 'cuisine'], '2026-11-08');
     expect(minimumFrozenDaysOf('vaisselle', p, '2026-11-09').contains('2026-11-08'), isFalse);
     expect(minimumFrozenDaysOf('cuisine', p, '2026-11-09').contains('2026-11-09'), isTrue);

@@ -2335,7 +2335,7 @@ class AppLogic implements HuntStore {
     final own = frozenDaysOfActivity(activityId, freezes, livedTodayYmd);
     final dom = frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
     final hard = hardDaysUpTo(hardDays, livedTodayYmd);
-    final mini = minimumFrozenDaysOf(activityId, minimumPeriods, livedTodayYmd);
+    final mini = minimumFrozenDaysOf(activityId, minimumPeriods, livedTodayYmd, routine: a.isHabit);
     if (own.isEmpty && hard.isEmpty && mini.isEmpty) return dom;
     return {...dom, ...own, ...hard, ...mini};
   }

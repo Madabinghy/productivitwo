@@ -676,12 +676,15 @@ BadgeDeck computeBadges({
     final dom = frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
     final own = frozenDaysOfActivity(a.id, freezes, todayYmd);
     final hard = hardDaysUpTo(hardDays, todayYmd);
-    final mini = minimumFrozenDaysOf(a.id, minimumPeriods, todayYmd);
+    final mini = minimumFrozenDaysOf(a.id, minimumPeriods, todayYmd, routine: a.isHabit);
     if (own.isEmpty && hard.isEmpty && mini.isEmpty) return dom;
     return {...dom, ...own, ...hard, ...mini};
   }
   // Montre suisse et Métronome : un jour au minimum ne réclame rien (jamais gagné avec trois routines).
   Set<String> frozenAllOf(Activity a) => minimumDays.isEmpty ? frozenOf(a) : {...frozenOf(a), ...minimumDays};
+  // Montre suisse : seuls les jours AU minimum sont neutres ; pendant la remontée, les activités comptent de nouveau.
+  final minimumOnly = minimumDaysUpTo(minimumPeriods, todayYmd0);
+  Set<String> frozenWatchOf(Activity a) => minimumOnly.isEmpty ? frozenOf(a) : {...frozenOf(a), ...minimumOnly};
   // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
   final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
   final embers = emberLedger(
@@ -809,7 +812,7 @@ BadgeDeck computeBadges({
   ));
   // Montre suisse et Métronome : les deux moitiés de la journée parfaite (2026-10-30).
   final closedYmds = [for (final d in days) d.ymd];
-  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, frozenOf: frozenAllOf);
+  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, frozenOf: frozenWatchOf);
   final metro = metronomeDays(
     ymds: closedYmds,
     activities: activities,

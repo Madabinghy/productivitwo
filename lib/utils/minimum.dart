@@ -129,7 +129,9 @@ Set<String> minimumDaysUpTo(List<MinimumPeriod> periods, String todayYmd) {
 
 /// Jours où [activityId] est gelée par le minimum (jours de période où elle n'est pas gardée), jusqu'à aujourd'hui,
 /// plus, pendant une remontée, les jours d'après la période jusqu'à ce qu'elle soit ravivée.
-Set<String> minimumFrozenDaysOf(String activityId, List<MinimumPeriod> periods, String todayYmd) {
+/// [routine] faux = une activité chronométrée : elle revient dès le début de la remontée
+/// (retour user 2026-11-07 : la Montre suisse reprend, seules les routines remontent pas à pas).
+Set<String> minimumFrozenDaysOf(String activityId, List<MinimumPeriod> periods, String todayYmd, {bool routine = true}) {
   final out = <String>{};
   for (final p in periods) {
     if (p.from.compareTo(todayYmd) > 0) continue;
@@ -141,7 +143,7 @@ Set<String> minimumFrozenDaysOf(String activityId, List<MinimumPeriod> periods, 
       continue;
     }
     out.addAll(minimumDaysUpTo([p], todayYmd));
-    if (!p.climb || p.to == null) continue;
+    if (!routine || !p.climb || p.to == null) continue;
     final back = p.revived[activityId] ?? p.climbDone;
     var d = minShift(p.to!, 1);
     var guard = 0;
