@@ -1392,8 +1392,10 @@ prochain bloc, jamais un geste « bloc » — · le prochain bloc · sinon le mo
 Offensive ; rien en recharge). `NowCard` : ligne « parce que : … » au-dessus du titre (ambre, braise pour ce qui se perd ; « dans
 10 min · un rendez-vous ne bouge pas »), et pour un enjeu ou le mode une carte courte (`_pickFrame` : raison, titre, avancement ·
 estimation, UN bouton `stakeButtonLabel` = +1 · Lancer · Focus · Noter le relevé, ou « Lancer Sniper » → `openRun`) ; branchée par
-`today_view.dart` (`stakes`, `onStake: _runStake`, `modeOfMoment`, `onMode: openRun`). Lots 2 (« Autre chose › » : les trois
-suivantes) et 3 (selon le moment : démarrer, bloc fini, ce soir il reste) à venir.
+`today_view.dart` (`stakes`, `onStake: _runStake`, `modeOfMoment`, `onMode: openRun`). **Lot 2 livré (« Autre chose › »)** : lien sous le bouton de la carte (`_otherLink`, `now-other`) →
+feuille « Plutôt autre chose ? » (`_openOther`) : les trois suivantes de l'ordre sans la chose montrée (`nowAlternatives` : bloc en
+cours, se perd ce soir, parole, visées, prochain bloc), chacune avec sa raison, tap = « Prendre » (enjeu → `onStake`, bloc → `onLaunch`,
+sinon sa source), puis Sniper · Guérilla · Offensive (`onMode`). Lot 3 (selon le moment : démarrer, bloc fini, ce soir il reste) à venir.
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

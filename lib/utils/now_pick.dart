@@ -98,3 +98,47 @@ String stakeButtonLabel(Stake s) => switch (s.gesture.kind) {
       StakeGestureKind.reading => 'Noter le relevé',
       StakeGestureKind.block => 'Lancer',
     };
+
+/// « Autre chose › » (lot 2) : les trois suivantes dans le même ordre, chacune avec sa raison — le bloc en cours,
+/// ce qui se perd ce soir, la parole, les visées, le prochain bloc —, sans la chose déjà montrée. Les modes
+/// viennent à part, en dernier recours.
+List<NowPick> nowAlternatives(
+  NowPick shown, {
+  required List<ScheduleBlock> blocks,
+  required int nowMin,
+  StakeBoard? board,
+  int limit = 3,
+}) {
+  final out = <NowPick>[];
+  final focus = focusBlock(blocks, nowMin);
+  bool sameBlock(ScheduleBlock b) => shown.block?.id == b.id && shown.stake == null;
+  if (focus != null && focus.current && !sameBlock(focus.block)) {
+    out.add(NowPick(NowPickKind.block, block: focus.block, current: true, why: 'bloc en cours jusqu’à ${_hm(blockEndMin(focus.block))}'));
+  }
+  if (board != null) {
+    final seen = <String>{if (shown.stake != null) shown.stake!.gesture.key};
+    final stakes = [...board.top, ...board.rest].where((s) => s.gesture.kind != StakeGestureKind.block).toList();
+    for (final (kind, test) in <(NowPickKind, bool Function(StakeGain))>[
+      (NowPickKind.losing, _losing),
+      (NowPickKind.parole, _parole),
+      (NowPickKind.focused, (g) => g.kind == StakeGainKind.focus),
+    ]) {
+      for (final s in stakes) {
+        if (seen.contains(s.gesture.key)) continue;
+        final g = _gainWhere(s, test);
+        if (g == null) continue;
+        seen.add(s.gesture.key);
+        out.add(NowPick(kind, stake: s, why: g.label));
+      }
+    }
+  }
+  final next = focus == null || focus.current
+      ? blocks
+          .where((b) => b.status == 'pending' && blockStartMin(b) > nowMin)
+          .fold<ScheduleBlock?>(null, (best, b) => best == null || blockStartMin(b) < blockStartMin(best) ? b : best)
+      : focus.block;
+  if (next != null && !sameBlock(next)) {
+    out.add(NowPick(NowPickKind.next, block: next, why: 'prochain bloc à ${_hm(blockStartMin(next))}'));
+  }
+  return out.take(limit).toList();
+}

@@ -18,6 +18,9 @@ import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/now_pick.dart';
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
+import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/utils/stakes.dart' show Stake, StakeBoard;
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
@@ -566,6 +569,7 @@ class _NowCardState extends State<NowCard> {
         if (strip != null) ...[const SizedBox(height: 12), strip],
         const SizedBox(height: 14),
         Row(children: buttons),
+        if (_otherLink(pal, pick) case final l?) l,
         // Lien « Enchaîner » et gestes rares sur UNE ligne (2026-10-30) : autant
         // d'icônes que la largeur laisse après le lien (≥ 150 px), le reste
         // derrière « ⋯ ».
@@ -775,7 +779,119 @@ class _NowCardState extends State<NowCard> {
             }),
           ),
         ]),
+        if (_otherLink(pal, pick) case final l?) l,
       ]),
+    );
+  }
+
+  /// « Autre chose › » (lot 2) : les trois suivantes de l'ordre, puis les modes.
+  Widget? _otherLink(NowPalette pal, NowPick pick) {
+    final alts = nowAlternatives(pick,
+        blocks: _blocks, nowMin: widget.logic.livedNowMinNow, board: widget.onStake == null ? null : widget.stakes);
+    if (alts.isEmpty && widget.onMode == null) return null;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        key: const ValueKey('now-other'),
+        onPressed: () => _openOther(alts),
+        style: TextButton.styleFrom(
+            foregroundColor: pal.text2,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            minimumSize: const Size(0, 36),
+            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+        child: const Text('Autre chose ›'),
+      ),
+    );
+  }
+
+  Future<void> _openOther(List<NowPick> alts) async {
+    final pal = NowPalette.of(context);
+    void take(BuildContext sheet, NowPick p) {
+      Navigator.of(sheet).pop();
+      HapticFeedback.lightImpact();
+      if (p.stake != null) {
+        widget.onStake?.call(p.stake!);
+      } else if (p.block != null) {
+        final b = p.block!;
+        final launchable = b.projectId != null || b.activityId != null || b.timeBlock != null;
+        if (launchable) {
+          widget.onLaunch(b);
+        } else {
+          widget.onOpenSource?.call(b);
+        }
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: pal.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Plutôt autre chose ?', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: pal.text)),
+            const SizedBox(height: 10),
+            if (alts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('Rien d’autre ne se joue maintenant.', style: TextStyle(fontSize: 13.5, color: pal.text2)),
+              ),
+            for (final p in alts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: pal.chip,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => take(sheet, p),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(p.stake?.gesture.title ?? p.block?.title ?? '',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: pal.text)),
+                            const SizedBox(height: 2),
+                            Text(p.why, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: _whyColor(p))),
+                          ]),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('Prendre', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: pal.primary)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+            if (widget.onMode != null) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                for (final (kind, label) in const [(kSniperKind, 'Sniper'), (kGuerillaKind, 'Guérilla'), (kOffensiveKind, 'Offensive')]) ...[
+                  if (kind != kSniperKind) const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(sheet).pop();
+                        widget.onMode!(kind);
+                      },
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: pal.text,
+                          minimumSize: const Size(0, 46),
+                          side: BorderSide(color: pal.track),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ]),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 
