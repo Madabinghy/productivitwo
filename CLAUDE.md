@@ -167,6 +167,9 @@ Petites choses). Une ligne se GLISSE sur un jour (`Draggable` → `DragTarget` p
 (`_PlaceDurationDialog` : 30 · 45 · 1 h · 1 h 30 · tout le reste) puis le bloc est posé (`_dropItem`, « Annuler »), et la ligne se
 recalcule (« il reste … » / disparue). **Ménage** (lot 3) : la Montre suisse quitte le rail (elle vit dans À placer), restent Contrat ·
 Dates · Capacité ; plus de bascule 7 / 14 jours (la grille montre toujours la semaine, lundi → dimanche).
+**Google Agenda sur toute la semaine** (2026-11-07, retour user : préparer la semaine prochaine) : le mobile ne synchronise qu'aujourd'hui
+et demain ; la vue relit chaque jour à venir de la semaine affichée (`_syncAgenda` → `gcalSyncDay`, même appel que le ⟳ d'Aujourd'hui) à
+l'ouverture et à chaque changement de semaine, état « agenda Google à jour · HH:MM » cliquable dans l'en-tête (`_agendaStatus`).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
