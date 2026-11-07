@@ -170,6 +170,10 @@ Dates · Capacité ; plus de bascule 7 / 14 jours (la grille montre toujours la 
 **Google Agenda sur toute la semaine** (2026-11-07, retour user : préparer la semaine prochaine) : le mobile ne synchronise qu'aujourd'hui
 et demain ; la vue relit chaque jour à venir de la semaine affichée (`_syncAgenda` → `gcalSyncDay`, même appel que le ⟳ d'Aujourd'hui) à
 l'ouverture et à chaque changement de semaine, état « agenda Google à jour · HH:MM » cliquable dans l'en-tête (`_agendaStatus`).
+**La nuit continue le lendemain** (2026-11-07, retour user : le Sommeil s'arrêtait à minuit) : un bloc qui passe minuit est dessiné
+jusqu'à minuit dans sa colonne puis repris en haut de la colonne du lendemain (copie d'affichage `…~tail`, « suite · jusqu'à 06:00 »,
+tap = le bloc de la veille, ni glisser ni clic droit) ; la veille du lundi est aussi lue (`_subscribe`) pour la fin de sa nuit. Un bloc
+peut désormais être glissé ou allongé au-delà de minuit (début ≤ 23:45, durée ≤ 24 h) ; le bord bas d'un bloc qui passe minuit n'est pas tirable.
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
