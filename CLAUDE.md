@@ -240,6 +240,11 @@ de thème clair.
 Actions (lot 6) = `views/actions_view.dart` + `lib/utils/actions_logic.dart` (filtres Je suis / J'ai /
 Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant) ; CRUD des actions dans
 `web/action_dialogs.dart`. `ActionsHubView` et `WebActionsView` ont été supprimés.
+**Remis en ordre** (2026-11-07, maquette validée « Web Actions, remis en ordre », lot 1) : plus de colonne de filtres à gauche ni de
+colonne Engagements / Routines à droite (elles vivent dans Cette semaine et Aujourd'hui). En-tête = une phrase (`_pageHeader`, `_counts` :
+ouvertes · au programme · visées aujourd'hui · en retard · à re-viser), recherche dans les titres (`_query`, dans `_filter`), « + Action »
+(action simple) ; dessous, les filtres en UNE ligne de menus (`_filterBar`, `_menuPill` : Je suis · J'ai · Domaine · Pour · En retard
+seulement, ✕ pour effacer, mêmes préférences qu'avant) et « En pause · n » ; la liste prend la page.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
