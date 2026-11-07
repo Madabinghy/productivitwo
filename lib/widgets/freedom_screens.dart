@@ -449,11 +449,21 @@ class _FreedomViewState extends State<FreedomView> {
 
 /// Ouvre l'écran de l'envie : reprend l'envie en cours de cette chose s'il y en a
 /// une (le minuteur a continué pendant qu'on faisait autre chose).
+/// Un seul écran d'envie à la fois (bug user 2026-11-07 : la carte d'Aujourd'hui le
+/// rouvrait au bout des 10 min, le tap sur la notification en empilait un second).
+bool _urgeScreenOpen = false;
+
 Future<void> showUrgeScreen(BuildContext context, {required AppLogic logic, required String id}) async {
-  final pending = await UrgeSessionStore.load();
-  if (!context.mounted) return;
-  final resume = pending != null && pending.freedomId == id ? pending : null;
-  await Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic, id: id, resume: resume)));
+  if (_urgeScreenOpen) return;
+  _urgeScreenOpen = true;
+  try {
+    final pending = await UrgeSessionStore.load();
+    if (!context.mounted) return;
+    final resume = pending != null && pending.freedomId == id ? pending : null;
+    await Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => UrgeScreen(logic: logic, id: id, resume: resume)));
+  } finally {
+    _urgeScreenOpen = false;
+  }
 }
 
 /// Rouvre l'envie en cours, quelle que soit la chose (carte d'Aujourd'hui, notification).
@@ -538,7 +548,8 @@ class _UrgeScreenState extends State<UrgeScreen> {
 
   Future<void> _finish(bool passed) async {
     final u = FreedomUrge(
-      id: _id(),
+      // Id tiré du début de l'envie : une seconde validation remplace, n'ajoute pas.
+      id: urgeIdOf(_u.startMs),
       at: _u.startMs,
       intensity: _u.intensity,
       trigger: _u.trigger,
