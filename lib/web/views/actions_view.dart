@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
+import 'package:productivitwo_v1/web/capture_triage_dialog.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setChecklistItem, addChecklistItem, setActionDone;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
@@ -90,6 +91,8 @@ class _ActionsViewState extends State<ActionsView> {
   List<ScheduleBlock> _todayBlocks = [];
   StreamSubscription<List<Session>>? _sessionsSub;
   StreamSubscription<DailySchedule?>? _scheduleSub;
+  StreamSubscription<List<CaptureItem>>? _capturesSub;
+  List<CaptureItem> _captures = [];
 
   @override
   void initState() {
@@ -97,6 +100,9 @@ class _ActionsViewState extends State<ActionsView> {
     _loadPrefs();
     _sessionsSub = widget.sync.streamSessions().listen((s) {
       if (mounted) setState(() => _sessions = s);
+    });
+    _capturesSub = widget.sync.streamCaptures().listen((items) {
+      if (mounted) setState(() => _captures = items.where((i) => i.status == 'pending').toList());
     });
     _scheduleSub = widget.sync.streamDailySchedule(livedProgramYmd(DateTime.now(), widget.dayStartMin)).listen((s) {
       if (mounted) {
@@ -111,6 +117,7 @@ class _ActionsViewState extends State<ActionsView> {
     _stepCtrl.dispose();
     _sessionsSub?.cancel();
     _scheduleSub?.cancel();
+    _capturesSub?.cancel();
     super.dispose();
   }
 
@@ -582,6 +589,10 @@ class _ActionsViewState extends State<ActionsView> {
         : upcomingActions(_domainProjects, filter: _filter, today: today);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_captures.isNotEmpty) ...[
+        _capturesBanner(),
+        const SizedBox(height: 14),
+      ],
       if (open != null) ...[
         _nowCard(open, now),
         const SizedBox(height: 18),
@@ -1204,6 +1215,47 @@ class _ActionsViewState extends State<ActionsView> {
           child: Text(label),
         ),
       );
+
+  // ── Captures à trier (2026-11-07, lot 4) ───────────────────────────────────
+
+  Widget _capturesBanner() {
+    final n = _captures.length;
+    return InkWell(
+      key: const ValueKey('actions-captures'),
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        final made = await showCaptureTriageDialog(context,
+            sync: widget.sync, items: [..._captures].reversed.toList(), projects: widget.projects, activities: widget.activities);
+        if (made > 0 && mounted) {
+          widget.onRefresh();
+          _panelSnack('$made action${made > 1 ? 's' : ''} créée${made > 1 ? 's' : ''}');
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: kBAttention.withOpacity(.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kBAttention.withOpacity(.35)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.inbox_outlined, size: 18, color: kBAttention),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('$n capture${n > 1 ? 's' : ''} à trier en actions',
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kBText)),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 280),
+            child: Text('« ${_captures.first.text} »',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kBText3)),
+          ),
+          const SizedBox(width: 12),
+          const Text('Trier ›', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kBAttention)),
+        ]),
+      ),
+    );
+  }
 
   Widget _nowCard(Session open,
       List<({TaskAction action, Project? project, ProjectTask? task, Activity? activity})> items) {
