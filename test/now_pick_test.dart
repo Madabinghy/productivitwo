@@ -77,4 +77,11 @@ void main() {
     expect(e.kind, NowPickKind.evening);
     expect(e.why, contains('avant Sommeil à 22:00'));
   });
+
+  test('pas maintenant : un enjeu repoussé ne revient ni en carte ni dans Autre chose', () {
+    final board = StakeBoard(top: [stake('Louanges', series), stake('Rapport', parole)]);
+    final p = pickNow(blocks: const [], now: now, nowMin: nowMin, dayStartMin: 300, board: board, skip: {'routine:Louanges'});
+    expect(p.stake!.gesture.title, 'Rapport');
+    expect(nowAlternatives(p, blocks: const [], nowMin: nowMin, board: board, skip: {'routine:Louanges'}), isEmpty);
+  });
 }

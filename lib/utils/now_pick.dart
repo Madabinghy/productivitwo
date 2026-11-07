@@ -63,6 +63,7 @@ NowPick pickNow({
   StakeBoard? board,
   bool modeAvailable = true,
   bool chainAvailable = false,
+  Set<String> skip = const {},
 }) {
   final focus = focusBlock(blocks, nowMin);
   final fixed = nextFixed(blocks, now, dayStartMin, sessionTaskIds: sessionTaskIds);
@@ -102,7 +103,7 @@ NowPick pickNow({
     }
   }
   if (board != null && (room == null || room >= kNowStakeRoomMin)) {
-    final stakes = [...board.top, ...board.rest].where((s) => s.gesture.kind != StakeGestureKind.block).toList();
+    final stakes = [...board.top, ...board.rest].where((s) => s.gesture.kind != StakeGestureKind.block && !skip.contains(s.gesture.key)).toList();
     for (final (kind, test) in <(NowPickKind, bool Function(StakeGain))>[
       (NowPickKind.losing, _losing),
       (NowPickKind.parole, _parole),
@@ -141,6 +142,7 @@ List<NowPick> nowAlternatives(
   required int nowMin,
   StakeBoard? board,
   int limit = 3,
+  Set<String> skip = const {},
 }) {
   final out = <NowPick>[];
   final focus = focusBlock(blocks, nowMin);
@@ -149,7 +151,7 @@ List<NowPick> nowAlternatives(
     out.add(NowPick(NowPickKind.block, block: focus.block, current: true, why: 'bloc en cours jusqu’à ${_hm(blockEndMin(focus.block))}'));
   }
   if (board != null) {
-    final seen = <String>{if (shown.stake != null) shown.stake!.gesture.key};
+    final seen = <String>{if (shown.stake != null) shown.stake!.gesture.key, ...skip};
     final stakes = [...board.top, ...board.rest].where((s) => s.gesture.kind != StakeGestureKind.block).toList();
     for (final (kind, test) in <(NowPickKind, bool Function(StakeGain))>[
       (NowPickKind.losing, _losing),
@@ -175,3 +177,9 @@ List<NowPick> nowAlternatives(
   }
   return out.take(limit).toList();
 }
+
+/// « Pas maintenant » (2026-11-07) : un enjeu repoussé « plus tard » revient au bout de ce temps.
+const kNowSnoozeMin = 120;
+
+/// Repoussé au moins ce nombre de fois : la feuille propose d'abord d'en faire 5 minutes.
+const kNowPostponeWarn = 2;
