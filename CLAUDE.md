@@ -178,7 +178,12 @@ reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) 
 une phrase (n actifs · à risque · sans prochaine action · séances à 14 jours), sélecteur Actifs · En veille · Terminés · Archivés
 (`_modeSwitch`), « Domaine : tous ▾ » (`_domainMenu`), recherche, Nouveau projet ; le tableau prend la page ; rail de droite (`_rail`,
 `_kRail`) : Séances (le radar `_weekCard`) · Rushs · Objectif, un panneau de 400 px à la fois (`_railPanel`, `_railKey`). Les puces de
-domaine et les blocs radar / rush / objectif au-dessus du tableau sont retirés.
+domaine et les blocs radar / rush / objectif au-dessus du tableau sont retirés. **Colonne de gauche** (lot 2, 420 px, Actifs seulement, dès 1200 px) : PROJET
+DU MOMENT (`rankProjectMoments`, même classement que le mobile ; « parce que : séance dans n jours · n tâches de retard sur le plan… »,
+`_reasonOf` ; briques, plan fait / attendu, prochaine action cochable, « Lancer le chrono » sur l'activité de l'action sinon du projet
+(`_startChrono`, ferme le chrono ouvert), « Ouvrir le projet », « Suivant › » = passé pour la session, `_skippedMoments`) puis POUR
+AUJOURD'HUI (`todayActions` : au programme du jour d'après `_byDay`, visées aujourd'hui, un retard par projet ; la parole n'est pas lue
+sur le web ; cochable, tap = projet sur la tâche).
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
 plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
 dans le shell ; **s'ouvre sur Vision** au clic sur un projet (essai 2026-10), sur **Plan d'action** quand elle vise

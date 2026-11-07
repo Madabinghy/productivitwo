@@ -15,6 +15,8 @@ import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks, runningTargets;
 import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments, ProjectMoment;
+import 'package:productivitwo_v1/utils/projects_today.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
@@ -323,6 +325,16 @@ class _ProjectsViewState extends State<ProjectsView> {
         const SizedBox(height: 16),
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (_mode == _Mode.active && MediaQuery.sizeOf(context).width >= 1200) ...[
+              SizedBox(
+                width: 420,
+                child: ListView(children: [
+                  ..._momentCard(now),
+                  _todayCard(now),
+                ]),
+              ),
+              const SizedBox(width: 20),
+            ],
             Expanded(child: ListView(children: [_table(now)])),
             if (_railKey != null) ...[
               const SizedBox(width: 20),
@@ -334,6 +346,240 @@ class _ProjectsViewState extends State<ProjectsView> {
         ),
       ]),
     );
+  }
+
+  // ── Projet du moment · Pour aujourd'hui (lot 2, même logique que le mobile) ──
+
+  /// Projets du moment « passés » d'un clic sur Suivant (session seulement).
+  final Set<String> _skippedMoments = {};
+
+  List<ProjectMoment> _moments(DateTime now) => rankProjectMoments(widget.projects, widget.recentSessions, now)
+      .where((m) => !m.upcoming && !_skippedMoments.contains(m.project.id))
+      .toList();
+
+  String _reasonOf(ProjectMoment m) {
+    final d = m.daysToSession;
+    if (d != null && d <= 7) {
+      final when = d <= 0 ? 'aujourd’hui' : d == 1 ? 'demain' : 'dans $d jours';
+      return 'séance $when';
+    }
+    if (m.plan.delta < 0) {
+      final n = -m.plan.delta;
+      return '$n tâche${n > 1 ? 's' : ''} de retard sur le plan';
+    }
+    if (m.next == null) return 'pas de prochaine action';
+    return 'au rythme · la prochaine action est prête';
+  }
+
+  List<Widget> _momentCard(DateTime now) {
+    final list = _moments(now);
+    if (list.isEmpty) return const [];
+    final m = list.first;
+    final p = m.project;
+    final next = m.next;
+    final running = runningTargets(widget.recentSessions);
+    final row = projectBricks(p, _today, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
+    final chronoAct = next == null ? null : (next.action.linkedActivityId ?? p.linkedActivityId);
+    return [
+      Container(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10201A),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF2C5A45)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: _label('PROJET DU MOMENT')),
+            if (list.length > 1)
+              Text('1 / ${list.length}', style: const TextStyle(fontSize: 11.5, color: kBText3, fontFeatures: _tabular)),
+          ]),
+          const SizedBox(height: 8),
+          Text('parce que : ${_reasonOf(m)}',
+              key: const ValueKey('projects-moment-why'),
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kBAttention)),
+          if (m.rootTitle != null) ...[
+            const SizedBox(height: 4),
+            Text('${m.rootTitle} ›', style: const TextStyle(fontSize: 12, color: kBText3)),
+          ],
+          const SizedBox(height: 4),
+          Text(p.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: kBText)),
+          const SizedBox(height: 10),
+          if (row.bricks.isNotEmpty)
+            ProgressBricks(
+                row: row,
+                height: 10,
+                gap: 3,
+                pickerTitle: 'Tâches · ${p.title}',
+                onBrick: (i) => widget.onOpenProject(p, taskId: row.bricks[i].id)),
+          const SizedBox(height: 6),
+          Text('${m.plan.done} / ${m.plan.total} tâche${m.plan.total > 1 ? 's' : ''} · attendu à ce jour : ${m.plan.expected}',
+              style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+          const SizedBox(height: 12),
+          if (next != null)
+            Container(
+              padding: const EdgeInsets.fromLTRB(4, 6, 12, 6),
+              decoration: BoxDecoration(color: const Color(0x0AFFFFFF), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                IconButton(
+                  key: const ValueKey('projects-moment-check'),
+                  tooltip: 'Action faite',
+                  icon: const Icon(Icons.radio_button_unchecked, size: 20, color: kBText3),
+                  onPressed: () => _checkAction(p, next.action),
+                ),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(next.action.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                    Text('prochaine action · ${next.task.title}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: kBText3)),
+                  ]),
+                ),
+              ]),
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(onPressed: () => _defineNextAction(p), child: const Text('+ Définir la prochaine action')),
+            ),
+          const SizedBox(height: 12),
+          Row(children: [
+            if (next != null && chronoAct != null) ...[
+              Expanded(
+                child: FilledButton(
+                  key: const ValueKey('projects-moment-chrono'),
+                  onPressed: () => _startChrono(chronoAct, next.task, next.action),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: kBPrimary, foregroundColor: kBBg, shape: const StadiumBorder()),
+                  child: const Text('Lancer le chrono'),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => widget.onOpenProject(p, taskId: next?.task.id),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: kBText2, side: const BorderSide(color: kBLine), shape: const StadiumBorder()),
+                child: const Text('Ouvrir le projet'),
+              ),
+            ),
+          ]),
+          if (list.length > 1)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('projects-moment-next'),
+                onPressed: () => setState(() => _skippedMoments.add(p.id)),
+                child: const Text('Suivant ›', style: TextStyle(color: kBText2)),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
+  Widget _todayCard(DateTime now) {
+    final ymd = ymdOf(_today);
+    final program = {
+      for (final b in _byDay[ymd] ?? const <ScheduleBlock>[])
+        if (b.actionId != null && b.status != 'done') b.actionId!,
+    };
+    final list = todayActions(
+        projects: widget.projects, activities: widget.activities, today: _today, programActionIds: program);
+    const cap = 6;
+    final shown = list.take(cap).toList();
+    return _card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 12, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: _label('POUR AUJOURD’HUI')),
+            const Text('dans tous les projets', style: TextStyle(fontSize: 11.5, color: kBText3)),
+          ]),
+          const SizedBox(height: 6),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('Rien de visé ni de prévu aujourd’hui.', style: TextStyle(fontSize: 13, color: kBText3)),
+            ),
+          for (final t in shown) _todayRow(t),
+          if (list.length > cap)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('+ ${list.length - cap} autre${list.length - cap > 1 ? 's' : ''}',
+                  style: const TextStyle(fontSize: 12, color: kBText3)),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _todayRow(TodayAction t) {
+    final (why, color) = switch (t.reason) {
+      TodayReason.parole => ('parole', kBAttention),
+      TodayReason.program => ('au programme', kBPrimary),
+      TodayReason.focus => ('visée aujourd’hui', kBText3),
+      TodayReason.late => ('en retard', kBAlert),
+    };
+    final where = t.project?.title ?? t.owner?.name ?? '';
+    return Container(
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+      child: Row(children: [
+        IconButton(
+          tooltip: 'Action faite',
+          icon: Icon(Icons.radio_button_unchecked, size: 20, color: t.reason == TodayReason.late ? kBAlert : kBText3),
+          onPressed: () => _checkToday(t),
+        ),
+        Expanded(
+          child: InkWell(
+            onTap: t.project == null ? null : () => widget.onOpenProject(t.project!, taskId: t.task?.id),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t.action.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                Text(where.isEmpty ? why : '$why · $where',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color)),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _checkToday(TodayAction t) async {
+    final p = t.project;
+    if (p != null) {
+      await _checkAction(p, t.action);
+      return;
+    }
+    final owner = t.owner;
+    if (owner == null) return;
+    setState(() {
+      t.action.done = true;
+      t.action.doneAt = DateTime.now();
+    });
+    await widget.sync.updateOwnActions(owner.id, owner.ownActions);
+  }
+
+  Future<void> _startChrono(String activityId, ProjectTask task, TaskAction action) async {
+    final now = DateTime.now();
+    for (final s in widget.recentSessions.where((s) => s.endAt == null)) {
+      s.endAt = now;
+      await widget.sync.saveSession(s);
+    }
+    await widget.sync.saveSession(Session(activityId: activityId, startAt: now, taskId: task.id, actionId: action.id));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Chrono lancé · ${action.title}')));
   }
 
   // ── Rail (2026-11-07, maquette « Web Projets, remis en ordre », lot 1) ──
