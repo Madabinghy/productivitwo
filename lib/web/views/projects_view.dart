@@ -311,51 +311,161 @@ class _ProjectsViewState extends State<ProjectsView> {
         .where((p) => projectHealth(p, widget.recentSessions, now).kind != HealthKind.onTrack &&
             projectHealth(p, widget.recentSessions, now).kind != HealthKind.noDeadline)
         .length;
-    final noNext = active.where((p) => nextAction(p) == null).length;
-    final coups = activeCoups(widget.objectives, now);
-    final objective = widget.objectives.where((o) => o.status == 'active' && !o.isTactical).firstOrNull;
+    final noNext = active.where((p) => nextAction(p) == null && !isFolder(p, widget.projects)).length;
+    final radar = weekRadar(widget.projects, dateOnly(now));
+    final sessions = radar.where((r) => !r.isQuiet(dateOnly(now))).length;
 
     return Container(
       color: kBBg,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(32, 22, 32, 26),
-        children: [
-          _header(active.length, atRisk, noNext),
-          ..._weekCardOrNothing(now),
-          // Coups en cours (Modes et coups lot 5) : au-dessus de l'objectif stratégique.
-          for (final c in coups) ...[
-            const SizedBox(height: 18),
-            _objectiveCard(c, now, label: 'RUSH · ${coupLabel(c, now).toUpperCase()}'),
-          ],
-          if (objective != null) ...[
-            const SizedBox(height: 18),
-            _objectiveCard(objective, now),
-          ],
-          const SizedBox(height: 18),
-          _filters(),
-          const SizedBox(height: 12),
-          _table(now),
+      padding: const EdgeInsets.fromLTRB(32, 22, 32, 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _header(active.length, atRisk, noNext, sessions),
+        const SizedBox(height: 16),
+        Expanded(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: ListView(children: [_table(now)])),
+            if (_railKey != null) ...[
+              const SizedBox(width: 20),
+              SizedBox(width: 400, child: _railPanel(_railKey!, now, radar)),
+            ],
+            const SizedBox(width: 16),
+            _rail(now, radar),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // ── Rail (2026-11-07, maquette « Web Projets, remis en ordre », lot 1) ──
+  // Séances (le radar à 14 jours) · Rushs · Objectif : un panneau à la fois.
+
+  String? _railKey;
+
+  static const _kRail = [
+    (key: 'sessions', label: 'Séances', icon: Icons.event_outlined),
+    (key: 'rush', label: 'Rushs', icon: Icons.flag_outlined),
+    (key: 'objective', label: 'Objectif', icon: Icons.track_changes),
+  ];
+
+  StrategicObjective? get _objective =>
+      widget.objectives.where((o) => o.status == 'active' && !o.isTactical).firstOrNull;
+
+  ({String text, Color color})? _railBadge(String key, DateTime now, List<ProjectRadar> radar) {
+    switch (key) {
+      case 'sessions':
+        final n = radar.where((r) => !r.isQuiet(dateOnly(now))).length;
+        return n == 0 ? null : (text: '$n', color: kBAttention);
+      case 'rush':
+        final n = activeCoups(widget.objectives, now).length;
+        return n == 0 ? null : (text: '$n', color: kBAttention);
+    }
+    return null;
+  }
+
+  Widget _rail(DateTime now, List<ProjectRadar> radar) => Column(children: [
+        for (final r in _kRail) ...[
+          _railButton(r.key, r.label, r.icon, badge: _railBadge(r.key, now, radar)),
+          const SizedBox(height: 8),
         ],
+      ]);
+
+  Widget _railButton(String key, String label, IconData icon, {({String text, Color color})? badge}) {
+    final on = _railKey == key;
+    return Tooltip(
+      message: on ? 'Fermer $label' : label,
+      child: InkWell(
+        key: ValueKey('projects-rail-$key'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _railKey = on ? null : key),
+        child: Container(
+          width: 60,
+          height: 58,
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFF1C3A2C) : kBSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? kBPrimary : kBLine, width: on ? 1.5 : 1),
+          ),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 19, color: on ? kBText : kBText2),
+                const SizedBox(height: 4),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    softWrap: false,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? kBText : kBText2)),
+              ]),
+            ),
+            if (badge != null)
+              Positioned(
+                top: 4,
+                right: 5,
+                child: Text(badge.text,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: badge.color, fontFeatures: _tabular)),
+              ),
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _header(int nActive, int atRisk, int noNext) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Projets',
-            style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
-        const SizedBox(height: 3),
-        Text(
-          '$nActive actif${nActive > 1 ? 's' : ''} · $atRisk à risque · '
-          '$noNext sans prochaine action',
-          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular),
+  Widget _railPanel(String key, DateTime now, List<ProjectRadar> radar) {
+    final label = _kRail.firstWhere((r) => r.key == key).label;
+    final coups = activeCoups(widget.objectives, now);
+    final objective = _objective;
+    final List<Widget> body = switch (key) {
+      'sessions' => radar.isEmpty
+          ? [_empty('Aucune séance dans les 14 prochains jours.')]
+          : [_weekCard(radar, dateOnly(now))],
+      'rush' => coups.isEmpty
+          ? [_empty('Aucun rush en cours.')]
+          : [
+              for (final c in coups) ...[
+                _objectiveCard(c, now, label: 'RUSH · ${coupLabel(c, now).toUpperCase()}'),
+                const SizedBox(height: 12),
+              ],
+            ],
+      _ => objective == null ? [_empty('Aucun objectif en cours.')] : [_objectiveCard(objective, now)],
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText))),
+        IconButton(
+          key: const ValueKey('projects-rail-close'),
+          tooltip: 'Fermer',
+          icon: const Icon(Icons.close, size: 18, color: kBText3),
+          onPressed: () => setState(() => _railKey = null),
         ),
       ]),
-      const Spacer(),
+      const SizedBox(height: 6),
+      Expanded(child: ListView(children: body)),
+    ]);
+  }
+
+  Widget _empty(String text) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(text, style: const TextStyle(fontSize: 13, color: kBText3)),
+      );
+
+  Widget _header(int nActive, int atRisk, int noNext, int sessions) {
+    final summary = [
+      '$nActive actif${nActive > 1 ? 's' : ''}',
+      if (atRisk > 0) '$atRisk à risque',
+      if (noNext > 0) '$noNext sans prochaine action',
+      if (sessions > 0) '$sessions séance${sessions > 1 ? 's' : ''} à 14 jours',
+    ].join(' · ');
+    final title = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Projets',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+      const SizedBox(height: 3),
+      Text(summary, style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+    ]);
+    final controls = <Widget>[
+      _modeSwitch(),
+      _domainMenu(),
       SizedBox(
-        width: 260,
+        width: 240,
         height: 40,
         child: TextField(
           onChanged: (v) => setState(() => _query = v),
@@ -368,12 +478,10 @@ class _ProjectsViewState extends State<ProjectsView> {
             filled: true,
             fillColor: const Color(0x12FFFFFF),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
           ),
         ),
       ),
-      const SizedBox(width: 10),
       SizedBox(
         height: 40,
         child: FilledButton.icon(
@@ -388,7 +496,101 @@ class _ProjectsViewState extends State<ProjectsView> {
           ),
         ),
       ),
-    ]);
+    ];
+    return LayoutBuilder(builder: (ctx, box) {
+      if (box.maxWidth < 1280) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          title,
+          const SizedBox(height: 10),
+          Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: controls),
+        ]);
+      }
+      return Row(children: [
+        Expanded(child: title),
+        for (final c in controls) ...[const SizedBox(width: 10), c],
+      ]);
+    });
+  }
+
+  Widget _modeSwitch() {
+    final items = [
+      (_Mode.active, 'Actifs · ${_active.length}'),
+      (_Mode.paused, 'En veille · ${_paused.length}'),
+      (_Mode.done, 'Terminés · ${_done.length}'),
+      (_Mode.archived, 'Archivés · ${_archived.length}'),
+    ];
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: const Color(0x12FFFFFF), borderRadius: BorderRadius.circular(999)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (final (m, lbl) in items)
+          InkWell(
+            key: ValueKey('projects-mode-${m.name}'),
+            onTap: () => setState(() => _mode = m),
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _mode == m ? kBActive : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _mode == m ? kBPrimary.withOpacity(.35) : Colors.transparent),
+              ),
+              child: Text(lbl,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: _mode == m ? kBText : kBText2,
+                      fontFeatures: _tabular)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _domainMenu() {
+    final domains = widget.domains.where((d) => !d.deleted).toList();
+    final current = domains.where((d) => d.id == _domainId).firstOrNull;
+    return PopupMenuButton<String>(
+      key: const ValueKey('projects-domain'),
+      tooltip: 'Filtrer par domaine',
+      color: kBRaised,
+      onSelected: (v) => setState(() => _domainId = v.isEmpty ? null : v),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: '', child: Text('Tous les domaines')),
+        for (final d in domains)
+          PopupMenuItem(
+            value: d.id,
+            child: Row(children: [
+              Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: domainColor(d.id, widget.domains) ?? kBText4, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Text(d.name),
+            ]),
+          ),
+      ],
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(color: const Color(0x12FFFFFF), borderRadius: BorderRadius.circular(999)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (current != null) ...[
+            Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: domainColor(current.id, widget.domains) ?? kBText4, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+          ],
+          Text(current == null ? 'Domaine : tous' : current.name,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: kBText2)),
+          const SizedBox(width: 4),
+          const Icon(Icons.expand_more, size: 16, color: kBText3),
+        ]),
+      ),
+    );
   }
 
   // ── Radar « Cette semaine » (brief 2026-10, § 2.1) ─────────────────────────
@@ -396,13 +598,6 @@ class _ProjectsViewState extends State<ProjectsView> {
   // préparation, état de la clôture précédente. 3 lignes max par projet, tri
   // par date du jalon ; les dossiers coiffent leurs sous-projets ; un projet
   // sans jalon à 14 jours est replié. Clic → la tâche Préparer (sinon le jalon).
-
-  List<Widget> _weekCardOrNothing(DateTime now) {
-    final today = dateOnly(now);
-    final radar = weekRadar(widget.projects, today);
-    if (radar.isEmpty || _mode != _Mode.active) return const [];
-    return [const SizedBox(height: 18), _weekCard(radar, today)];
-  }
 
   Widget _weekCard(List<ProjectRadar> radar, DateTime today) {
     final hot = radar.where((r) => !r.isQuiet(today)).toList();
@@ -689,34 +884,6 @@ class _ProjectsViewState extends State<ProjectsView> {
         ),
       ),
     );
-  }
-
-  Widget _filters() {
-    return Row(children: [
-      Expanded(
-        child: Wrap(spacing: 8, runSpacing: 6, children: [
-          _chip('Tous', selected: _domainId == null, onTap: () => setState(() => _domainId = null)),
-          for (final d in widget.domains.where((d) => !d.deleted))
-            _chip(d.name,
-                dot: domainColor(d.id, widget.domains),
-                selected: _domainId == d.id,
-                onTap: () => setState(() => _domainId = _domainId == d.id ? null : d.id)),
-        ]),
-      ),
-      const SizedBox(width: 16),
-      if (_mode != _Mode.active)
-        _textLink('‹ Projets actifs', () => setState(() => _mode = _Mode.active)),
-      if (_mode != _Mode.paused)
-        _textLink('En veille · ${_paused.length}', () => setState(() => _mode = _Mode.paused),
-            muted: true),
-      if (_mode != _Mode.done)
-        _textLink('Terminés · ${_done.length}', () => setState(() => _mode = _Mode.done),
-            muted: true),
-      if (_mode != _Mode.archived)
-        _textLink('Archivés · ${_archived.length}',
-            () => setState(() => _mode = _Mode.archived),
-            muted: true),
-    ]);
   }
 
   Widget _table(DateTime now) {
@@ -1094,47 +1261,6 @@ class _ProjectsViewState extends State<ProjectsView> {
             Container(color: const Color(0x14FFFFFF)),
             FractionallySizedBox(widthFactor: v.clamp(0.0, 1.0), child: Container(color: color)),
           ]),
-        ),
-      );
-
-  Widget _chip(String label, {Color? dot, required bool selected, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: selected ? kBActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? kBPrimary.withOpacity(.35) : kBLine),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (dot != null) ...[
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
-            const SizedBox(width: 7),
-          ],
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? kBText : kBText2)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _textLink(String label, VoidCallback onTap, {bool muted = false}) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: muted ? kBText3 : kBPrimary,
-                  fontFeatures: _tabular)),
         ),
       );
 }

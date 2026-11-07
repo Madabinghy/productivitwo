@@ -174,7 +174,11 @@ Modules de la colonne de droite **repliables en accordéon** (Routines, Chronos,
 Bouton « Demain → » à côté de la date = dialog `web/tomorrow_schedule_dialog.dart` (‹ › jours suivants, blocs dépliables).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; menu ⋯ d'une ligne : **Terminer le projet** (`status:'done'`, confirmation s'il
-reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
+reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`. **Remis en ordre** (2026-11-07, maquette validée « Web Projets, remis en ordre », lot 1) : en-tête =
+une phrase (n actifs · à risque · sans prochaine action · séances à 14 jours), sélecteur Actifs · En veille · Terminés · Archivés
+(`_modeSwitch`), « Domaine : tous ▾ » (`_domainMenu`), recherche, Nouveau projet ; le tableau prend la page ; rail de droite (`_rail`,
+`_kRail`) : Séances (le radar `_weekCard`) · Rushs · Objectif, un panneau de 400 px à la fois (`_railPanel`, `_railKey`). Les puces de
+domaine et les blocs radar / rush / objectif au-dessus du tableau sont retirés.
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
 plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
 dans le shell ; **s'ouvre sur Vision** au clic sur un projet (essai 2026-10), sur **Plan d'action** quand elle vise
