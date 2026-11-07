@@ -146,7 +146,10 @@ rendez-vous agenda et séances en or, `_isDated` —, « + n blocs ») ; tap = p
 glissants, reste à faire par activité) · Dates (rendez-vous agenda, séances, échéances et jalons de tâches ouvertes de la fenêtre,
 `_datedItems`) · Capacité (`_editCapacity`) ; pastilles d'attention (`_railBadge`), un panneau de 380 px à la fois (`_railPanel`,
 `_railKey`, ferme le panneau d'un jour) ; calculs mis en cache à la minute (`_refreshRail`). `WeekView` reçoit `activities` et
-`objectives` du shell et suit sessions et hits (`streamSessions`, `streamHabitHits`).
+`objectives` du shell et suit sessions et hits (`streamSessions`, `streamHabitHits`). **En-tête allégé** (lot 3) : une phrase (« 31 h posées sur 45 h ·
+2 rendez-vous et séances · 3 tâches en retard · 4 à caser · contrat 6 / 9 au rythme »), 7 / 14 jours et « Planifier avec Claude » ;
+« Masquer le fait » passe dans l'en-tête du Gantt (« fait visible / fait masqué », `week-hide-done`), la capacité dans le rail ;
+les colonnes du Gantt ne portent plus que le jour (la charge vit dans LA SEMAINE) ; les gestes sont derrière « ⓘ Les gestes ».
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
