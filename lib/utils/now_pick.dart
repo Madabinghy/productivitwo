@@ -183,3 +183,35 @@ const kNowSnoozeMin = 120;
 
 /// Repoussé au moins ce nombre de fois : la feuille propose d'abord d'en faire 5 minutes.
 const kNowPostponeWarn = 2;
+
+/// Au moins ce temps de chrono sur la chose repoussée remet son compteur de reports à zéro.
+const kNowPostponeResetMin = 5;
+
+/// Les compteurs de « Pas maintenant » à remettre à zéro : la chose est faite (action cochée), ou on s'y est
+/// vraiment mis depuis le dernier report — au moins [kNowPostponeResetMin] min de chrono sur l'action ou
+/// l'activité, ou un +1 sur la routine. [lastAt] = dernier report par clé (ms, 0 = inconnu).
+Set<String> postponesCleared(
+  Iterable<String> keys, {
+  required Map<String, int> lastAt,
+  required List<Session> sessions,
+  required List<HabitHit> hits,
+  required Set<String> doneActionIds,
+}) {
+  final out = <String>{};
+  for (final key in keys) {
+    final i = key.indexOf(':');
+    if (i < 0) continue;
+    final kind = key.substring(0, i), id = key.substring(i + 1);
+    final since = DateTime.fromMillisecondsSinceEpoch(lastAt[key] ?? 0);
+    bool worked(bool Function(Session s) on) => sessions.any((s) =>
+        !s.deleted && on(s) && !s.startAt.isBefore(since) && s.duration.inMinutes >= kNowPostponeResetMin);
+    final clear = switch (kind) {
+      'action' => doneActionIds.contains(id) || worked((s) => s.actionId == id),
+      'activity' => worked((s) => s.activityId == id),
+      'routine' => hits.any((h) => h.habitId == id && !h.ts.isBefore(since)),
+      _ => false,
+    };
+    if (clear) out.add(key);
+  }
+  return out;
+}

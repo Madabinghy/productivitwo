@@ -1405,7 +1405,7 @@ n » (`onChain`) ; SOIR (≥ `kNowEveningMin` 19 h) → « CE SOIR IL RESTE », 
 « Plus tard aujourd'hui » (revient dans `kNowSnoozeMin` = 2 h : `now_snooze` {clé du geste : fin} en SharedPreferences, passé à
 `NowCard.snoozed` → `pickNow(skip:)` / `nowAlternatives(skip:)`) · « Viser demain » (action : `focusDate` = demain). Garde-fous : nombre
 de reports par geste (`now_postpones`) — dès `kNowPostponeWarn` (2), la feuille dit « Déjà repoussée n fois » et propose d'abord
-« 5 minutes, maintenant » (lance le geste) ; une action de la parole prévient qu'elle fait perdre Parole tenue. Estimation plus
+« 5 minutes, maintenant » (lance le geste) ; une action de la parole prévient qu'elle fait perdre Parole tenue. Le compteur suit la chose d'un jour à l'autre et repart à zéro (`postponesCleared`, `now_pick.dart` ; `_clearPostpones` chaque minute et à l'ouverture de la feuille ; dernier report dans `now_postponed_at`) quand l'action est faite, ou qu'on s'y est vraiment mis APRÈS le dernier report : ≥ `kNowPostponeResetMin` (5) min de chrono sur l'action / l'activité, un +1 sur la routine — un appui sur « 5 minutes » suivi d'un arrêt ne suffit pas. Estimation plus
 doublée sur la carte ; boutons des modes de « Autre chose » avec leur icône (`ModeGlyph`), sans retour à la ligne.
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
