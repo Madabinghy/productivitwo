@@ -1395,7 +1395,11 @@ estimation, UN bouton `stakeButtonLabel` = +1 · Lancer · Focus · Noter le rel
 `today_view.dart` (`stakes`, `onStake: _runStake`, `modeOfMoment`, `onMode: openRun`). **Lot 2 livré (« Autre chose › »)** : lien sous le bouton de la carte (`_otherLink`, `now-other`) →
 feuille « Plutôt autre chose ? » (`_openOther`) : les trois suivantes de l'ordre sans la chose montrée (`nowAlternatives` : bloc en
 cours, se perd ce soir, parole, visées, prochain bloc), chacune avec sa raison, tap = « Prendre » (enjeu → `onStake`, bloc → `onLaunch`,
-sinon sa source), puis Sniper · Guérilla · Offensive (`onMode`). Lot 3 (selon le moment : démarrer, bloc fini, ce soir il reste) à venir.
+sinon sa source), puis Sniper · Guérilla · Offensive (`onMode`). **Lot 3 livré (selon le moment)** : `pickNow(chainAvailable:)` — un bloc fini il y a moins de
+`kNowJustEndedMin` (15) min et le suivant dans 30 min → le suivant avec « bloc fini · on enchaîne, HH:MM » ; MATIN (rien de fait encore,
+avant midi, ≥ 15 min avant le premier bloc, des routines dans les enjeux) → « POUR DÉMARRER », les routines du jour, « Enchaîner le matin ·
+n » (`onChain`) ; SOIR (≥ `kNowEveningMin` 19 h) → « CE SOIR IL RESTE », « n choses avant Sommeil à 22:00 », « Finir la journée · n »
+(`onChain`). `NowPick.items` = titres des routines ; `_pickFrame` les rend. **Les 3 lots sont livrés.**
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

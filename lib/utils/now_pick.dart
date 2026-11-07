@@ -7,13 +7,19 @@ import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blo
 /// la règle qui a gagné (« parce que »). Ordre : un rendez-vous daté dans [kNowFixedLeadMin] min · le chrono qui
 /// tourne · le bloc en cours · ce qui se perd ce soir · la parole · les actions visées · le prochain bloc · sinon le
 /// mode du moment.
-enum NowPickKind { fixedSoon, running, block, losing, parole, focused, next, mode, none }
+enum NowPickKind { fixedSoon, running, block, morning, evening, losing, parole, focused, next, mode, none }
 
 /// Un rendez-vous daté s'annonce 15 min avant, même par-dessus un chrono.
 const kNowFixedLeadMin = 15;
 
 /// Un enjeu ne passe devant le prochain bloc que s'il reste au moins ce temps avant lui.
 const kNowStakeRoomMin = 15;
+
+/// Lot 3 : un bloc fini il y a moins de ce temps fait dire « bloc fini · on enchaîne ».
+const kNowJustEndedMin = 15;
+
+/// Lot 3 : le soir commence à 19 h (journée vécue).
+const kNowEveningMin = 19 * 60;
 
 class NowPick {
   final NowPickKind kind;
@@ -22,7 +28,9 @@ class NowPick {
   final Stake? stake;
   /// « parce que : … » (sans le préfixe).
   final String why;
-  const NowPick(this.kind, {this.block, this.current = false, this.stake, this.why = ''});
+  /// Matin / soir : les routines qui restent (titres des gestes).
+  final List<String> items;
+  const NowPick(this.kind, {this.block, this.current = false, this.stake, this.why = '', this.items = const []});
 
   bool get isStake => stake != null;
 }
@@ -54,6 +62,7 @@ NowPick pickNow({
   String? runningName,
   StakeBoard? board,
   bool modeAvailable = true,
+  bool chainAvailable = false,
 }) {
   final focus = focusBlock(blocks, nowMin);
   final fixed = nextFixed(blocks, now, dayStartMin, sessionTaskIds: sessionTaskIds);
@@ -68,6 +77,30 @@ NowPick pickNow({
   }
   final next = focus?.block;
   final room = next == null ? null : blockStartMin(next) - nowMin;
+  // Lot 3, selon le moment.
+  final justEnded = blocks.where((b) {
+    if (b.status == 'deleted' || b.status == 'skipped') return false;
+    final end = blockEndMin(b);
+    return end <= nowMin && end > nowMin - kNowJustEndedMin;
+  }).isNotEmpty;
+  if (justEnded && next != null && room != null && room <= 30) {
+    return NowPick(NowPickKind.next, block: next, why: 'bloc fini · on enchaîne, ${_hm(blockStartMin(next))}');
+  }
+  final routines = board == null
+      ? const <String>[]
+      : [for (final s in [...board.top, ...board.rest]) if (s.gesture.kind == StakeGestureKind.routine) s.gesture.title];
+  if (chainAvailable && routines.isNotEmpty) {
+    final started = blocks.any((b) => b.status == 'done');
+    if (!started && next != null && nowMin < 12 * 60 && room != null && room >= kNowStakeRoomMin) {
+      return NowPick(NowPickKind.morning,
+          block: next, items: routines, why: 'premier geste de la journée · ensuite ${next.title} à ${_hm(blockStartMin(next))}');
+    }
+    if (nowMin >= kNowEveningMin && (room == null || room >= kNowStakeRoomMin)) {
+      final until = next == null ? '' : ' avant ${next.title} à ${_hm(blockStartMin(next))}';
+      return NowPick(NowPickKind.evening,
+          block: next, items: routines, why: '${routines.length} chose${routines.length > 1 ? 's' : ''}$until');
+    }
+  }
   if (board != null && (room == null || room >= kNowStakeRoomMin)) {
     final stakes = [...board.top, ...board.rest].where((s) => s.gesture.kind != StakeGestureKind.block).toList();
     for (final (kind, test) in <(NowPickKind, bool Function(StakeGain))>[

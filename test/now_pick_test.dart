@@ -60,4 +60,21 @@ void main() {
     final few = nowAlternatives(shown, blocks: blocks, nowMin: nowMin, board: StakeBoard(top: [stake('Louanges', series)]));
     expect(few.single.kind, NowPickKind.next);
   });
+
+  test('selon le moment : bloc fini, matin, soir', () {
+    final routine = StakeGain(kind: StakeGainKind.routine, label: '0 / 1 aujourd’hui', weight: 4);
+    final board = StakeBoard(top: [stake('Faire mon lit', routine), stake('Louanges', routine)]);
+    final ended = ScheduleBlock(id: 'e', startTime: '13:00', durationMin: 55, title: 'Contenu', status: 'done');
+    final p = pickNow(blocks: [ended, blk('n', '14:12', 45, title: 'Courir')], now: now, nowMin: nowMin, dayStartMin: 300, board: board, chainAvailable: true);
+    expect(p.kind, NowPickKind.next);
+    expect(p.why, startsWith('bloc fini'));
+    final morning = DateTime(2026, 11, 7, 7, 40);
+    final m = pickNow(blocks: [blk('c', '09:00', 60, title: 'Contenu')], now: morning, nowMin: 7 * 60 + 40, dayStartMin: 300, board: board, chainAvailable: true);
+    expect(m.kind, NowPickKind.morning);
+    expect(m.items, ['Faire mon lit', 'Louanges']);
+    final evening = DateTime(2026, 11, 7, 20, 45);
+    final e = pickNow(blocks: [blk('s', '22:00', 420, title: 'Sommeil')], now: evening, nowMin: 20 * 60 + 45, dayStartMin: 300, board: board, chainAvailable: true);
+    expect(e.kind, NowPickKind.evening);
+    expect(e.why, contains('avant Sommeil à 22:00'));
+  });
 }
