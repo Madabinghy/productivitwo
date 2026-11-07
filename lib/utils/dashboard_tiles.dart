@@ -385,7 +385,7 @@ DashTile? perfectDayTile(TodayFacts? facts, EmberLedger ledger) {
   final pending = facts.pendingBlocks.length;
   final total = facts.routines.length + blocks.length;
   final done = facts.routinesReached + facts.blocksDone;
-  final embers = '🔥 ${ledger.available} / $kEmberCap';
+  final embers = kEmbersEnabled ? '🔥 ${ledger.available} / $kEmberCap' : null;
   if (total == 0) {
     return DashTile(label: 'JOURNÉE PARFAITE', badge: embers, value: 'Rien à tenir', sub: 'aucune routine ni bloc aujourd\'hui');
   }
@@ -410,7 +410,7 @@ DashTile? perfectDayTile(TodayFacts? facts, EmberLedger ledger) {
       label: 'JOURNÉE PARFAITE',
       badge: embers,
       value: 'Parfaite ✓',
-      sub: ledger.stock >= kEmberCap ? 'réserve pleine : pas de braise de plus' : 'une braise à la bascule',
+      sub: !kEmbersEnabled ? 'tout est tenu' : ledger.stock >= kEmberCap ? 'réserve pleine : pas de braise de plus' : 'une braise à la bascule',
       mini: mini,
     );
   }

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
@@ -141,8 +142,9 @@ class _LostYesterdaySectionState extends State<LostYesterdaySection> {
     if (logic.yesterdayIsHard) return _hardCard(context);
     final lostAll = logic.lostSeriesYesterday();
     if (lostAll.isEmpty) return const SizedBox.shrink();
-    final canHard = logic.canDeclareYesterdayHard && lostAll.where((l) => !l.pending).length >= 2;
-    final lost = lostAll.where((l) => widget.all || l.pending || l.rekindlable).toList();
+    // Sans braises (2026-11-07) : la journée difficile est le seul recours, dès une série cassée.
+    final canHard = logic.canDeclareYesterdayHard && lostAll.where((l) => !l.pending).length >= (kEmbersEnabled ? 2 : 1);
+    final lost = lostAll.where((l) => l.pending || (kEmbersEnabled && (widget.all || l.rekindlable))).toList();
     final canMin = widget.onMinimum != null && logic.minimumNow == null && lostAll.length >= 2;
     if (lost.isEmpty && !canHard && !canMin) return const SizedBox.shrink();
     final ledger = logic.emberLedgerNow();
@@ -171,7 +173,8 @@ class _LostYesterdaySectionState extends State<LostYesterdaySection> {
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: kBText)),
         const SizedBox(height: 4),
         if (canHard) ...[
-          const Text('Ça arrive. Tu peux encaisser la journée, ou garder une seule série avec ta braise.', style: TextStyle(fontSize: 13, color: kBText3)),
+          Text(kEmbersEnabled ? 'Ça arrive. Tu peux encaisser la journée, ou garder une seule série avec ta braise.' : 'Ça arrive. Si hier a vraiment été une journée difficile, tu peux le geler.',
+              style: const TextStyle(fontSize: 13, color: kBText3)),
           const SizedBox(height: 10),
           FilledButton(
             key: const ValueKey('hard-day-open'),
@@ -185,7 +188,7 @@ class _LostYesterdaySectionState extends State<LostYesterdaySection> {
             child: const Text('C’était une journée difficile', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(height: 4),
-          Text('les ${lostAll.length} séries gelées · possible 1 fois tous les $kHardDayCooldownDays jours',
+          Text('${lostAll.length > 1 ? 'les ${lostAll.length} séries gelées' : 'la série gelée'} · possible 1 fois tous les $kHardDayCooldownDays jours',
               textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: kBText4)),
         ] else if (last != null && lostAll.length >= 2)
           Text('Journée difficile déjà prise le ${_dayLabel(last)} · à nouveau possible le ${_dayLabel(nextHardDayAfter(last))}',
@@ -408,15 +411,15 @@ Future<bool?> showHardDaySheet(BuildContext context, {required AppLogic logic, r
         Text('${_kWeekdays[d.weekday - 1][0].toUpperCase()}${_kWeekdays[d.weekday - 1].substring(1)} ${d.day} ${_kMonths[d.month - 1]}',
             style: const TextStyle(fontSize: 13, color: kBText3)),
         section('CE QUE ÇA FAIT', [
-          Text('Les ${lost.length} séries cassées hier sont gelées : elles reprennent là où elles étaient, sans gagner de jour.',
+          Text('${lost.length > 1 ? 'Les ${lost.length} séries cassées hier sont gelées : elles reprennent là où elles étaient' : 'La série cassée hier est gelée : elle reprend là où elle était'}, sans gagner de jour.',
               style: const TextStyle(fontSize: 13.5, color: kBText2)),
           const SizedBox(height: 4),
           for (final l in sorted.take(3)) line(l.name, '${l.length} j → ${l.length} j'),
           if (sorted.length > 3) line('+ ${sorted.length - 3} autre${sorted.length > 4 ? 's' : ''}', 'gardée${sorted.length > 4 ? 's' : ''}'),
         ]),
         section('CE QUE ÇA COÛTE', [
-          const Text('Hier ne compte pas pour Journée parfaite, Métronome ni Montre suisse, et ne forge pas de braise.',
-              style: TextStyle(fontSize: 13.5, color: kBText2)),
+          Text('Hier ne compte pas pour Journée parfaite, Métronome ni Montre suisse${kEmbersEnabled ? ', et ne forge pas de braise' : ''}.',
+              style: const TextStyle(fontSize: 13.5, color: kBText2)),
           const SizedBox(height: 6),
           Text('La prochaine journée difficile sera possible dès le ${_dayLabel(nextHardDayAfter(yesterday))}.',
               style: const TextStyle(fontSize: 13.5, color: kBText2)),
@@ -442,7 +445,7 @@ Future<bool?> showHardDaySheet(BuildContext context, {required AppLogic logic, r
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
           style: TextButton.styleFrom(foregroundColor: kBText3),
-          child: const Text('Non, j’utilise plutôt ma braise', style: TextStyle(decoration: TextDecoration.underline)),
+          child: Text(kEmbersEnabled ? 'Non, j’utilise plutôt ma braise' : 'Non, pas cette fois', style: const TextStyle(decoration: TextDecoration.underline)),
         ),
       ],
     );

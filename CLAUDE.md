@@ -1821,8 +1821,13 @@ récolte du matin / Ouvre ta collection / retournement des cartes / Un badge tom
 d'Aujourd'hui), cartes à aller chercher et Sniper ciblé (`_questsSection`), Chasseur de cartes (plus dans le deck), « Elle compte
 pour » et « Partager la carte » dans la fiche d'une carte. La tuile Collection devient **BADGES** (séries à sauver, paliers de
 ce soir, sans points ni cadre visé) ; l'album s'appelle « Badges » et garde les cartes par famille (« k / n » à la place de
-l'écusson de famille) et la pile des séries de routine. Les sections ci-dessous décrivent l'état AVANT la coupe. Suite de
-l'audit (à valider) : retirer les braises, alléger le Sniper.
+l'écusson de famille) et la pile des séries de routine. Les sections ci-dessous décrivent l'état AVANT la coupe.
+**Braises coupées** (lot 2 de l'audit, même jour) : flag `kEmbersEnabled = false` — plus de réserve à forger (journée parfaite,
+semaine tenue) ni de série à rallumer dans l'interface : carte Perdu hier sans « Garder une série » (les rallumages en attente
+restent annulables ; la journée difficile s'offre dès UNE série cassée), plus de 🔥 k / 3 sur la tuile Journée parfaite, plus de
+BRAISES dans sa feuille ni dans « Badges en jeu », bilan du soir « Journée parfaite · tout est tenu », textes et règles sans
+braise. Le registre (`emberLedger`) est toujours rejoué : les jours déjà comblés le restent, aucune série ne casse après coup.
+Restent comme filets : journée difficile, Le minimum, gel, veille. Suite (à valider) : alléger le Sniper.
 
 ## Badges en cartes (2026-11-01, maquette validée « Badges en cartes »)
 

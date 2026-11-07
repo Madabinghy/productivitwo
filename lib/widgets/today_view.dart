@@ -1351,10 +1351,12 @@ class TodayViewState extends State<TodayView> {
               FicheTitle('BLOCS À FAIRE · ${blocks.length}'),
               _perfectBlocks(ctx, blocks),
             ],
-            if (total > 0 && missing == 0)
+            if (total > 0 && missing == 0 && !kEmbersEnabled) const FicheNote('Tout est tenu.'),
+            if (total > 0 && missing == 0 && kEmbersEnabled)
               FicheNote(ledger.stock >= kEmberCap
                   ? 'Tout est tenu. La réserve est pleine : pas de braise de plus ce soir.'
                   : 'Tout est tenu : une braise s\'ajoute à la bascule de la journée.'),
+            if (kEmbersEnabled) ...[
             const FicheTitle('BRAISES'),
             Row(children: [
               EmberDots(stock: ledger.available),
@@ -1368,6 +1370,7 @@ class TodayViewState extends State<TodayView> {
             const FicheNote('Une journée parfaite forge une braise (3 au plus). Une braise rallume une série de routine cassée hier, si la routine est atteinte aujourd\'hui.'),
             const SizedBox(height: 8),
             EmberLedgerPanel(ledger: ledger, names: {for (final a in widget.logic.state.activities) a.id: a.name}),
+            ],
             const SizedBox(height: 14),
             TextButton(
               key: const ValueKey('perfect-to-minimum'),

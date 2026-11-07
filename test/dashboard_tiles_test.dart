@@ -200,7 +200,7 @@ void main() {
     expect(none.sub, 'tous passés pour aujourd’hui');
   });
 
-  test('JOURNÉE PARFAITE : ce qui manque et braises en réserve', () {
+  test('JOURNÉE PARFAITE : ce qui manque (plus de braises depuis 2026-11-07)', () {
     Activity r(String id) => Activity(id: id, domainId: 'd', name: id, role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 1, 1));
     final facts = TodayFacts(
       ymd: '2026-10-29',
@@ -212,10 +212,10 @@ void main() {
     expect(t.label, 'JOURNÉE PARFAITE');
     expect(t.value, 'Il manque 2');
     expect(t.sub, 'Cuisiner · 1 bloc');
-    expect(t.badge, '🔥 2 / 3');
+    expect(t.badge, isNull);
     expect(t.mini, [TileMark.on, TileMark.on, TileMark.off, TileMark.off]);
     final done = TodayFacts(ymd: '2026-10-29', now: DateTime(2026, 10, 29, 20), routines: [RoutineToday(r('Pompes'), 1, 1)]);
-    expect(perfectDayTile(done, const EmberLedger(stock: 3))!.sub, 'réserve pleine : pas de braise de plus');
+    expect(perfectDayTile(done, const EmberLedger(stock: 3))!.sub, 'tout est tenu');
     expect(perfectDayTile(null, EmberLedger.empty), isNull);
   });
 }

@@ -715,7 +715,7 @@ BadgeDeck computeBadges({
       ('Plus longue série', _plural(weeks.longest, 'semaine', 'semaines')),
       if (weeks.closedCount > 0) ('Semaines tenues', '${weeks.heldCount} sur ${weeks.closedCount}'),
       if (thisWeek?.pct != null) ('Cette semaine', '${(thisWeek!.pct! * 100).round()} %${weeks.missing > 0 ? ' · encore ${weeks.missing} coche${weeks.missing > 1 ? 's' : ''}' : ' · tenue'}'),
-      if (embers.history.any((e) => e.week && e.kind == EmberEventKind.earned))
+      if (kEmbersEnabled && embers.history.any((e) => e.week && e.kind == EmberEventKind.earned))
         ('Braises forgées', '${embers.history.where((e) => e.week && e.kind == EmberEventKind.earned).length}'),
     ],
   ));

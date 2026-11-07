@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
@@ -335,7 +336,7 @@ class BadgesInPlayScreen extends StatelessWidget {
         padding: sheet ? const EdgeInsets.fromLTRB(20, 14, 20, 32) : const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           if (sheet) FicheHeader(title: 'Badges en jeu', chip: '${data.today} aujourd’hui', chipColor: kStakeHunt),
-          if (embers case final e?) EmberLedgerPanel(ledger: e, names: names),
+          if (embers case final e? when kEmbersEnabled) EmberLedgerPanel(ledger: e, names: names),
           if (data.today == 0)
             const Padding(
               padding: EdgeInsets.only(top: 24),
