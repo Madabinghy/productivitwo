@@ -152,10 +152,10 @@ glissants, reste à faire par activité) · Dates (rendez-vous agenda, séances,
 les colonnes du Gantt ne portent plus que le jour (la charge vit dans LA SEMAINE) ; les gestes sont derrière « ⓘ Les gestes ».
 **Une vraie semaine** (2026-11-07, maquette validée « Web Cette semaine, à placer », lot 1 — remplace LA SEMAINE en cartes et le Gantt
 des tâches, qui reste dans la Vision d'un projet) : la vue est une grille d'agenda, une colonne par jour sur la journée active
-(`_weekGrid` / `_gridBody`, `_gridRange` = `dayWindow` arrondie à l'heure, défile si trop serrée) ; en-tête de jour (`_gridDayHeader` :
+(`_weekGrid` / `_gridBody` ; depuis le 2026-11-07, comme la frise d'Aujourd'hui, de minuit à minuit (`_gridRange`) avec la journée active à la hauteur visible, défilement vertical `_gridScroll` recentré sur l'heure actuelle à l'ouverture et à chaque changement de semaine (`_gridScrolled`), sinon sur le début de la journée active ; **zoom vertical** comme la frise d'Aujourd'hui : Ctrl / ⌘ + molette ou pincement autour du curseur, boutons − · 24 h / ×n · + dans l'en-tête (`_zoomControls`, `_zoomBy`), de « les 24 h à l'écran » à ×6, mémorisé `week_grid_zoom`) ; en-tête de jour (`_gridDayHeader` :
 charge sur capacité, ou « k / n faits · m lâchés » d'un jour passé ; tap = panneau du jour) ; blocs à leur heure (`_gridBlock` :
 rendez-vous agenda et séances en or `_isDated`, fait, lâché, déplacé, en cours, pas fait ; côte à côte via `overlapColumns`), trait
-rouge « maintenant » ; **glisser** un bloc à faire = autre heure ou autre jour (`_gridCommit`, pas de 15 min : d'un jour à l'autre =
+rouge « maintenant » sur toute la semaine (fin sur les autres jours, appuyé avec un point sur le jour même, heure en pastille dans la marge, rafraîchi toutes les 30 s par `_clockTick`) ; **glisser** un bloc à faire = autre heure ou autre jour (`_gridCommit`, pas de 15 min : d'un jour à l'autre =
 copie à destination + origine `skipped` / `reporte`, comme le report au lendemain ; jamais un miroir agenda ni un jour passé), **bord
 bas** = durée, **clic sur un créneau vide** = nouveau bloc à ce quart d'heure (`_addBlockOn(at:)`), tap = « Modifier le bloc », clic
 droit = Déplacer à demain · Retirer. En-tête : « n blocs à faire » au lieu des tâches en retard / à caser. **À placer cette semaine** (lot 2, colonne de 300 px à
