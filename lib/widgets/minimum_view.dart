@@ -401,101 +401,285 @@ class _ClimbCardState extends State<ClimbCard> {
 
   AppLogic get logic => widget.logic;
 
+  static const _ember = Color(0xFFFF8A3D);
+  static const _emberSoft = Color(0xFFFFC27A);
+  static const _ash = Color(0xFF1A1612);
+
   @override
   Widget build(BuildContext context) {
     final c = logic.climbNow;
     if (c == null || logic.minimumNow != null) return const SizedBox.shrink();
     final todo = _toRevive(logic, c)..sort((x, y) => logic.currentSeriesOf(y).compareTo(logic.currentSeriesOf(x)));
     final total = todo.length + c.revived.length;
+    final done = c.revived.length;
     final today = _revivedToday(logic, c);
     final names = {for (final a in logic.state.activities) a.id: a.name};
-    final todayName = [for (final e in c.revived.entries) if (e.value == logic.livedTodayYmd) names[e.key] ?? ''].join(', ');
-    final open = !today || _more;
-    return Container(
-      margin: const EdgeInsets.only(top: 4, bottom: 6),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-      decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(18), border: Border.all(color: kVeilleuse.withValues(alpha: .45))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('REMONTÉE · JOUR ${_climbDay(logic, c)}', style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kVeilleuse)),
-          const InfoDot(kRuleClimb, size: 16),
-        ]),
-        const SizedBox(height: 2),
-        Text('${c.revived.length} / $total séries ravivées', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: kBText)),
-        const SizedBox(height: 8),
-        Wrap(spacing: 5, runSpacing: 5, children: [
-          for (var i = 0; i < total; i++)
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: i < c.revived.length ? const Color(0xFFFF8A3D) : const Color(0xFF2A2622),
-                border: Border.all(color: i < c.revived.length ? const Color(0xFFFF8A3D) : const Color(0xFF3A342E)),
-              ),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        const Text('Ton minimum + 1 série par jour. Pas tout d’un coup : c’est comme ça qu’on ne rechute pas.', style: TextStyle(fontSize: 12.5, color: kBText3)),
-        if (today) ...[
+    final todayNames = [for (final e in c.revived.entries) if (e.value == logic.livedTodayYmd) names[e.key] ?? ''];
+    final choosing = !today || _more;
+    final day = _climbDay(logic, c);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Text('REMONTÉE · JOUR $day${choosing ? ' · $done / $total' : ''}',
+            style: const TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: _emberSoft)),
+        const InfoDot(kRuleClimb, size: 16),
+      ]),
+      const SizedBox(height: 4),
+      Text(choosing ? 'Quelle série rallumes-tu aujourd’hui ?' : 'Tu remontes la pente',
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.15, color: kBText)),
+      const SizedBox(height: 6),
+      Text(
+        choosing
+            ? 'Elle compte de nouveau dès que tu la ravives. Les autres restent au chaud, sans rien perdre.'
+            : 'Une marche par jour. Pas tout d’un coup : c’est comme ça qu’on ne rechute pas.',
+        style: const TextStyle(fontSize: 13.5, height: 1.45, color: kBText3),
+      ),
+      const SizedBox(height: 14),
+      if (!choosing) ...[
+        _stairs(done, total),
+        const SizedBox(height: 12),
+        _todayDone(todayNames),
+        if (todo.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _label('DEMAIN, TA PROCHAINE MARCHE'),
           const SizedBox(height: 8),
-          Text('✓ $todayName ravivée aujourd’hui · la suivante demain', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: kPalierGreenMin)),
-          if (!_more)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () => setState(() => _more = true),
-                style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
-                child: const Text('En raviver une de plus', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
-              ),
-            ),
+          _nextStep(todo.first),
         ],
-        if (open && todo.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          const Text('AUJOURD’HUI, TU RAVIVES', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
-          for (final a in todo.take(4))
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
-              child: Row(children: [
-                Expanded(child: Text(a.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: kBText))),
-                Text('${logic.currentSeriesOf(a)} j', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kBText3)),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 32,
-                  child: FilledButton(
-                    key: ValueKey('revive-${a.id}'),
-                    onPressed: () => _revive([a.id]),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: kVeilleuse,
-                      foregroundColor: const Color(0xFF2A1600),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ] else ...[
+        _bar(done, total),
+        if (todo.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _proposed(todo.first),
+          if (todo.length > 1) ...[
+            const SizedBox(height: 16),
+            _label('OU UNE AUTRE'),
+            const SizedBox(height: 4),
+            for (final a in todo.skip(1).take(4)) _otherRow(a),
+            if (todo.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('+ ${todo.length - 5} autres sous la cendre', style: const TextStyle(fontSize: 12.5, color: kBText4)),
+              ),
+          ],
+        ],
+      ],
+      if (!choosing && todo.length > 1) ...[
+        const SizedBox(height: 16),
+        _label('SOUS LA CENDRE · ${todo.length}'),
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final a in todo.take(4)) _ashChip('${a.name} · ${logic.currentSeriesOf(a)} j'),
+          if (todo.length > 4) _ashChip('+ ${todo.length - 4} autres', dim: true),
+        ]),
+      ],
+      const SizedBox(height: 18),
+      if (!choosing && todo.isNotEmpty)
+        OutlinedButton(
+          key: const ValueKey('climb-more'),
+          onPressed: () => setState(() => _more = true),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: _ash,
+            foregroundColor: _emberSoft,
+            side: BorderSide(color: _emberSoft.withValues(alpha: .35)),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('J’ai de l’élan : en raviver une de plus', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        ),
+      Row(children: [
+        TextButton(
+          key: const ValueKey('climb-all'),
+          onPressed: () => _all(context, todo),
+          style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+          child: const Text('Tout reprendre d’un coup', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
+        ),
+        const Spacer(),
+        TextButton(
+          onPressed: () => showStrugglesSheet(context, logic: logic, badges: widget.badges?.call() ?? const []),
+          style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
+          child: const Text('Tes luttes ›', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _label(String t) => Text(t, style: const TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: kBText3));
+
+  /// L'escalier : une marche par série, les ravivées allumées, la prochaine en pointillés.
+  Widget _stairs(int done, int total) {
+    final left = total - done;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: kBSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _emberSoft.withValues(alpha: .25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text('$done', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: _emberSoft)),
+          const SizedBox(width: 6),
+          Expanded(child: Text('/ $total séries ravivées', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kBText))),
+          if (left > 0) Text('≈ $left jour${left > 1 ? 's' : ''} encore', style: const TextStyle(fontSize: 12, color: kBText3)),
+        ]),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 64,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (var i = 0; i < total; i++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                  child: Container(
+                    key: ValueKey('climb-step-$i'),
+                    height: 10 + 54 * (i + 1) / total,
+                    decoration: BoxDecoration(
+                      color: i < done ? _ember : const Color(0xFF1F2A24),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                      border: i == done ? Border.all(color: _emberSoft, width: 1.4) : null,
                     ),
-                    child: const Text('Raviver', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
                   ),
                 ),
-              ]),
-            ),
-          if (todo.length > 4) Text('+ ${todo.length - 4} autres sous la cendre', style: const TextStyle(fontSize: 12, color: kBText4)),
-        ],
-        Row(children: [
-          TextButton(
-            key: const ValueKey('climb-all'),
-            onPressed: () => _all(context, todo),
-            style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
-            child: const Text('Tout reprendre d’un coup', style: TextStyle(fontSize: 12.5, decoration: TextDecoration.underline)),
-          ),
-          const Spacer(),
-          TextButton(
-            onPressed: () => showStrugglesSheet(context, logic: logic, badges: widget.badges?.call() ?? const []),
-            style: TextButton.styleFrom(foregroundColor: kBText3, padding: EdgeInsets.zero),
-            child: const Text('Tes luttes ›', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-          ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 8),
+        const Row(children: [
+          Text('le minimum', style: TextStyle(fontSize: 11.5, color: kBText3)),
+          Spacer(),
+          Text('tout repris · Journée parfaite revient', style: TextStyle(fontSize: 11.5, color: kBText3)),
         ]),
       ]),
     );
   }
+
+  Widget _bar(int done, int total) => Row(children: [
+        for (var i = 0; i < total; i++)
+          Expanded(
+            child: Container(
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: i < done ? _ember : (i == done ? _emberSoft.withValues(alpha: .35) : const Color(0xFF1F2A24)),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+      ]);
+
+  Widget _todayDone(List<String> names) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(color: kPalierGreenMin.withValues(alpha: .08), borderRadius: BorderRadius.circular(16)),
+        child: Row(children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: kPalierGreenMin.withValues(alpha: .18), shape: BoxShape.circle),
+            child: const Icon(Icons.check_rounded, color: kPalierGreenMin, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Aujourd’hui : ${names.join(', ')} ravivée${names.length > 1 ? 's' : ''}',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kBText)),
+              const SizedBox(height: 2),
+              Text(names.length > 1 ? 'elles comptent de nouveau' : 'elle compte de nouveau',
+                  style: const TextStyle(fontSize: 12.5, color: kBText3)),
+            ]),
+          ),
+        ]),
+      );
+
+  Widget _nextStep(Activity a) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: kBSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _emberSoft.withValues(alpha: .4)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.local_fire_department_outlined, color: _emberSoft, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(a.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: kBText)),
+              const SizedBox(height: 2),
+              Text(_seriesLine(a), style: const TextStyle(fontSize: 12, color: kBText3)),
+            ]),
+          ),
+        ]),
+      );
+
+  String _seriesLine(Activity a) {
+    final n = logic.currentSeriesOf(a);
+    return n > 0 ? 'sa série de $n j attend sous la cendre' : 'elle attend sous la cendre';
+  }
+
+  Widget _proposed(Activity a) {
+    final target = (a.habitTarget ?? 1).clamp(1, 9999);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(color: _ash, borderRadius: BorderRadius.circular(18), border: Border.all(color: _ember, width: 1.5)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('PROPOSÉE', style: TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: _emberSoft)),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Icon(Icons.local_fire_department_rounded, color: _ember, size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(a.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBText)),
+              const SizedBox(height: 2),
+              Text(_seriesLine(a), style: const TextStyle(fontSize: 12.5, color: Color(0xFFE8CFB0))),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Text('Cible du jour : $target', style: const TextStyle(fontSize: 12.5, color: kBText3)),
+        const SizedBox(height: 10),
+        FilledButton(
+          key: ValueKey('revive-${a.id}'),
+          onPressed: () => _revive([a.id]),
+          style: FilledButton.styleFrom(
+            backgroundColor: _ember,
+            foregroundColor: const Color(0xFF2A1600),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text('Raviver ${a.name}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _otherRow(Activity a) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+        child: Row(children: [
+          Expanded(child: Text(a.name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: kBText))),
+          Text('${logic.currentSeriesOf(a)} j', style: const TextStyle(fontSize: 12.5, color: kBText3)),
+          const SizedBox(width: 10),
+          SizedBox(
+            height: 34,
+            child: OutlinedButton(
+              key: ValueKey('revive-${a.id}'),
+              onPressed: () => _revive([a.id]),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _emberSoft,
+                side: BorderSide(color: _emberSoft.withValues(alpha: .4)),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+              ),
+              child: const Text('Raviver', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _ashChip(String t, {bool dim = false}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: _ash, borderRadius: BorderRadius.circular(999)),
+        child: Text(t, style: TextStyle(fontSize: 12.5, color: dim ? kBText3 : const Color(0xFFE8CFB0))),
+      );
 
   Future<void> _revive(List<String> ids) async {
     await logic.reviveRoutines(ids);

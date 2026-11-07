@@ -332,7 +332,28 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         ),
         const SizedBox(height: 10),
         _focusToggle(cs, toReach.length),
-        if (focusing && toReach.isEmpty)
+        if (focusing && toReach.isEmpty && logic.minimumNow != null)
+          // Au minimum, les activités ne réclament rien : la Montre suisse est en pause, rien n'est « couvert ».
+          Container(
+            key: const ValueKey('launcher-watch-paused'),
+            margin: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1612),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFFFC27A).withValues(alpha: .3)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.timer_outlined, size: 28, color: Color(0xFFFFC27A)),
+              const SizedBox(height: 8),
+              const Text('La Montre suisse est en pause', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 6),
+              const Text('Au minimum, tes activités ne réclament aucun temps : rien n’est en retard, rien ne se perd. '
+                  'Elle reprend dès que tu remontes.', style: TextStyle(fontSize: 13.5, height: 1.45, color: Color(0xFFE8CFB0))),
+              TextButton(onPressed: () => setState(() => _focus = false), child: const Text('Voir toutes les activités')),
+            ]),
+          )
+        else if (focusing && toReach.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
             child: Column(children: [
