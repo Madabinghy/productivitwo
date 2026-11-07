@@ -401,6 +401,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               sync: _sync,
               onOpenProject: _openProjectInShell,
               dayStartMin: _dayStartMin,
+              activities: _activities,
+              objectives: _objectives,
             ),
             ProjectsView(
               projects: _projects,

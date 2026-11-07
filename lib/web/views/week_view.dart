@@ -9,6 +9,8 @@ import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
+import 'package:productivitwo_v1/utils/half_days.dart' show paceOn, minutesByActivityDay, ActivityPace;
+import 'package:productivitwo_v1/utils/week_stats.dart' show weekSummary, WeekSummary;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
@@ -84,6 +86,9 @@ class WeekView extends StatefulWidget {
   final FirestoreSync sync;
   final void Function(Project project, {String? taskId}) onOpenProject;
   final int dayStartMin;
+  /// Pour le rail (lot 2) : contrat de la semaine et Montre suisse.
+  final List<Activity> activities;
+  final List<StrategicObjective> objectives;
 
   const WeekView({
     super.key,
@@ -92,6 +97,8 @@ class WeekView extends StatefulWidget {
     required this.sync,
     required this.onOpenProject,
     this.dayStartMin = kDefaultDayStartMin,
+    this.activities = const [],
+    this.objectives = const [],
   });
 
   @override
@@ -125,6 +132,12 @@ class _WeekViewState extends State<WeekView> {
     _start = weekStart(livedDate(DateTime.now(), widget.dayStartMin));
     _loadPrefs();
     _subscribe();
+    _sessionsSub = widget.sync.streamSessions().listen((v) {
+      if (mounted) setState(() => _sessions = v);
+    });
+    _hitsSub = widget.sync.streamHabitHits().listen((v) {
+      if (mounted) setState(() => _hits = v);
+    });
     widget.sync.fetchWeekCapacity().then((c) {
       if (mounted) setState(() => _capacity = c);
     });
@@ -196,6 +209,8 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   void dispose() {
+    _sessionsSub?.cancel();
+    _hitsSub?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -553,7 +568,12 @@ class _WeekViewState extends State<WeekView> {
             if (_openDay != null) ...[
               const SizedBox(width: 20),
               SizedBox(width: 400, child: _dayPanel(_openDay!)),
+            ] else if (_railKey != null) ...[
+              const SizedBox(width: 20),
+              SizedBox(width: 380, child: _railPanel(_railKey!)),
             ],
+            const SizedBox(width: 16),
+            _rail(),
           ]),
         ),
       ]),
@@ -619,7 +639,10 @@ class _WeekViewState extends State<WeekView> {
       child: InkWell(
         key: ValueKey('week-day-${ymdOf(d)}'),
         borderRadius: BorderRadius.circular(14),
-        onTap: () => setState(() => _openDay = open ? null : d),
+        onTap: () => setState(() {
+          _openDay = open ? null : d;
+          _railKey = null;
+        }),
         child: Opacity(
           opacity: past && !open ? .72 : 1,
           child: Container(
@@ -856,6 +879,323 @@ class _WeekViewState extends State<WeekView> {
     final ok = await launchUrl(claudeNewUri(planDayPrompt(date: ymdOf(d), blocks: _dayBlocks(d))),
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) _snack('Impossible d’ouvrir Claude');
+  }
+
+  // ── Rail (2026-11-07, lot 2) : Contrat · Montre suisse · Dates · Capacité ──
+
+  StreamSubscription<List<Session>>? _sessionsSub;
+  StreamSubscription<List<HabitHit>>? _hitsSub;
+  List<Session> _sessions = [];
+  List<HabitHit> _hits = [];
+  String? _railKey;
+
+  static const _kRail = [
+    (key: 'contract', label: 'Contrat', icon: Icons.handshake_outlined),
+    (key: 'watch', label: 'Montre', icon: Icons.watch_outlined),
+    (key: 'dates', label: 'Dates', icon: Icons.event_outlined),
+  ];
+
+  bool get _isCurrentWeek => _days == 7 && _start == weekStart(_today);
+
+  // Recalculés au plus une fois par minute ou quand une donnée change (le
+  // glisser d'une barre redessine à chaque pixel).
+  String _railMemoKey = '';
+  WeekSummary? _contractMemo;
+  List<ActivityPace> _watchMemo = const [];
+
+  void _refreshRail() {
+    final now = DateTime.now();
+    final key = '${now.hour}:${now.minute}|${_sessions.length}|${_hits.length}|'
+        '${identityHashCode(widget.activities)}|${identityHashCode(widget.objectives)}';
+    if (key == _railMemoKey && _contractMemo != null) return;
+    _railMemoKey = key;
+    _contractMemo = weekSummary(
+      activities: widget.activities.where((a) => !a.deleted).toList(),
+      hits: _hits,
+      sessions: _sessions,
+      objectives: widget.objectives.where((o) => o.status == 'active'),
+      now: now,
+    );
+    _watchMemo = paceOn(_today, activities: widget.activities, minutes: minutesByActivityDay(_sessions, now));
+  }
+
+  WeekSummary _contract() {
+    _refreshRail();
+    return _contractMemo!;
+  }
+
+  List<ActivityPace> _watch() {
+    _refreshRail();
+    return [..._watchMemo];
+  }
+
+  /// Ce qui ne bouge pas dans la fenêtre : rendez-vous d'agenda, séances, échéances de tâches ouvertes.
+  List<({DateTime day, String time, String title, String kind})> _datedItems() {
+    final sessionIds = sessionTaskIdsOf(widget.projects);
+    final out = <({DateTime day, String time, String title, String kind})>[];
+    for (final d in _dates) {
+      for (final b in _dayBlocks(d)) {
+        if (!_isDated(b, sessionIds)) continue;
+        out.add((day: d, time: b.startTime, title: b.title, kind: b.gcalEventId != null ? 'agenda' : 'séance'));
+      }
+    }
+    final first = _dates.first, last = _dates.last;
+    for (final p in widget.projects) {
+      if (p.status == 'archived' || p.status == 'done') continue;
+      for (final t in p.tasks) {
+        final e = t.endDate;
+        if (e == null || t.status == 'done' || t.status == 'skipped') continue;
+        final day = dateOnly(e);
+        if (day.isBefore(first) || day.isAfter(last)) continue;
+        out.add((day: day, time: '', title: '${t.title} · ${p.title}', kind: t.isMilestone ? 'jalon' : 'échéance'));
+      }
+    }
+    out.sort((a, b) {
+      final c = a.day.compareTo(b.day);
+      return c != 0 ? c : a.time.compareTo(b.time);
+    });
+    return out;
+  }
+
+  ({String text, Color color})? _railBadge(String key) {
+    switch (key) {
+      case 'contract':
+        if (!_isCurrentWeek) return null;
+        final c = _contract();
+        final behind = c.engagements.length - c.kept;
+        return behind <= 0 ? null : (text: '$behind', color: kBAttention);
+      case 'watch':
+        final late = _watch().where((p) => !p.onPace).length;
+        return late == 0 ? null : (text: '$late', color: kBAttention);
+      case 'dates':
+        final n = _datedItems().where((x) => !x.day.isBefore(_today)).length;
+        return n == 0 ? null : (text: '$n', color: kBAttention);
+    }
+    return null;
+  }
+
+  Widget _rail() => Column(children: [
+        for (final r in _kRail) ...[
+          _railButton(r.label, r.icon, on: _railKey == r.key, badge: _railBadge(r.key), onTap: () {
+            setState(() {
+              _railKey = _railKey == r.key ? null : r.key;
+              _openDay = null;
+            });
+          }, key: ValueKey('week-rail-${r.key}')),
+          const SizedBox(height: 8),
+        ],
+        _railButton('Capacité', Icons.tune_outlined, on: false, onTap: _editCapacity, key: const ValueKey('week-rail-capacity')),
+      ]);
+
+  Widget _railButton(String label, IconData icon,
+      {required bool on, ({String text, Color color})? badge, required VoidCallback onTap, Key? key}) {
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          width: 60,
+          height: 58,
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFF1C3A2C) : kBSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? kBPrimary : kBLine, width: on ? 1.5 : 1),
+          ),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 19, color: on ? kBText : kBText2),
+                const SizedBox(height: 4),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    softWrap: false,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? kBText : kBText2)),
+              ]),
+            ),
+            if (badge != null)
+              Positioned(
+                top: 4,
+                right: 5,
+                child: Text(badge.text,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: badge.color, fontFeatures: _tabular)),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _railPanel(String key) {
+    final title = _kRail.firstWhere((r) => r.key == key).label;
+    final List<Widget> body = switch (key) {
+      'contract' => _contractBody(),
+      'watch' => _watchBody(),
+      _ => _datesBody(),
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: kBSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF3A5A4A)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(key == 'watch' ? 'Montre suisse' : title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText))),
+          IconButton(
+            key: const ValueKey('week-rail-close'),
+            tooltip: 'Fermer',
+            icon: const Icon(Icons.close, size: 18, color: kBText3),
+            onPressed: () => setState(() => _railKey = null),
+          ),
+        ]),
+        Expanded(child: ListView(children: body)),
+      ]),
+    );
+  }
+
+  Widget _meter(String name, String value, double ratio, Color color, {String? sub}) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kBText)),
+            ),
+            Text(value, style: TextStyle(fontSize: 12.5, color: color, fontFeatures: _tabular)),
+          ]),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 5,
+              child: Stack(children: [
+                Container(color: const Color(0x14FFFFFF)),
+                FractionallySizedBox(widthFactor: ratio.clamp(0.0, 1.0), child: Container(color: color)),
+              ]),
+            ),
+          ),
+          if (sub != null) ...[
+            const SizedBox(height: 4),
+            Text(sub, style: const TextStyle(fontSize: 11.5, color: kBText3)),
+          ],
+        ]),
+      );
+
+  List<Widget> _contractBody() {
+    if (!_isCurrentWeek) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Le contrat se lit sur la semaine en cours.', style: TextStyle(fontSize: 13, color: kBText3)),
+        ),
+      ];
+    }
+    final c = _contract();
+    if (c.engagements.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Aucun engagement de routine cette semaine.', style: TextStyle(fontSize: 13, color: kBText3)),
+        ),
+      ];
+    }
+    return [
+      Text('${c.kept} / ${c.engagements.length} au rythme · attendu à ce jour',
+          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+      Text(c.fromObjectives ? 'les routines de tes objectifs en cours' : 'toutes tes routines',
+          style: const TextStyle(fontSize: 12, color: kBText4)),
+      const SizedBox(height: 8),
+      for (final e in c.engagements)
+        _meter(
+          e.label,
+          '${e.done} / ${e.target}',
+          e.target == 0 ? 1 : e.done / e.target,
+          c.onTrack(e) ? kBPrimary : kBAttention,
+          sub: c.onTrack(e) ? null : 'en retard sur le rythme du jour',
+        ),
+    ];
+  }
+
+  List<Widget> _watchBody() {
+    final list = _watch()..sort((a, b) => b.missingMin.compareTo(a.missingMin));
+    if (list.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Aucune activité avec un minimum.', style: TextStyle(fontSize: 13, color: kBText3)),
+        ),
+      ];
+    }
+    final ok = list.where((p) => p.onPace).length;
+    return [
+      Text('$ok / ${list.length} couvertes sur les 7 derniers jours',
+          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+      const SizedBox(height: 8),
+      for (final p in list)
+        _meter(
+          p.activity.name,
+          '${_fmtHm(p.doneMin)} / ${_fmtHm(p.expectedMin)}',
+          p.expectedMin == 0 ? 1 : p.doneMin / p.expectedMin,
+          p.onPace ? kBPrimary : kBAttention,
+          sub: p.onPace ? '✓ couverte' : 'reste ${_fmtHm(p.missingMin)} · aujourd’hui ${_fmtHm(p.todayMin)}',
+        ),
+    ];
+  }
+
+  List<Widget> _datesBody() {
+    final items = _datedItems();
+    if (items.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text('Rien de daté sur cette période.', style: TextStyle(fontSize: 13, color: kBText3)),
+        ),
+      ];
+    }
+    final out = <Widget>[];
+    DateTime? cur;
+    for (final x in items) {
+      if (x.day != cur) {
+        cur = x.day;
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 2),
+          child: Text('${_kDayLong[x.day.weekday - 1].toUpperCase()} ${x.day.day}',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.3,
+                  color: x.day == _today ? kBPrimary : kBText3)),
+        ));
+      }
+      final past = x.day.isBefore(_today);
+      out.add(Container(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+              width: 46,
+              child: Text(x.time, style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular))),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(x.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: past ? kBText3 : kBText)),
+              Text(x.kind, style: TextStyle(fontSize: 11.5, color: x.kind == 'échéance' || x.kind == 'jalon' ? kBAlert : kBAttention)),
+            ]),
+          ),
+        ]),
+      ));
+    }
+    return out;
   }
 
   Widget _pageHeader({required int active, required int done, required int late, required int toPlace}) {

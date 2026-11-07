@@ -141,7 +141,12 @@ une carte par jour (`_dayStrip` / `_dayCard` : charge sur capacité, « k / n fa
 rendez-vous agenda et séances en or, `_isDated` —, « + n blocs ») ; tap = panneau de 400 px à droite du Gantt (`_dayPanel`,
 `_openDay`) : le programme du jour avec l'état de chaque bloc (fait · lâché · empêché · déplacé · pas fait · agenda · à faire,
 `_blockState`), CE QUI A AVANCÉ (actions cochées ce jour-là), ‹ › jour voisin, et pour un jour à venir « + Ajouter un bloc »
-(`showScheduleBlockDialog`) et « Préparer avec Claude » (`planDayPrompt`).
+(`showScheduleBlockDialog`) et « Préparer avec Claude » (`planDayPrompt`). **Rail** (lot 2, `_rail`, `_kRail`, comme Aujourd'hui) : Contrat
+(`weekSummary` de la semaine en cours : engagements fait / attendu, en retard en ambre) · Montre suisse (`paceOn` sur 7 jours
+glissants, reste à faire par activité) · Dates (rendez-vous agenda, séances, échéances et jalons de tâches ouvertes de la fenêtre,
+`_datedItems`) · Capacité (`_editCapacity`) ; pastilles d'attention (`_railBadge`), un panneau de 380 px à la fois (`_railPanel`,
+`_railKey`, ferme le panneau d'un jour) ; calculs mis en cache à la minute (`_refreshRail`). `WeekView` reçoit `activities` et
+`objectives` du shell et suit sessions et hits (`streamSessions`, `streamHabitHits`).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
