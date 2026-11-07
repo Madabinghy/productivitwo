@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
@@ -61,6 +62,16 @@ class _PendingRunCardState extends State<PendingRunCard> {
   /// Sniper quitté pendant un tir (« Faire ça dans l'app ») : le tir continue.
   String _line(PendingRun p, bool sniper, String at) {
     if (!sniper) {
+      // Offensive quittée par « Faire autre chose dans l'app » : le coup continue.
+      if (p.kind == kOffensiveKind && p.extra['away'] == true && p.extra['cur'] != null) {
+        if (p.intOf('duration') == 0) return 'Deep work en cours · reviens valider tes étapes quand tu veux.';
+        final ends = p.intOf('endsAt');
+        if (ends != null) {
+          final e = DateTime.fromMillisecondsSinceEpoch(ends);
+          final hm = '${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}';
+          if (e.isAfter(DateTime.now())) return 'Coup en cours jusqu’à $hm · reviens valider tes étapes.';
+        }
+      }
       if (chronoKeepsAlive(p, widget.logic.state.sessions, widget.logic.livedTodayYmd)) {
         return 'Ton chrono tourne toujours : elle reprend là où tu en es, les coups passés comptent.';
       }

@@ -85,6 +85,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   int get _coupMin => coupMinutes(_duration);
   /// Retour après être resté plongé dans le coup, app fermée : ce qui a été compté pendant l'absence.
   String? _awayNote;
+  /// « Faire autre chose dans l'app » : l'écran se ferme, le coup et son chrono continuent.
+  bool _away = false;
   /// Prochain rendez-vous daté (agenda, séance) : ligne « Ensuite » et alarme d'atterrissage.
   FixedAhead? _ahead;
   late final Set<String> _sessionTasks = sessionTaskIdsOf(logic.currentProjects);
@@ -162,22 +164,24 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final cur = r.extra['cur']?.toString();
     final ends = r.intOf('endsAt');
     final open = logic.state.sessions.where((x) => !x.deleted && x.endAt == null && !x.startAt.isBefore(r.startedAt)).firstOrNull;
-    final keep = cur != null && ends != null && open != null && open.actionId == cur;
+    // Quittée par « Faire autre chose dans l'app » sur une action sans chrono : le coup continue quand même.
+    final awayNoChrono = r.extra['away'] == true && r.extra['own'] != true && open == null;
+    final keep = cur != null && ends != null && ((open != null && open.actionId == cur) || awayNoChrono);
     if (open != null && !keep) logic.stopActive(notify: false);
     _queue = _previewQueue();
     final ki = keep ? _queue.indexWhere((t) => t.action.id == cur) : -1;
     if (keep && ki >= 0) {
       _index = ki;
-      _ownChrono = true;
+      final endsAt = DateTime.fromMillisecondsSinceEpoch(ends);
+      _ownChrono = open != null;
       _chronoSec = r.intOf('chronoBase') ?? _chronoSec;
       final from = r.intOf('chronoFrom');
-      _chronoFrom = from == null ? open.startAt : DateTime.fromMillisecondsSinceEpoch(from);
-      final endsAt = DateTime.fromMillisecondsSinceEpoch(ends);
+      if (open != null) _chronoFrom = from == null ? open.startAt : DateTime.fromMillisecondsSinceEpoch(from);
       final now = DateTime.now();
       final extra = overtimeCoups(endsAt, now, _coupMin);
       _won += extra;
       if (extra > 0) {
-        final m = now.difference(open.startAt).inMinutes;
+        final m = now.difference(open?.startAt ?? endsAt.subtract(Duration(minutes: _coupMin))).inMinutes;
         _awayNote = 'Tu es resté dedans : +$extra coup${extra > 1 ? 's' : ''} compté${extra > 1 ? 's' : ''} · chrono ${m ~/ 60 > 0 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min'} sur cette action';
       }
       // Resté dedans au-delà du coup : d'abord ce qui est passé sans toi (« Plongé, pas perdu », lot 4).
@@ -236,6 +240,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _cur != null) 'cur': _cur!.action.id,
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
         'own': _ownChrono,
+        if (_away) 'away': true,
         if (_liveDeepId != null) 'liveDeep': _liveDeepId,
         if (_liveDeepDoc != null) 'liveDeepDoc': _liveDeepDoc,
         if (_liveDeepFrom case final f?) 'liveDeepFrom': f.millisecondsSinceEpoch,
@@ -247,12 +252,25 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     ));
   }
 
+  /// Quitte l'écran sans rien arrêter : la carte d'Aujourd'hui le rouvre là où il en est.
+  void _goAway() {
+    _away = true;
+    _saveSession();
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+      content: Text(_unlimited ? 'Deep work en cours · le chrono continue, reviens depuis Aujourd’hui' : 'Le coup continue · reviens depuis Aujourd’hui'),
+      duration: const Duration(seconds: 4),
+    ));
+    Navigator.of(context).pop();
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
-    if (_phase != _Phase.pause) CoupAlarm.cancel();
+    if (!_away) {
+      if (_phase != _Phase.pause) CoupAlarm.cancel();
+      _stopOwnChrono();
+    }
     if (_phase == _Phase.end) CoupAlarm.cancelLanding();
-    _stopOwnChrono();
     // Quittée en route : l'offensive reste en attente (reprenable) ; au bilan, elle se clôt.
     if (!_saved && _phase == _Phase.end) {
       if (_won > 0) _save();
@@ -1054,6 +1072,12 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == t.chronoActivityId).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 12, color: _text3),
+      ),
+      TextButton.icon(
+        key: const Key('offensive-away'),
+        onPressed: _goAway,
+        icon: const Icon(Icons.south_rounded, size: 16, color: _text2),
+        label: Text(_ownChrono ? 'Faire autre chose dans l’app · le chrono continue' : 'Faire autre chose dans l’app · le coup continue', style: TextStyle(fontSize: 13, color: _text2)),
       ),
     ]);
   }
