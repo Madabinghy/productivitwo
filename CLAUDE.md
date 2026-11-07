@@ -684,7 +684,11 @@ le bandeau ORION est retiré (messages dans le menu ⋯). Colonne gauche 440 px 
 le reste derrière « + n autres », `_stakesList(cap:)`), ENSUITE (ex-« Au programme · concrètement »). La frise prend le reste. Rail de
 droite (`_rail`, `_kPanels`) : Routines · Objectifs · Chronos · Semaine (en retard, engagements, échéances, élan) · Collection, pastilles
 d'attention (`_railBadge`) ; un tap ouvre UN panneau de 380 px (`_drawer`, `_drawerKey`) avec le module existant déplié. Sous 1000 px,
-tout s'empile comme avant (`_sideColumn`).
+tout s'empile comme avant (`_sideColumn`). **MAINTENANT web = `pickNow`** (lot 2) : même ordre que le mobile (rendez-vous daté à 15 min, chrono,
+bloc en cours, se perd ce soir, parole, visées, prochain bloc ; pas de modes sur le web), ligne « parce que : … », carte d'un enjeu
+(`_stakeFrame` : titre, avancement, gains, UN bouton +1 · Lancer le chrono · Noter le relevé), « Autre chose › » (`_openOther`,
+`nowAlternatives`) et « Pas maintenant » (`_postponeStake` : plus tard aujourd'hui 2 h · viser demain pour une action de projet ;
+compteur de reports et « 5 minutes, maintenant » dès 2, mêmes clés SharedPreferences que le mobile, propres au navigateur).
 **Braises** (maquette validée 2026-10-30, « Braises de rattrapage », recommandations retenues) : une **journée parfaite** forge une
 braise (réserve `kEmberCap` = 3) ; une braise **rallume une série de routine cassée HIER**, à condition d'atteindre la routine AUJOURD'HUI
 (sinon elle ne coûte rien) ; une série ne se rallume qu'une fois tous les 30 jours (`kRekindleCooldownDays`) ; le jour comblé compte pour
