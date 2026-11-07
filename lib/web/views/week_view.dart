@@ -8,10 +8,12 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
+import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/column_resizer.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
@@ -543,9 +545,317 @@ class _WeekViewState extends State<WeekView> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _pageHeader(active: active.length, done: done, late: late, toPlace: toPlace),
         const SizedBox(height: 14),
-        Expanded(child: _ganttCard(tasks)),
+        _dayStrip(),
+        const SizedBox(height: 14),
+        Expanded(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: _ganttCard(tasks)),
+            if (_openDay != null) ...[
+              const SizedBox(width: 20),
+              SizedBox(width: 400, child: _dayPanel(_openDay!)),
+            ],
+          ]),
+        ),
       ]),
     );
+  }
+
+  // ── La semaine en jours (2026-11-07, maquette « Cette semaine, remis en ordre », lot 1) ──
+  // Une colonne par jour : charge sur capacité, ce qui a été fait, les blocs
+  // principaux (rendez-vous et séances entourés d'or). Tap = le jour en entier.
+
+  /// Jour ouvert dans le panneau de droite, null = fermé.
+  DateTime? _openDay;
+
+  /// Blocs visibles d'un jour (ni supprimés, ni déplacés / sautés hors lâchés), par heure.
+  List<ScheduleBlock> _dayBlocks(DateTime d, {bool withAside = false}) {
+    final list = [
+      for (final b in _byDay[ymdOf(d)] ?? const <ScheduleBlock>[])
+        if (b.status != 'deleted' && (withAside || b.status != 'skipped' || isLetGoBlock(b))) b,
+    ]..sort((a, b) => a.startTime.compareTo(b.startTime));
+    return list;
+  }
+
+  bool _isDated(ScheduleBlock b, Set<String> sessionIds) =>
+      b.gcalEventId != null || (b.taskId != null && sessionIds.contains(b.taskId));
+
+  Widget _dayStrip() {
+    final sessionIds = sessionTaskIdsOf(widget.projects);
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (var i = 0; i < _dates.length; i++) ...[
+        if (i > 0) const SizedBox(width: 8),
+        Expanded(child: _dayCard(_dates[i], sessionIds)),
+      ],
+    ]);
+  }
+
+  Widget _dayCard(DateTime d, Set<String> sessionIds) {
+    final blocks = _dayBlocks(d);
+    final isToday = d == _today;
+    final past = d.isBefore(_today);
+    final open = _openDay == d;
+    final cap = capacityMinFor(_capacity, d);
+    final planned = plannedMin(blocks, window: _window);
+    final counted = blocks.where((b) => b.gcalEventId == null).toList();
+    final doneN = counted.where((b) => b.status == 'done').length;
+    final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
+    final behind = past && counted.isNotEmpty && doneN < counted.length;
+    final right = isToday
+        ? 'aujourd’hui'
+        : blocks.isEmpty
+            ? (past ? 'rien' : 'pas posé')
+            : (past || counted.isEmpty ? '$doneN / ${counted.length} faits' : '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}');
+    // Les blocs à montrer : les datés d'abord, puis les plus longs.
+    final shown = [...blocks]..sort((a, b) {
+        final da = _isDated(a, sessionIds) ? 0 : 1, db = _isDated(b, sessionIds) ? 0 : 1;
+        if (da != db) return da - db;
+        return b.durationMin.compareTo(a.durationMin);
+      });
+    final top = shown.take(2).toList()..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final more = blocks.length - top.length;
+    return Tooltip(
+      message: '${_kDayLong[d.weekday - 1]} ${d.day} · ${_fmtHm(planned)} posées sur ${_fmtHm(cap)}',
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        key: ValueKey('week-day-${ymdOf(d)}'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _openDay = open ? null : d),
+        child: Opacity(
+          opacity: past && !open ? .72 : 1,
+          child: Container(
+            height: 128,
+            padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+            decoration: BoxDecoration(
+              color: isToday || open ? const Color(0xFF10201A) : kBSurface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: open || isToday ? kBPrimary : kBLine, width: open || isToday ? 1.5 : 1),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Text('${_kDayShort[d.weekday - 1]} ${d.day}',
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700, color: isToday ? kBPrimary : kBText, fontFeatures: _tabular)),
+                const Spacer(),
+                Flexible(
+                  child: Text(right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: isToday ? kBPrimary : (behind ? kBAttention : kBText3), fontFeatures: _tabular)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: SizedBox(
+                  height: 4,
+                  child: Stack(children: [
+                    Container(color: const Color(0x14FFFFFF)),
+                    FractionallySizedBox(
+                        widthFactor: v, child: Container(color: v >= 1 ? kBAlert : (behind ? kBAttention : kBPrimary))),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(cap == 0 ? (blocks.isEmpty ? 'repos' : 'repos · ${_fmtHm(planned)}') : '${_fmtHm(planned)} / ${_fmtHm(cap)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: kBText4, fontFeatures: _tabular)),
+              const SizedBox(height: 6),
+              for (final b in top) ...[_blockChip(b, _isDated(b, sessionIds)), const SizedBox(height: 4)],
+              if (more > 0)
+                Text('+$more bloc${more > 1 ? 's' : ''}', style: const TextStyle(fontSize: 11, color: kBText4))
+              else if (blocks.isEmpty && !past)
+                const Text('+ Poser la journée', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kBPrimary)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _blockChip(ScheduleBlock b, bool dated) {
+    final done = b.status == 'done';
+    final letGo = isLetGoBlock(b);
+    final label = dated ? '${b.startTime} ${b.title}' : b.title;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: dated ? Colors.transparent : const Color(0x12FFFFFF),
+        borderRadius: BorderRadius.circular(6),
+        border: dated ? Border.all(color: kBAttention) : null,
+      ),
+      child: Text('${done ? '✓ ' : letGo ? '✋ ' : ''}$label',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: dated ? kBAttention : (done ? kBText3 : kBText2))),
+    );
+  }
+
+  String _blockState(ScheduleBlock b, DateTime d) {
+    if (b.status == 'done') return 'fait';
+    if (isLetGoBlock(b)) return 'lâché';
+    if (b.status == 'skipped') {
+      if (b.skipReason == kSkipUnavailable) return 'empêché';
+      return b.movedTo != null ? 'déplacé' : 'sauté';
+    }
+    if (d.isBefore(_today)) return b.gcalEventId != null ? 'agenda' : 'pas fait';
+    return b.gcalEventId != null ? 'agenda' : 'à faire';
+  }
+
+  /// Le panneau d'un jour : son programme, ce qui a avancé, ‹ › jours voisins.
+  Widget _dayPanel(DateTime d) {
+    final sessionIds = sessionTaskIdsOf(widget.projects);
+    final blocks = _dayBlocks(d, withAside: true);
+    final live = _dayBlocks(d);
+    final cap = capacityMinFor(_capacity, d);
+    final planned = plannedMin(live, window: _window);
+    final counted = live.where((b) => b.gcalEventId == null).toList();
+    final doneN = counted.where((b) => b.status == 'done').length;
+    final past = d.isBefore(_today);
+    final idx = _dayIndex(d);
+    // Actions cochées ce jour-là, par tâche.
+    final advanced = <String, int>{};
+    for (final p in widget.projects) {
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          final at = a.doneAt;
+          if (a.done && at != null && dateOnly(at) == d) {
+            final k = '${p.title} — ${t.title}';
+            advanced[k] = (advanced[k] ?? 0) + 1;
+          }
+        }
+      }
+    }
+    final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: kBSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF3A5A4A)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text('${_kDayLong[d.weekday - 1][0].toUpperCase()}${_kDayLong[d.weekday - 1].substring(1)} ${d.day} ${_kMonthLong[d.month - 1]}',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText)),
+          ),
+          IconButton(
+            key: const ValueKey('week-day-close'),
+            tooltip: 'Fermer',
+            icon: const Icon(Icons.close, size: 18, color: kBText3),
+            onPressed: () => setState(() => _openDay = null),
+          ),
+        ]),
+        Text(
+            '${_fmtHm(planned)} posées sur ${_fmtHm(cap)}'
+            '${counted.isEmpty ? '' : ' · $doneN bloc${doneN > 1 ? 's' : ''} fait${doneN > 1 ? 's' : ''} sur ${counted.length}'}',
+            style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 6,
+            child: Stack(children: [
+              Container(color: const Color(0x14FFFFFF)),
+              FractionallySizedBox(widthFactor: v, child: Container(color: v >= 1 ? kBAlert : kBPrimary)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView(children: [
+            const Text('LE PROGRAMME',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+            const SizedBox(height: 4),
+            if (blocks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(past ? 'Rien n’était posé ce jour-là.' : 'Rien de posé pour l’instant.',
+                    style: const TextStyle(fontSize: 13, color: kBText3)),
+              ),
+            for (final b in blocks) _dayRow(b, d, _isDated(b, sessionIds)),
+            if (!past) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _textLink('+ Ajouter un bloc', () => _addBlockOn(d)),
+              ),
+            ],
+            if (advanced.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text('CE QUI A AVANCÉ',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+              const SizedBox(height: 4),
+              for (final e in advanced.entries)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Text('${e.key} · ${e.value} action${e.value > 1 ? 's' : ''} cochée${e.value > 1 ? 's' : ''}',
+                      style: const TextStyle(fontSize: 13, color: kBText2)),
+                ),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          if (idx != null && idx > 0) _pillButton('‹ ${_kDayShort[_dates[idx - 1].weekday - 1].toLowerCase()}.', onTap: () => setState(() => _openDay = _dates[idx - 1])),
+          const SizedBox(width: 8),
+          if (idx != null && idx < _days - 1) _pillButton('${_kDayShort[_dates[idx + 1].weekday - 1].toLowerCase()}. ›', onTap: () => setState(() => _openDay = _dates[idx + 1])),
+          const Spacer(),
+          if (!past) _pillButton('Préparer avec Claude', icon: Icons.auto_awesome, onTap: () => _prepareDay(d)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _dayRow(ScheduleBlock b, DateTime d, bool dated) {
+    final state = _blockState(b, d);
+    final color = switch (state) {
+      'fait' => kBPrimary,
+      'lâché' || 'pas fait' => const Color(0xFFFF8F86),
+      'agenda' => kBAttention,
+      _ => kBText3,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 46,
+          child: Text(b.startTime, style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+        ),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(b.title.isEmpty ? 'Bloc' : b.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: dated ? kBAttention : kBText,
+                    decoration: b.status == 'skipped' && !isLetGoBlock(b) ? TextDecoration.lineThrough : null)),
+            Text('$state · ${_fmtHm(b.durationMin)}', style: TextStyle(fontSize: 12, color: color)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _addBlockOn(DateTime d) async {
+    final created = await showScheduleBlockDialog(context,
+        isNew: true, block: ScheduleBlock(startTime: '09:00', durationMin: 60, title: ''));
+    if (created == null || !mounted) return;
+    await widget.sync.upsertScheduleBlock(ymdOf(d), created);
+  }
+
+  Future<void> _prepareDay(DateTime d) async {
+    final ok = await launchUrl(claudeNewUri(planDayPrompt(date: ymdOf(d), blocks: _dayBlocks(d))),
+        mode: LaunchMode.externalApplication);
+    if (!ok && mounted) _snack('Impossible d’ouvrir Claude');
   }
 
   Widget _pageHeader({required int active, required int done, required int late, required int toPlace}) {

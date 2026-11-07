@@ -136,6 +136,12 @@ tableau de colonnes par jour ni de liste « à caser » séparée (décision § 
 « Planifier la semaine avec Claude » (`planWeekPrompt`, `claude_link.dart`) à la place du bouton ORION. Colonne des
 tâches **réglable à la souris** (400 px par défaut, persistée), poignée partagée avec le Gantt projet :
 `lib/web/column_resizer.dart`.
+**Remis en ordre** (2026-11-07, maquette validée « Web Cette semaine, remis en ordre », lot 1) : au-dessus du Gantt, LA SEMAINE =
+une carte par jour (`_dayStrip` / `_dayCard` : charge sur capacité, « k / n faits » d'un jour passé, « pas posé », deux blocs —
+rendez-vous agenda et séances en or, `_isDated` —, « + n blocs ») ; tap = panneau de 400 px à droite du Gantt (`_dayPanel`,
+`_openDay`) : le programme du jour avec l'état de chaque bloc (fait · lâché · empêché · déplacé · pas fait · agenda · à faire,
+`_blockState`), CE QUI A AVANCÉ (actions cochées ce jour-là), ‹ › jour voisin, et pour un jour à venir « + Ajouter un bloc »
+(`showScheduleBlockDialog`) et « Préparer avec Claude » (`planDayPrompt`).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
