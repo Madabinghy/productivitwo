@@ -17,6 +17,9 @@ import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/now_pick.dart';
+import 'package:productivitwo_v1/utils/stakes.dart' show Stake, StakeBoard;
+import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
@@ -59,6 +62,12 @@ class NowCard extends StatefulWidget {
   final void Function(ScheduleBlock block, int minutes)? onLaunchTimed;
   final VoidCallback? onChainSmall;
   final VoidCallback? onDeepWork;
+  /// Enjeux du jour (MAINTENANT, la bonne chose) : ce qui se perd ce soir, la parole, les visées.
+  final StakeBoard? stakes;
+  final void Function(Stake stake)? onStake;
+  /// Le mode du moment quand rien n'est posé (kind + nom) ; null = rien (recharge).
+  final ({String kind, String label})? modeOfMoment;
+  final void Function(String kind)? onMode;
   /// Bloc Sommeil : « Je vais me coucher » lance le chrono Sommeil (jamais « Marquer fait » : la nuit finit le lendemain).
   final void Function(ScheduleBlock block)? onGoToBed;
 
@@ -83,6 +92,10 @@ class NowCard extends StatefulWidget {
     this.onLaunchTimed,
     this.onChainSmall,
     this.onDeepWork,
+    this.stakes,
+    this.onStake,
+    this.modeOfMoment,
+    this.onMode,
     this.onGoToBed,
   });
 
@@ -287,9 +300,21 @@ class _NowCardState extends State<NowCard> {
     final pal = NowPalette.of(context);
     final now = DateTime.now();
     final nowMin = widget.logic.livedNowMinNow;
-    final focus = focusBlock(_blocks, nowMin);
+    var focus = focusBlock(_blocks, nowMin);
     final session = _openSession;
     final running = session == null ? null : widget.logic.runningActivity();
+    final pick = pickNow(
+      blocks: _blocks,
+      now: now,
+      nowMin: nowMin,
+      dayStartMin: widget.logic.dayStartMin,
+      sessionTaskIds: sessionTaskIdsOf(widget.logic.currentProjects),
+      runningName: session == null ? null : (running?.name.isNotEmpty == true ? running!.name : 'un chrono libre'),
+      board: widget.onStake == null ? null : widget.stakes,
+      modeAvailable: widget.modeOfMoment != null && widget.onMode != null,
+    );
+    if (pick.kind == NowPickKind.fixedSoon) focus = (block: pick.block!, current: false);
+    if (session == null && (pick.isStake || pick.kind == NowPickKind.mode)) return _pickFrame(pal, pick);
 
     if (focus == null && session == null) {
       return _frame(
@@ -400,7 +425,14 @@ class _NowCardState extends State<NowCard> {
     // Le Sommeil se termine le lendemain (règlement du soir) : ni « Marquer fait » ni « Terminer ».
     final sleep = b != null && (isSleepName(b.title) || isSleepName(_activity(b.activityId)?.name));
     final sleepRunning = session != null && isSleepName(_activity(session.activityId)?.name);
-    if (sleep && sleepRunning) {
+    final goNow = pick.kind == NowPickKind.fixedSoon && b != null && launchable && !sleep;
+    if (goNow) {
+      buttons.add(Expanded(child: _btn(pal, 'J’y vais', primary: true, onTap: () {
+        HapticFeedback.lightImpact();
+        if (session != null) widget.onStopTimer();
+        widget.onLaunch(b);
+      })));
+    } else if (sleep && sleepRunning) {
       buttons.add(Expanded(child: _btn(pal, 'Je me lève', primary: true, onTap: widget.onStopTimer)));
     } else if (sleep && session == null && widget.onGoToBed != null) {
       buttons.add(Expanded(child: _btn(pal, 'Je vais me coucher', primary: true, onTap: () {
@@ -507,6 +539,14 @@ class _NowCardState extends State<NowCard> {
                         style: TextStyle(fontSize: 12, color: pal.text2)),
                   ),
                 ]),
+              if (pick.why.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(pick.kind == NowPickKind.fixedSoon ? '${_inMinLabel(b, nowMin)} · ${pick.why}' : 'parce que : ${pick.why}',
+                    key: const ValueKey('now-why'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _whyColor(pick))),
+              ],
               const SizedBox(height: 4),
               Text(title,
                   maxLines: 2,
@@ -667,6 +707,76 @@ class _NowCardState extends State<NowCard> {
         right: '$after après · jusqu\'à ${_clock(end)}',
       ),
     ]);
+  }
+
+  static const _whyAmber = Color(0xFFF2C46B);
+  static const _whyEmber = Color(0xFFFF9C6B);
+
+  Color _whyColor(NowPick p) => switch (p.kind) {
+        NowPickKind.losing => _whyEmber,
+        NowPickKind.fixedSoon || NowPickKind.parole => _whyAmber,
+        _ => _whyAmber.withValues(alpha: .85),
+      };
+
+  String _inMinLabel(ScheduleBlock? b, int nowMin) {
+    if (b == null) return 'bientôt';
+    final d = blockStartMin(b) - nowMin;
+    return d <= 0 ? 'maintenant' : 'dans $d min';
+  }
+
+  /// Un enjeu (se perd ce soir, parole, visée) ou le mode du moment : la carte
+  /// tient en une raison, un titre, un bouton.
+  Widget _pickFrame(NowPalette pal, NowPick pick) {
+    final st = pick.stake;
+    final mode = widget.modeOfMoment;
+    final title = st?.gesture.title ?? mode?.label ?? '';
+    final sub = st == null
+        ? 'le mode qui va avec ton élan'
+        : [
+            if (st.gesture.progress != null) st.gesture.progress!,
+            if (st.gesture.costMin > 0) '≈ ${_fmtMin(st.gesture.costMin)}',
+          ].join(' · ');
+    final label = st != null ? stakeButtonLabel(st) : 'Lancer ${mode?.label ?? ''}'.trim();
+    final right = switch (pick.kind) {
+      NowPickKind.losing => 'se perd ce soir',
+      NowPickKind.parole => 'ta parole',
+      NowPickKind.focused => 'visée aujourd’hui',
+      _ => null,
+    };
+    return _frame(
+      pal,
+      header: _header(pal, right),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const SizedBox(height: 10),
+        Text('parce que : ${pick.why}',
+            key: const ValueKey('now-why'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _whyColor(pick))),
+        const SizedBox(height: 4),
+        Text(title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, height: 1.2, color: pal.text)),
+        if (sub.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: pal.text2)),
+        ],
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: _btn(pal, label, primary: true, onTap: () {
+              HapticFeedback.lightImpact();
+              if (st != null) {
+                widget.onStake?.call(st);
+              } else if (mode != null) {
+                widget.onMode?.call(mode.kind);
+              }
+            }),
+          ),
+        ]),
+      ]),
+    );
   }
 
   Widget _header(NowPalette pal, String? right, {bool chevron = false}) => Row(children: [
