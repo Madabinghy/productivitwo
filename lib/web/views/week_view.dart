@@ -27,6 +27,7 @@ import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart' show gcalSyncDay;
 
 // Vue « Cette semaine » (2026-11-07, maquette « Cette semaine, à placer ») :
 // la semaine comme un agenda — une colonne par jour, les blocs du programme à
@@ -158,6 +159,64 @@ class _WeekViewState extends State<WeekView> {
         });
       }));
     }
+    Future.microtask(() {
+      if (mounted) _syncAgenda();
+    });
+  }
+
+  // Google Agenda : le mobile ne synchronise qu'aujourd'hui et demain. Ici,
+  // chaque jour à venir de la semaine affichée est relu à l'ouverture et au
+  // changement de semaine (même appel que le ⟳ d'Aujourd'hui), pour préparer
+  // la semaine prochaine avec ses vrais rendez-vous.
+  String _gcalState = '';
+  bool _gcalBusy = false;
+  int _gcalRun = 0;
+
+  Future<void> _syncAgenda({bool manual = false}) async {
+    final days = [for (final d in _dates) if (!d.isBefore(_today)) d];
+    if (days.isEmpty) {
+      setState(() => _gcalState = '');
+      return;
+    }
+    final run = ++_gcalRun;
+    setState(() => _gcalBusy = true);
+    final results = await Future.wait([for (final d in days) gcalSyncDay(widget.sync, ymdOf(d))]);
+    if (!mounted || run != _gcalRun) return;
+    final ok = results.any((r) => r?['ok'] == true);
+    final notConnected = results.any((r) => r?['reason'] == 'not_connected');
+    final n = DateTime.now();
+    setState(() {
+      _gcalBusy = false;
+      _gcalState = ok
+          ? 'agenda Google à jour · ${_hhmm(n.hour * 60 + n.minute)}'
+          : notConnected
+              ? 'Google Agenda non connecté'
+              : 'agenda Google indisponible';
+    });
+    if (manual && !ok) _snack(notConnected ? 'Google Agenda non connecté — à régler sur le téléphone, Paramètres → Google Agenda.' : 'Synchronisation impossible — réessaie.');
+  }
+
+  Widget _agendaStatus() {
+    if (_gcalState.isEmpty && !_gcalBusy) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Relire Google Agenda pour les jours à venir de la semaine',
+      child: InkWell(
+        key: const ValueKey('week-gcal-sync'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: _gcalBusy ? null : () => _syncAgenda(manual: true),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _gcalBusy
+                ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.6, color: kBText3))
+                : const Icon(Icons.sync_rounded, size: 15, color: kBText3),
+            const SizedBox(width: 6),
+            Text(_gcalBusy ? 'agenda Google…' : _gcalState,
+                style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1814,6 +1873,7 @@ class _WeekViewState extends State<WeekView> {
       ),
     ]);
     final controls = <Widget>[
+      _agendaStatus(),
       _zoomControls(),
       _pillButton('Planifier avec Claude', primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
