@@ -1400,6 +1400,13 @@ sinon sa source), puis Sniper · Guérilla · Offensive (`onMode`). **Lot 3 livr
 avant midi, ≥ 15 min avant le premier bloc, des routines dans les enjeux) → « POUR DÉMARRER », les routines du jour, « Enchaîner le matin ·
 n » (`onChain`) ; SOIR (≥ `kNowEveningMin` 19 h) → « CE SOIR IL RESTE », « n choses avant Sommeil à 22:00 », « Finir la journée · n »
 (`onChain`). `NowPick.items` = titres des routines ; `_pickFrame` les rend. **Les 3 lots sont livrés.**
+**Pas maintenant** (2026-11-07, retour user : pouvoir reporter « Dicter les bilans en vrac » sans inviter à la procrastination) : lien
+« Pas maintenant » à côté de « Autre chose › » sur la carte d'un enjeu (`NowCard.onPostpone` → `_postponeStake`, `today_view.dart`) —
+« Plus tard aujourd'hui » (revient dans `kNowSnoozeMin` = 2 h : `now_snooze` {clé du geste : fin} en SharedPreferences, passé à
+`NowCard.snoozed` → `pickNow(skip:)` / `nowAlternatives(skip:)`) · « Viser demain » (action : `focusDate` = demain). Garde-fous : nombre
+de reports par geste (`now_postpones`) — dès `kNowPostponeWarn` (2), la feuille dit « Déjà repoussée n fois » et propose d'abord
+« 5 minutes, maintenant » (lance le geste) ; une action de la parole prévient qu'elle fait perdre Parole tenue. Estimation plus
+doublée sur la carte ; boutons des modes de « Autre chose » avec leur icône (`ModeGlyph`), sans retour à la ligne.
 
 ## Planification (2026-10-31, maquette validée « Mode Planification »)
 

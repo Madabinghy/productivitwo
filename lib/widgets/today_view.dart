@@ -1,3 +1,4 @@
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
@@ -71,6 +72,7 @@ import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin;
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
@@ -164,6 +166,11 @@ class TodayViewState extends State<TodayView> {
   // Scroll de la page — la jauge-minimap saute la timeline à l'heure tapée.
   final _scroll = ScrollController();
   Timer? _gaugeTick;
+  /// « Pas maintenant » : enjeux repoussés (clé → fin, ms) et nombre de reports par clé.
+  Map<String, int> _nowSnooze = {};
+  Map<String, int> _nowPostpones = {};
+  static const _kNowSnooze = 'now_snooze';
+  static const _kNowPostpones = 'now_postpones';
 
   @override
   void initState() {
@@ -181,6 +188,22 @@ class TodayViewState extends State<TodayView> {
       final skip = p.getString(_kProjectSkipped);
       if (skip != null && mounted) setState(() => _projectSkippedRaw = skip);
       if (mounted) setState(() => _morningDismissedYmd = morning);
+      Map<String, int> readMap(String k) {
+        try {
+          final raw = jsonDecode(p.getString(k) ?? '{}') as Map;
+          return {for (final e in raw.entries) '${e.key}': (e.value as num).toInt()};
+        } catch (_) {
+          return {};
+        }
+      }
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final snooze = readMap(_kNowSnooze)..removeWhere((_, until) => until <= nowMs);
+      if (mounted) {
+        setState(() {
+          _nowSnooze = snooze;
+          _nowPostpones = readMap(_kNowPostpones);
+        });
+      }
     });
     _subscribeSchedule();
     if (widget.visible) _tabOpens.add(DateTime.now());
@@ -767,6 +790,11 @@ class TodayViewState extends State<TodayView> {
                         ? null
                         : (kind: _modeKind!, label: switch (_modeKind) { kGuerillaKind => 'Guérilla', kOffensiveKind => 'Offensive', _ => 'Sniper' }),
                     onMode: openRun,
+                    onPostpone: _postponeStake,
+                    snoozed: {
+                      for (final e in _nowSnooze.entries)
+                        if (e.value > DateTime.now().millisecondsSinceEpoch) e.key,
+                    },
                     badges: widget.badges,
                     logic: widget.logic,
                     blocks: _liveBlocks,
@@ -1878,6 +1906,100 @@ class TodayViewState extends State<TodayView> {
   }
 
   /// Fait le geste d'un enjeu : +1, chrono, bloc, page focus.
+  Future<void> _saveNowPrefs() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_kNowSnooze, jsonEncode(_nowSnooze));
+      await p.setString(_kNowPostpones, jsonEncode(_nowPostpones));
+    } catch (_) {}
+  }
+
+  /// « Pas maintenant » sur ce que montre MAINTENANT. Pour ne pas inviter à la
+  /// procrastination : repoussée déjà [kNowPostponeWarn] fois, la feuille
+  /// propose d'abord d'en faire 5 minutes ; une action de ta parole le dit.
+  Future<void> _postponeStake(Stake s) async {
+    final g = s.gesture;
+    final key = g.key;
+    final count = _nowPostpones[key] ?? 0;
+    final isAction = g.kind == StakeGestureKind.action && g.action != null;
+    final inParole = s.gains.any((x) => x.label.startsWith('Parole tenue'));
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Text('Pas maintenant ?', style: Theme.of(c).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(g.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          ),
+          if (count >= kNowPostponeWarn)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0x33F2C46B), borderRadius: BorderRadius.circular(12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('Déjà repoussée $count fois. Et si tu en faisais juste 5 minutes ?',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                FilledButton(onPressed: () => Navigator.pop(c, 'five'), child: const Text('5 minutes, maintenant')),
+              ]),
+            ),
+          if (inParole)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 6),
+              child: Text('Elle fait partie de ta parole : la repousser à demain fait perdre Parole tenue aujourd’hui.',
+                  style: TextStyle(fontSize: 12.5, color: Color(0xFFF2C46B))),
+            ),
+          ListTile(
+              key: const ValueKey('postpone-later'),
+              leading: const Icon(Icons.schedule),
+              title: const Text('Plus tard aujourd’hui'),
+              subtitle: const Text('elle revient dans 2 h'),
+              onTap: () => Navigator.pop(c, 'later')),
+          if (isAction)
+            ListTile(
+                key: const ValueKey('postpone-tomorrow'),
+                leading: const Icon(Icons.wb_sunny_outlined),
+                title: const Text('Viser demain'),
+                subtitle: const Text('elle sera sous la main demain'),
+                onTap: () => Navigator.pop(c, 'tomorrow')),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'five') {
+      _runStake(s);
+      return;
+    }
+    setState(() {
+      _nowPostpones[key] = count + 1;
+      if (choice == 'later') {
+        _nowSnooze[key] = DateTime.now().add(const Duration(minutes: kNowSnoozeMin)).millisecondsSinceEpoch;
+      }
+    });
+    unawaited(_saveNowPrefs());
+    if (choice == 'tomorrow' && isAction) {
+      final sync = widget.sync ?? FirestoreSync();
+      final a = g.action!;
+      a.focusDate = focusToday().add(const Duration(days: 1));
+      if (g.project != null) {
+        await sync.patchActionOf(g.project!, a);
+      } else if (g.owner != null) {
+        await sync.updateOwnActions(g.owner!.id, g.owner!.ownActions);
+      }
+      widget.logic.onChange();
+      widget.badges?.load(refresh: true);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+        content: Text(choice == 'later' ? '« ${g.title} » revient dans 2 h' : '« ${g.title} » visée demain')));
+  }
+
   void _runStake(Stake s) {
     final g = s.gesture;
     final logic = widget.logic;

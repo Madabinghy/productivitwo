@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/now_pick.dart';
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
@@ -71,6 +72,10 @@ class NowCard extends StatefulWidget {
   /// Le mode du moment quand rien n'est posé (kind + nom) ; null = rien (recharge).
   final ({String kind, String label})? modeOfMoment;
   final void Function(String kind)? onMode;
+  /// « Pas maintenant » sur un enjeu (feuille de report, gérée par Aujourd'hui).
+  final void Function(Stake stake)? onPostpone;
+  /// Enjeux repoussés « plus tard » : ni montrés ni proposés.
+  final Set<String> snoozed;
   /// Bloc Sommeil : « Je vais me coucher » lance le chrono Sommeil (jamais « Marquer fait » : la nuit finit le lendemain).
   final void Function(ScheduleBlock block)? onGoToBed;
 
@@ -99,6 +104,8 @@ class NowCard extends StatefulWidget {
     this.onStake,
     this.modeOfMoment,
     this.onMode,
+    this.onPostpone,
+    this.snoozed = const {},
     this.onGoToBed,
   });
 
@@ -316,6 +323,7 @@ class _NowCardState extends State<NowCard> {
       board: widget.onStake == null ? null : widget.stakes,
       modeAvailable: widget.modeOfMoment != null && widget.onMode != null,
       chainAvailable: widget.onChain != null,
+      skip: widget.snoozed,
     );
     if (pick.kind == NowPickKind.fixedSoon) focus = (block: pick.block!, current: false);
     if (session == null && (pick.isStake || pick.kind == NowPickKind.mode || pick.kind == NowPickKind.morning || pick.kind == NowPickKind.evening)) {
@@ -747,7 +755,7 @@ class _NowCardState extends State<NowCard> {
         ? 'le mode qui va avec ton élan'
         : [
             if (st.gesture.progress != null) st.gesture.progress!,
-            if (st.gesture.costMin > 0) '≈ ${_fmtMin(st.gesture.costMin)}',
+            if (st.gesture.costMin > 0 && !(st.gesture.progress ?? '').contains('≈')) '≈ ${_fmtMin(st.gesture.costMin)}',
           ].join(' · ');
     final label = pick.kind == NowPickKind.morning
         ? 'Enchaîner le matin · $n'
@@ -798,15 +806,35 @@ class _NowCardState extends State<NowCard> {
             }),
           ),
         ]),
-        if (_otherLink(pal, pick) case final l?) l,
+        Row(children: [
+          if (_otherLink(pal, pick) case final l?) l,
+          const Spacer(),
+          if (st != null && widget.onPostpone != null)
+            TextButton(
+              key: const ValueKey('now-postpone'),
+              onPressed: () => widget.onPostpone!(st),
+              style: TextButton.styleFrom(
+                  foregroundColor: pal.text3,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  minimumSize: const Size(0, 36),
+                  textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              child: const Text('Pas maintenant'),
+            ),
+        ]),
       ]),
     );
   }
 
+  static Color modeColorOf(String kind) => switch (kind) {
+        kGuerillaKind => const Color(0xFFC5D38A),
+        kOffensiveKind => const Color(0xFF7FD3FF),
+        _ => const Color(0xFFFF9B6E),
+      };
+
   /// « Autre chose › » (lot 2) : les trois suivantes de l'ordre, puis les modes.
   Widget? _otherLink(NowPalette pal, NowPick pick) {
     final alts = nowAlternatives(pick,
-        blocks: _blocks, nowMin: widget.logic.livedNowMinNow, board: widget.onStake == null ? null : widget.stakes);
+        blocks: _blocks, nowMin: widget.logic.livedNowMinNow, board: widget.onStake == null ? null : widget.stakes, skip: widget.snoozed);
     if (alts.isEmpty && widget.onMode == null) return null;
     return Align(
       alignment: Alignment.centerLeft,
@@ -900,9 +928,17 @@ class _NowCardState extends State<NowCard> {
                       style: OutlinedButton.styleFrom(
                           foregroundColor: pal.text,
                           minimumSize: const Size(0, 46),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                           side: BorderSide(color: pal.track),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          ModeGlyph(kind: kind, size: 18, color: modeColorOf(kind)),
+                          const SizedBox(width: 6),
+                          Text(label, maxLines: 1, softWrap: false, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        ]),
+                      ),
                     ),
                   ),
                 ],
