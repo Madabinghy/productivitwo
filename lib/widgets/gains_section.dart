@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +23,7 @@ List<BadgeState> gainsFor(BadgeDeck deck, String activityId, {bool time = true, 
   // Compteurs recalculés EN DIRECT depuis les sessions et coches en mémoire
   // (retour user 2026-11-02 : « 152,4 » ne bougeait qu'à la relance de l'app,
   // le deck n'étant recalculé que de temps en temps). La série reste au deck.
-  final live = state == null
+  final live = state == null || !kCollectionMetaEnabled
       ? const <String, BadgeState>{}
       : {for (final b in longHaulBadges(activities: state.activities, habitHits: state.habitHits, sessions: state.sessions, now: DateTime.now())) b.def.id: b};
   return [for (final id in ids) if (live[id] ?? deck.byId(id) case final b?) b];

@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'dart:ui' as ui;
 
@@ -167,7 +168,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           if (widget.sheetScroll != null) ...[
             Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: kBText.withValues(alpha: .25), borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 10),
-            const Text('Collection', style: TextStyle(color: kBText, fontSize: 20, fontWeight: FontWeight.w800)),
+            Text(kCollectionMetaEnabled ? 'Collection' : 'Badges', style: TextStyle(color: kBText, fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
           ],
           if (widget.showSamples) ...[
@@ -191,10 +192,10 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             // annonce les séries à sauver, on y accède dès l'ouverture ; le même bouton reste plus bas.
             if (_facts case final f?) _inPlayButton(deck, f, atTop: true),
             // Les cartes à aller chercher (2026-11-03, maquette validée).
-            _questsSection(deck),
+            if (kCollectionMetaEnabled) _questsSection(deck),
             // Séries de routine et compteurs juste au-dessus de « Mes badges » (2026-11-05, retour user).
             _piles(deck),
-            _shelf(deck),
+            if (kCollectionMetaEnabled) _shelf(deck),
             // En jeu aujourd'hui et à portée : un bouton compact, le détail en feuille (2026-11-01).
             if (_facts case final f?) _inPlayButton(deck, f),
             // Les badges d'abord ; séries de routine et compteurs en piles, une par cadre (2026-11-03).
@@ -262,7 +263,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     final legend = album.byRarity[CardRarity.legend] ?? 0;
     final next = nextCollectionBadge(collectionBadges(deck));
     final parts = [
-      '${collectionPoints(deck)} pts',
+      if (kCollectionMetaEnabled) '${collectionPoints(deck)} pts',
       if (gold > 0) '$gold or',
       if (legend > 0) '$legend légendaire${legend > 1 ? 's' : ''}',
       '${deck.acquired} / ${deck.total} paliers',
@@ -288,7 +289,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           ),
           // Lesquelles (retour user 2026-11-03 : « 7 / 30 cartes », mais c'est quoi les 7, c'est quoi les 30 ?).
           ..._cardStrips(deck),
-          if (next != null && next.next != null) ...[
+          if (kCollectionMetaEnabled && next != null && next.next != null) ...[
             const SizedBox(height: 8),
             Text('Prochain badge : ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} · ${next.value} / ${next.next} ${next.unit}',
                 style: const TextStyle(fontSize: 12.5, color: kBText2)),
@@ -746,7 +747,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     final badges = deck.ofFamily(f).where((b) => !isLongHaulId(b.def.id)).toList();
     if (badges.isEmpty) return const SizedBox.shrink();
     final ordered = albumOrder(badges);
-    final fam = f == BadgeFamily.routines ? null : collectionBadges(deck).where((b) => b.id == 'family-${f.name}').firstOrNull;
+    final fam = f == BadgeFamily.routines || !kCollectionMetaEnabled ? null : collectionBadges(deck).where((b) => b.id == 'family-${f.name}').firstOrNull;
     final won = badges.where((b) => b.acquired).length;
     Widget head;
     if (fam == null) {
@@ -756,7 +757,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         child: Row(children: [
           Text(badgeFamilyLabel(f).toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
           const Spacer(),
-          Text('${deck.seriesRunning} en cours', style: const TextStyle(fontSize: 13, color: kBText4)),
+          Text(f == BadgeFamily.routines ? '${deck.seriesRunning} en cours' : '$won / ${badges.length}', style: const TextStyle(fontSize: 13, color: kBText4)),
         ]),
       );
     } else {
@@ -1010,7 +1011,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
         Center(child: RepaintBoundary(key: cardKey, child: BadgeCardView(state: b, width: 170, footer: cardFooter(b, date: _shortDateOf)))),
-        if (b.acquired)
+        if (b.acquired && kCollectionMetaEnabled)
           Center(
             child: TextButton.icon(
               onPressed: () => _shareCard(ctx, cardKey, b),
@@ -1023,7 +1024,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b,
           const SizedBox(height: 12),
           _CardLadder(state: b),
         ],
-        if (deck != null && cardFeeds(b, deck).isNotEmpty) ...[
+        if (kCollectionMetaEnabled && deck != null && cardFeeds(b, deck).isNotEmpty) ...[
           const SizedBox(height: 14),
           const Text('ELLE COMPTE POUR', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700, color: kBText3)),
           const SizedBox(height: 4),

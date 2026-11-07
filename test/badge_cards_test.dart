@@ -29,13 +29,14 @@ void main() {
     expect(cardHint(hidden), '1 sessions sans cible manquée');
     expect(albumOrder([hidden, started, won]).map(faceOf).toList(), [CardFace.won, CardFace.started, CardFace.hidden]);
     final album = cardAlbum(BadgeDeck([won, started, hidden, st(const [3, 7], 2, 7, f: BadgeFamily.routines)]));
-    // 1 carte + la pile « Séries légendaire » (dernier palier) ; 3 cartes + 8 piles.
+    // 1 carte + la pile « Séries légendaire » (dernier palier) ; 3 cartes + 4 piles de séries
+    // (les piles de compteurs sont coupées avec la méta-collection, 2026-11-07).
     expect(album.won, 2);
-    expect(album.total, 11);
+    expect(album.total, 7);
     expect(album.byRarity[CardRarity.argent], 1);
     expect(album.byRarity[CardRarity.legend], 1);
     final piles = cardPiles(BadgeDeck([won, st(const [3, 7], 2, 7, f: BadgeFamily.routines)]));
-    expect(piles.length, 8);
+    expect(piles.length, 4); // séries seulement : compteurs coupés avec la méta-collection
     expect(piles.where((p) => p.won).map((p) => p.name), ['Séries légendaire']);
   });
 

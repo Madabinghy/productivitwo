@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart' show kCardHunterTiers, cardHunterCounts;
@@ -1061,7 +1062,7 @@ BadgeDeck computeBadges({
 
   // Chasseur de cartes (2026-11-03) : une carte prise d'un seul Sniper ciblé.
   final hunts = chainRuns.where(cardHunterCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
-  out.add(BadgeState(
+  if (kCollectionMetaEnabled) out.add(BadgeState(
     def: const BadgeDef(id: 'chasseur-cartes', family: BadgeFamily.discipline, name: 'Chasseur de cartes', symbol: 'crosshair', tiers: kCardHunterTiers, unit: 'cartes', unitLong: 'cartes prises d’un seul Sniper ciblé'),
     level: _levelOf(kCardHunterTiers, hunts.length),
     value: hunts.length,
@@ -1143,7 +1144,7 @@ BadgeDeck computeBadges({
   }
 
   // Au long cours : heures par activité, heures au total, coches par routine.
-  out.addAll(longHaulBadges(activities: activities, habitHits: habitHits, sessions: sessions, now: now));
+  if (kCollectionMetaEnabled) out.addAll(longHaulBadges(activities: activities, habitHits: habitHits, sessions: sessions, now: now));
 
   // ── Graphiques d'avancement ────────────────────────────────────────────────
   final today = livedDate(now, dayStartMin);

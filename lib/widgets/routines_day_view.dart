@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart' show kRoutineCountTiers;
 import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show fmtInt;
@@ -56,7 +57,7 @@ String routinePlusLabel(AppLogic logic, Activity a) {
   final period = switch (a.habitFreq) { HabitFreq.weekly => 'cette semaine', HabitFreq.monthly => 'ce mois', _ => 'aujourd\u2019hui' };
   final reached = target > 0 && done >= target;
   // Au-delà de la cible : le +1 compte quand même pour la carte au long cours.
-  if (target > 0 && done > target) {
+  if (kCollectionMetaEnabled && target > 0 && done > target) {
     final total = logic.state.habitHits.where((h) => h.habitId == a.id).length;
     final next = kRoutineCountTiers.where((t) => t > total).firstOrNull;
     return '${a.name} · +1 bonus · ${fmtInt(total)} fois au total${next == null ? '' : ' · palier $next dans ${next - total}'}';

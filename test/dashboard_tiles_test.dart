@@ -64,9 +64,9 @@ void main() {
       Stake(g2, const [StakeGain(kind: StakeGainKind.seriesTonight, label: 'série 2 j → se perd ce soir', losesTonight: true, weight: 32, sourceId: 'serie-B')]),
     ]);
     final t = badgesTile(deck, board)!;
-    expect(t.label, 'COLLECTION');
+    expect(t.label, 'BADGES');
     expect(t.value, '1 carte ce soir');
-    expect(t.sub, startsWith('Lecture 3 j · jusqu’à bronze · 1 série à sauver · 0 pts'));
+    expect(t.sub, 'Lecture 3 j · 1 série à sauver');
     expect(t.badge, isNull);
     expect(t.fan, isEmpty);
     final d = badgesInPlay(board, deck);
@@ -84,7 +84,7 @@ void main() {
         [StakeGain(kind: StakeGainKind.seriesTonight, label: 'se perd ce soir', losesTonight: true, weight: 32, sourceId: id)]);
     final t = badgesTile(deck, StakeBoard(top: [lose('routine:L', 'serie-L'), lose('routine:R', 'serie-R')]))!;
     expect(t.value, '2 séries à sauver');
-    expect(t.sub, startsWith('Lecture 12 j, Ranger 4 j · '));
+    expect(t.sub, 'Lecture 12 j, Ranger 4 j');
   });
 
   test('COLLECTION : rien en jeu ce soir → les cartes de l’éventail sont nommées', () {

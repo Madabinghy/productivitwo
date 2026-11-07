@@ -1810,6 +1810,20 @@ rythme / à rattraper, EN PAUSE repliée) · PROJETS (vivants du domaine, hors d
 segment Temps / Routines ni d'en-tête chiffré. **Fiche Ma semaine = le contrat seul** : engagements à ce jour + semaines tenues ; la
 répartition, les jauges, le temps 12 semaines, le temps du jour et les retards sont retirés (`weekDetails` supprimé).
 
+## ⚠️ Méta-collection coupée (2026-11-07, audit de la gamification, décision user)
+
+Règle retenue : un élément de jeu reste s'il rend visible un fait réel et aide à décider maintenant ; il part s'il récompense
+le fait de jouer. Flag `kCollectionMetaEnabled = false` (`lib/gamification_flags.dart`, même principe que les deux autres :
+code et données intacts, repasser à true pour tout réactiver). Coupés : points et badges de collection (Collectionneur, Écrin
+d'or, Légende, Famille au complet — étagère MES BADGES, en-tête « n pts · Prochain badge »), compteurs au long cours
+(`longHaulBadges` plus ajoutés au deck, piles de compteurs, `gainsFor` sans compteurs, « +1 bonus » de `routinePlusLabel`),
+récolte du matin / Ouvre ta collection / retournement des cartes / Un badge tombe (`CardRevealPrompt` plus en tête
+d'Aujourd'hui), cartes à aller chercher et Sniper ciblé (`_questsSection`), Chasseur de cartes (plus dans le deck), « Elle compte
+pour » et « Partager la carte » dans la fiche d'une carte. La tuile Collection devient **BADGES** (séries à sauver, paliers de
+ce soir, sans points ni cadre visé) ; l'album s'appelle « Badges » et garde les cartes par famille (« k / n » à la place de
+l'écusson de famille) et la pile des séries de routine. Les sections ci-dessous décrivent l'état AVANT la coupe. Suite de
+l'audit (à valider) : retirer les braises, alléger le Sniper.
+
 ## Badges en cartes (2026-11-01, maquette validée « Badges en cartes »)
 
 Retour user : sur l'écusson, le dessin ne se voit pas ; un badge devient une carte à collectionner, rien ne change dans le calcul.
