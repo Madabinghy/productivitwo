@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -34,6 +35,8 @@ import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
+import 'package:productivitwo_v1/utils/now_pick.dart' hide stakeButtonLabel;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -199,6 +202,18 @@ class TodayViewState extends State<TodayView> {
     super.initState();
     _today = livedProgramYmd(DateTime.now(), widget.dayStartMin);
     SharedPreferences.getInstance().then((prefs) {
+      Map<String, int> readMap(String k) {
+        try {
+          final raw = jsonDecode(prefs.getString(k) ?? '{}') as Map;
+          return {for (final e in raw.entries) '${e.key}': (e.value as num).toInt()};
+        } catch (_) {
+          return {};
+        }
+      }
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      _nowSnooze = readMap(_kNowSnooze)..removeWhere((_, until) => until <= nowMs);
+      _nowPostpones = readMap(_kNowPostpones);
+      _nowPostponedAt = readMap(_kNowPostponedAt);
       final z = prefs.getDouble(_kZoomKey);
       if (z != null && mounted) setState(() => _zoom = z.clamp(_kZoomMin, _kZoomMax));
       final f = prefs.getStringList(_kFoldedKey);
@@ -1225,14 +1240,30 @@ class TodayViewState extends State<TodayView> {
   // ── MAINTENANT ──────────────────────────────────────────────────────────────
 
   Widget _nowCard() {
-    final focus = _focusBlock;
     final open = _openSession;
+    final pick = _pick();
+    var focus = _focusBlock;
+    // Un rendez-vous daté qui arrive passe devant tout (même un chrono).
+    if (pick.kind == NowPickKind.fixedSoon) focus = (block: pick.block!, current: false);
     final children = <Widget>[
       _label('MAINTENANT', dot: true),
+      if (pick.why.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text('parce que : ${pick.why}',
+            key: const ValueKey('web-now-why'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: pick.kind == NowPickKind.losing ? const Color(0xFFFF9C6B) : const Color(0xFFF2C46B))),
+      ],
       const SizedBox(height: 18),
     ];
 
-    if (focus == null && open == null) {
+    if (open == null && pick.isStake) {
+      children.addAll(_stakeFrame(pick));
+    } else if (focus == null && open == null) {
       children.addAll([
         const SizedBox(height: 40),
         const Icon(Icons.wb_twilight_outlined, size: 34, color: kBText4),
@@ -1420,7 +1451,9 @@ class TodayViewState extends State<TodayView> {
       ]);
     }
 
+    final links = _nowLinks(pick);
     children.addAll([
+      if (links != null) ...[const SizedBox(height: 12), links],
       const Spacer(),
       _dayGlance(),
     ]);
@@ -1441,6 +1474,269 @@ class TodayViewState extends State<TodayView> {
         );
       }),
     );
+  }
+
+  // ── MAINTENANT, la bonne chose (web, 2026-11-07) ────────────────────────────
+  // Même ordre que le mobile (`pickNow`) : rendez-vous daté proche, chrono,
+  // bloc en cours, ce qui se perd ce soir, la parole, les visées, puis le
+  // prochain bloc. Pas de modes sur le web (Guérilla, Sniper, Offensive).
+
+  static const _kNowSnooze = 'now_snooze';
+  static const _kNowPostpones = 'now_postpones';
+  static const _kNowPostponedAt = 'now_postponed_at';
+  Map<String, int> _nowSnooze = {};
+  Map<String, int> _nowPostpones = {};
+  Map<String, int> _nowPostponedAt = {};
+
+  Set<String> get _snoozed {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    return {for (final e in _nowSnooze.entries) if (e.value > nowMs) e.key};
+  }
+
+  NowPick _pick() {
+    final open = _openSession;
+    return pickNow(
+      blocks: _blocks,
+      now: DateTime.now(),
+      nowMin: _nowMin,
+      dayStartMin: widget.dayStartMin,
+      sessionTaskIds: sessionTaskIdsOf(widget.projects),
+      runningName: open == null ? null : (_activityName(open.activityId) ?? 'un chrono libre'),
+      board: _tomorrow ? null : _board(),
+      modeAvailable: false,
+      chainAvailable: false,
+      skip: _snoozed,
+    );
+  }
+
+  /// La carte d'un enjeu : titre, avancement, UN bouton.
+  List<Widget> _stakeFrame(NowPick pick) {
+    final s = pick.stake!;
+    final g = s.gesture;
+    final chips = [for (final x in s.gains.take(3)) x.label];
+    return [
+      Text(g.title,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: kBText)),
+      const SizedBox(height: 8),
+      Text(
+          [if (g.progress?.isNotEmpty == true) g.progress!, if (g.costMin > 0) '≈ ${_fmtHm(g.costMin)}'].join(' · '),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+      if (chips.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Wrap(alignment: WrapAlignment.center, spacing: 6, runSpacing: 6, children: [for (final c in chips) _chip(c)]),
+      ],
+      const SizedBox(height: 18),
+      _pillButton(
+          switch (g.kind) {
+            StakeGestureKind.routine => '+1',
+            StakeGestureKind.reading => 'Noter le relevé',
+            _ => 'Lancer le chrono',
+          },
+          primary: true,
+          onTap: () => _runStake(s)),
+    ];
+  }
+
+  /// « Autre chose › » et « Pas maintenant » sous le bouton.
+  Widget? _nowLinks(NowPick pick) {
+    if (_tomorrow) return null;
+    final alts = nowAlternatives(pick, blocks: _blocks, nowMin: _nowMin, board: _board(), skip: _snoozed);
+    final canPostpone = pick.isStake && _openSession == null;
+    if (alts.isEmpty && !canPostpone) return null;
+    return Row(children: [
+      if (alts.isNotEmpty)
+        InkWell(
+          key: const ValueKey('web-now-other'),
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => _openOther(alts),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Text('Autre chose ›', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kBText2)),
+          ),
+        ),
+      const Spacer(),
+      if (canPostpone)
+        InkWell(
+          key: const ValueKey('web-now-postpone'),
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => _postponeStake(pick.stake!),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Text('Pas maintenant', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kBText3)),
+          ),
+        ),
+    ]);
+  }
+
+  Future<void> _openOther(List<NowPick> alts) async {
+    final chosen = await showDialog<NowPick>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: kBSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 460,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Plutôt autre chose ?', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText)),
+              const SizedBox(height: 12),
+              for (final a in alts)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(a.stake?.gesture.title ?? a.block?.title ?? '',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                        if (a.why.isNotEmpty)
+                          Text(a.why, style: const TextStyle(fontSize: 12, color: kBText3)),
+                      ]),
+                    ),
+                    const SizedBox(width: 10),
+                    _pillButton('Prendre', height: 32, onTap: () => Navigator.pop(ctx, a)),
+                  ]),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    final st = chosen.stake;
+    final b = chosen.block;
+    if (st != null) {
+      _runStake(st);
+    } else if (b != null) {
+      final canChrono = (b.activityId ?? _project(b.projectId)?.linkedActivityId) != null;
+      if (canChrono) {
+        _startChrono(b);
+      } else {
+        scrollToNow();
+      }
+    }
+  }
+
+  Future<void> _saveNowPrefs() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_kNowSnooze, jsonEncode(_nowSnooze));
+      await p.setString(_kNowPostpones, jsonEncode(_nowPostpones));
+      await p.setString(_kNowPostponedAt, jsonEncode(_nowPostponedAt));
+    } catch (_) {}
+  }
+
+  /// Compteurs de reports remis à zéro quand la chose est faite ou qu'on s'y
+  /// est vraiment mis (`postponesCleared`, même règle que le mobile).
+  void _clearPostpones() {
+    if (_nowPostpones.isEmpty) return;
+    final done = <String>{
+      for (final p in widget.projects)
+        for (final t in p.tasks)
+          for (final a in t.actions)
+            if (a.done) a.id,
+      for (final act in widget.activities)
+        for (final a in act.ownActions)
+          if (a.done) a.id,
+    };
+    final cleared = postponesCleared(_nowPostpones.keys,
+        lastAt: _nowPostponedAt, sessions: _sessions, hits: _hits, doneActionIds: done);
+    if (cleared.isEmpty) return;
+    for (final k in cleared) {
+      _nowPostpones.remove(k);
+      _nowPostponedAt.remove(k);
+    }
+    _saveNowPrefs();
+  }
+
+  /// « Pas maintenant » : plus tard aujourd'hui (2 h) ou, pour une action,
+  /// viser demain. Déjà repoussée [kNowPostponeWarn] fois : la boîte propose
+  /// d'abord d'en faire 5 minutes ; une action de la parole le dit.
+  Future<void> _postponeStake(Stake s) async {
+    final g = s.gesture;
+    final key = g.key;
+    _clearPostpones();
+    final count = _nowPostpones[key] ?? 0;
+    final isAction = g.kind == StakeGestureKind.action && g.action != null && g.project != null;
+    final inParole = s.gains.any((x) => x.label.startsWith('Parole tenue'));
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: kBSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 420,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Pas maintenant ?', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText)),
+              const SizedBox(height: 4),
+              Text(g.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, color: kBText2)),
+              if (count >= kNowPostponeWarn) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0x33F2C46B), borderRadius: BorderRadius.circular(12)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text('Déjà repoussée $count fois. Et si tu en faisais juste 5 minutes ?',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kBText)),
+                    const SizedBox(height: 8),
+                    _pillButton('5 minutes, maintenant', primary: true, height: 36, onTap: () => Navigator.pop(ctx, 'five')),
+                  ]),
+                ),
+              ],
+              if (inParole) ...[
+                const SizedBox(height: 10),
+                const Text('Elle fait partie de ta parole : la repousser à demain fait perdre Parole tenue aujourd’hui.',
+                    style: TextStyle(fontSize: 12.5, color: Color(0xFFF2C46B))),
+              ],
+              const SizedBox(height: 12),
+              _pillButton('Plus tard aujourd’hui · revient dans 2 h', height: 38, onTap: () => Navigator.pop(ctx, 'later')),
+              if (isAction) ...[
+                const SizedBox(height: 8),
+                _pillButton('Viser demain', height: 38, onTap: () => Navigator.pop(ctx, 'tomorrow')),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'five') {
+      _runStake(s);
+      return;
+    }
+    setState(() {
+      _nowPostpones[key] = count + 1;
+      _nowPostponedAt[key] = DateTime.now().millisecondsSinceEpoch;
+      if (choice == 'later') {
+        _nowSnooze[key] = DateTime.now().add(const Duration(minutes: kNowSnoozeMin)).millisecondsSinceEpoch;
+      }
+      _stakesKey = '';
+    });
+    _saveNowPrefs();
+    if (choice == 'tomorrow' && isAction) {
+      final a = g.action!;
+      a.focusDate = focusToday().add(const Duration(days: 1));
+      await widget.sync.patchActionOf(g.project!, a);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+        content: Text(choice == 'later' ? '« ${g.title} » revient dans 2 h' : '« ${g.title} » visée demain')));
   }
 
   String _clockOf(int min) =>
