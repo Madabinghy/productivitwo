@@ -165,7 +165,8 @@ d'une séance de la fenêtre + 2 j, sans bloc sur sa tâche), PROJETS EN RETARD 
 Deep work visé), ÉCHÉANCES (tâches ouvertes hors séance qui finissent dans la fenêtre, sans bloc) ; en bas, POSER DU TEMPS (Deep work ·
 Petites choses). Une ligne se GLISSE sur un jour (`Draggable` → `DragTarget` par colonne, fantôme à l'heure visée), au lâcher la durée
 (`_PlaceDurationDialog` : 30 · 45 · 1 h · 1 h 30 · tout le reste) puis le bloc est posé (`_dropItem`, « Annuler »), et la ligne se
-recalcule (« il reste … » / disparue). Suite : ménage du rail (lot 3).
+recalcule (« il reste … » / disparue). **Ménage** (lot 3) : la Montre suisse quitte le rail (elle vit dans À placer), restent Contrat ·
+Dates · Capacité ; plus de bascule 7 / 14 jours (la grille montre toujours la semaine, lundi → dimanche).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)

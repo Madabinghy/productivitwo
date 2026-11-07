@@ -14,7 +14,7 @@ import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
 import 'package:productivitwo_v1/utils/planning.dart' show deepWorkTitle;
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
-import 'package:productivitwo_v1/utils/half_days.dart' show paceOn, minutesByActivityDay, ActivityPace;
+import 'package:productivitwo_v1/utils/half_days.dart' show minutesByActivityDay;
 import 'package:productivitwo_v1/utils/week_stats.dart' show weekSummary, WeekSummary;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
@@ -41,7 +41,6 @@ const _kMonthShort = [
   'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'
 ];
 const _tabular = [FontFeature.tabularFigures()];
-const _kPrefDays = 'week_window_days';
 // Fenêtre affichée (début YYYY-MM-DD), restaurée seulement le jour même : un
 // rechargement garde la semaine qu'on regardait, le lendemain repart d'ici.
 const _kPrefStart = 'week_window_start';
@@ -117,12 +116,7 @@ class _WeekViewState extends State<WeekView> {
     try {
       final p = await SharedPreferences.getInstance();
       if (!mounted) return;
-      final days = p.getInt(_kPrefDays);
       setState(() {
-        if (days == 14) {
-          _days = 14;
-          _start = _today;
-        }
         final savedOn = p.getString(_kPrefStartSavedOn);
         final savedStart = p.getString(_kPrefStart);
         if (savedOn == ymdOf(_today) && savedStart != null) {
@@ -137,7 +131,6 @@ class _WeekViewState extends State<WeekView> {
   Future<void> _savePrefs() async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setInt(_kPrefDays, _days);
       await p.setString(_kPrefStart, ymdOf(_start));
       await p.setString(_kPrefStartSavedOn, ymdOf(_today));
     } catch (_) {}
@@ -1369,7 +1362,6 @@ class _WeekViewState extends State<WeekView> {
 
   static const _kRail = [
     (key: 'contract', label: 'Contrat', icon: Icons.handshake_outlined),
-    (key: 'watch', label: 'Montre', icon: Icons.watch_outlined),
     (key: 'dates', label: 'Dates', icon: Icons.event_outlined),
   ];
 
@@ -1379,7 +1371,6 @@ class _WeekViewState extends State<WeekView> {
   // glisser d'une barre redessine à chaque pixel).
   String _railMemoKey = '';
   WeekSummary? _contractMemo;
-  List<ActivityPace> _watchMemo = const [];
 
   void _refreshRail() {
     final now = DateTime.now();
@@ -1394,17 +1385,11 @@ class _WeekViewState extends State<WeekView> {
       objectives: widget.objectives.where((o) => o.status == 'active'),
       now: now,
     );
-    _watchMemo = paceOn(_today, activities: widget.activities, minutes: minutesByActivityDay(_sessions, now));
   }
 
   WeekSummary _contract() {
     _refreshRail();
     return _contractMemo!;
-  }
-
-  List<ActivityPace> _watch() {
-    _refreshRail();
-    return [..._watchMemo];
   }
 
   /// Ce qui ne bouge pas dans la fenêtre : rendez-vous d'agenda, séances, échéances de tâches ouvertes.
@@ -1442,9 +1427,6 @@ class _WeekViewState extends State<WeekView> {
         final c = _contract();
         final behind = c.engagements.length - c.kept;
         return behind <= 0 ? null : (text: '$behind', color: kBAttention);
-      case 'watch':
-        final late = _watch().where((p) => !p.onPace).length;
-        return late == 0 ? null : (text: '$late', color: kBAttention);
       case 'dates':
         final n = _datedItems().where((x) => !x.day.isBefore(_today)).length;
         return n == 0 ? null : (text: '$n', color: kBAttention);
@@ -1510,7 +1492,6 @@ class _WeekViewState extends State<WeekView> {
     final title = _kRail.firstWhere((r) => r.key == key).label;
     final List<Widget> body = switch (key) {
       'contract' => _contractBody(),
-      'watch' => _watchBody(),
       _ => _datesBody(),
     };
     return Container(
@@ -1522,7 +1503,7 @@ class _WeekViewState extends State<WeekView> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Expanded(child: Text(key == 'watch' ? 'Montre suisse' : title,
+          Expanded(child: Text(title,
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText))),
           IconButton(
             key: const ValueKey('week-rail-close'),
@@ -1598,32 +1579,6 @@ class _WeekViewState extends State<WeekView> {
           e.target == 0 ? 1 : e.done / e.target,
           c.onTrack(e) ? kBPrimary : kBAttention,
           sub: c.onTrack(e) ? null : 'en retard sur le rythme du jour',
-        ),
-    ];
-  }
-
-  List<Widget> _watchBody() {
-    final list = _watch()..sort((a, b) => b.missingMin.compareTo(a.missingMin));
-    if (list.isEmpty) {
-      return const [
-        Padding(
-          padding: EdgeInsets.only(top: 6),
-          child: Text('Aucune activité avec un minimum.', style: TextStyle(fontSize: 13, color: kBText3)),
-        ),
-      ];
-    }
-    final ok = list.where((p) => p.onPace).length;
-    return [
-      Text('$ok / ${list.length} couvertes sur les 7 derniers jours',
-          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
-      const SizedBox(height: 8),
-      for (final p in list)
-        _meter(
-          p.activity.name,
-          '${_fmtHm(p.doneMin)} / ${_fmtHm(p.expectedMin)}',
-          p.expectedMin == 0 ? 1 : p.doneMin / p.expectedMin,
-          p.onPace ? kBPrimary : kBAttention,
-          sub: p.onPace ? '✓ couverte' : 'reste ${_fmtHm(p.missingMin)} · aujourd’hui ${_fmtHm(p.todayMin)}',
         ),
     ];
   }
@@ -1729,7 +1684,6 @@ class _WeekViewState extends State<WeekView> {
       ),
     ]);
     final controls = <Widget>[
-      _segmented(),
       _pillButton('Planifier avec Claude', primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
     // Sous ~1100 px, les commandes passent sous le titre au lieu de l'écraser.
@@ -1747,35 +1701,6 @@ class _WeekViewState extends State<WeekView> {
         for (final c in controls) ...[c, const SizedBox(width: 8)],
       ]);
     });
-  }
-
-  Widget _segmented() {
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: const Color(0x12FFFFFF), borderRadius: BorderRadius.circular(999)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (final (n, lbl) in const [(7, '7 jours'), (14, '14 jours')])
-          InkWell(
-            onTap: () => _setWindow(days: n),
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _days == n ? kBActive : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: _days == n ? kBPrimary.withOpacity(.35) : Colors.transparent),
-              ),
-              child: Text(lbl,
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: _days == n ? kBText : kBText2)),
-            ),
-          ),
-      ]),
-    );
   }
 
   Widget _iconBtn(IconData icon, String tooltip, VoidCallback onTap) => IconButton(
