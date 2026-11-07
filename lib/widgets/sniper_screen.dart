@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -777,7 +778,7 @@ class _SniperScreenState extends State<SniperScreen> {
             ]),
           ),
           const SizedBox(width: 8),
-          if (on && t.adjustable)
+          if (on && t.adjustable && kSniperTuningEnabled)
             _stepper(t)
           else
             Text(t.durLabel, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: reason == null ? kSniperAccent : _text3, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -876,8 +877,8 @@ class _SniperScreenState extends State<SniperScreen> {
             ]),
           ])),
           Row(children: [
-            Expanded(child: _label(_order == null ? 'CIBLES · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
-            if (_order != null)
+            Expanded(child: _label(_order == null || !kSniperTuningEnabled ? 'CE QUI TOMBE · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
+            if (_order != null && kSniperTuningEnabled)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: TextButton(
@@ -895,6 +896,17 @@ class _SniperScreenState extends State<SniperScreen> {
                     ? 'Rien en jeu pour l’instant : pas de série à sauver, pas de minimum en retard, pas d’action visée.'
                     : 'Aucune cible ne tient dans ton temps libre. Regarde plus bas ce qui reste hors de portée.',
                 style: const TextStyle(fontSize: 13.5, height: 1.4, color: _text2)))
+          else if (!kSniperTuningEnabled)
+            _box(Column(children: [
+              for (final t in _plan.aimed)
+                _targetRow(t,
+                    on: true,
+                    onTap: () => setState(() {
+                          _excluded.add(t.key);
+                          _added.remove(t.key);
+                          _adjust();
+                        })),
+            ]))
           else
             _box(ReorderableListView(
               shrinkWrap: true,
@@ -917,7 +929,7 @@ class _SniperScreenState extends State<SniperScreen> {
                   ),
               ],
             )),
-          if (_plan.aimed.length > 1 && _order == null)
+          if (_plan.aimed.length > 1 && _order == null && kSniperTuningEnabled)
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text('Appui long sur une cible pour la déplacer.', style: TextStyle(fontSize: 12, color: _text3)),
@@ -1186,8 +1198,8 @@ class _SniperScreenState extends State<SniperScreen> {
               ),
             ])),
           ],
-          const SizedBox(height: 14),
-          Row(children: [
+          if (kSniperTuningEnabled) const SizedBox(height: 14),
+          if (kSniperTuningEnabled) Row(children: [
             for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.where((t) => !t.isMini).fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[
               Expanded(
                 child: Container(
