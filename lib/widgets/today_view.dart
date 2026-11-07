@@ -72,7 +72,7 @@ import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin;
+import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin, postponesCleared;
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
@@ -169,8 +169,11 @@ class TodayViewState extends State<TodayView> {
   /// « Pas maintenant » : enjeux repoussés (clé → fin, ms) et nombre de reports par clé.
   Map<String, int> _nowSnooze = {};
   Map<String, int> _nowPostpones = {};
+  /// Dernier report par clé (ms) : un chrono de 5 min ou un +1 APRÈS lui remet le compteur à zéro.
+  Map<String, int> _nowPostponedAt = {};
   static const _kNowSnooze = 'now_snooze';
   static const _kNowPostpones = 'now_postpones';
+  static const _kNowPostponedAt = 'now_postponed_at';
 
   @override
   void initState() {
@@ -202,7 +205,9 @@ class TodayViewState extends State<TodayView> {
         setState(() {
           _nowSnooze = snooze;
           _nowPostpones = readMap(_kNowPostpones);
+          _nowPostponedAt = readMap(_kNowPostponedAt);
         });
+        _clearPostpones();
       }
     });
     _subscribeSchedule();
@@ -215,6 +220,7 @@ class TodayViewState extends State<TodayView> {
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       if (widget.logic.livedTodayYmd != _schedDate) _subscribeSchedule();
+      _clearPostpones();
       if (!_showTomorrow) setState(() {});
     });
   }
@@ -1911,7 +1917,32 @@ class TodayViewState extends State<TodayView> {
       final p = await SharedPreferences.getInstance();
       await p.setString(_kNowSnooze, jsonEncode(_nowSnooze));
       await p.setString(_kNowPostpones, jsonEncode(_nowPostpones));
+      await p.setString(_kNowPostponedAt, jsonEncode(_nowPostponedAt));
     } catch (_) {}
+  }
+
+  /// Compteurs de reports remis à zéro quand la chose est faite ou qu'on s'y
+  /// est vraiment mis (`postponesCleared`).
+  void _clearPostpones() {
+    if (_nowPostpones.isEmpty) return;
+    final st = widget.logic.state;
+    final done = <String>{
+      for (final p in widget.logic.currentProjects)
+        for (final t in p.tasks)
+          for (final a in t.actions)
+            if (a.done) a.id,
+      for (final act in st.activities)
+        for (final a in act.ownActions)
+          if (a.done) a.id,
+    };
+    final cleared = postponesCleared(_nowPostpones.keys,
+        lastAt: _nowPostponedAt, sessions: st.sessions, hits: st.habitHits, doneActionIds: done);
+    if (cleared.isEmpty) return;
+    for (final k in cleared) {
+      _nowPostpones.remove(k);
+      _nowPostponedAt.remove(k);
+    }
+    unawaited(_saveNowPrefs());
   }
 
   /// « Pas maintenant » sur ce que montre MAINTENANT. Pour ne pas inviter à la
@@ -1920,6 +1951,7 @@ class TodayViewState extends State<TodayView> {
   Future<void> _postponeStake(Stake s) async {
     final g = s.gesture;
     final key = g.key;
+    _clearPostpones();
     final count = _nowPostpones[key] ?? 0;
     final isAction = g.kind == StakeGestureKind.action && g.action != null;
     final inParole = s.gains.any((x) => x.label.startsWith('Parole tenue'));
@@ -1978,6 +2010,7 @@ class TodayViewState extends State<TodayView> {
     }
     setState(() {
       _nowPostpones[key] = count + 1;
+      _nowPostponedAt[key] = DateTime.now().millisecondsSinceEpoch;
       if (choice == 'later') {
         _nowSnooze[key] = DateTime.now().add(const Duration(minutes: kNowSnoozeMin)).millisecondsSinceEpoch;
       }

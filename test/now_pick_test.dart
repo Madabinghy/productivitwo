@@ -84,4 +84,19 @@ void main() {
     expect(p.stake!.gesture.title, 'Rapport');
     expect(nowAlternatives(p, blocks: const [], nowMin: nowMin, board: board, skip: {'routine:Louanges'}), isEmpty);
   });
+
+  test('reports remis à zéro : action faite, 5 min tenues après le report, +1 de la routine', () {
+    final since = DateTime(2026, 11, 6, 10).millisecondsSinceEpoch;
+    final keys = ['action:a', 'action:b', 'action:c', 'routine:r', 'activity:x'];
+    final cleared = postponesCleared(keys,
+        lastAt: {for (final k in keys) k: since},
+        sessions: [
+          Session(activityId: 'z', actionId: 'b', startAt: DateTime(2026, 11, 6, 11), endAt: DateTime(2026, 11, 6, 11, 6)),
+          Session(activityId: 'z', actionId: 'c', startAt: DateTime(2026, 11, 6, 11), endAt: DateTime(2026, 11, 6, 11, 2)),
+          Session(activityId: 'x', startAt: DateTime(2026, 11, 6, 9), endAt: DateTime(2026, 11, 6, 9, 30)),
+        ],
+        hits: [HabitHit(habitId: 'r', ts: DateTime(2026, 11, 6, 12))],
+        doneActionIds: {'a'});
+    expect(cleared, {'action:a', 'action:b', 'routine:r'});
+  });
 }
