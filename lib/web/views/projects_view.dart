@@ -27,9 +27,10 @@ import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
-// Onglet Projets (refonte web § 4.1–4.4) : en-tête + recherche + Nouveau
-// projet · carte Objectif · filtres domaine / En veille / Archivés · tableau
-// des projets (avancement, prochaine action cochable, échéance, état, 7 jours).
+// Onglet Projets (web, remise en ordre 2026-11-07) : en-tête (sélecteur,
+// domaine, recherche, Nouveau projet) · à gauche le projet du moment et Pour
+// aujourd'hui · le tableau du plus pressant au moins pressant · rail Séances,
+// Rushs, Objectif.
 
 const _tabular = [FontFeature.tabularFigures()];
 const _kDayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
@@ -145,20 +146,28 @@ class _ProjectsViewState extends State<ProjectsView> {
         .where((p) => projectMatches(p, _query))
         .toList();
     if (_mode == _Mode.active) {
-      final now = _today;
-      final rank = {
-        for (final p in filtered)
-          p.id: switch (projectHealth(_display(p), widget.recentSessions, now).kind) {
-            HealthKind.stalled => 0,
-            HealthKind.atRisk => 1,
-            HealthKind.onTrack => 2,
-            HealthKind.noDeadline => 3,
-          }
-      };
+      // Du plus pressant au moins pressant : le classement du projet du
+      // moment (séance proche, retard sur le plan…) ; un dossier prend la
+      // place de son sous-projet le mieux classé.
+      final order = <String, int>{};
+      final ranked = rankProjectMoments(widget.projects, widget.recentSessions, _today);
+      for (var i = 0; i < ranked.length; i++) {
+        order[ranked[i].project.id] = i;
+      }
+      int rankOf(Project p) {
+        final own = order[p.id];
+        if (own != null) return own;
+        var best = 1 << 30;
+        for (final c in folderChildren(p, widget.projects)) {
+          final r = order[c.id];
+          if (r != null && r < best) best = r;
+        }
+        return best;
+      }
       filtered.sort((a, b) {
-        final r = rank[a.id]!.compareTo(rank[b.id]!);
+        final r = rankOf(a).compareTo(rankOf(b));
         if (r != 0) return r;
-        if (a.endDate == null) return b.endDate == null ? 0 : 1;
+        if (a.endDate == null) return b.endDate == null ? a.title.compareTo(b.title) : 1;
         if (b.endDate == null) return -1;
         return a.endDate!.compareTo(b.endDate!);
       });
@@ -1150,7 +1159,7 @@ class _ProjectsViewState extends State<ProjectsView> {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
           child: Row(children: [
-            _th('Projet', 290),
+            _th(_mode == _Mode.active ? 'Projet · du plus pressant' : 'Projet', 290),
             _th('Avancement', 170),
             Expanded(child: _th('Prochaine action', null)),
             _th('Échéance', 110),
