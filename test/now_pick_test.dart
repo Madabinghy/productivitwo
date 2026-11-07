@@ -49,4 +49,15 @@ void main() {
     expect(pickNow(blocks: const [], now: now, nowMin: nowMin, dayStartMin: 300).kind, NowPickKind.mode);
     expect(pickNow(blocks: const [], now: now, nowMin: nowMin, dayStartMin: 300, modeAvailable: false).kind, NowPickKind.none);
   });
+
+  test('autre chose : les trois suivantes, sans la chose montrée', () {
+    final board = StakeBoard(top: [stake('Lecture', focus), stake('Louanges', series), stake('Rapport', parole), stake('Vaisselle', series)]);
+    final blocks = [blk('b', '16:00', 60)];
+    final shown = pickNow(blocks: blocks, now: now, nowMin: nowMin, dayStartMin: 300, board: board);
+    expect(shown.stake!.gesture.title, 'Louanges');
+    final alts = nowAlternatives(shown, blocks: blocks, nowMin: nowMin, board: board);
+    expect(alts.map((a) => a.stake?.gesture.title ?? a.block!.id), ['Vaisselle', 'Rapport', 'Lecture']);
+    final few = nowAlternatives(shown, blocks: blocks, nowMin: nowMin, board: StakeBoard(top: [stake('Louanges', series)]));
+    expect(few.single.kind, NowPickKind.next);
+  });
 }
