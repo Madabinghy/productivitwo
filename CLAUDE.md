@@ -677,6 +677,14 @@ recentre la frise, Routines / Objectifs = déplient leur module, Badges = dialog
 (`onOpenActions`). Colonne MAINTENANT : tableau du jour (ou « Ce soir » après 19 h) en tête, puis MAINTENANT, puis la liste EN JEU,
 puis « Au programme · concrètement ». Gestes `_runStake` : `_incRoutine`, `_startActivityChrono`, `_startChrono`, chrono sur l'action
 (`_startActionChrono`, sinon fiche projet sur la tâche). Pas d'enjeux en disposition active ni en bande Focus.
+**Remis en ordre** (2026-11-07, maquette validée « Web Aujourd'hui, remis en ordre », lot 1) : plus de rangée de tuiles ni de colonne
+de modules. En-tête = date · Demain → · bande « Ta journée » (`_dayStrip` : gagnés · en jeu · perdus · Journée parfaite · braises ;
+tap = dialog du tableau ou du bilan du soir + tous les enjeux, `_openDayDialog`) · « Planifier avec Claude » (`planDayPrompt` du jour) ;
+le bandeau ORION est retiré (messages dans le menu ⋯). Colonne gauche 440 px (380 sous 1360) : MAINTENANT, CE QUI SE JOUE (3 enjeux,
+le reste derrière « + n autres », `_stakesList(cap:)`), ENSUITE (ex-« Au programme · concrètement »). La frise prend le reste. Rail de
+droite (`_rail`, `_kPanels`) : Routines · Objectifs · Chronos · Semaine (en retard, engagements, échéances, élan) · Collection, pastilles
+d'attention (`_railBadge`) ; un tap ouvre UN panneau de 380 px (`_drawer`, `_drawerKey`) avec le module existant déplié. Sous 1000 px,
+tout s'empile comme avant (`_sideColumn`).
 **Braises** (maquette validée 2026-10-30, « Braises de rattrapage », recommandations retenues) : une **journée parfaite** forge une
 braise (réserve `kEmberCap` = 3) ; une braise **rallume une série de routine cassée HIER**, à condition d'atteindre la routine AUJOURD'HUI
 (sinon elle ne coûte rien) ; une série ne se rallume qu'une fois tous les 30 jours (`kRekindleCooldownDays`) ; le jour comblé compte pour

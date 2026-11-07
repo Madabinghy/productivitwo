@@ -27,10 +27,7 @@ import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
-import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/sessions_card.dart';
-import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
-import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/focus_band.dart';
@@ -38,13 +35,13 @@ import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/today_facts.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show BadgeDeck;
 import 'package:productivitwo_v1/utils/evening_ledger.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
-import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -706,10 +703,6 @@ class TodayViewState extends State<TodayView> {
         children: [
           _header(),
           const SizedBox(height: 18),
-          if (MediaQuery.sizeOf(context).width >= 1064) ...[
-            _dashboard(row: true),
-            const SizedBox(height: 18),
-          ],
           Expanded(
             child: LayoutBuilder(builder: (ctx, box) {
               // Chrono sur une action → la carte MAINTENANT se déploie en
@@ -718,8 +711,6 @@ class TodayViewState extends State<TodayView> {
               if (box.maxWidth < 1000) {
                 // Écran étroit : les trois temps s'empilent.
                 return ListView(children: [
-                  if (MediaQuery.sizeOf(context).width < 1064) _dashboard(row: false),
-                  ..._dayBoard(),
                   if (focus != null) _focusBand(focus) else _nowCard(),
                   ..._stakesList(),
                   const SizedBox(height: 18),
@@ -731,24 +722,15 @@ class TodayViewState extends State<TodayView> {
                 ]);
               }
               if (focus != null) {
-                return ListView(children: [
-                  _focusBand(focus),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    height: 640,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: _timelineCard()),
-                        const SizedBox(width: 24),
-                        SizedBox(
-                          width: 340,
-                          child: SingleChildScrollView(
-                              child: _sideColumn(withAgenda: true)),
-                        ),
-                      ],
-                    ),
+                return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Expanded(
+                    child: ListView(children: [
+                      _focusBand(focus),
+                      const SizedBox(height: 18),
+                      SizedBox(height: 640, child: _timelineCard()),
+                    ]),
                   ),
+                  ..._railArea(),
                 ]);
               }
               // Chrono SUR le bloc en cours (bloc d'activité) → disposition
@@ -767,11 +749,7 @@ class TodayViewState extends State<TodayView> {
                     Expanded(child: _nowCardWide(live.block, live.open)),
                     const SizedBox(width: 24),
                     SizedBox(width: 340, child: _scheduleListCard()),
-                    const SizedBox(width: 24),
-                    SizedBox(
-                      width: 340,
-                      child: SingleChildScrollView(child: _sideColumn()),
-                    ),
+                    ..._railArea(),
                   ],
                 );
               }
@@ -780,22 +758,17 @@ class TodayViewState extends State<TodayView> {
                 children: [
                   // MAINTENANT puis le contenu concret des blocs à venir.
                   SizedBox(
-                    width: 340,
+                    width: box.maxWidth >= 1360 ? 440 : 380,
                     child: ListView(children: [
-                      ..._dayBoard(),
                       _nowCard(),
-                      ..._stakesList(),
+                      ..._stakesList(cap: 3),
                       const SizedBox(height: 18),
                       _agendaCard(),
                     ]),
                   ),
                   const SizedBox(width: 24),
                   Expanded(child: _timelineCard()),
-                  const SizedBox(width: 24),
-                  SizedBox(
-                    width: 340,
-                    child: SingleChildScrollView(child: _sideColumn()),
-                  ),
+                  ..._railArea(),
                 ],
               );
             }),
@@ -900,13 +873,246 @@ class TodayViewState extends State<TodayView> {
     return [StakeScoreboard(board: board, elapsed: dayElapsed(_nowMin)), const SizedBox(height: 18)];
   }
 
-  List<Widget> _stakesList() {
-    final board = _board();
+  /// CE QUI SE JOUE : les [cap] premiers enjeux, le reste derrière
+  /// « + n autres en jeu ».
+  List<Widget> _stakesList({int? cap}) {
+    var board = _board();
     if (board.isEmpty || (_evening && board.inPlay == 0)) return const [];
+    if (cap != null && board.top.length > cap) {
+      board = StakeBoard(
+        top: board.top.take(cap).toList(),
+        rest: [...board.top.skip(cap), ...board.rest],
+        won: board.won,
+        lost: board.lost,
+        watchOutOfReach: board.watchOutOfReach,
+      );
+    }
     return [
-      const SizedBox(height: 4),
+      const SizedBox(height: 18),
       StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgesInPlay, evening: _evening),
     ];
+  }
+
+  /// Le tableau du jour (ou bilan du soir) en grand, avec tous les enjeux.
+  void _openDayDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: kBBg,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 560,
+          height: 680,
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) => ListView(padding: const EdgeInsets.all(20), children: [
+              ..._dayBoard(),
+              StakesList(
+                board: _board(),
+                onRun: (s) {
+                  _runStake(s);
+                  setLocal(() {});
+                },
+                onOpenBadges: _openBadgesInPlay,
+                evening: _evening,
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// « Ta journée » en une ligne, dans l'en-tête : gagnés · en jeu · perdus,
+  /// journée parfaite, braises. Tap = le tableau complet.
+  Widget _dayStrip() {
+    final board = _board();
+    final perfect = perfectDayTile(_facts, _deck().embers);
+    if (board.isEmpty && perfect == null) return const SizedBox.shrink();
+    Widget n(int v, String label, Color c) => Text.rich(
+          TextSpan(children: [
+            TextSpan(text: '$v', style: TextStyle(fontWeight: FontWeight.w700, color: c)),
+            TextSpan(text: ' $label'),
+          ]),
+          style: const TextStyle(fontSize: 13.5, color: kBText2, fontFeatures: _tabular),
+        );
+    return Tooltip(
+      message: 'Le tableau de ta journée et tous les enjeux',
+      child: InkWell(
+        key: const ValueKey('web-day-strip'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openDayDialog,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: kBSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kBLine),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _label(_evening ? 'CE SOIR' : 'TA JOURNÉE'),
+            const SizedBox(width: 16),
+            n(board.won.length, 'gagné${board.won.length > 1 ? 's' : ''}', kBPrimary),
+            const SizedBox(width: 14),
+            n(board.inPlay, 'en jeu', const Color(0xFFF2C46B)),
+            const SizedBox(width: 14),
+            n(board.lost.length, 'perdu${board.lost.length > 1 ? 's' : ''}', const Color(0xFFFF8F86)),
+            if (perfect != null) ...[
+              Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 14), color: kBLine),
+              Text.rich(
+                TextSpan(children: [
+                  const TextSpan(text: 'Journée parfaite · '),
+                  TextSpan(text: perfect.value, style: const TextStyle(fontWeight: FontWeight.w700, color: kBText)),
+                ]),
+                style: const TextStyle(fontSize: 13.5, color: kBText2),
+              ),
+              if (perfect.badge != null) ...[
+                const SizedBox(width: 12),
+                Text(perfect.badge!, style: const TextStyle(fontSize: 13, color: Color(0xFFFF9C6B), fontFeatures: _tabular)),
+              ],
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _askClaudeToday() async {
+    final ok = await launchUrl(claudeNewUri(planDayPrompt(date: _today, blocks: _allBlocks)), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
+    }
+  }
+
+  // ── Rail + tiroir (2026-11-07) ──────────────────────────────────────────────
+  // Ce qu'on consulte (routines, objectifs, chronos, semaine, collection) vit
+  // dans UN tiroir, ouvert depuis le rail de droite : un panneau à la fois.
+
+  /// Clé du panneau ouvert, null = tiroir fermé.
+  String? _drawerKey;
+
+  static const _kPanels = [
+    (key: 'routines', label: 'Routines', icon: Icons.check_circle_outline),
+    (key: 'objectives', label: 'Objectifs', icon: Icons.track_changes),
+    (key: 'chronos', label: 'Chronos', icon: Icons.timer_outlined),
+    (key: 'week', label: 'Semaine', icon: Icons.view_week_outlined),
+    (key: 'collection', label: 'Collection', icon: Icons.style_outlined),
+  ];
+
+  void _togglePanel(String key) {
+    setState(() => _drawerKey = _drawerKey == key ? null : key);
+    // Le contenu du panneau est toujours déplié.
+    final fold = key == 'collection' ? 'badges' : key;
+    if (_drawerKey != null) _unfold(fold);
+  }
+
+  /// Pastille d'attention d'un bouton du rail (null = rien).
+  ({String text, Color color})? _railBadge(String key) {
+    switch (key) {
+      case 'routines':
+        final left =
+            routinesForToday(widget.activities, _hits, DateTime.now(), dayStartMin: widget.dayStartMin).where((r) => !r.reached).length;
+        return left == 0 ? null : (text: '$left', color: const Color(0xFFF2C46B));
+      case 'week':
+        final late = overdueActionCount(widget.projects, _livedToday);
+        return late == 0 ? null : (text: '$late', color: const Color(0xFFFF8F86));
+      case 'chronos':
+        return _openSession == null ? null : (text: '●', color: kBPrimary);
+    }
+    return null;
+  }
+
+  List<Widget> _railArea() => [
+        if (_drawerKey != null) ...[
+          const SizedBox(width: 24),
+          SizedBox(width: 380, child: _drawer(_drawerKey!)),
+        ],
+        const SizedBox(width: 16),
+        _rail(),
+      ];
+
+  Widget _rail() => Column(children: [
+        for (final p in _kPanels) ...[
+          _railButton(p.key, p.label, p.icon),
+          const SizedBox(height: 8),
+        ],
+      ]);
+
+  Widget _railButton(String key, String label, IconData icon) {
+    final on = _drawerKey == key;
+    final badge = _railBadge(key);
+    return Tooltip(
+      message: on ? 'Fermer $label' : label,
+      child: InkWell(
+        key: ValueKey('rail-$key'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _togglePanel(key),
+        child: Container(
+          width: 60,
+          height: 58,
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFF1C3A2C) : kBSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? kBPrimary : kBLine, width: on ? 1.5 : 1),
+          ),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 19, color: on ? kBText : kBText2),
+                const SizedBox(height: 4),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    softWrap: false,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? kBText : kBText2)),
+              ]),
+            ),
+            if (badge != null)
+              Positioned(
+                top: 4,
+                right: 5,
+                child: Text(badge.text,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: badge.color, fontFeatures: _tabular)),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Le panneau ouvert : les modules existants, dépliés, sous un titre et ×.
+  Widget _drawer(String key) {
+    final label = _kPanels.firstWhere((p) => p.key == key).label;
+    final List<Widget> body = switch (key) {
+      'routines' => [_routinesCard()],
+      'objectives' => [_objectivesCard()],
+      'chronos' => [_sessionsCard()],
+      'collection' => [_badgesCard()],
+      _ => [
+          _weekColumn(),
+          if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[const SizedBox(height: 18), _elanCard()],
+        ],
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: kBText)),
+        ),
+        IconButton(
+          key: const ValueKey('drawer-close'),
+          tooltip: 'Fermer',
+          icon: const Icon(Icons.close, size: 18, color: kBText3),
+          onPressed: () => setState(() => _drawerKey = null),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      Expanded(
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+        ),
+      ),
+    ]);
   }
 
   /// Fait le geste d'un enjeu : +1, chrono d'activité, bloc, chrono sur l'action.
@@ -974,45 +1180,8 @@ class TodayViewState extends State<TodayView> {
     if (_isFolded(key)) _toggleFold(key);
   }
 
-  /// « TON TABLEAU DE BORD » : une tuile par vue, tap = la vue complète.
-  Widget _dashboard({required bool row}) {
-    final board = _board();
-    final facts = _facts;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final routines = facts?.routines ?? const [];
-    final reached = routines.where((r) => r.reached).length;
-    final active = widget.activities.where((a) => !a.deleted).toList();
-    final objectives = widget.objectives.where((o) => o.status == 'active').toList();
-    return DashboardTiles(
-      row: row,
-      program: programTile(_blocks, _nowMin) ??
-          const ProgramTile(value: 'Rien de prévu', sub: 'ajoute un bloc dans la frise', strip: []),
-      routines: routinesTile(
-        done: reached,
-        total: routines.length,
-        toDoNow: [for (final r in routines) if (!r.reached) r.activity.name],
-        momentLabel: 'aujourd’hui',
-        seriesRunning: _deck().seriesRunning,
-      ),
-      objectives: objectivesTile([
-        for (final o in objectives) (o.title, computeObjectiveProgress(o, widget.activities, _sessions, _hits, now).weekPercent),
-      ]),
-      badges: badgesTile(_deck(), board),
-      perfect: perfectDayTile(facts, _deck().embers),
-      actions: actionsTile(projects: widget.projects, activities: active, today: today, parole: _paroleToday()),
-      projects: projectsTile(widget.projects, today, sessions: _sessions),
-      onProgram: scrollToNow,
-      onRoutines: () => _unfold('routines'),
-      onObjectives: () => _unfold('objectives'),
-      onBadges: _openBadgesInPlay,
-      onPerfect: _openBadgesInPlay,
-      onActions: widget.onOpenActions,
-      onProjects: widget.onOpenProjects,
-    );
-  }
-
-  // En-tête : date + résumé, bandeau ORION à droite.
+  // En-tête : date + résumé, Demain, « Ta journée » et Planifier à droite
+  // (les messages ORION sont dans le menu ⋯).
   Widget _header() {
     final now = _livedToday;
     final title = '${_kDays[now.weekday - 1]} ${now.day} ${_kMonths[now.month - 1]}';
@@ -1026,12 +1195,9 @@ class TodayViewState extends State<TodayView> {
             '${widget.mode == DayMode.normal ? '' : ' · mode ${kModeLabels[widget.mode]}'}';
     return Row(children: [
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+        Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
         const SizedBox(height: 3),
-        Text(summary,
-            style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+        Text(summary, style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
       ]),
       const SizedBox(width: 20),
       Tooltip(
@@ -1039,60 +1205,22 @@ class TodayViewState extends State<TodayView> {
         child: _pillButton('Demain →', height: 34, onTap: _openTomorrow),
       ),
       const SizedBox(width: 24),
-      Expanded(child: Align(alignment: Alignment.centerRight, child: _orionBanner())),
+      Expanded(
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: _dayStrip()),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Tooltip(
+        message: 'Préparer ou compléter la journée avec Claude',
+        child: _pillButton('Planifier avec Claude', height: 34, onTap: _askClaudeToday),
+      ),
     ]);
   }
 
   void _openTomorrow() => showTomorrowScheduleDialog(context, widget.sync,
       projects: widget.projects, activities: widget.activities, dayStartMin: widget.dayStartMin);
-
-  Widget _orionBanner() {
-    return ValueListenableBuilder<List<AssistantMessageData>>(
-      valueListenable: assistantMessagesNotifier,
-      builder: (context, msgs, _) {
-        if (msgs.isEmpty) return const SizedBox.shrink();
-        final m = msgs.first;
-        final action = m.action;
-        return ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Container(
-            height: 48,
-            padding: const EdgeInsets.only(left: 16, right: 7),
-            decoration: BoxDecoration(
-              color: kBSurface,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: kBPrimary.withOpacity(.3)),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.auto_awesome, size: 15, color: kBPrimary),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text.rich(
-                  TextSpan(children: [
-                    const TextSpan(
-                        text: 'ORION',
-                        style: TextStyle(fontWeight: FontWeight.w600, color: kBText)),
-                    TextSpan(text: ' · ${m.text.replaceAll('\n', ' ')}'),
-                  ]),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: kBText2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (action != null && assistantActionHandler != null) ...[
-                _pillButton(action.label ?? 'Voir', primary: true, height: 34,
-                    onTap: () => assistantActionHandler?.call(action)),
-                const SizedBox(width: 6),
-              ],
-              _pillButton(msgs.length > 1 ? '+${msgs.length - 1}' : 'Historique',
-                  height: 34, onTap: () => AssistantHistorySheet.show(context)),
-            ]),
-          ),
-        );
-      },
-    );
-  }
 
   // ── MAINTENANT ──────────────────────────────────────────────────────────────
 
@@ -2782,7 +2910,7 @@ class TodayViewState extends State<TodayView> {
     return _card(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('AU PROGRAMME · CONCRÈTEMENT'),
+        _label('ENSUITE'),
         const SizedBox(height: 10),
         if (upcoming.isEmpty)
           Padding(
@@ -3152,69 +3280,74 @@ class TodayViewState extends State<TodayView> {
 
   static const _kFoldedPadding = EdgeInsets.fromLTRB(20, 14, 20, 14);
 
-  Widget _sideColumn({bool withAgenda = false}) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (withAgenda) ...[_agendaCard(), const SizedBox(height: 18)],
+  /// Écran étroit : tous les modules à la suite (pas de rail).
+  Widget _sideColumn() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _routinesCard(),
         const SizedBox(height: 18),
-        WebBadgesCard(
-          sync: widget.sync,
-          activities: widget.activities,
-          projects: widget.projects,
-          objectives: widget.objectives,
-          hits: _hits,
-          sessions: _sessions,
-          moodMarks: _moodMarks,
-          chainRuns: _chainRuns,
-          dayStartMin: widget.dayStartMin,
-          folded: _isFolded('badges'),
-          onToggleFold: () => _toggleFold('badges'),
-          huntStore: _huntStore,
-          todayBlocks: _allBlocks,
-          source: _deckSource,
-        ),
+        _badgesCard(),
         const SizedBox(height: 18),
-        WebObjectivesCard(
-          objectives: widget.objectives,
-          activities: widget.activities,
-          sessions: _sessions,
-          hits: _hits,
-          blocks: _allBlocks,
-          projects: widget.projects,
-          dayStartMin: widget.dayStartMin,
-          runningActivityId: _openSession?.activityId,
-          folded: _isFolded('objectives'),
-          onToggleFold: () => _toggleFold('objectives'),
-          todayCount: (a) => _hits.where((h) => h.habitId == a.id && ymdOf(livedDate(h.ts, widget.dayStartMin)) == ymdOf(_livedToday)).length,
-          onRoutinePlus: _incRoutine,
-          onStartActivity: _startActivityChrono,
-          onLaunchBlock: _startChrono,
-          onOpenProject: widget.onOpenProject,
-        ),
+        _objectivesCard(),
         const SizedBox(height: 18),
         if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[
           _elanCard(),
           const SizedBox(height: 18),
         ],
-        // Chronos du jour : voir, corriger, supprimer, rattacher à un bloc
-        // après coup — l'équivalent de la feuille « Dernières 24 h » du mobile.
-        SessionsCard(
-          date: _today,
-          sessions: _sessions,
-          blocks: _allBlocks,
-          activities: widget.activities,
-          projects: widget.projects,
-          domains: widget.domains,
-          sync: widget.sync,
-          onChanged: () {
-            if (mounted) setState(() {});
-          },
-          folded: _isFolded('chronos'),
-          onToggleFold: () => _toggleFold('chronos'),
-        ),
+        _sessionsCard(),
         const SizedBox(height: 18),
         _weekColumn(),
       ]);
+
+  Widget _badgesCard() => WebBadgesCard(
+        sync: widget.sync,
+        activities: widget.activities,
+        projects: widget.projects,
+        objectives: widget.objectives,
+        hits: _hits,
+        sessions: _sessions,
+        moodMarks: _moodMarks,
+        chainRuns: _chainRuns,
+        dayStartMin: widget.dayStartMin,
+        folded: _isFolded('badges'),
+        onToggleFold: () => _toggleFold('badges'),
+        huntStore: _huntStore,
+        todayBlocks: _allBlocks,
+        source: _deckSource,
+      );
+
+  Widget _objectivesCard() => WebObjectivesCard(
+        objectives: widget.objectives,
+        activities: widget.activities,
+        sessions: _sessions,
+        hits: _hits,
+        blocks: _allBlocks,
+        projects: widget.projects,
+        dayStartMin: widget.dayStartMin,
+        runningActivityId: _openSession?.activityId,
+        folded: _isFolded('objectives'),
+        onToggleFold: () => _toggleFold('objectives'),
+        todayCount: (a) => _hits.where((h) => h.habitId == a.id && ymdOf(livedDate(h.ts, widget.dayStartMin)) == ymdOf(_livedToday)).length,
+        onRoutinePlus: _incRoutine,
+        onStartActivity: _startActivityChrono,
+        onLaunchBlock: _startChrono,
+        onOpenProject: widget.onOpenProject,
+      );
+
+  // Chronos du jour : voir, corriger, supprimer, rattacher à un bloc
+  // après coup — l'équivalent de la feuille « Dernières 24 h » du mobile.
+  Widget _sessionsCard() => SessionsCard(
+        date: _today,
+        sessions: _sessions,
+        blocks: _allBlocks,
+        activities: widget.activities,
+        projects: widget.projects,
+        domains: widget.domains,
+        sync: widget.sync,
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+        folded: _isFolded('chronos'),
+        onToggleFold: () => _toggleFold('chronos'),
+      );
 
   /// « ÉLAN & DISCIPLINE » : les deux cartes de Stats mobile, sur les flux du web.
   Widget _elanCard() {
