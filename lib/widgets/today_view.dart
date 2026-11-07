@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'dart:convert' show jsonDecode, jsonEncode;
 import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
@@ -750,7 +751,7 @@ class TodayViewState extends State<TodayView> {
                   // Liberté (2026-11-04) : une envie en cours, écran quitté pour faire autre chose.
                   PendingUrgeCard(logic: widget.logic),
                   // Badges en cartes (2026-11-01) : les cartes gagnées se retournent.
-                  CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
+                  if (kCollectionMetaEnabled) CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
                   // Saisons (2026-11-04) : le bilan d'une saison close, une fois, en tête.
                   if (widget.sync case final sync?)
                     SeasonBilanCard(

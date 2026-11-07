@@ -11,3 +11,11 @@ final bool kOldGamificationEnabled = false;
 /// le code et les données Firestore restent intacts (repasser à true pour
 /// tout réactiver). Même principe `final` que ci-dessus : code mort conservé.
 final bool kGameLayerEnabled = false;
+
+/// Méta-collection des badges (audit 2026-11-07, décision user : « récompenser
+/// le fait de jouer plutôt que le fait de vivre ») : points et badges de
+/// collection, compteurs au long cours, piles de compteurs, récolte du matin,
+/// retournement des cartes, cartes à aller chercher, Sniper ciblé, Chasseur de
+/// cartes, partage. false = retirés de l'interface et du deck ; les badges
+/// restent des cartes simples dans l'album. Même principe `final`.
+final bool kCollectionMetaEnabled = false;

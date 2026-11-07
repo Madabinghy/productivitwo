@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
@@ -123,7 +124,7 @@ List<CardPile> cardPiles(BadgeDeck deck) {
   List<CardPile> of(PileKind k, List<BadgeState> l) => [
         for (final r in kPileRarities) CardPile(k, r, albumOrder([for (final b in l) if (rarityOf(b) == r) b])),
       ];
-  return [...of(PileKind.series, series), ...of(PileKind.counters, counters)];
+  return [...of(PileKind.series, series), if (kCollectionMetaEnabled) ...of(PileKind.counters, counters)];
 }
 
 /// Séries ou compteurs commencés mais sans cadre encore (pas dans une pile).

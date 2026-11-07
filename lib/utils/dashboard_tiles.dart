@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/parole.dart' show ParoleDay, kParoleMin;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, shortDateFr;
@@ -161,7 +162,7 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     // Lesquelles (retour user 2026-11-03 : « 4 cartes ce soir », mais lesquelles ?).
     final names = tonightCardNames(deck, tonight);
     if (names.isNotEmpty) parts.add(names.length <= 2 ? names.join(', ') : '${names.take(2).join(', ')} +${names.length - 2}');
-    if (best != null) parts.add('jusqu’à ${rarityLabel(best).toLowerCase()}');
+    if (best != null && kCollectionMetaEnabled) parts.add('jusqu’à ${rarityLabel(best).toLowerCase()}');
     if (losing.isNotEmpty) parts.add('${losing.length} série${losing.length > 1 ? 's' : ''} à sauver');
   } else if (losing.isNotEmpty) {
     value = '${losing.length} série${losing.length > 1 ? 's' : ''} à sauver';
@@ -178,11 +179,11 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
       parts.add('${[for (final b in best) '${b.def.name} ${rarityLabel(rarityOf(b)).toLowerCase()}'].join(', ')}${more > 0 ? ' +$more' : ''}');
     }
   }
-  parts.add(next == null || next.next == null
+  if (kCollectionMetaEnabled) parts.add(next == null || next.next == null
       ? '$pts pts'
       : '$pts pts · ${next.name}${next.ribbon == null ? ' ${roman(next.level + 1)}' : ''} ${next.value} / ${next.next}');
   return DashTile(
-    label: 'COLLECTION',
+    label: kCollectionMetaEnabled ? 'COLLECTION' : 'BADGES',
     value: value,
     fan: bestCards(deck),
     mini: [for (var i = 0; i < (tonight.length + losing.length).clamp(0, 8); i++) i < tonight.length ? TileMark.on : TileMark.warn],
