@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, estimateFactorLabel, spentByAction;
 import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
@@ -26,6 +27,7 @@ const _kPrefOverdue = 'web.actions.overdue';
 const _kPrefDomain = 'web.actions.domain';
 const _kPrefSort = 'web.actions.sort';
 const _kPrefClient = 'web.actions.client';
+const _kPrefView = 'web.actions.by_urgency';
 
 class ActionsView extends StatefulWidget {
   final List<Project> projects;
@@ -124,6 +126,7 @@ class _ActionsViewState extends State<ActionsView> {
         _overdue = p.getBool(_kPrefOverdue) ?? false;
         _domainId = p.getString(_kPrefDomain);
         _clientId = p.getString(_kPrefClient);
+        _byUrgency = p.getBool(_kPrefView) ?? true;
         final s = p.getString(_kPrefSort);
         _sort = ActionsSort.values.where((x) => x.name == s).firstOrNull ?? ActionsSort.dueDate;
       });
@@ -143,6 +146,7 @@ class _ActionsViewState extends State<ActionsView> {
       _clientId == null
           ? await p.remove(_kPrefClient)
           : await p.setString(_kPrefClient, _clientId!);
+      await p.setBool(_kPrefView, _byUrgency);
     } catch (_) {}
   }
 
@@ -339,6 +343,8 @@ class _ActionsViewState extends State<ActionsView> {
         ]),
       ),
       const SizedBox(width: 12),
+      _viewSwitch(),
+      const SizedBox(width: 10),
       SizedBox(
         width: 220,
         height: 36,
@@ -569,6 +575,9 @@ class _ActionsViewState extends State<ActionsView> {
         _nowCard(open, now),
         const SizedBox(height: 18),
       ],
+      if (_byUrgency)
+        _urgencyCard(allGroups, own, factorLabel)
+      else
       _card(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -651,7 +660,7 @@ class _ActionsViewState extends State<ActionsView> {
         const SizedBox(height: 18),
         _upcomingCard(upcoming, today),
       ],
-      if (own.isNotEmpty) ...[
+      if (own.isNotEmpty && !_byUrgency) ...[
         const SizedBox(height: 18),
         _card(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -675,6 +684,252 @@ class _ActionsViewState extends State<ActionsView> {
         ),
       ],
     ]);
+  }
+
+  // ── Par urgence (2026-11-07, lot 2) : comme l'onglet Actions mobile ────────
+  // Au programme · visées aujourd'hui · en retard · à re-viser · cette semaine
+  // · ensuite (une par projet) · sans projet. Chaque action n'apparaît qu'une
+  // fois, dans la première section qui la retient.
+
+  bool _byUrgency = true;
+  final Set<String> _urgencyOpen = {};
+
+  Widget _viewSwitch() {
+    Widget seg(String label, bool on, VoidCallback onTap, Key key) => InkWell(
+          key: key,
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: on ? kBActive : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: on ? kBPrimary.withOpacity(.35) : Colors.transparent),
+            ),
+            child: Text(label,
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: on ? kBText : kBText2)),
+          ),
+        );
+    void set(bool v) {
+      setState(() => _byUrgency = v);
+      _savePrefs();
+    }
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: const Color(0x12FFFFFF), borderRadius: BorderRadius.circular(999)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        seg('Par urgence', _byUrgency, () => set(true), const ValueKey('actions-view-urgency')),
+        seg('Par projet', !_byUrgency, () => set(false), const ValueKey('actions-view-project')),
+      ]),
+    );
+  }
+
+  Widget _urgencyCard(List<ProjectActions> groups,
+      List<({Activity activity, List<TaskAction> actions})> own, String? factorLabel) {
+    final today = _livedToday;
+    final week = today.add(const Duration(days: 6));
+    final blockOf = <String, ScheduleBlock>{
+      for (final b in _todayBlocks)
+        if (b.actionId != null && b.status == 'pending') b.actionId!: b,
+    };
+    final seen = <String>{};
+    final sections = <String, List<_UrgentEntry>>{
+      'program': [], 'focus': [], 'late': [], 'stale': [], 'week': [], 'next': [], 'own': [],
+    };
+    void place(_UrgentEntry e) {
+      final a = e.action;
+      if (seen.contains(a.id)) return;
+      final key = blockOf.containsKey(a.id)
+          ? 'program'
+          : isFocusedOn(a, today)
+              ? 'focus'
+              : isOverdueAction(a, e.task, today)
+                  ? 'late'
+                  : isStaleFocus(a, today)
+                      ? 'stale'
+                      : _inWeek(workDate(a, e.task), week)
+                          ? 'week'
+                          : null;
+      if (key == null) return;
+      seen.add(a.id);
+      sections[key]!.add(e);
+    }
+    final all = <_UrgentEntry>[
+      for (final g in groups)
+        for (final x in g.entries) _UrgentEntry(x.action, project: g.project, task: x.task),
+      for (final g in own)
+        for (final a in g.actions) _UrgentEntry(a, activity: g.activity),
+    ];
+    for (final e in all) {
+      place(e);
+    }
+    for (final g in groups) {
+      final first = g.entries.where((x) => !seen.contains(x.action.id)).firstOrNull;
+      if (first == null || g.entries.any((x) => seen.contains(x.action.id))) continue;
+      seen.add(first.action.id);
+      sections['next']!.add(_UrgentEntry(first.action, project: g.project, task: first.task));
+    }
+    for (final g in own) {
+      for (final a in g.actions) {
+        if (seen.add(a.id)) sections['own']!.add(_UrgentEntry(a, activity: g.activity));
+      }
+    }
+    int byWork(_UrgentEntry x, _UrgentEntry y) {
+      final wx = workDate(x.action, x.task), wy = workDate(y.action, y.task);
+      if (wx == null || wy == null) return wx == null ? (wy == null ? 0 : 1) : -1;
+      return wx.compareTo(wy);
+    }
+    sections['program']!.sort((x, y) =>
+        blockStartMin(blockOf[x.action.id]!).compareTo(blockStartMin(blockOf[y.action.id]!)));
+    for (final k in const ['late', 'stale', 'week']) {
+      sections[k]!.sort(byWork);
+    }
+    const titles = {
+      'program': ('AU PROGRAMME AUJOURD’HUI', kBPrimary),
+      'focus': ('VISÉES AUJOURD’HUI', kBAttention),
+      'late': ('EN RETARD', kBAlert),
+      'stale': ('À RE-VISER · VISÉES UN JOUR PASSÉ', kBAttention),
+      'week': ('CETTE SEMAINE', kBText3),
+      'next': ('ENSUITE · UNE PAR PROJET', kBText3),
+      'own': ('SANS PROJET', kBText3),
+    };
+    final total = sections.values.fold<int>(0, (n, l) => n + l.length);
+    return _card(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (factorLabel != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Tooltip(
+              message: 'Médiane du temps réel sur le temps estimé (actions faites avec chrono ciblé).',
+              child: Text(factorLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kBText3)),
+            ),
+          ),
+        if (total == 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(_filtering ? 'Aucune action pour ce filtre.' : 'Aucune action ouverte.',
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: kBText3)),
+          ),
+        for (final e in titles.entries)
+          if (sections[e.key]!.isNotEmpty)
+            ..._urgencySection(e.key, e.value.$1, e.value.$2, sections[e.key]!, blockOf),
+      ]),
+    );
+  }
+
+  static bool _inWeek(DateTime? w, DateTime week) =>
+      w != null && !DateTime(w.year, w.month, w.day).isAfter(week);
+
+  List<Widget> _urgencySection(String key, String title, Color color, List<_UrgentEntry> items,
+      Map<String, ScheduleBlock> blockOf) {
+    const cap = 6;
+    final open = _urgencyOpen.contains(key);
+    final shown = open ? items : items.take(cap).toList();
+    final today = _livedToday;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 4),
+        child: Row(children: [
+          Text(title,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: color)),
+          const SizedBox(width: 8),
+          Text('${items.length}', style: const TextStyle(fontSize: 12, color: kBText4, fontFeatures: _tabular)),
+        ]),
+      ),
+      for (final e in shown)
+        _entryRow(e,
+            state: switch (key) {
+              'program' => (text: 'bloc ${blockOf[e.action.id]!.startTime}', color: kBPrimary),
+              'focus' => (text: '☀ visée', color: kBAttention),
+              'late' => (
+                  text: '⚑ ${actionDueLabel(effectiveDueDate(e.action, e.task)!, today)}',
+                  color: kBAlert
+                ),
+              'stale' => (text: '☀ ${focusLabel(e.action.focusDate!, today)}', color: kBAttention),
+              'week' => (
+                  text: e.action.focusDate != null
+                      ? '☀ ${focusLabel(e.action.focusDate!, today)}'
+                      : '⚑ ${actionDueLabel(effectiveDueDate(e.action, e.task)!, today)}',
+                  color: kBText3
+                ),
+              _ => null,
+            },
+            late: key == 'late'),
+      if (items.length > cap)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _textLink(open ? 'Réduire' : '+ ${items.length - cap} autre${items.length - cap > 1 ? 's' : ''}',
+              () => setState(() => open ? _urgencyOpen.remove(key) : _urgencyOpen.add(key)),
+              muted: true),
+        ),
+    ];
+  }
+
+  void _toggleEntry(_UrgentEntry e) =>
+      e.project != null ? _toggleProjectAction(e.project!, e.action) : _toggleOwnAction(e.activity!, e.action);
+
+  void _openEntry(_UrgentEntry e) => _edit(e.action, project: e.project, task: e.task, activity: e.activity);
+
+  Widget _entryRow(_UrgentEntry e, {({String text, Color color})? state, bool late = false}) {
+    final a = e.action;
+    final where = e.project != null
+        ? '${e.project!.title} › ${e.task!.title}'
+        : '${e.activity?.name ?? 'Action'} · sans projet';
+    return InkWell(
+      key: ValueKey('actions-entry-${a.id}'),
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _openEntry(e),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+        child: Row(children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _toggleEntry(e),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 18, color: a.done ? kBPrimaryDark : (late ? kBAlert : kBText3)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(where,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: kBText3)),
+              const SizedBox(height: 1),
+              Text(a.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: a.done ? kBText3 : kBText,
+                      decoration: a.done ? TextDecoration.lineThrough : null)),
+            ]),
+          ),
+          if (state != null) ...[
+            const SizedBox(width: 8),
+            _badge(state.text, state.color),
+          ],
+          if (a.checklist.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            checklistBadge(a)!,
+          ],
+          if (a.estimatedMin != null) ...[
+            const SizedBox(width: 8),
+            Text('≈ ${a.estimatedMin} min', style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+          ],
+          IconButton(
+            tooltip: 'Éditer, déplacer, supprimer',
+            icon: const Icon(Icons.more_horiz, size: 16, color: kBText4),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _edit(a, project: e.project, task: e.task, activity: e.activity),
+          ),
+        ]),
+      ),
+    );
   }
 
   Widget _nowCard(Session open,
@@ -1053,4 +1308,15 @@ class _ActionsViewState extends State<ActionsView> {
           ),
         ),
       );
+}
+
+
+/// Une action dans la vue par urgence : de projet (projet + tâche) ou simple
+/// (activité porteuse).
+class _UrgentEntry {
+  final TaskAction action;
+  final Project? project;
+  final ProjectTask? task;
+  final Activity? activity;
+  const _UrgentEntry(this.action, {this.project, this.task, this.activity});
 }
