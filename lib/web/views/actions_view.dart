@@ -1,14 +1,11 @@
-import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
-import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
-import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, estimateFactorLabel, spentByAction;
 import 'package:productivitwo_v1/utils/project_health.dart';
@@ -18,10 +15,9 @@ import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Onglet Actions (refonte web § 5) : filtres « Je suis… / J'ai… / Domaine »
-// (gauche), liste par projet avec la prochaine action en tête + « Possible
-// maintenant » quand un chrono tourne (centre), engagements 7 jours et
-// routines du jour (droite).
+// Onglet Actions (refonte web § 5, remis en ordre le 2026-11-07) : une phrase
+// et les filtres en une ligne de menus, puis la liste pleine page (« Possible
+// maintenant » quand un chrono tourne, par projet, à venir, actions simples).
 
 const _tabular = [FontFeature.tabularFigures()];
 const _kPrefContexts = 'web.actions.contexts';
@@ -65,7 +61,7 @@ class _ActionsViewState extends State<ActionsView> {
   // celle de la tâche — `isOverdueAction`) ; les actions simples n'ont pas
   // d'échéance de tâche → seules celles datées peuvent être en retard.
   bool _overdue = false;
-  bool get _filtering => _contexts.isNotEmpty || _time != null || _overdue;
+  bool get _filtering => _contexts.isNotEmpty || _time != null || _overdue || _query.isNotEmpty;
   /// Tâche retenue : jamais une tâche pas encore commencée (elle va dans
   /// « À venir »).
   bool Function(ProjectTask) get _taskFilter {
@@ -87,11 +83,8 @@ class _ActionsViewState extends State<ActionsView> {
   final Set<String> _expanded = {};
 
   List<Session> _sessions = [];
-  List<HabitHit> _hits = [];
   List<ScheduleBlock> _todayBlocks = [];
-  AppLogic? _logic;
   StreamSubscription<List<Session>>? _sessionsSub;
-  StreamSubscription<List<HabitHit>>? _hitsSub;
   StreamSubscription<DailySchedule?>? _scheduleSub;
 
   @override
@@ -101,26 +94,17 @@ class _ActionsViewState extends State<ActionsView> {
     _sessionsSub = widget.sync.streamSessions().listen((s) {
       if (mounted) setState(() => _sessions = s);
     });
-    _hitsSub = widget.sync.streamHabitHits().listen((h) {
-      if (mounted) setState(() => _hits = h);
-    });
     _scheduleSub = widget.sync.streamDailySchedule(livedProgramYmd(DateTime.now(), widget.dayStartMin)).listen((s) {
       if (mounted) {
         setState(() => _todayBlocks =
             s?.blocks.where((b) => b.status != 'deleted').toList() ?? []);
       }
     });
-    widget.sync.pull().then((state) {
-      if (state == null || !mounted) return;
-      final logic = AppLogic(state, () {})..sync = widget.sync;
-      setState(() => _logic = logic);
-    });
   }
 
   @override
   void dispose() {
     _sessionsSub?.cancel();
-    _hitsSub?.cancel();
     _scheduleSub?.cancel();
     super.dispose();
   }
@@ -164,7 +148,8 @@ class _ActionsViewState extends State<ActionsView> {
 
   // ── Dérivation ──────────────────────────────────────────────────────────────
 
-  bool _filter(TaskAction a) => passesContexts(a, _contexts) && passesTime(a, _time);
+  bool _filter(TaskAction a) =>
+      passesContexts(a, _contexts) && passesTime(a, _time) && (_query.isEmpty || a.title.toLowerCase().contains(_query));
 
   List<Project> get _domainProjects => widget.projects
       .where((p) => _domainId == null || p.domainId == _domainId)
@@ -273,247 +258,270 @@ class _ActionsViewState extends State<ActionsView> {
     widget.onRefresh();
   }
 
-  /// Coche une routine du jour : même règle que la frise d'Aujourd'hui
-  /// (1 incrément, capé à la cible).
-  Future<void> _checkRoutine(String activityId) async {
-    final logic = _logic;
-    if (logic == null) return;
-    final act = logic.state.activities.where((a) => a.id == activityId).firstOrNull;
-    if (act == null || !act.isHabit) return;
-    final today = _livedToday;
-    final tgt = logic.activeHabitTarget(act);
-    if (tgt > 0 && livedHitCount(logic.state.habitHits, activityId, DateTime.now(), widget.dayStartMin) >= tgt) return;
-    logic.incHabit(activityId, 1, today);
-    final key = yyyymmdd(today);
-    final hp = logic.state.habitProgress
-        .where((h) => h.activityId == activityId && h.yyyymmdd == key)
-        .lastOrNull;
-    if (hp != null) await widget.sync.saveHabitProgress(hp);
-    if (logic.state.habitHits.isNotEmpty) {
-      await widget.sync.saveHabitHit(logic.state.habitHits.last);
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
-        content: Text('Routine validée : ${act.name}'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(milliseconds: 1400),
-      ));
-    }
-  }
-
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: kBBg,
-      child: LayoutBuilder(builder: (ctx, box) {
-        final narrow = box.maxWidth < 1000;
-        if (narrow) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(32, 22, 32, 26),
-            children: [
-              _filtersColumn(),
-              const SizedBox(height: 18),
-              _center(),
-              const SizedBox(height: 18),
-              _sideColumn(),
-            ],
-          );
-        }
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(32, 22, 32, 0),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-              width: 250,
-              child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 26), child: _filtersColumn()),
-            ),
-            const SizedBox(width: 24),
-            Expanded(
-              child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 26), child: _center()),
-            ),
-            const SizedBox(width: 24),
-            SizedBox(
-              width: 340,
-              child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 26), child: _sideColumn()),
-            ),
-          ]),
-        );
-      }),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _pageHeader(),
+        const SizedBox(height: 10),
+        _filterBar(),
+        const SizedBox(height: 14),
+        Expanded(
+          child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 26), child: _center()),
+        ),
+      ]),
     );
   }
 
-  // ── Filtres ─────────────────────────────────────────────────────────────────
+  // ── En-tête (2026-11-07, maquette « Web Actions, remis en ordre », lot 1) ──
+  // Une phrase, la recherche et « + Action » ; les filtres en une ligne de
+  // menus juste dessous (plus de colonne de gauche ni de colonne de droite).
 
-  Widget _filtersColumn() {
-    final contexts = knownContexts(widget.projects, widget.activities);
-    final paused = widget.projects.where((p) => p.status != 'archived' && p.paused).length;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _label('JE SUIS…'),
-      const SizedBox(height: 10),
-      Wrap(spacing: 6, runSpacing: 6, children: [
-        for (final c in contexts)
-          _chip(c, selected: _contexts.contains(c), onTap: () {
-            setState(() {
-              _contexts.contains(c) ? _contexts.remove(c) : _contexts.add(c);
-              _showUnmatched = false;
-            });
-            _savePrefs();
-          }),
-      ]),
-      if (_contexts.isNotEmpty) ...[
-        const SizedBox(height: 6),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: _textLink('Effacer', () {
-            setState(_contexts.clear);
-            _savePrefs();
-          }, muted: true),
+  String _query = '';
+
+  ({int open, int program, int focused, int late, int stale}) _counts() {
+    final today = _livedToday;
+    final programIds = {
+      for (final b in _todayBlocks)
+        if (b.actionId != null && b.status == 'pending') b.actionId!,
+    };
+    var open = 0, program = 0, focused = 0, late = 0, stale = 0;
+    void count(TaskAction a, ProjectTask? t) {
+      if (a.done) return;
+      open++;
+      if (programIds.contains(a.id)) program++;
+      if (isFocusedOn(a, today)) focused++;
+      if (isOverdueAction(a, t, today)) late++;
+      if (isStaleFocus(a, today)) stale++;
+    }
+    for (final p in widget.projects) {
+      if (p.status != 'active' || p.paused) continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped' || isUpcomingTask(t, today)) continue;
+        for (final a in t.actions) {
+          count(a, t);
+        }
+      }
+    }
+    for (final act in widget.activities) {
+      if (act.deleted) continue;
+      for (final a in act.ownActions) {
+        count(a, null);
+      }
+    }
+    return (open: open, program: program, focused: focused, late: late, stale: stale);
+  }
+
+  Widget _pageHeader() {
+    final c = _counts();
+    final summary = [
+      '${c.open} ouverte${c.open > 1 ? 's' : ''}',
+      if (c.program > 0) '${c.program} au programme',
+      if (c.focused > 0) '${c.focused} visée${c.focused > 1 ? 's' : ''} aujourd’hui',
+      if (c.late > 0) '${c.late} en retard',
+      if (c.stale > 0) '${c.stale} à re-viser',
+    ].join(' · ');
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Actions',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+          const SizedBox(height: 2),
+          Text(summary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+        ]),
+      ),
+      const SizedBox(width: 12),
+      SizedBox(
+        width: 220,
+        height: 36,
+        child: TextField(
+          key: const ValueKey('actions-search'),
+          onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+          style: const TextStyle(fontSize: 13, color: kBText),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'Rechercher',
+            hintStyle: const TextStyle(fontSize: 13, color: kBText4),
+            prefixIcon: const Icon(Icons.search, size: 16, color: kBText3),
+            prefixIconConstraints: const BoxConstraints(minWidth: 34),
+            filled: true,
+            fillColor: const Color(0x12FFFFFF),
+            contentPadding: const EdgeInsets.symmetric(vertical: 9),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
+          ),
         ),
-      ],
-      const SizedBox(height: 22),
-      _label("J'AI…"),
-      const SizedBox(height: 10),
-      Wrap(spacing: 6, runSpacing: 6, children: [
-        for (final (b, lbl) in const [
-          (TimeBucket.quarter, '15 min'),
-          (TimeBucket.hour, '1 h'),
-          (TimeBucket.more, 'Plus'),
-        ])
-          _chip(lbl, selected: _time == b, onTap: () {
-            setState(() => _time = _time == b ? null : b);
-            _savePrefs();
-          }),
-      ]),
-      const SizedBox(height: 22),
-      _label('ÉTAT'),
-      const SizedBox(height: 10),
-      Wrap(spacing: 6, runSpacing: 6, children: [
-        _chip('En retard', selected: _overdue, onTap: () {
-          setState(() {
-            _overdue = !_overdue;
-            _showUnmatched = false;
-          });
-          _savePrefs();
-        }),
-      ]),
-      if (clientRoots(widget.projects).length > 1) ...[
-        const SizedBox(height: 22),
-        _label('POUR…'),
-        const SizedBox(height: 10),
-        _clientRow(null, 'Tous'),
-        for (final r in clientRoots(widget.projects)) _clientRow(r.id, r.title),
-        _clientRow(kPersoClientId, kPersoClientLabel),
-      ],
-      const SizedBox(height: 22),
-      _label('DOMAINE'),
-      const SizedBox(height: 10),
-      _domainRow(null, 'Tous'),
-      for (final d in widget.domains.where((d) => !d.deleted)) _domainRow(d.id, d.name),
-      const SizedBox(height: 22),
-      _pillButton('Action simple',
+      ),
+      const SizedBox(width: 8),
+      _pillButton('Action',
           icon: Icons.add,
           onTap: () async {
             final ok = await showAddOwnActionDialog(context,
                 sync: widget.sync, activities: widget.activities, domains: widget.domains.where((d) => !d.deleted).toList());
             if (ok && mounted) setState(() {});
           }),
-      const SizedBox(height: 10),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: _textLink(
-            _showPaused ? '‹ Actions' : 'En pause · $paused',
-            () => setState(() => _showPaused = !_showPaused),
-            muted: !_showPaused),
-      ),
     ]);
   }
 
-  Widget _clientRow(String? id, String name) {
-    final selected = _clientId == id;
-    final count = _openCountForClient(id);
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _clientId = id;
-          _showUnmatched = false;
-        });
-        _savePrefs();
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+  Widget _menuPill(String label, {required bool active, VoidCallback? onClear}) => Container(
+        height: 32,
+        padding: EdgeInsets.only(left: 12, right: onClear == null ? 10 : 4),
         decoration: BoxDecoration(
-          color: selected ? kBActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          color: active ? kBActive : const Color(0x12FFFFFF),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: active ? kBPrimary.withOpacity(.4) : Colors.transparent),
         ),
-        child: Row(children: [
-          Icon(id == null ? Icons.all_inclusive : Icons.folder_outlined,
-              size: 14, color: selected ? kBText : kBText3),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected ? kBText : kBText2)),
-          ),
-          Text('$count',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: count == 0 ? kBText4 : kBText3,
-                  fontFeatures: _tabular)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: active ? kBText : kBText2)),
+          if (onClear != null)
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: onClear,
+              child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 14, color: kBText3)),
+            )
+          else
+            const Padding(padding: EdgeInsets.only(left: 2), child: Icon(Icons.expand_more, size: 16, color: kBText3)),
         ]),
-      ),
-    );
-  }
+      );
 
-  Widget _domainRow(String? id, String name) {
-    final selected = _domainId == id;
-    final color = id == null ? kBText3 : (domainColor(id, widget.domains) ?? kBText3);
-    final count = _openCountForDomain(id);
-    return InkWell(
-      onTap: () {
-        setState(() => _domainId = id);
-        _savePrefs();
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: selected ? kBActive : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(children: [
-          if (id != null) ...[
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? kBText : kBText2)),
-          ),
-          Text('$count',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: count == 0 ? kBText4 : kBText3,
-                  fontFeatures: _tabular)),
-        ]),
+  Widget _filterBar() {
+    final contexts = knownContexts(widget.projects, widget.activities);
+    final paused = widget.projects.where((p) => p.status != 'archived' && p.paused).length;
+    final clients = clientRoots(widget.projects);
+    final domains = widget.domains.where((d) => !d.deleted).toList();
+    final domainName = domains.where((d) => d.id == _domainId).firstOrNull?.name;
+    final clientName = _clientId == null
+        ? null
+        : _clientId == kPersoClientId
+            ? kPersoClientLabel
+            : clients.where((c) => c.id == _clientId).firstOrNull?.title;
+    String timeLabel(TimeBucket b) => switch (b) {
+          TimeBucket.quarter => '15 min',
+          TimeBucket.hour => '1 h',
+          TimeBucket.more => 'Plus',
+        };
+    return Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      PopupMenuButton<String>(
+        key: const ValueKey('actions-filter-contexts'),
+        tooltip: 'Je suis…',
+        onSelected: (c) {
+          setState(() {
+            _contexts.contains(c) ? _contexts.remove(c) : _contexts.add(c);
+            _showUnmatched = false;
+          });
+          _savePrefs();
+        },
+        itemBuilder: (_) => [
+          for (final c in contexts) CheckedPopupMenuItem(value: c, checked: _contexts.contains(c), child: Text(c)),
+        ],
+        child: _menuPill(
+            _contexts.isEmpty ? 'Je suis : partout' : 'Je suis : ${(_contexts.toList()..sort()).join(', ')}',
+            active: _contexts.isNotEmpty,
+            onClear: _contexts.isEmpty
+                ? null
+                : () {
+                    setState(_contexts.clear);
+                    _savePrefs();
+                  }),
       ),
-    );
+      PopupMenuButton<TimeBucket>(
+        key: const ValueKey('actions-filter-time'),
+        tooltip: 'J’ai…',
+        onSelected: (b) {
+          setState(() => _time = _time == b ? null : b);
+          _savePrefs();
+        },
+        itemBuilder: (_) => [
+          for (final b in TimeBucket.values) CheckedPopupMenuItem(value: b, checked: _time == b, child: Text(timeLabel(b))),
+        ],
+        child: _menuPill(_time == null ? 'J’ai : du temps' : 'J’ai : ${timeLabel(_time!)}',
+            active: _time != null,
+            onClear: _time == null
+                ? null
+                : () {
+                    setState(() => _time = null);
+                    _savePrefs();
+                  }),
+      ),
+      PopupMenuButton<String>(
+        key: const ValueKey('actions-filter-domain'),
+        tooltip: 'Domaine',
+        onSelected: (id) {
+          setState(() => _domainId = id.isEmpty ? null : id);
+          _savePrefs();
+        },
+        itemBuilder: (_) => [
+          CheckedPopupMenuItem(value: '', checked: _domainId == null, child: Text('Tous · ${_openCountForDomain(null)}')),
+          for (final d in domains)
+            CheckedPopupMenuItem(
+                value: d.id, checked: _domainId == d.id, child: Text('${d.name} · ${_openCountForDomain(d.id)}')),
+        ],
+        child: _menuPill(domainName == null ? 'Domaine : tous' : 'Domaine : $domainName',
+            active: _domainId != null,
+            onClear: _domainId == null
+                ? null
+                : () {
+                    setState(() => _domainId = null);
+                    _savePrefs();
+                  }),
+      ),
+      if (clients.length > 1)
+        PopupMenuButton<String>(
+          key: const ValueKey('actions-filter-client'),
+          tooltip: 'Pour…',
+          onSelected: (id) {
+            setState(() {
+              _clientId = id.isEmpty ? null : id;
+              _showUnmatched = false;
+            });
+            _savePrefs();
+          },
+          itemBuilder: (_) => [
+            CheckedPopupMenuItem(value: '', checked: _clientId == null, child: Text('Tous · ${_openCountForClient(null)}')),
+            for (final r in clients)
+              CheckedPopupMenuItem(
+                  value: r.id, checked: _clientId == r.id, child: Text('${r.title} · ${_openCountForClient(r.id)}')),
+            CheckedPopupMenuItem(
+                value: kPersoClientId,
+                checked: _clientId == kPersoClientId,
+                child: Text('$kPersoClientLabel · ${_openCountForClient(kPersoClientId)}')),
+          ],
+          child: _menuPill(clientName == null ? 'Pour : tous' : 'Pour : $clientName',
+              active: _clientId != null,
+              onClear: _clientId == null
+                  ? null
+                  : () {
+                      setState(() => _clientId = null);
+                      _savePrefs();
+                    }),
+        ),
+      InkWell(
+        key: const ValueKey('actions-filter-overdue'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          setState(() {
+            _overdue = !_overdue;
+            _showUnmatched = false;
+          });
+          _savePrefs();
+        },
+        child: _menuPill('En retard seulement', active: _overdue, onClear: _overdue ? () {
+          setState(() => _overdue = false);
+          _savePrefs();
+        } : null),
+      ),
+      if (paused > 0 || _showPaused)
+        _textLink(_showPaused ? '‹ Actions' : 'En pause · $paused', () => setState(() => _showPaused = !_showPaused),
+            muted: !_showPaused),
+    ]);
   }
 
   // ── Centre ──────────────────────────────────────────────────────────────────
@@ -989,168 +997,6 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
-  // ── Colonne droite ──────────────────────────────────────────────────────────
-
-  Widget _sideColumn() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _engagementsCard(),
-      const SizedBox(height: 18),
-      _routinesCard(),
-    ]);
-  }
-
-  Widget _engagementsCard() {
-    final domainIds = _domainId == null ? null : {_domainId!};
-    final stats = rollingWeekEngagements(
-        activities: widget.activities, hits: _hits, domainIds: domainIds);
-    final trend = fourWeekTrend(activities: widget.activities, hits: _hits, domainIds: domainIds);
-    final kept = stats.where((e) => e.kept).length;
-    final prev = trend.length >= 2 ? trend[trend.length - 2].pct : null;
-    final cur = trend.isEmpty ? null : trend.last.pct;
-    final delta = prev == null || cur == null ? null : cur - prev;
-
-    return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('MES ENGAGEMENTS · 7 JOURS'),
-        const SizedBox(height: 12),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(stats.isEmpty ? '—' : '$kept / ${stats.length}',
-              style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  color: kBText,
-                  letterSpacing: -.5,
-                  fontFeatures: _tabular)),
-          const SizedBox(width: 10),
-          if (delta != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('${delta >= 0 ? '+' : ''}$delta pts vs S-1',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: delta > 0 ? kBPrimary : (delta < 0 ? kBAttention : kBText3),
-                      fontFeatures: _tabular)),
-            ),
-          const Spacer(),
-          _miniBars(trend),
-        ]),
-        const SizedBox(height: 14),
-        if (stats.isEmpty)
-          const Text('Aucun engagement hebdo pour l\'instant.',
-              style: TextStyle(fontSize: 13, color: kBText3))
-        else
-          for (final e in stats)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 7),
-              child: Row(children: [
-                Icon(e.kept ? Icons.check_circle : Icons.radio_button_unchecked,
-                    size: 15, color: e.kept ? kBPrimaryDark : kBText4),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(e.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, color: kBText)),
-                ),
-                Text('${e.done} / ${e.target}',
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: e.kept ? FontWeight.w600 : FontWeight.w400,
-                        color: e.kept ? kBPrimary : kBText2,
-                        fontFeatures: _tabular)),
-              ]),
-            ),
-      ]),
-    );
-  }
-
-  Widget _miniBars(List<({String label, int pct})> trend) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      for (var i = 0; i < trend.length; i++) ...[
-        if (i > 0) const SizedBox(width: 5),
-        Tooltip(
-          message: '${trend[i].label} · ${trend[i].pct} %',
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 12,
-              height: 6 + 30 * (trend[i].pct.clamp(0, 100) / 100),
-              decoration: BoxDecoration(
-                color: i == trend.length - 1 ? kBPrimary : kBPrimary.withOpacity(.35),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(trend[i].label,
-                style: const TextStyle(fontSize: 9, color: kBText4, fontFeatures: _tabular)),
-          ]),
-        ),
-      ],
-    ]);
-  }
-
-  Widget _routinesCard() {
-    final domainIds = _domainId == null ? null : {_domainId!};
-    final routines = todayEngagements(activities: widget.activities, hits: _hits, domainIds: domainIds)
-      ..sort((a, b) {
-        if (a.kept != b.kept) return a.kept ? 1 : -1;
-        return a.label.toLowerCase().compareTo(b.label.toLowerCase());
-      });
-    String? blockTime(String activityId) {
-      for (final b in _todayBlocks) {
-        if (b.activityId == activityId && b.status == 'pending') return b.startTime;
-      }
-      return null;
-    }
-    return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('ROUTINES DU JOUR'),
-        const SizedBox(height: 12),
-        if (routines.isEmpty)
-          const Text('Aucune routine quotidienne.', style: TextStyle(fontSize: 13, color: kBText3))
-        else
-          for (final r in routines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: r.kept || _logic == null ? null : () => _checkRoutine(r.id),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(r.kept ? Icons.check_circle : Icons.radio_button_unchecked,
-                        size: 17, color: r.kept ? kBPrimaryDark : kBText3),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(r.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: r.kept ? kBText3 : kBText,
-                          decoration: r.kept ? TextDecoration.lineThrough : null,
-                          decorationColor: kBText3)),
-                ),
-                if (blockTime(r.id) != null) ...[
-                  const SizedBox(width: 8),
-                  Text(blockTime(r.id)!,
-                      style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
-                ],
-                if (r.target > 1) ...[
-                  const SizedBox(width: 8),
-                  Text('${r.done} / ${r.target}',
-                      style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
-                ],
-              ]),
-            ),
-      ]),
-    );
-  }
-
   // ── Briques ─────────────────────────────────────────────────────────────────
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
@@ -1176,27 +1022,6 @@ class _ActionsViewState extends State<ActionsView> {
         child: Text(text,
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.w700, color: color, fontFeatures: _tabular)),
-      );
-
-  Widget _chip(String label, {required bool selected, required VoidCallback onTap}) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          height: 30,
-          padding: const EdgeInsets.symmetric(horizontal: 11),
-          decoration: BoxDecoration(
-            color: selected ? kBActive : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? kBPrimary.withOpacity(.35) : kBLine),
-          ),
-          child: Center(
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? kBText : kBText2)),
-          ),
-        ),
       );
 
   Widget _textLink(String label, VoidCallback onTap, {bool muted = false}) => InkWell(
