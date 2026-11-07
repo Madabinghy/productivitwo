@@ -2090,7 +2090,7 @@ journée difficile — jamais le fait d'entrer dans le minimum. **Veilleuse** (`
 journées tenues au minimum », barre Tenir bon, SOUS LA CENDRE = les séries gelées avec leur longueur. **Remontée** : « Ça va mieux »
 propose « Pas à pas » (`AppLogic.startClimb`, `withClimbStarted` : la période s'arrête hier, `MinimumPeriod.climb`) ou « Tout d'un
 coup » ; pendant la remontée les routines non gardées restent gelées jusqu'à être ravivées (`revived {id: ymd}`,
-`minimumFrozenDaysOf`), une par jour (`ClimbCard` en tête d'Aujourd'hui : « k / N séries ravivées », Raviver, « En raviver une de
+`minimumFrozenDaysOf`), une par jour (`ClimbCard`, plus sur la page depuis le 2026-11-07 — retour user : trop de place — elle s'ouvre par la tuile « REMONTÉE » à la place de Journée parfaite : « k / N séries ravivées », Raviver, « En raviver une de
 plus », « Tout reprendre d'un coup » ; tuile « REMONTÉE »), finie quand tout est ravivé (`climbDone`, `withRevived`,
 `AppLogic.reviveRoutines`) ; les jours de remontée restent neutres pour les journées (`minimumNeutralDays`). ⓘ `kRuleClimb`.
 **Famille Luttes** (`BadgeFamily.struggles`, fond `#3A2440`, encre `#FFC27A`, ruban LUTTES) : Malgré tout, Guérilla, Reprise et
