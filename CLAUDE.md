@@ -527,7 +527,7 @@ et `_elanRow` sont retirées), Autres = Mode du jour · Gérer les domaines. **L
 pleins, bloc en avant marqué d'un trait, légende « le 3ᵉ est en avant · 3 après · jusqu'à 18:00 ») ; bouton principal inchangé (Lancer /
 Commencer / « 10 min, malgré tout » en Flemme / Terminer + Pause / Arrêter / Bloc ▾) ; lien « Enchaîner · n » / « n petites choses » /
 « Reprendre · k faites » (`_chainLink`) ; « ⋯ Autres » = Lancer sans minuteur ou 10 min malgré tout, Fait, Deep work 90 min, Enchaîner
-tout, Voir la source ; « Ton élan, là ? » passe sous les liens ; le dépliant « Étapes de la session » (`NowSessionPanel`) est retiré le 2026-10-30 (toujours vide). **Les 5 lots sont livrés.**
+tout, Voir la source ; « Ton élan, là ? » passe sous les liens ; **bloc Sommeil** (2026-11-07, retour user : une fois les autres blocs faits, MAINTENANT proposait « Marquer fait » sur le Sommeil, qui finit le lendemain) : « Je vais me coucher » (`NowCard.onGoToBed` → `_goToBed`, chrono Sommeil) puis « Je me lève » pendant (arrête le chrono, le bloc se règle le lendemain par le chrono) ; le dépliant « Étapes de la session » (`NowSessionPanel`) est retiré le 2026-10-30 (toujours vide). **Les 5 lots sont livrés.**
 **« Titre d'abord »** (maquette validée 2026-10-30, `MomentCard`, TOUTES les cartes du moment) : le titre prend toute la largeur
 (21 px, 18 au-delà de 60 car.), UNE ligne de contexte dessous = `context_` · `sub` (3 lignes max, jamais d'ellipse du titre),
 puis l'anneau en MINIATURE (`MomentRing(size: 30, stroke: 5)`, sans texte dedans) avec « ringBig ringSmall » en minuscules à côté,

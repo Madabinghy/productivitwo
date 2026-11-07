@@ -760,6 +760,7 @@ class TodayViewState extends State<TodayView> {
                   // MAINTENANT avant le tableau de bord (retour user 2026-11-06).
                   const SizedBox(height: 16),
                   NowCard(
+                    onGoToBed: _goToBed,
                     badges: widget.badges,
                     logic: widget.logic,
                     blocks: _liveBlocks,
