@@ -250,6 +250,13 @@ seulement, ✕ pour effacer, mêmes préférences qu'avant) et « En pause · n 
 faire du jour qui la vise, « bloc HH:MM ») · VISÉES AUJOURD'HUI · EN RETARD · À RE-VISER (ambre) · CETTE SEMAINE (date de travail à
 7 jours) · ENSUITE · UNE PAR PROJET (projets dont rien n'est encore listé) · SANS PROJET ; 6 lignes par section puis « + n autres » ;
 ligne `_entryRow` (« Projet › Tâche » au-dessus du titre, état, étapes, estimation). « Par projet » = l'ancienne liste.
+**Panneau d'action** (lot 3) : un clic sur une action (les deux vues, Possible maintenant, À venir, actions simples) l'ouvre dans un
+panneau de 420 px à droite (`_actionPanel`, `_selectedId`, relue par son id à chaque dessin `_selectedEntry` ; re-clic = fermer) : chemin
+complet (dossier › projet › tâche), titre, puces (faite · chrono en cours · bloc · ☀ jour visé · ⚑ échéance · estimation et temps passé
+`spentByAction` · contextes), ÉTAPES cochables (`setChecklistItem`) + « + Ajouter une étape » (`addChecklistItem`), DÉTAIL (`note`) ;
+en bas « Lancer le chrono » (activité liée de l'action, sinon du projet, sinon la porteuse ; ferme le chrono ouvert, `_startEntryChrono`)
+ou « Arrêter le chrono », « Action faite » (`setActionDone`, « Annuler ») ; liens Viser demain (annulable) · Modifier (le dialog
+d'avant, aussi derrière ⋯) · Ouvrir le projet. Écritures `patchActionOf` / `updateOwnActions`.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les

@@ -12,6 +12,8 @@ import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart' show setChecklistItem, addChecklistItem, setActionDone;
+import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,6 +108,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   @override
   void dispose() {
+    _stepCtrl.dispose();
     _sessionsSub?.cancel();
     _scheduleSub?.cancel();
     super.dispose();
@@ -275,8 +278,16 @@ class _ActionsViewState extends State<ActionsView> {
         _filterBar(),
         const SizedBox(height: 14),
         Expanded(
-          child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 26), child: _center()),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(
+              child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 26), child: _center()),
+            ),
+            if (_selectedEntry() case final e?) ...[
+              const SizedBox(width: 20),
+              SizedBox(width: 420, child: Padding(padding: const EdgeInsets.only(bottom: 20), child: _actionPanel(e))),
+            ],
+          ]),
         ),
       ]),
     );
@@ -678,7 +689,8 @@ class _ActionsViewState extends State<ActionsView> {
                 _actionRow(a,
                     height: 38,
                     onToggle: () => _toggleOwnAction(g.activity, a),
-                    onMenu: () => _edit(a, activity: g.activity)),
+                    onMenu: () => _edit(a, activity: g.activity),
+                    onOpen: () => _openEntry(_UrgentEntry(a, activity: g.activity))),
             ],
           ]),
         ),
@@ -869,7 +881,7 @@ class _ActionsViewState extends State<ActionsView> {
   void _toggleEntry(_UrgentEntry e) =>
       e.project != null ? _toggleProjectAction(e.project!, e.action) : _toggleOwnAction(e.activity!, e.action);
 
-  void _openEntry(_UrgentEntry e) => _edit(e.action, project: e.project, task: e.task, activity: e.activity);
+  void _openEntry(_UrgentEntry e) => setState(() => _selectedId = _selectedId == e.action.id ? null : e.action.id);
 
   Widget _entryRow(_UrgentEntry e, {({String text, Color color})? state, bool late = false}) {
     final a = e.action;
@@ -882,7 +894,10 @@ class _ActionsViewState extends State<ActionsView> {
       onTap: () => _openEntry(e),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
+        decoration: BoxDecoration(
+          color: _selectedId == a.id ? kBActive : Colors.transparent,
+          border: const Border(top: BorderSide(color: kBLine)),
+        ),
         child: Row(children: [
           InkWell(
             borderRadius: BorderRadius.circular(20),
@@ -932,6 +947,264 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
+  // ── Panneau d'action (2026-11-07, lot 3) : l'action ouverte à droite ──────
+  // Chemin complet, état, étapes cochables (+ ajouter), détail, Lancer le chrono
+  // / Action faite, puis Viser demain · Modifier · Ouvrir le projet. L'action
+  // est relue par son id à chaque dessin (les listes se reconstruisent).
+
+  String? _selectedId;
+  final TextEditingController _stepCtrl = TextEditingController();
+
+  _UrgentEntry? _selectedEntry() {
+    final id = _selectedId;
+    if (id == null) return null;
+    for (final p in widget.projects) {
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          if (a.id == id) return _UrgentEntry(a, project: p, task: t);
+        }
+      }
+    }
+    for (final act in widget.activities) {
+      for (final a in act.ownActions) {
+        if (a.id == id) return _UrgentEntry(a, activity: act);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _saveEntry(_UrgentEntry e) async {
+    if (e.project != null) {
+      await widget.sync.patchActionOf(e.project!, e.action);
+    } else if (e.activity != null) {
+      await widget.sync.updateOwnActions(e.activity!.id, e.activity!.ownActions);
+    }
+  }
+
+  String? _chronoActivityOf(_UrgentEntry e) =>
+      e.action.linkedActivityId ?? e.project?.linkedActivityId ?? e.activity?.id;
+
+  Future<void> _startEntryChrono(_UrgentEntry e) async {
+    final activityId = _chronoActivityOf(e);
+    if (activityId == null) return;
+    final now = DateTime.now();
+    for (final s in _sessions.where((s) => s.endAt == null)) {
+      s.endAt = now;
+      await widget.sync.saveSession(s);
+    }
+    await widget.sync
+        .saveSession(Session(activityId: activityId, startAt: now, taskId: e.task?.id, actionId: e.action.id));
+    _panelSnack('Chrono lancé · ${e.action.title}');
+  }
+
+  Future<void> _stopChrono(Session s) async {
+    s.endAt = DateTime.now();
+    await widget.sync.saveSession(s);
+    if (mounted) setState(() {});
+  }
+
+  void _panelSnack(String msg, {VoidCallback? undo}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showClosingSnackBar(SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: undo == null ? 2 : 5),
+        action: undo == null ? null : SnackBarAction(label: 'Annuler', textColor: kBPrimary, onPressed: undo),
+      ));
+  }
+
+  Future<void> _setDone(_UrgentEntry e, bool done) async {
+    final a = e.action;
+    final before = [for (final c in a.checklist) c.done];
+    setState(() => setActionDone(a, done));
+    await _saveEntry(e);
+    if (!done) return;
+    _panelSnack('« ${a.title} » faite', undo: () async {
+      setState(() {
+        a.done = false;
+        a.doneAt = null;
+        for (var i = 0; i < a.checklist.length && i < before.length; i++) {
+          a.checklist[i].done = before[i];
+          if (!before[i]) a.checklist[i].doneAt = null;
+        }
+      });
+      await _saveEntry(e);
+    });
+  }
+
+  Future<void> _focusTomorrow(_UrgentEntry e) async {
+    final a = e.action;
+    final old = a.focusDate;
+    setState(() => a.focusDate = _livedToday.add(const Duration(days: 1)));
+    await _saveEntry(e);
+    _panelSnack('Visée demain · ${a.title}', undo: () async {
+      setState(() => a.focusDate = old);
+      await _saveEntry(e);
+    });
+  }
+
+  Widget _panelChip(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: color.withOpacity(.14), borderRadius: BorderRadius.circular(6)),
+        child: Text(text, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: color, fontFeatures: _tabular)),
+      );
+
+  Widget _actionPanel(_UrgentEntry e) {
+    final a = e.action;
+    final today = _livedToday;
+    final p = e.project;
+    final root = p == null ? null : rootProjectOf(p, widget.projects);
+    final where = p != null
+        ? '${root != null && root.id != p.id ? '${root.title} › ' : ''}${p.title} › ${e.task!.title}'
+        : '${e.activity?.name ?? 'Action'} · sans projet';
+    final spent = spentByAction(_sessions)[a.id] ?? 0;
+    final block = _todayBlocks.where((b) => b.actionId == a.id && b.status == 'pending').firstOrNull;
+    final running = _sessions.where((s) => s.endAt == null && s.actionId == a.id).firstOrNull;
+    final chronoId = _chronoActivityOf(e);
+    final due = effectiveDueDate(a, e.task);
+    final doneSteps = a.checklist.where((c) => c.done).length;
+    return Container(
+      key: const ValueKey('actions-panel'),
+      padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F2219),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF3A5A4A)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: _label('ACTION')),
+          IconButton(
+            key: const ValueKey('actions-panel-close'),
+            tooltip: 'Fermer',
+            icon: const Icon(Icons.close, size: 18, color: kBText3),
+            onPressed: () => setState(() => _selectedId = null),
+          ),
+        ]),
+        Expanded(
+          child: ListView(padding: const EdgeInsets.only(right: 8), children: [
+            Text(where, style: const TextStyle(fontSize: 12, color: kBText3, height: 1.35)),
+            const SizedBox(height: 4),
+            Text(a.title,
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                    color: a.done ? kBText3 : kBText,
+                    decoration: a.done ? TextDecoration.lineThrough : null)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (a.done) _panelChip('faite', kBPrimary),
+              if (running != null) _panelChip('chrono en cours', kBPrimary),
+              if (block != null) _panelChip('bloc ${block.startTime}', kBPrimary),
+              if (a.focusDate != null)
+                _panelChip('☀ ${focusLabel(a.focusDate!, today)}', isStaleFocus(a, today) ? kBAttention : kBPrimary),
+              if (due != null)
+                _panelChip('⚑ ${actionDueLabel(due, today)}', isOverdueAction(a, e.task, today) ? kBAlert : kBText3),
+              if (a.estimatedMin != null || spent > 0)
+                _panelChip(
+                    [
+                      if (a.estimatedMin != null) '≈ ${a.estimatedMin} min',
+                      if (spent > 0) '${spent} min passées',
+                    ].join(' · '),
+                    kBText2),
+              for (final c in a.allContexts) _panelChip(c, kBText3),
+            ]),
+            const SizedBox(height: 16),
+            _label(a.checklist.isEmpty ? 'ÉTAPES' : 'ÉTAPES · $doneSteps / ${a.checklist.length}'),
+            const SizedBox(height: 4),
+            for (final c in a.checklist)
+              InkWell(
+                key: ValueKey('actions-step-${c.id}'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () async {
+                  setState(() => setChecklistItem(a, c.id, !c.done));
+                  await _saveEntry(e);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    Icon(c.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                        size: 18, color: c.done ? kBPrimary : kBText3),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(c.title,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              color: c.done ? kBText3 : kBText,
+                              decoration: c.done ? TextDecoration.lineThrough : null)),
+                    ),
+                  ]),
+                ),
+              ),
+            TextField(
+              key: const ValueKey('actions-step-add'),
+              controller: _stepCtrl,
+              style: const TextStyle(fontSize: 13.5, color: kBText),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: '+ Ajouter une étape',
+                hintStyle: TextStyle(fontSize: 13, color: kBPrimary),
+                border: InputBorder.none,
+              ),
+              onSubmitted: (v) async {
+                final title = v.trim();
+                if (title.isEmpty) return;
+                setState(() => addChecklistItem(a, title));
+                _stepCtrl.clear();
+                await _saveEntry(e);
+              },
+            ),
+            if ((a.note ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _label('DÉTAIL'),
+              const SizedBox(height: 4),
+              Text(a.note!.trim(), style: const TextStyle(fontSize: 13, color: kBText2, height: 1.45)),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: running != null
+                ? _wideButton('Arrêter le chrono', () => _stopChrono(running), key: const ValueKey('actions-panel-stop'))
+                : chronoId != null && !a.done
+                    ? _wideButton('Lancer le chrono', () => _startEntryChrono(e), key: const ValueKey('actions-panel-start'))
+                    : _wideButton(a.done ? 'Rouvrir' : 'Action faite', () => _setDone(e, !a.done),
+                        key: const ValueKey('actions-panel-done')),
+          ),
+          if ((running != null || chronoId != null) && !a.done) ...[
+            const SizedBox(width: 8),
+            _pillButton('Action faite', onTap: () => _setDone(e, true)),
+          ],
+        ]),
+        const SizedBox(height: 8),
+        Wrap(spacing: 14, runSpacing: 4, children: [
+          if (!a.done) _textLink('☀ Viser demain', () => _focusTomorrow(e), muted: true),
+          _textLink('Modifier', () => _edit(a, project: e.project, task: e.task, activity: e.activity), muted: true),
+          if (p != null) _textLink('Ouvrir le projet', () => widget.onOpenProject(p, taskId: e.task?.id), muted: true),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _wideButton(String label, VoidCallback onTap, {Key? key}) => SizedBox(
+        height: 40,
+        child: FilledButton(
+          key: key,
+          onPressed: onTap,
+          style: FilledButton.styleFrom(
+            backgroundColor: kBPrimary,
+            foregroundColor: kBBg,
+            shape: const StadiumBorder(),
+            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+          ),
+          child: Text(label),
+        ),
+      );
+
   Widget _nowCard(Session open,
       List<({TaskAction action, Project? project, ProjectTask? task, Activity? activity})> items) {
     final act = _activity(open.activityId);
@@ -968,7 +1241,8 @@ class _ActionsViewState extends State<ActionsView> {
                     ? _toggleProjectAction(it.project!, it.action)
                     : _toggleOwnAction(it.activity!, it.action),
                 onMenu: () => _edit(it.action,
-                    project: it.project, task: it.task, activity: it.activity)),
+                    project: it.project, task: it.task, activity: it.activity),
+                onOpen: () => _openEntry(_UrgentEntry(it.action, project: it.project, task: it.task, activity: it.activity))),
       ]),
     );
   }
@@ -1073,7 +1347,8 @@ class _ActionsViewState extends State<ActionsView> {
               primary: i == 0,
               subtitle: i == 0 ? shown[i].task.title : null,
               onToggle: () => _toggleProjectAction(p, shown[i].action),
-              onMenu: () => _edit(shown[i].action, project: p, task: shown[i].task)),
+              onMenu: () => _edit(shown[i].action, project: p, task: shown[i].task),
+              onOpen: () => _openEntry(_UrgentEntry(shown[i].action, project: p, task: shown[i].task))),
         if (hidden > 0)
           Align(
             alignment: Alignment.centerLeft,
@@ -1116,7 +1391,8 @@ class _ActionsViewState extends State<ActionsView> {
                 height: 38,
                 subtitle: '${upcomingLabel(u.task.startDate, today)} · ${u.project.title} › ${u.task.title}',
                 onToggle: () => _toggleProjectAction(u.project, u.action),
-                onMenu: () => _edit(u.action, project: u.project, task: u.task)),
+                onMenu: () => _edit(u.action, project: u.project, task: u.task),
+                onOpen: () => _openEntry(_UrgentEntry(u.action, project: u.project, task: u.task))),
         ],
       ]),
     );
@@ -1127,12 +1403,21 @@ class _ActionsViewState extends State<ActionsView> {
       bool primary = false,
       String? subtitle,
       required VoidCallback onToggle,
-      required VoidCallback onMenu}) {
-    return Container(
+      required VoidCallback onMenu,
+      VoidCallback? onOpen}) {
+    final selected = _selectedId == a.id;
+    return InkWell(
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
       height: height,
       padding: const EdgeInsets.only(left: 4),
       decoration: BoxDecoration(
-        color: primary ? const Color(0x08FFFFFF) : Colors.transparent,
+        color: selected
+            ? kBActive
+            : primary
+                ? const Color(0x08FFFFFF)
+                : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(children: [
@@ -1208,6 +1493,7 @@ class _ActionsViewState extends State<ActionsView> {
           onPressed: onMenu,
         ),
       ]),
+    ),
     );
   }
 
