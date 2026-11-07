@@ -150,6 +150,16 @@ glissants, reste à faire par activité) · Dates (rendez-vous agenda, séances,
 2 rendez-vous et séances · 3 tâches en retard · 4 à caser · contrat 6 / 9 au rythme »), 7 / 14 jours et « Planifier avec Claude » ;
 « Masquer le fait » passe dans l'en-tête du Gantt (« fait visible / fait masqué », `week-hide-done`), la capacité dans le rail ;
 les colonnes du Gantt ne portent plus que le jour (la charge vit dans LA SEMAINE) ; les gestes sont derrière « ⓘ Les gestes ».
+**Une vraie semaine** (2026-11-07, maquette validée « Web Cette semaine, à placer », lot 1 — remplace LA SEMAINE en cartes et le Gantt
+des tâches, qui reste dans la Vision d'un projet) : la vue est une grille d'agenda, une colonne par jour sur la journée active
+(`_weekGrid` / `_gridBody`, `_gridRange` = `dayWindow` arrondie à l'heure, défile si trop serrée) ; en-tête de jour (`_gridDayHeader` :
+charge sur capacité, ou « k / n faits · m lâchés » d'un jour passé ; tap = panneau du jour) ; blocs à leur heure (`_gridBlock` :
+rendez-vous agenda et séances en or `_isDated`, fait, lâché, déplacé, en cours, pas fait ; côte à côte via `overlapColumns`), trait
+rouge « maintenant » ; **glisser** un bloc à faire = autre heure ou autre jour (`_gridCommit`, pas de 15 min : d'un jour à l'autre =
+copie à destination + origine `skipped` / `reporte`, comme le report au lendemain ; jamais un miroir agenda ni un jour passé), **bord
+bas** = durée, **clic sur un créneau vide** = nouveau bloc à ce quart d'heure (`_addBlockOn(at:)`), tap = « Modifier le bloc », clic
+droit = Déplacer à demain · Retirer. En-tête : « n blocs à faire » au lieu des tâches en retard / à caser. Suite : colonne « À placer
+cette semaine » (lot 2), ménage du rail (lot 3).
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)

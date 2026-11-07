@@ -6,7 +6,6 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
-import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/half_days.dart' show paceOn, minutesByActivityDay, ActivityPace;
@@ -14,20 +13,16 @@ import 'package:productivitwo_v1/utils/week_stats.dart' show weekSummary, WeekSu
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
-import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
-import 'package:productivitwo_v1/web/column_resizer.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
-import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
-// Vue « Cette semaine » (handoff cette-semaine-2026-09) : le Gantt 7 / 14 jours
-// des tâches par domaine, en pleine page, où l'on organise la semaine sans
-// quitter la grille — blocs du programme dans les barres, « à caser » en
-// pointillé, clic sur un jour = caser, glisser = déplacer, tirer = étendre.
+// Vue « Cette semaine » (2026-11-07, maquette « Cette semaine, à placer ») :
+// la semaine comme un agenda — une colonne par jour, les blocs du programme à
+// leur heure. Le Gantt des tâches vit dans la Vision de chaque projet.
 
 const _kDayShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const _kDayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
@@ -40,16 +35,6 @@ const _kMonthShort = [
   'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'
 ];
 const _tabular = [FontFeature.tabularFigures()];
-const _kLeftColDefault = 400.0;
-const _kPrefLeftCol = 'week_left_col';
-/// Clé du groupe « En retard » (en tête de la grille, repliable comme un domaine).
-const _kLateGroup = '_late';
-const _kRowH = 40.0;
-const _kDomainH = 24.0;
-const _kBarH = 24.0;
-const _kBarTop = 8.0;
-const _kPrefHideDone = 'week_hide_done';
-const _kPrefCollapsed = 'week_collapsed_domains';
 const _kPrefDays = 'week_window_days';
 // Fenêtre affichée (début YYYY-MM-DD), restaurée seulement le jour même : un
 // rechargement garde la semaine qu'on regardait, le lendemain repart d'ici.
@@ -62,23 +47,8 @@ String _fmtHm(int min) {
   return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
 }
 
-String _clock(int min) => '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
-
 /// « mar. 7 » — jour court + numéro, pour les infobulles.
 String _dm(DateTime d) => '${_kDayShort[d.weekday - 1].toLowerCase()}. ${d.day}';
-
-Color? _hex(String? hex) {
-  if (hex == null || hex.isEmpty) return null;
-  final s = hex.replaceFirst('#', '').replaceFirst(RegExp(r'^0[xX]'), '');
-  try {
-    if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
-    if (s.length == 8) return Color(int.parse(s, radix: 16));
-  } catch (_) {}
-  return null;
-}
-
-String _toHex(Color c) =>
-    '#${(c.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
 class WeekView extends StatefulWidget {
   final List<Project> projects;
@@ -112,15 +82,6 @@ class _WeekViewState extends State<WeekView> {
   final List<StreamSubscription<DailySchedule?>> _subs = [];
   Map<String, int> _capacity = defaultWeekCapacity();
   DayWindow _window = kDefaultDayWindow;
-  bool _hideDone = false;
-  // Largeur de la colonne des tâches (réglable à la souris, persistée).
-  double _leftW = _kLeftColDefault;
-  final Set<String> _collapsed = {};
-
-  // Glisser une barre (déplacer) / tirer sa poignée (étendre), en pixels.
-  String? _dragTaskId;
-  bool _dragResize = false;
-  double _dragDx = 0;
 
   DateTime get _today => livedDate(DateTime.now(), widget.dayStartMin);
   List<DateTime> get _dates => windowDates(_start, _days);
@@ -152,11 +113,6 @@ class _WeekViewState extends State<WeekView> {
       if (!mounted) return;
       final days = p.getInt(_kPrefDays);
       setState(() {
-        _hideDone = p.getBool(_kPrefHideDone) ?? false;
-        _leftW = clampColumnWidth(p.getDouble(_kPrefLeftCol) ?? _kLeftColDefault);
-        _collapsed
-          ..clear()
-          ..addAll(p.getStringList(_kPrefCollapsed) ?? const []);
         if (days == 14) {
           _days = 14;
           _start = _today;
@@ -172,17 +128,9 @@ class _WeekViewState extends State<WeekView> {
     } catch (_) {}
   }
 
-  void _setHideDone(bool v) {
-    setState(() => _hideDone = v);
-    _savePrefs();
-  }
-
   Future<void> _savePrefs() async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setBool(_kPrefHideDone, _hideDone);
-      await p.setDouble(_kPrefLeftCol, _leftW);
-      await p.setStringList(_kPrefCollapsed, _collapsed.toList());
       await p.setInt(_kPrefDays, _days);
       await p.setString(_kPrefStart, ymdOf(_start));
       await p.setString(_kPrefStartSavedOn, ymdOf(_today));
@@ -238,34 +186,11 @@ class _WeekViewState extends State<WeekView> {
         today: _today,
       );
 
-  List<ScheduleBlock> _blocksOfTask(String taskId) =>
-      [for (final e in _byDay.entries) for (final b in e.value) if (b.taskId == taskId) b];
-
   String? _dateOfBlock(ScheduleBlock b) {
     for (final e in _byDay.entries) {
       if (e.value.contains(b)) return e.key;
     }
     return null;
-  }
-
-  Color _taskColor(WeekTask wt) {
-    final own = _hex(wt.task.color);
-    if (own != null) return own;
-    final phase = wt.project.phases.where((p) => p.id == wt.task.phaseId).firstOrNull;
-    final ph = _hex(phase?.color);
-    if (ph != null) return ph;
-    return domainColor(wt.project.domainId, widget.domains) ?? kBPrimary;
-  }
-
-  /// Colonnes [s, e] de la barre dans la fenêtre, null si hors fenêtre.
-  ({int s, int e})? _span(ProjectTask t) {
-    final first = _dates.first, last = _dates.last;
-    final start = dateOnly(t.startDate);
-    final end = dateOnly(t.endDate ?? t.startDate);
-    if (start.isAfter(last) || end.isBefore(first)) return null;
-    final s = start.isBefore(first) ? 0 : start.difference(first).inDays;
-    final e = end.isAfter(last) ? _days - 1 : end.difference(first).inDays;
-    return (s: s, e: e);
   }
 
   int? _dayIndex(DateTime d) {
@@ -289,32 +214,6 @@ class _WeekViewState extends State<WeekView> {
       ));
   }
 
-  /// Écriture ciblée : les champs qu'on touche ici (statut, dates, estimation),
-  /// sur la tâche relue côté serveur — jamais tout le projet depuis le cache.
-  Future<void> _saveTask(WeekTask wt) => widget.sync
-      .patchTaskFields(wt.project.id, wt.task, const ['status', 'startDate', 'endDate', 'estimatedMin']);
-
-  /// Estimation de la tâche posée depuis le popover (durée sélectionnée).
-  Future<void> _setEstimate(WeekTask wt, int min) async {
-    final t = wt.task;
-    final old = t.estimatedMin;
-    setState(() => t.estimatedMin = min);
-    await _saveTask(wt);
-    _snack('Tâche estimée ${_fmtHm(min)}', actionLabel: 'Annuler', onAction: () async {
-      setState(() => t.estimatedMin = old);
-      await _saveTask(wt);
-    });
-  }
-
-  Future<void> _placeAt(WeekTask wt, DateTime day, int startMin, int durationMin) async {
-    final key = ymdOf(day);
-    final block = taskBlock(wt, startMin, durationMin: durationMin);
-    setState(() => (_byDay[key] ??= []).add(block));
-    await widget.sync.addScheduleBlock(key, block);
-    _snack('Bloc ajouté ${_kDayLong[day.weekday - 1]} ${_clock(startMin)}',
-        actionLabel: 'Retirer', onAction: () => _removeBlock(key, block));
-  }
-
   Future<void> _removeBlock(String date, ScheduleBlock b, {bool undoable = false}) async {
     setState(() => _byDay[date]?.remove(b));
     await widget.sync.updateBlockStatus(date, b.id, 'deleted');
@@ -334,161 +233,6 @@ class _WeekViewState extends State<WeekView> {
     await widget.sync.updateBlockStatus(date, b.id, 'skipped');
     await widget.sync.updateBlockSkipReason(date, b.id, 'reporte');
     _snack(carryMessage([placed]));
-  }
-
-  Future<void> _toggleDone(WeekTask wt) async {
-    final t = wt.task;
-    final before = t.status;
-    final nowDone = before != 'done';
-    setState(() => t.status = nowDone ? 'done' : 'pending');
-    await _saveTask(wt);
-    _snack(nowDone ? 'Tâche faite' : 'Tâche rouverte', actionLabel: 'Annuler',
-        onAction: () async {
-      setState(() => t.status = before);
-      await _saveTask(wt);
-    });
-  }
-
-  Future<void> _shiftTask(WeekTask wt, int deltaDays) async {
-    if (deltaDays == 0) return;
-    final t = wt.task;
-    final oldStart = t.startDate, oldEnd = t.endDate;
-    setState(() {
-      t.startDate = t.startDate.add(Duration(days: deltaDays));
-      if (t.endDate != null) t.endDate = t.endDate!.add(Duration(days: deltaDays));
-    });
-    await _saveTask(wt);
-    final n = wt.plannedBlocks;
-    _snack(
-      'Tâche déplacée de ${deltaDays.abs()} jour${deltaDays.abs() > 1 ? 's' : ''}'
-      '${n > 0 ? ' · $n bloc${n > 1 ? 's' : ''} reste${n > 1 ? 'nt' : ''} à ${n > 1 ? 'leur' : 'sa'} date' : ''}',
-      actionLabel: 'Annuler',
-      onAction: () async {
-        setState(() {
-          t.startDate = oldStart;
-          t.endDate = oldEnd;
-        });
-        await _saveTask(wt);
-      },
-    );
-  }
-
-  /// Report volontaire de l'échéance d'une tâche en retard au jour [day]
-  /// (le début est avancé si besoin). Annulable.
-  Future<void> _rescheduleDeadline(WeekTask wt, DateTime day) async {
-    final t = wt.task;
-    final oldStart = t.startDate, oldEnd = t.endDate;
-    setState(() {
-      t.endDate = day;
-      if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
-    });
-    await _saveTask(wt);
-    _snack('Échéance reportée au ${_kDayLong[day.weekday - 1]} ${day.day}',
-        actionLabel: 'Annuler', onAction: () async {
-      setState(() {
-        t.startDate = oldStart;
-        t.endDate = oldEnd;
-      });
-      await _saveTask(wt);
-    });
-  }
-
-  Future<void> _resizeTask(WeekTask wt, int deltaDays) async {
-    if (deltaDays == 0) return;
-    final t = wt.task;
-    final oldEnd = t.endDate;
-    final base = dateOnly(t.endDate ?? t.startDate);
-    var end = base.add(Duration(days: deltaDays));
-    if (end.isBefore(dateOnly(t.startDate))) end = dateOnly(t.startDate);
-    setState(() => t.endDate = end);
-    await _saveTask(wt);
-    _snack('Échéance : ${_kDayLong[end.weekday - 1]} ${end.day}', actionLabel: 'Annuler',
-        onAction: () async {
-      setState(() => t.endDate = oldEnd);
-      await _saveTask(wt);
-    });
-  }
-
-  Future<void> _pickColor(WeekTask wt) async {
-    final picked = await showDialog<String?>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Couleur de la barre'),
-        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-        children: [
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final c in kColorPickerOptions)
-              InkWell(
-                onTap: () => Navigator.pop(ctx, _toHex(c)),
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: c,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: _hex(wt.task.color) == c ? Colors.white : Colors.transparent, width: 2),
-                  ),
-                ),
-              ),
-          ]),
-          const SizedBox(height: 12),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
-              child: const Text('Couleur du domaine (par défaut)')),
-        ],
-      ),
-    );
-    if (picked == null) return;
-    final oldColor = wt.task.color;
-    setState(() => wt.task.color = picked.isEmpty ? null : picked);
-    await _saveTask(wt);
-    _snack(picked.isEmpty ? 'Couleur du domaine rétablie' : 'Couleur de la barre modifiée',
-        actionLabel: 'Annuler', onAction: () async {
-      setState(() => wt.task.color = oldColor);
-      await _saveTask(wt);
-    });
-  }
-
-  void _openTask(WeekTask wt) => showGanttTaskDetailDialog(context,
-      project: wt.project,
-      task: wt.task,
-      sync: widget.sync,
-      onProjectUpdated: (_) => setState(() {}));
-
-  void _openPopover(WeekTask wt, int dayIdx, Offset global) {
-    final day = _dates[dayIdx];
-    if (day.isBefore(_today)) {
-      _snack('${_kDayLong[day.weekday - 1]} est passé — choisis un jour à venir.');
-      return;
-    }
-    final dur = remainingToPlaceMin(wt.task, _allBlocks);
-    final duration = dur == 0 ? wt.task.plannedMin : dur;
-    final now = DateTime.now();
-    showWeekTaskPopover(
-      context,
-      anchor: overlayLocal(context, global),
-      title: wt.task.title,
-      initialDay: day,
-      propose: (dd, d) => proposedSlot(_byDay[ymdOf(dd)] ?? const [], d, window: _window,
-          isToday: dd == _today, nowMin: now.hour * 60 + now.minute),
-      load: (dd, d) =>
-          dayLoad(dd, _byDay[ymdOf(dd)] ?? const [], _capacity, d, today: _today, window: _window),
-      firstFitting: (d) => firstFittingDay(
-          _dates.where((x) => !x.isBefore(_today)).toList(), _byDay, _capacity, d,
-          today: _today, window: _window),
-      durationMin: duration,
-      estimatedMin: wt.task.estimatedMin,
-      onEstimate: (m) => _setEstimate(wt, m),
-      taskDone: wt.done,
-      onPlace: (dd, startMin, d) => _placeAt(wt, dd, startMin, d),
-      onOpen: () => _openTask(wt),
-      onOpenProject: () => widget.onOpenProject(wt.project, taskId: wt.task.id),
-      onDone: () => _toggleDone(wt),
-      onRescheduleDeadline:
-          wt.overdue && !wt.done ? (dd) => _rescheduleDeadline(wt, dd) : null,
-    );
   }
 
   Future<void> _openDotMenu(ScheduleBlock b, Offset global) async {
@@ -546,25 +290,15 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = _tasks;
-    final active = tasks.where((t) => !t.task.isMilestone).toList();
-    final done = active.where((t) => t.done).length;
-    // Les compteurs suivent le filtre « Masquer le fait » : en retard et à
-    // caser ne concernent que des tâches ouvertes, donc inchangés.
-    final late = tasks.where((t) => t.overdue && !t.done).length;
-    final toPlace = tasksToPlace(tasks).where((t) => !t.task.isMilestone).length;
-
     return Container(
       color: kBBg,
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _pageHeader(active: active.length, done: done, late: late, toPlace: toPlace),
-        const SizedBox(height: 14),
-        _dayStrip(),
+        _pageHeader(),
         const SizedBox(height: 14),
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _ganttCard(tasks)),
+            Expanded(child: _weekGrid()),
             if (_openDay != null) ...[
               const SizedBox(width: 20),
               SizedBox(width: 400, child: _dayPanel(_openDay!)),
@@ -599,17 +333,61 @@ class _WeekViewState extends State<WeekView> {
   bool _isDated(ScheduleBlock b, Set<String> sessionIds) =>
       b.gcalEventId != null || (b.taskId != null && sessionIds.contains(b.taskId));
 
-  Widget _dayStrip() {
-    final sessionIds = sessionTaskIdsOf(widget.projects);
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (var i = 0; i < _dates.length; i++) ...[
-        if (i > 0) const SizedBox(width: 8),
-        Expanded(child: _dayCard(_dates[i], sessionIds)),
-      ],
-    ]);
+  // ── La semaine comme un agenda (2026-11-07, maquette « Cette semaine, à placer », lot 1) ──
+  // Une colonne par jour sur la journée active, les blocs du programme à leur
+  // heure (rendez-vous et séances en or), glisser = déplacer (d'un jour à
+  // l'autre aussi), bord bas = durée, clic sur un créneau vide = nouveau bloc.
+
+  static const _kGutter = 44.0;
+  static const _kGridHead = 52.0;
+  static const _kSnap = 15;
+
+  String? _gDragId;
+  bool _gResize = false;
+  double _gDx = 0, _gDy = 0;
+  ({int day, int min})? _gHover;
+
+  ({int start, int end}) _gridRange() {
+    final s = (_window.startMin ~/ 60) * 60;
+    final e = math.min(24 * 60, ((_window.endMin + 59) ~/ 60) * 60);
+    return (start: s, end: e <= s ? s + 60 : e);
   }
 
-  Widget _dayCard(DateTime d, Set<String> sessionIds) {
+  int get _nowMin {
+    final n = DateTime.now();
+    return n.hour * 60 + n.minute;
+  }
+
+  bool _canGridDrag(ScheduleBlock b, DateTime d) =>
+      b.gcalEventId == null && b.status == 'pending' && !d.isBefore(_today);
+
+  String _hhmm(int min) => '${(min ~/ 60).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
+
+  Widget _weekGrid() {
+    final sessionIds = sessionTaskIdsOf(widget.projects);
+    return Container(
+      key: const ValueKey('week-grid'),
+      decoration: BoxDecoration(
+        color: kBSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kBLine),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SizedBox(
+          height: _kGridHead,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const SizedBox(width: _kGutter),
+            for (final d in _dates) Expanded(child: _gridDayHeader(d)),
+          ]),
+        ),
+        Container(height: 1, color: kBLine),
+        Expanded(child: LayoutBuilder(builder: (ctx, box) => _gridBody(box.maxWidth, box.maxHeight, sessionIds))),
+      ]),
+    );
+  }
+
+  Widget _gridDayHeader(DateTime d) {
     final blocks = _dayBlocks(d);
     final isToday = d == _today;
     final past = d.isBefore(_today);
@@ -618,78 +396,61 @@ class _WeekViewState extends State<WeekView> {
     final planned = plannedMin(blocks, window: _window);
     final counted = blocks.where((b) => b.gcalEventId == null).toList();
     final doneN = counted.where((b) => b.status == 'done').length;
+    final letGo = counted.where(isLetGoBlock).length;
     final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
     final behind = past && counted.isNotEmpty && doneN < counted.length;
-    final right = isToday
-        ? 'aujourd’hui'
-        : blocks.isEmpty
-            ? (past ? 'rien' : 'pas posé')
-            : (past || counted.isEmpty ? '$doneN / ${counted.length} faits' : '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}');
-    // Les blocs à montrer : les datés d'abord, puis les plus longs.
-    final shown = [...blocks]..sort((a, b) {
-        final da = _isDated(a, sessionIds) ? 0 : 1, db = _isDated(b, sessionIds) ? 0 : 1;
-        if (da != db) return da - db;
-        return b.durationMin.compareTo(a.durationMin);
-      });
-    final top = shown.take(2).toList()..sort((a, b) => a.startTime.compareTo(b.startTime));
-    final more = blocks.length - top.length;
+    final name = '${_kDayShort[d.weekday - 1].toLowerCase()}. ${d.day}${isToday ? ' · aujourd’hui' : ''}';
+    final sub = past
+        ? (counted.isEmpty
+            ? 'rien de posé'
+            : '$doneN / ${counted.length} faits${letGo > 0 ? ' · $letGo lâché${letGo > 1 ? 's' : ''}' : ''}')
+        : cap == 0
+            ? (planned == 0 ? 'repos' : 'repos · ${_fmtHm(planned)}')
+            : '${_fmtHm(planned)} / ${_fmtHm(cap)}';
     return Tooltip(
-      message: '${_kDayLong[d.weekday - 1]} ${d.day} · ${_fmtHm(planned)} posées sur ${_fmtHm(cap)}',
+      message: 'Ouvrir ${_kDayLong[d.weekday - 1]} ${d.day}',
       waitDuration: const Duration(milliseconds: 600),
       child: InkWell(
         key: ValueKey('week-day-${ymdOf(d)}'),
-        borderRadius: BorderRadius.circular(14),
         onTap: () => setState(() {
           _openDay = open ? null : d;
           _railKey = null;
         }),
-        child: Opacity(
-          opacity: past && !open ? .72 : 1,
-          child: Container(
-            height: 128,
-            padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
-            decoration: BoxDecoration(
-              color: isToday || open ? const Color(0xFF10201A) : kBSurface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: open || isToday ? kBPrimary : kBLine, width: open || isToday ? 1.5 : 1),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Text('${_kDayShort[d.weekday - 1]} ${d.day}',
-                    style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700, color: isToday ? kBPrimary : kBText, fontFeatures: _tabular)),
-                const Spacer(),
-                Flexible(
-                  child: Text(right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11, color: isToday ? kBPrimary : (behind ? kBAttention : kBText3), fontFeatures: _tabular)),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: SizedBox(
-                  height: 4,
-                  child: Stack(children: [
-                    Container(color: const Color(0x14FFFFFF)),
-                    FractionallySizedBox(
-                        widthFactor: v, child: Container(color: v >= 1 ? kBAlert : (behind ? kBAttention : kBPrimary))),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(cap == 0 ? (blocks.isEmpty ? 'repos' : 'repos · ${_fmtHm(planned)}') : '${_fmtHm(planned)} / ${_fmtHm(cap)}',
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 7, 8, 6),
+          decoration: BoxDecoration(
+            color: open ? const Color(0xFF14281F) : (isToday ? kBPrimary.withOpacity(.07) : Colors.transparent),
+            border: const Border(left: BorderSide(color: kBLine)),
+          ),
+          child: Opacity(
+            opacity: past && !open ? .75 : 1,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, color: kBText4, fontFeatures: _tabular)),
-              const SizedBox(height: 6),
-              for (final b in top) ...[_blockChip(b, _isDated(b, sessionIds)), const SizedBox(height: 4)],
-              if (more > 0)
-                Text('+$more bloc${more > 1 ? 's' : ''}', style: const TextStyle(fontSize: 11, color: kBText4))
-              else if (blocks.isEmpty && !past)
-                const Text('+ Poser la journée', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kBPrimary)),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700, color: isToday ? kBPrimary : kBText, fontFeatures: _tabular)),
+              const SizedBox(height: 4),
+              if (!past) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: SizedBox(
+                    height: 4,
+                    child: Stack(children: [
+                      Container(color: const Color(0x14FFFFFF)),
+                      FractionallySizedBox(widthFactor: v, child: Container(color: v >= 1 ? kBAlert : kBPrimary)),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 3),
+              ],
+              Text(sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: past ? (behind ? kBAttention : kBPrimary) : kBText3,
+                      fontFeatures: _tabular)),
             ]),
           ),
         ),
@@ -697,25 +458,352 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
-  Widget _blockChip(ScheduleBlock b, bool dated) {
+  Widget _gridBody(double width, double height, Set<String> sessionIds) {
+    final (:start, :end) = _gridRange();
+    final range = end - start;
+    final ppm = math.max((height - 12) / range, 0.7);
+    final total = range * ppm + 12;
+    final colW = math.max(0.0, (width - _kGutter) / _days);
+    double y(int min) => (min - start) * ppm + 6;
+    int slotAt(double dy) => ((((dy - 6) / ppm + start) ~/ _kSnap) * _kSnap).clamp(start, end - _kSnap).toInt();
+
+    final children = <Widget>[
+      for (var h = start ~/ 60; h <= end ~/ 60; h++) ...[
+        Positioned(
+          left: _kGutter,
+          right: 0,
+          top: y(h * 60),
+          child: Container(height: 1, color: const Color(0x0DFFFFFF)),
+        ),
+        if (h * 60 < end)
+          Positioned(
+            left: 0,
+            width: _kGutter - 8,
+            top: y(h * 60) - 7,
+            child: Text(h.toString().padLeft(2, '0'),
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 11, color: kBText4, fontFeatures: _tabular)),
+          ),
+      ],
+    ];
+
+    for (var i = 0; i < _days; i++) {
+      final d = _dates[i];
+      final left = _kGutter + i * colW;
+      final past = d.isBefore(_today);
+      final isToday = d == _today;
+      children.add(Positioned(
+        left: left,
+        width: colW,
+        top: 0,
+        bottom: 0,
+        child: MouseRegion(
+          cursor: past ? MouseCursor.defer : SystemMouseCursors.click,
+          onHover: past
+              ? null
+              : (e) {
+                  final m = slotAt(e.localPosition.dy);
+                  if (_gHover?.day != i || _gHover?.min != m) setState(() => _gHover = (day: i, min: m));
+                },
+          onExit: (_) {
+            if (_gHover != null) setState(() => _gHover = null);
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: past ? null : (e) => _addBlockOn(d, at: slotAt(e.localPosition.dy)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isToday ? kBPrimary.withOpacity(.03) : Colors.transparent,
+                border: const Border(left: BorderSide(color: kBLine)),
+              ),
+            ),
+          ),
+        ),
+      ));
+      final hover = _gHover;
+      if (hover != null && hover.day == i && _gDragId == null) {
+        children.add(Positioned(
+          left: left + 3,
+          width: colW - 6,
+          top: y(hover.min) + 1,
+          height: math.max(30 * ppm - 2, 18),
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(
+                color: kBPrimary.withOpacity(.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kBPrimary.withOpacity(.35)),
+              ),
+              child: Text('+ ${_hhmm(hover.min)}',
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: kBPrimary, fontFeatures: _tabular)),
+            ),
+          ),
+        ));
+      }
+
+      final blocks = [
+        for (final b in _dayBlocks(d))
+          if (blockStartMin(b) < end && blockEndMin(b) > start) b,
+      ];
+      final lanes = overlapColumns(blocks);
+      final laneW = math.max(0.0, colW - 6);
+      for (final b in blocks) {
+        final lane = lanes[b.id] ?? (col: 0, cols: 1);
+        final dragging = _gDragId == b.id;
+        final delta = dragging ? ((_gDy / ppm) / _kSnap).round() * _kSnap : 0;
+        final shift = dragging && !_gResize ? (_gDx / math.max(colW, 1)).round().clamp(-i, _days - 1 - i).toInt() : 0;
+        var s = blockStartMin(b), dur = b.durationMin;
+        if (dragging && _gResize) {
+          dur = (dur + delta).clamp(_kSnap, 24 * 60 - s).toInt();
+        } else if (dragging) {
+          s = (s + delta).clamp(0, 24 * 60 - dur).toInt();
+        }
+        final top = y(math.max(s, start));
+        final h = math.max((math.min(s + dur, end) - math.max(s, start)) * ppm - 2, 16.0);
+        final bx = left + shift * colW + 3 + laneW * lane.col / lane.cols;
+        final bw = laneW / lane.cols - (lane.cols > 1 ? 2 : 0);
+        final canDrag = _canGridDrag(b, d);
+        children.add(Positioned(
+          left: bx,
+          width: bw,
+          top: top,
+          height: h,
+          child: MouseRegion(
+            cursor: canDrag ? SystemMouseCursors.grab : SystemMouseCursors.click,
+            child: Stack(fit: StackFit.expand, children: [
+              GestureDetector(
+                key: ValueKey('week-block-${b.id}'),
+                onTap: () => _onGridBlockTap(b, d),
+                onSecondaryTapUp: b.gcalEventId == null && !past ? (e) => _openDotMenu(b, e.globalPosition) : null,
+                onPanStart: canDrag ? (_) => _gridDragBegin(b, resize: false) : null,
+                onPanUpdate: canDrag
+                    ? (e) => setState(() {
+                          _gDx += e.delta.dx;
+                          _gDy += e.delta.dy;
+                        })
+                    : null,
+                onPanEnd: canDrag ? (_) => _gridCommit(b, d, ppm, colW) : null,
+                onPanCancel: canDrag ? () => setState(() => _gDragId = null) : null,
+                child: _gridBlock(b, d, _isDated(b, sessionIds), h, dragging),
+              ),
+              if (canDrag)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 6,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeRow,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragStart: (_) => _gridDragBegin(b, resize: true),
+                      onVerticalDragUpdate: (e) => setState(() => _gDy += e.delta.dy),
+                      onVerticalDragEnd: (_) => _gridCommit(b, d, ppm, colW),
+                      onVerticalDragCancel: () => setState(() => _gDragId = null),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ));
+        if (dragging) {
+          final target = _dates[i + shift];
+          children.add(Positioned(
+            left: bx,
+            top: math.max(0.0, top - 20),
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(color: kBPrimary, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                    '${shift != 0 ? '${_dm(target)} · ' : ''}${_hhmm(s)} → ${_hhmm(s + dur)}',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kBBg, fontFeatures: _tabular)),
+              ),
+            ),
+          ));
+        }
+      }
+
+      final now = _nowMin;
+      if (isToday && now >= start && now <= end) {
+        children.add(Positioned(
+          left: left,
+          width: colW,
+          top: y(now) - 1,
+          child: IgnorePointer(
+            child: Row(children: [
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFFF6B5E), shape: BoxShape.circle)),
+              Expanded(child: Container(height: 2, color: const Color(0xFFFF6B5E))),
+            ]),
+          ),
+        ));
+      }
+    }
+
+    final stack = SizedBox(height: total, width: width, child: Stack(clipBehavior: Clip.none, children: children));
+    if (total <= height) return stack;
+    return SingleChildScrollView(child: stack);
+  }
+
+  Widget _gridBlock(ScheduleBlock b, DateTime d, bool dated, double h, bool dragging) {
     final done = b.status == 'done';
     final letGo = isLetGoBlock(b);
-    final label = dated ? '${b.startTime} ${b.title}' : b.title;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: dated ? Colors.transparent : const Color(0x12FFFFFF),
-        borderRadius: BorderRadius.circular(6),
-        border: dated ? Border.all(color: kBAttention) : null,
+    final skipped = b.status == 'skipped' && !letGo;
+    final past = d.isBefore(_today);
+    final now = _nowMin;
+    final running = d == _today && b.status == 'pending' && blockStartMin(b) <= now && blockEndMin(b) > now;
+    final missed = !done && !letGo && b.gcalEventId == null &&
+        (past || (d == _today && blockEndMin(b) <= now)) && b.status == 'pending';
+    final Color bg, border, fg;
+    if (dated) {
+      bg = const Color(0xFF33290F);
+      border = const Color(0xFF7A5F24);
+      fg = kBAttention;
+    } else if (done) {
+      bg = const Color(0xFF16302A);
+      border = const Color(0xFF2C5A45);
+      fg = const Color(0xFFCFE7DA);
+    } else if (letGo || skipped) {
+      bg = Colors.transparent;
+      border = const Color(0xFF6A3A36);
+      fg = const Color(0xFFFF8F86);
+    } else {
+      bg = const Color(0xFF10251C);
+      border = running ? kBPrimary : const Color(0xFF2A4A3C);
+      fg = missed ? kBText3 : kBText;
+    }
+    final sub = done
+        ? 'fait · ${_fmtHm(b.durationMin)}'
+        : letGo
+            ? 'lâché'
+            : skipped
+                ? (b.skipReason == kSkipUnavailable ? 'empêché' : 'déplacé')
+                : running
+                    ? 'en cours'
+                    : missed
+                        ? 'pas fait'
+                        : '${b.startTime} · ${_fmtHm(b.durationMin)}${b.gcalEventId != null ? ' · agenda' : ''}';
+    final prefix = done ? '✓ ' : letGo ? '✋ ' : '';
+    return Tooltip(
+      message: '${b.title.isEmpty ? 'Bloc' : b.title} · ${b.startTime} · ${_fmtHm(b.durationMin)}'
+          '${b.gcalEventId != null ? ' · agenda Google' : ''}',
+      waitDuration: const Duration(milliseconds: 700),
+      child: Opacity(
+        opacity: past && !dragging ? .78 : 1,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: h >= 30 ? 4 : 1),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: border, width: running || dragging ? 2 : 1),
+            boxShadow: dragging ? const [BoxShadow(color: Color(0x80000000), blurRadius: 18, offset: Offset(0, 8))] : null,
+          ),
+          child: ClipRect(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('$prefix${b.title.isEmpty ? 'Bloc' : b.title}',
+                  maxLines: h >= 52 ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                      color: fg,
+                      decoration: skipped ? TextDecoration.lineThrough : null)),
+              if (h >= 32)
+                Text(sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, height: 1.2, color: fg.withOpacity(.75), fontFeatures: _tabular)),
+            ]),
+          ),
+        ),
       ),
-      child: Text('${done ? '✓ ' : letGo ? '✋ ' : ''}$label',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: dated ? kBAttention : (done ? kBText3 : kBText2))),
     );
+  }
+
+  void _gridDragBegin(ScheduleBlock b, {required bool resize}) => setState(() {
+        _gDragId = b.id;
+        _gResize = resize;
+        _gDx = 0;
+        _gDy = 0;
+        _gHover = null;
+      });
+
+  Future<void> _onGridBlockTap(ScheduleBlock b, DateTime d) async {
+    if (b.gcalEventId != null || d.isBefore(_today)) {
+      setState(() {
+        _openDay = d;
+        _railKey = null;
+      });
+      return;
+    }
+    final key = ymdOf(d);
+    final updated = await showScheduleBlockDialog(context, block: b);
+    if (updated == null || !mounted) return;
+    await widget.sync.upsertScheduleBlock(key, updated);
+  }
+
+  Future<void> _gridCommit(ScheduleBlock b, DateTime from, double ppm, double colW) async {
+    final resize = _gResize;
+    final delta = ((_gDy / ppm) / _kSnap).round() * _kSnap;
+    final i = _dayIndex(from) ?? 0;
+    final shift = resize ? 0 : (_gDx / math.max(colW, 1)).round().clamp(-i, _days - 1 - i).toInt();
+    setState(() => _gDragId = null);
+    final fromKey = ymdOf(from);
+    final oldStart = b.startTime, oldDur = b.durationMin;
+    if (resize) {
+      final dur = (oldDur + delta).clamp(_kSnap, 24 * 60 - blockStartMin(b)).toInt();
+      if (dur == oldDur) return;
+      setState(() => b.durationMin = dur);
+      await widget.sync.upsertScheduleBlock(fromKey, b);
+      _snack('« ${b.title} » : ${_fmtHm(dur)}, fin ${_hhmm(blockStartMin(b) + dur)}',
+          actionLabel: 'Annuler', onAction: () async {
+        setState(() => b.durationMin = oldDur);
+        await widget.sync.upsertScheduleBlock(fromKey, b);
+      });
+      return;
+    }
+    final start = (blockStartMin(b) + delta).clamp(0, 24 * 60 - oldDur).toInt();
+    if (shift == 0 && start == blockStartMin(b)) return;
+    final target = _dates[i + shift];
+    if (target.isBefore(_today)) {
+      _snack('On ne pose pas un bloc dans un jour passé.');
+      return;
+    }
+    if (shift == 0) {
+      setState(() => b.startTime = _hhmm(start));
+      await widget.sync.upsertScheduleBlock(fromKey, b);
+      _snack('« ${b.title} » déplacé à ${_hhmm(start)}', actionLabel: 'Annuler', onAction: () async {
+        setState(() => b.startTime = oldStart);
+        await widget.sync.upsertScheduleBlock(fromKey, b);
+      });
+      return;
+    }
+    // Vers un autre jour : copie à destination, l'origine passe « déplacée »
+    // (comme le report au lendemain) — Claude ne la recrée pas.
+    final toKey = ymdOf(target);
+    final copy = ScheduleBlock.from({
+      ...b.toJson(),
+      'id': null,
+      'startTime': _hhmm(start),
+      'status': 'pending',
+      'doneAt': null,
+      'carriedFromDate': '$fromKey:${b.id}',
+    });
+    setState(() {
+      _byDay[fromKey]?.remove(b);
+      (_byDay[toKey] ??= []).add(copy);
+    });
+    await widget.sync.upsertScheduleBlock(toKey, copy);
+    await widget.sync.updateBlockStatus(fromKey, b.id, 'skipped');
+    await widget.sync.updateBlockSkipReason(fromKey, b.id, 'reporte');
+    _snack('« ${b.title} » déplacé ${_kDayLong[target.weekday - 1]} ${target.day} à ${_hhmm(start)}',
+        actionLabel: 'Annuler', onAction: () async {
+      await widget.sync.updateBlockStatus(toKey, copy.id, 'deleted');
+      await widget.sync.updateBlockStatus(fromKey, b.id, 'pending');
+    });
   }
 
   String _blockState(ScheduleBlock b, DateTime d) {
@@ -868,9 +956,9 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
-  Future<void> _addBlockOn(DateTime d) async {
+  Future<void> _addBlockOn(DateTime d, {int? at}) async {
     final created = await showScheduleBlockDialog(context,
-        isNew: true, block: ScheduleBlock(startTime: '09:00', durationMin: 60, title: ''));
+        isNew: true, block: ScheduleBlock(startTime: at == null ? '09:00' : _hhmm(at), durationMin: 60, title: ''));
     if (created == null || !mounted) return;
     await widget.sync.upsertScheduleBlock(ymdOf(d), created);
   }
@@ -1198,7 +1286,7 @@ class _WeekViewState extends State<WeekView> {
     return out;
   }
 
-  Widget _pageHeader({required int active, required int done, required int late, required int toPlace}) {
+  Widget _pageHeader() {
     final title = _days == 7
         ? 'Semaine du ${_start.day} ${_kMonthLong[_start.month - 1]}'
         : '14 jours à partir du ${_start.day} ${_kMonthShort[_start.month - 1]}';
@@ -1208,11 +1296,17 @@ class _WeekViewState extends State<WeekView> {
     final sessionIds = sessionTaskIdsOf(widget.projects);
     final dated = [for (final d in _dates) ..._dayBlocks(d).where((b) => _isDated(b, sessionIds))].length;
     final contract = _isCurrentWeek ? _contract() : null;
+    final now = _nowMin;
+    final toDo = [
+      for (final d in _dates)
+        if (!d.isBefore(_today))
+          ..._dayBlocks(d).where((b) =>
+              b.status == 'pending' && b.gcalEventId == null && (d != _today || blockEndMin(b) > now)),
+    ].length;
     final summary = [
       '${_fmtHm(planned)} posées sur ${_fmtHm(cap)}',
       if (dated > 0) '$dated rendez-vous et séance${dated > 1 ? 's' : ''}',
-      if (late > 0) '$late tâche${late > 1 ? 's' : ''} en retard',
-      if (toPlace > 0) '$toPlace à caser',
+      if (toDo > 0) '$toDo bloc${toDo > 1 ? 's' : ''} à faire',
       if (contract != null && contract.engagements.isNotEmpty)
         'contrat ${contract.kept} / ${contract.engagements.length} au rythme',
     ].join(' · ');
@@ -1293,593 +1387,6 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
-  // ── Carte Gantt ─────────────────────────────────────────────────────────────
-
-  Widget _ganttCard(List<WeekTask> tasks) {
-    // Groupes par domaine (ordre des domaines, puis sans domaine), tâches par
-    // date de début.
-    // Les tâches en retard sortent de leur domaine pour un groupe « En
-    // retard » en tête, trié par échéance (lot 3 de l'audit).
-    final byDomain = <String?, List<WeekTask>>{};
-    for (final t in tasks) {
-      if (_hideDone && t.done) continue;
-      final key = t.overdue && !t.done ? _kLateGroup : t.project.domainId;
-      byDomain.putIfAbsent(key, () => []).add(t);
-    }
-    for (final e in byDomain.entries) {
-      e.value.sort((a, b) {
-        final c = e.key == _kLateGroup
-            ? a.due.compareTo(b.due)
-            : a.task.startDate.compareTo(b.task.startDate);
-        return c != 0 ? c : a.task.title.compareTo(b.task.title);
-      });
-    }
-    final order = <String?>[
-      if (byDomain.containsKey(_kLateGroup)) _kLateGroup,
-      for (final d in widget.domains)
-        if (byDomain.containsKey(d.id)) d.id,
-      for (final k in byDomain.keys)
-        if (k != null && k != _kLateGroup && !widget.domains.any((d) => d.id == k)) k,
-      if (byDomain.containsKey(null)) null,
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kBSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBLine),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _dayHeaderRow(),
-        const Divider(height: 1, color: kBLine),
-        Expanded(
-          child: tasks.isEmpty
-              ? const Center(
-                  child: Text('Aucune tâche sur cette période.',
-                      style: TextStyle(fontSize: 13, color: kBText3)))
-              : order.isEmpty
-              ? Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Text('Tout est fait sur cette période.',
-                        style: TextStyle(fontSize: 13, color: kBText3)),
-                    const SizedBox(height: 8),
-                    TextButton(
-                        onPressed: () => _setHideDone(false),
-                        child: const Text('Afficher le fait')),
-                  ]),
-                )
-              : ListView(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  children: [
-                    for (final did in order) ...[
-                      _domainHeader(did, byDomain[did]!),
-                      if (!_collapsed.contains(did ?? '_none'))
-                        for (final wt in byDomain[did]!) _taskRow(wt),
-                    ],
-                  ],
-                ),
-        ),
-        const Divider(height: 1, color: kBLine),
-        _legend(),
-        ]),
-        ColumnResizeHandle(
-          left: _leftW,
-          onDrag: (dx) => setState(() => _leftW = clampColumnWidth(_leftW + dx)),
-          onEnd: _savePrefs,
-          onReset: () {
-            setState(() => _leftW = _kLeftColDefault);
-            _savePrefs();
-          },
-        ),
-      ]),
-    );
-  }
-
-  Widget _dayHeaderRow() {
-    return SizedBox(
-      height: 36,
-      child: Row(children: [
-        SizedBox(
-          width: _leftW,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 18, right: 8),
-            child: Row(children: [
-              const Expanded(
-                child: Text('LES TÂCHES DE LA SEMAINE',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
-              ),
-              Tooltip(
-                message: _hideDone ? 'Afficher les tâches faites' : 'Masquer les tâches faites',
-                child: InkWell(
-                  key: const ValueKey('week-hide-done'),
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () => _setHideDone(!_hideDone),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(_hideDone ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 14, color: kBText3),
-                      const SizedBox(width: 4),
-                      Text(_hideDone ? 'fait masqué' : 'fait visible',
-                          style: const TextStyle(fontSize: 11.5, color: kBText3)),
-                    ]),
-                  ),
-                ),
-              ),
-            ]),
-          ),
-        ),
-        for (final d in _dates) Expanded(child: _dayHeader(d)),
-      ]),
-    );
-  }
-
-  /// En-tête de colonne du Gantt : le jour seul (la charge vit dans LA SEMAINE).
-  Widget _dayHeader(DateTime d) {
-    final isToday = d == _today;
-    final weekend = d.weekday >= 6;
-    return Container(
-      color: isToday ? kBPrimary.withOpacity(.10) : Colors.transparent,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      alignment: Alignment.centerLeft,
-      child: Text('${_kDayShort[d.weekday - 1]} ${d.day}',
-          style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: isToday ? kBPrimary : (weekend ? kBText4 : kBText2),
-              fontFeatures: _tabular)),
-    );
-  }
-
-  Widget _domainHeader(String? domainId, List<WeekTask> tasks) {
-    final late = domainId == _kLateGroup;
-    final d = late ? null : widget.domains.where((x) => x.id == domainId).firstOrNull;
-    final color = late ? kBAlert : (domainColor(domainId, widget.domains) ?? kBText4);
-    final key = domainId ?? '_none';
-    final collapsed = _collapsed.contains(key);
-    final real = tasks.where((t) => !t.task.isMilestone).toList();
-    final done = real.where((t) => t.done).length;
-    var planned = 0;
-    for (final t in tasks) {
-      planned += plannedMinForTask(t.task, _allBlocks);
-    }
-    final oldest = late && tasks.isNotEmpty
-        ? tasks.first.due
-        : null;
-    final name = late ? 'En retard' : (d?.name ?? 'Sans domaine');
-    final meta = late
-        ? ' · ${tasks.length} tâche${tasks.length > 1 ? 's' : ''}'
-            '${oldest != null ? ' · la plus ancienne : ${_dm(oldest)}' : ''}'
-            '${planned > 0 ? ' · ${_fmtHm(planned)} planifiées' : ''}'
-        : ' · $done / ${real.length} faite${done > 1 ? 's' : ''}'
-            '${planned > 0 ? ' · ${_fmtHm(planned)} planifiées' : ''}';
-    return InkWell(
-      onTap: () {
-        setState(() => collapsed ? _collapsed.remove(key) : _collapsed.add(key));
-        _savePrefs();
-      },
-      child: Container(
-        height: _kDomainH,
-        color: color.withOpacity(.10),
-        padding: const EdgeInsets.only(left: 18),
-        child: Row(children: [
-          Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 15, color: kBText3),
-          const SizedBox(width: 6),
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 8),
-          Text(name.toUpperCase(),
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .6, color: color)),
-          const SizedBox(width: 6),
-          Text(meta, style: const TextStyle(fontSize: 11, color: kBText3, fontFeatures: _tabular)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _taskRow(WeekTask wt) {
-    final t = wt.task;
-    final color = _taskColor(wt);
-    final blocks = _blocksOfTask(t.id);
-    final remaining = remainingToPlaceMin(t, _allBlocks);
-    final openActions = t.actions.where((a) => !a.done).length;
-    final overdueDays = wt.overdue ? _today.difference(wt.due).inDays : 0;
-
-    return SizedBox(
-      height: _kRowH,
-      child: Row(children: [
-        SizedBox(
-          width: _leftW,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 18, right: 12),
-            child: Row(children: [
-              if (wt.done) ...[
-                const Icon(Icons.check_circle, size: 15, color: kBPrimaryDark),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Tooltip(
-                  message: wt.project.title,
-                  waitDuration: const Duration(milliseconds: 600),
-                  child: InkWell(
-                    onTap: () => _openTask(wt),
-                    child: Text(t.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 14,
-                            height: 1.15,
-                            fontWeight: FontWeight.w500,
-                            color: wt.done ? kBText3 : kBText,
-                            decoration: wt.done ? TextDecoration.lineThrough : null,
-                            decorationColor: kBText3)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Marqueur (jalon / retard / actions) + dates et estimation en
-              // clair : « 3 j · 2 h » (≈ = estimation par défaut, non saisie).
-              Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                if (t.isMilestone)
-                  _badge('jalon', kBAttention)
-                else if (wt.overdue && !wt.done)
-                  _badge('−$overdueDays j', kBAlert)
-                else if (t.actions.isNotEmpty)
-                  Text('${t.actions.length - openActions}/${t.actions.length}',
-                      style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
-                const SizedBox(height: 2),
-                // « ⚑ 2 » = actions à échéance propre dans la fenêtre.
-                Text('${_taskMeta(t)}${wt.actionsDueInWindow > 0 && !wt.done ? ' · ⚑ ${wt.actionsDueInWindow}' : ''}',
-                    style: const TextStyle(fontSize: 10.5, color: kBText4, fontFeatures: _tabular)),
-              ]),
-            ]),
-          ),
-        ),
-        Expanded(
-          child: LayoutBuilder(builder: (ctx, box) {
-            final colW = box.maxWidth / _days;
-            return Stack(children: [
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _GridPainter(
-                    days: _days,
-                    todayIdx: _dayIndex(_today),
-                    weekend: [for (var i = 0; i < _days; i++) _dates[i].weekday >= 6],
-                  ),
-                ),
-              ),
-              // Cellules : clic = popover « caser » ; « + » au survol.
-              Positioned.fill(
-                child: Row(children: [
-                  for (var i = 0; i < _days; i++) Expanded(child: _cell(wt, i)),
-                ]),
-              ),
-              if (t.isMilestone)
-                ..._milestone(wt, colW)
-              else if (blocks.isEmpty && !wt.done)
-                _toPlaceBar(wt, colW, color, remaining)
-              else
-                ..._bar(wt, colW, color, blocks, remaining),
-            ]);
-          }),
-        ),
-      ]),
-    );
-  }
-
-  /// « 3 j · 2 h » : étendue en jours, puis estimation (≈ = défaut 45 min,
-  /// non saisie) ; un jalon n'a qu'une date.
-  String _taskMeta(ProjectTask t) {
-    final end = dateOnly(t.endDate ?? t.startDate);
-    if (t.isMilestone) return _dm(end);
-    final days = end.difference(dateOnly(t.startDate)).inDays + 1;
-    final est = t.estimatedMin == null ? '≈${_fmtHm(t.plannedMin)}' : _fmtHm(t.plannedMin);
-    return '$days j · $est';
-  }
-
-  Widget _cell(WeekTask wt, int i) {
-    final past = _dates[i].isBefore(_today);
-    return _HoverCell(
-      enabled: !past && !wt.done && !wt.task.isMilestone,
-      onTapUp: (d) => _openPopover(wt, i, d.globalPosition),
-    );
-  }
-
-  List<Widget> _milestone(WeekTask wt, double colW) {
-    final span = _span(wt.task);
-    if (span == null) return const [];
-    final c = wt.done ? kBPrimaryDark : kBAttention;
-    return [
-      Positioned(
-        left: colW * span.e + colW / 2 - 6,
-        top: _kRowH / 2 - 6,
-        child: GestureDetector(
-          onTap: () => _openTask(wt),
-          child: Transform.rotate(
-            angle: math.pi / 4,
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: c, borderRadius: BorderRadius.circular(2), border: Border.all(color: c, width: 1.5)),
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  Widget _toPlaceBar(WeekTask wt, double colW, Color color, int remaining) {
-    var start = dateOnly(wt.task.startDate);
-    if (start.isBefore(_today)) start = _today;
-    // Aujourd'hui hors fenêtre : à droite si on regarde le passé, à gauche
-    // si on regarde l'avenir — et l'échéance réelle est écrite sur la barre.
-    final idx = _dayIndex(start) ?? (_today.isAfter(_dates.last) ? _days - 1 : 0);
-    final c = wt.overdue ? kBAlert : color;
-    final due = dateOnly(wt.task.endDate ?? wt.task.startDate);
-    final label = wt.overdue
-        ? 'à caser · ${_fmtHm(remaining == 0 ? wt.task.plannedMin : remaining)} · éch. ${_dm(due)}'
-        : 'à caser · ${_fmtHm(remaining == 0 ? wt.task.plannedMin : remaining)}';
-    return Positioned(
-      left: colW * idx + 3,
-      width: colW - 6,
-      top: _kBarTop,
-      height: _kBarH,
-      child: GestureDetector(
-        onTapUp: (d) => _openPopover(wt, idx, d.globalPosition),
-        onSecondaryTapUp: (_) => _pickColor(wt),
-        child: CustomPaint(
-          painter: _DashedRectPainter(color: c, radius: 6, strokeWidth: 1.5),
-          child: Center(
-            child: Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c, fontFeatures: _tabular)),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Colonne du jour d'un bloc de la fenêtre (null si introuvable).
-  int? _blockDayIdx(ScheduleBlock b) {
-    final date = _dateOfBlock(b);
-    return date == null ? null : _dayIndex(DateTime.parse(date));
-  }
-
-  List<Widget> _bar(WeekTask wt, double colW, Color color, List<ScheduleBlock> blocks, int remaining) {
-    // La barre couvre les dates de la tâche ET les jours de ses blocs : une
-    // tâche en retard (dates avant la fenêtre) planifiée mardi reste visible,
-    // avec son point, sur mardi.
-    var span = _span(wt.task);
-    final idx = blocks.map(_blockDayIdx).whereType<int>().toList();
-    if (idx.isNotEmpty) {
-      final mn = idx.reduce(math.min), mx = idx.reduce(math.max);
-      span = span == null ? (s: mn, e: mx) : (s: math.min(span.s, mn), e: math.max(span.e, mx));
-    }
-    if (span == null) return const [];
-    final dragging = _dragTaskId == wt.task.id;
-    final deltaDays = dragging ? (_dragDx / colW).round() : 0;
-    final s = span.s + (dragging && !_dragResize ? deltaDays : 0);
-    final e = span.e + (dragging ? deltaDays : 0);
-    final left = colW * s + 3;
-    final width = math.max(colW * (e - s + 1) - 6, 18.0);
-    final fill = color.withOpacity(wt.done ? .35 : .75);
-    final t = wt.task;
-    final doneBlocks = blocks.where((b) => b.status == 'done').length;
-    final barTip = [
-      '${_dm(t.startDate)}${t.endDate != null ? ' → ${_dm(t.endDate!)}' : ''}'
-          ' · estimé ${_fmtHm(t.plannedMin)}',
-      '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}'
-          '${doneBlocks > 0 ? ' · $doneBlocks fait${doneBlocks > 1 ? 's' : ''}' : ''}'
-          '${remaining > 0 && !wt.done ? ' · reste ${_fmtHm(remaining)} à caser' : ''}',
-      'Glisser = déplacer · bord droit = échéance · clic droit = couleur',
-    ].join('\n');
-    // Points visibles : ~48 px chacun ; au-delà, « +N » plutôt qu'un
-    // rognage silencieux.
-    final maxDots = math.max(1, ((width - 18) / 48).floor());
-    final shownBlocks = blocks.length > maxDots ? blocks.take(maxDots - 1).toList() : blocks;
-    final hiddenDots = blocks.length - shownBlocks.length;
-    return [
-      Positioned(
-        left: left,
-        width: width,
-        top: _kBarTop,
-        height: _kBarH,
-        child: MouseRegion(
-          cursor: dragging && !_dragResize ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
-          child: Tooltip(
-          message: barTip,
-          waitDuration: const Duration(milliseconds: 700),
-          child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (d) => _openPopover(
-              wt, (s + (d.localPosition.dx / colW).floor()).clamp(0, _days - 1), d.globalPosition),
-          onSecondaryTapUp: (_) => _pickColor(wt),
-          onHorizontalDragStart: (_) => setState(() {
-            _dragTaskId = wt.task.id;
-            _dragResize = false;
-            _dragDx = 0;
-          }),
-          onHorizontalDragUpdate: (d) => setState(() => _dragDx += d.delta.dx),
-          onHorizontalDragEnd: (_) {
-            final delta = (_dragDx / colW).round();
-            setState(() => _dragTaskId = null);
-            _shiftTask(wt, delta);
-          },
-          onHorizontalDragCancel: () => setState(() => _dragTaskId = null),
-          child: Container(
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(6),
-              border: dragging ? Border.all(color: Colors.white.withOpacity(.6)) : null,
-            ),
-            padding: const EdgeInsets.only(left: 8, right: 10),
-            child: ClipRect(
-              child: Row(children: [
-                for (final b in shownBlocks) ...[
-                  _dot(b),
-                  const SizedBox(width: 6),
-                ],
-                if (hiddenDots > 0) ...[
-                  Text('+$hiddenDots',
-                      style: const TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.w700, color: kBBg, fontFeatures: _tabular)),
-                  const SizedBox(width: 6),
-                ],
-                if (remaining > 0 && !wt.done)
-                  Flexible(
-                    child: Text('reste ${_fmtHm(remaining)} à caser',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11, color: kBBg.withOpacity(.6), fontFeatures: _tabular)),
-                  ),
-              ]),
-            ),
-          ),
-          ),
-          ),
-        ),
-      ),
-      // Poignée droite : étendre / réduire l'échéance.
-      Positioned(
-        left: left + width - 6,
-        width: 8,
-        top: _kBarTop,
-        height: _kBarH,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.resizeLeftRight,
-          child: Tooltip(
-          message: 'Tirer pour changer l\'échéance',
-          waitDuration: const Duration(milliseconds: 500),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart: (_) => setState(() {
-              _dragTaskId = wt.task.id;
-              _dragResize = true;
-              _dragDx = 0;
-            }),
-            onHorizontalDragUpdate: (d) => setState(() => _dragDx += d.delta.dx),
-            onHorizontalDragEnd: (_) {
-              final delta = (_dragDx / colW).round();
-              setState(() => _dragTaskId = null);
-              _resizeTask(wt, delta);
-            },
-            onHorizontalDragCancel: () => setState(() => _dragTaskId = null),
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.55), borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  /// Point d'un bloc dans la barre : plein = fait, anneau = à venir, barré =
-  /// sauté. Infobulle avec le jour, l'heure, la durée et l'état ; le clic
-  /// ouvre le menu (reporter à demain / retirer).
-  Widget _dot(ScheduleBlock b) {
-    final done = b.status == 'done';
-    final skipped = b.status == 'skipped';
-    final date = _dateOfBlock(b);
-    final day = date == null ? '' : _dm(DateTime.parse(date));
-    final state = done ? 'fait' : skipped ? 'sauté' : 'à venir';
-    return Tooltip(
-      message: '$day · ${b.startTime} · ${_fmtHm(b.durationMin)} · $state\nClic : reporter à demain ou retirer',
-      waitDuration: const Duration(milliseconds: 500),
-      child: InkWell(
-        onTapDown: (d) => _openDotMenu(b, d.globalPosition),
-        onTap: () {},
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                    color: done ? kBBg : Colors.transparent,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kBBg.withOpacity(skipped ? .45 : 1), width: 1.5))),
-            const SizedBox(width: 4),
-            Text(_fmtHm(b.durationMin),
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: kBBg.withOpacity(skipped ? .45 : 1),
-                    decoration: skipped ? TextDecoration.lineThrough : null,
-                    decorationColor: kBBg,
-                    fontFeatures: _tabular)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _legend() {
-    Widget item(Widget swatch, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
-          swatch,
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 11.5, color: kBText3)),
-        ]);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-      child: Row(children: [
-        item(
-            Container(
-                width: 18,
-                height: 8,
-                decoration: BoxDecoration(
-                    color: kBPrimary.withOpacity(.75), borderRadius: BorderRadius.circular(3))),
-            'tâche prévue'),
-        const SizedBox(width: 16),
-        item(Container(width: 6, height: 6, decoration: const BoxDecoration(color: kBText, shape: BoxShape.circle)),
-            'bloc dans le programme'),
-        const SizedBox(width: 16),
-        item(
-            SizedBox(
-                width: 18,
-                height: 8,
-                child: CustomPaint(painter: _DashedRectPainter(color: kBText3, radius: 3, strokeWidth: 1.2))),
-            'à caser'),
-        const SizedBox(width: 16),
-        item(
-            Transform.rotate(
-                angle: math.pi / 4,
-                child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(color: kBAttention, borderRadius: BorderRadius.circular(1)))),
-            'jalon'),
-        const Spacer(),
-        const Tooltip(
-          message: 'Clic sur un jour = caser · glisser = déplacer · bord droit = échéance\nclic droit = couleur · point = bloc (menu)',
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.info_outline, size: 14, color: kBText4),
-            SizedBox(width: 4),
-            Text('Les gestes', style: TextStyle(fontSize: 11, color: kBText4)),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  // ── Briques ─────────────────────────────────────────────────────────────────
-
-  Widget _badge(String text, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-            color: color.withOpacity(.18), borderRadius: BorderRadius.circular(999)),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: color, fontFeatures: _tabular)),
-      );
-
   Widget _iconBtn(IconData icon, String tooltip, VoidCallback onTap) => IconButton(
         tooltip: tooltip,
         icon: Icon(icon, size: 20, color: kBText2),
@@ -1920,108 +1427,6 @@ class _WeekViewState extends State<WeekView> {
 }
 
 // ── Cellule survolable (« + » discret) ───────────────────────────────────────
-
-class _HoverCell extends StatefulWidget {
-  final bool enabled;
-  final void Function(TapUpDetails) onTapUp;
-  const _HoverCell({required this.enabled, required this.onTapUp});
-
-  @override
-  State<_HoverCell> createState() => _HoverCellState();
-}
-
-class _HoverCellState extends State<_HoverCell> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.enabled) return const SizedBox.expand();
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapUp: widget.onTapUp,
-        child: Center(
-          child: _hover ? const Icon(Icons.add, size: 14, color: kBText4) : const SizedBox.shrink(),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Peintres ─────────────────────────────────────────────────────────────────
-
-class _GridPainter extends CustomPainter {
-  final int days;
-  final int? todayIdx;
-  final List<bool> weekend;
-  const _GridPainter({required this.days, required this.todayIdx, required this.weekend});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final colW = size.width / days;
-    final sep = Paint()..color = const Color(0x0FFFFFFF);
-    final we = Paint()..color = const Color(0x04FFFFFF);
-    for (var i = 0; i < days; i++) {
-      final x = colW * i;
-      if (weekend[i]) canvas.drawRect(Rect.fromLTWH(x, 0, colW, size.height), we);
-      if (i > 0) canvas.drawRect(Rect.fromLTWH(x, 0, 1, size.height), sep);
-    }
-    if (todayIdx != null) {
-      final r = Rect.fromLTWH(colW * todayIdx!, 0, colW, size.height);
-      canvas.drawRect(
-          r,
-          Paint()
-            ..shader = LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [kBPrimary.withOpacity(.13), kBPrimary.withOpacity(.05)],
-            ).createShader(r));
-      final border = Paint()..color = kBPrimary.withOpacity(.25);
-      canvas.drawRect(Rect.fromLTWH(r.left, 0, 1, size.height), border);
-      canvas.drawRect(Rect.fromLTWH(r.right - 1, 0, 1, size.height), border);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GridPainter old) =>
-      old.days != days || old.todayIdx != todayIdx || old.weekend != weekend;
-}
-
-class _DashedRectPainter extends CustomPainter {
-  final Color color;
-  final double radius;
-  final double strokeWidth;
-  const _DashedRectPainter({required this.color, required this.radius, required this.strokeWidth});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
-        Radius.circular(radius));
-    final path = Path()..addRRect(rrect);
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
-    const dash = 4.0, gap = 3.0;
-    for (final metric in path.computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(metric.extractPath(d, math.min(d + dash, metric.length)), paint);
-        d += dash + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedRectPainter old) =>
-      old.color != color || old.radius != radius || old.strokeWidth != strokeWidth;
-}
-
-// ── Dialog « Capacité » ───────────────────────────────────────────────────────
 
 class _CapacityDialog extends StatefulWidget {
   final Map<String, int> capacity;
