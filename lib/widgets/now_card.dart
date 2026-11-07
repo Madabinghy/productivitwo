@@ -315,9 +315,12 @@ class _NowCardState extends State<NowCard> {
       runningName: session == null ? null : (running?.name.isNotEmpty == true ? running!.name : 'un chrono libre'),
       board: widget.onStake == null ? null : widget.stakes,
       modeAvailable: widget.modeOfMoment != null && widget.onMode != null,
+      chainAvailable: widget.onChain != null,
     );
     if (pick.kind == NowPickKind.fixedSoon) focus = (block: pick.block!, current: false);
-    if (session == null && (pick.isStake || pick.kind == NowPickKind.mode)) return _pickFrame(pal, pick);
+    if (session == null && (pick.isStake || pick.kind == NowPickKind.mode || pick.kind == NowPickKind.morning || pick.kind == NowPickKind.evening)) {
+      return _pickFrame(pal, pick);
+    }
 
     if (focus == null && session == null) {
       return _frame(
@@ -717,6 +720,7 @@ class _NowCardState extends State<NowCard> {
   static const _whyEmber = Color(0xFFFF9C6B);
 
   Color _whyColor(NowPick p) => switch (p.kind) {
+        NowPickKind.evening => const Color(0xFFC8D4FF),
         NowPickKind.losing => _whyEmber,
         NowPickKind.fixedSoon || NowPickKind.parole => _whyAmber,
         _ => _whyAmber.withValues(alpha: .85),
@@ -733,15 +737,28 @@ class _NowCardState extends State<NowCard> {
   Widget _pickFrame(NowPalette pal, NowPick pick) {
     final st = pick.stake;
     final mode = widget.modeOfMoment;
-    final title = st?.gesture.title ?? mode?.label ?? '';
-    final sub = st == null
+    final moment = pick.kind == NowPickKind.morning || pick.kind == NowPickKind.evening;
+    final n = pick.items.length;
+    final names = moment ? [...pick.items.take(3), if (n > 3) '+${n - 3}'].join(' · ') : null;
+    final title = names ?? st?.gesture.title ?? mode?.label ?? '';
+    final sub = moment
+        ? '$n routine${n > 1 ? 's' : ''} à tenir'
+        : st == null
         ? 'le mode qui va avec ton élan'
         : [
             if (st.gesture.progress != null) st.gesture.progress!,
             if (st.gesture.costMin > 0) '≈ ${_fmtMin(st.gesture.costMin)}',
           ].join(' · ');
-    final label = st != null ? stakeButtonLabel(st) : 'Lancer ${mode?.label ?? ''}'.trim();
+    final label = pick.kind == NowPickKind.morning
+        ? 'Enchaîner le matin · $n'
+        : pick.kind == NowPickKind.evening
+            ? 'Finir la journée · $n'
+            : st != null
+                ? stakeButtonLabel(st)
+                : 'Lancer ${mode?.label ?? ''}'.trim();
     final right = switch (pick.kind) {
+      NowPickKind.morning => 'pour démarrer',
+      NowPickKind.evening => 'ce soir il reste',
       NowPickKind.losing => 'se perd ce soir',
       NowPickKind.parole => 'ta parole',
       NowPickKind.focused => 'visée aujourd’hui',
@@ -771,7 +788,9 @@ class _NowCardState extends State<NowCard> {
           Expanded(
             child: _btn(pal, label, primary: true, onTap: () {
               HapticFeedback.lightImpact();
-              if (st != null) {
+              if (moment) {
+                widget.onChain?.call();
+              } else if (st != null) {
                 widget.onStake?.call(st);
               } else if (mode != null) {
                 widget.onMode?.call(mode.kind);
