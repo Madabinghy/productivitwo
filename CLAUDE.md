@@ -257,6 +257,11 @@ complet (dossier › projet › tâche), titre, puces (faite · chrono en cours 
 en bas « Lancer le chrono » (activité liée de l'action, sinon du projet, sinon la porteuse ; ferme le chrono ouvert, `_startEntryChrono`)
 ou « Arrêter le chrono », « Action faite » (`setActionDone`, « Annuler ») ; liens Viser demain (annulable) · Modifier (le dialog
 d'avant, aussi derrière ⋯) · Ouvrir le projet. Écritures `patchActionOf` / `updateOwnActions`.
+**Captures à trier** (lot 4) : bandeau « n captures à trier en actions · Trier › » en tête de la liste (`_capturesBanner`,
+`streamCaptures`, statut `pending`) → `web/capture_triage_dialog.dart` (`showCaptureTriageDialog`, même geste que la feuille mobile :
+une capture à la fois, titre retouchable, Dans un projet (projet › tâche ou « Au fil de l'eau » `flowTaskOf`, `saveProjectTasks`) ·
+Action simple (activité-temps, `addOwnActionToActivity`), Créer l'action · Passer · Supprimer ; la capture passe `processed` avec la
+trace « → action … »). « Nouveau projet » depuis une capture reste au mobile.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
