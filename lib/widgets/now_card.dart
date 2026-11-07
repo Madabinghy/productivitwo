@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, MomentActionIcons, kMomentIconBtn, kMomentInlineActions;
@@ -58,6 +59,8 @@ class NowCard extends StatefulWidget {
   final void Function(ScheduleBlock block, int minutes)? onLaunchTimed;
   final VoidCallback? onChainSmall;
   final VoidCallback? onDeepWork;
+  /// Bloc Sommeil : « Je vais me coucher » lance le chrono Sommeil (jamais « Marquer fait » : la nuit finit le lendemain).
+  final void Function(ScheduleBlock block)? onGoToBed;
 
   const NowCard({
     this.badges,
@@ -80,6 +83,7 @@ class NowCard extends StatefulWidget {
     this.onLaunchTimed,
     this.onChainSmall,
     this.onDeepWork,
+    this.onGoToBed,
   });
 
   @override
@@ -393,7 +397,17 @@ class _NowCardState extends State<NowCard> {
     final mode = widget.logic.mode;
     final buttons = <Widget>[];
     final more = <MomentAction>[];
-    if (aside) {
+    // Le Sommeil se termine le lendemain (règlement du soir) : ni « Marquer fait » ni « Terminer ».
+    final sleep = b != null && (isSleepName(b.title) || isSleepName(_activity(b.activityId)?.name));
+    final sleepRunning = session != null && isSleepName(_activity(session.activityId)?.name);
+    if (sleep && sleepRunning) {
+      buttons.add(Expanded(child: _btn(pal, 'Je me lève', primary: true, onTap: widget.onStopTimer)));
+    } else if (sleep && session == null && widget.onGoToBed != null) {
+      buttons.add(Expanded(child: _btn(pal, 'Je vais me coucher', primary: true, onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onGoToBed!(b);
+      })));
+    } else if (aside) {
       buttons.add(Expanded(
           child: _btn(pal, countdown ? 'Arrêter le minuteur' : 'Arrêter',
               primary: true, onTap: countdown ? widget.onStopCountdown : widget.onStopTimer)));
