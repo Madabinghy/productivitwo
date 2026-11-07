@@ -98,6 +98,9 @@ class _WeekViewState extends State<WeekView> {
     _start = weekStart(livedDate(DateTime.now(), widget.dayStartMin));
     _loadPrefs();
     _subscribe();
+    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     _sessionsSub = widget.sync.streamSessions().listen((v) {
       if (mounted) setState(() => _sessions = v);
     });
@@ -156,6 +159,8 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   void dispose() {
+    _clockTick?.cancel();
+    _gridScroll.dispose();
     _sessionsSub?.cancel();
     _hitsSub?.cancel();
     for (final s in _subs) {
@@ -165,6 +170,7 @@ class _WeekViewState extends State<WeekView> {
   }
 
   void _setWindow({int? days, DateTime? start}) {
+    _gridScrolled = false;
     setState(() {
       if (days != null) _days = days;
       _start = start ?? (_days == 7 ? weekStart(_today) : _today);
@@ -352,11 +358,13 @@ class _WeekViewState extends State<WeekView> {
   double _gDx = 0, _gDy = 0;
   ({int day, int min})? _gHover;
 
-  ({int start, int end}) _gridRange() {
-    final s = (_window.startMin ~/ 60) * 60;
-    final e = math.min(24 * 60, ((_window.endMin + 59) ~/ 60) * 60);
-    return (start: s, end: e <= s ? s + 60 : e);
-  }
+  // Toute la journée, de minuit à minuit (comme la frise d'Aujourd'hui) ; la
+  // journée active remplit la hauteur visible, le reste se découvre en défilant.
+  ({int start, int end}) _gridRange() => (start: 0, end: 24 * 60);
+
+  final ScrollController _gridScroll = ScrollController();
+  bool _gridScrolled = false;
+  Timer? _clockTick;
 
   int get _nowMin {
     final n = DateTime.now();
@@ -466,7 +474,7 @@ class _WeekViewState extends State<WeekView> {
   Widget _gridBody(double width, double height, Set<String> sessionIds) {
     final (:start, :end) = _gridRange();
     final range = end - start;
-    final ppm = math.max((height - 12) / range, 0.7);
+    final ppm = math.max((height - 12) / math.max(_window.spanMin, 60), 0.7);
     final total = range * ppm + 12;
     final colW = math.max(0.0, (width - _kGutter) / _days);
     double y(int min) => (min - start) * ppm + 6;
@@ -671,26 +679,56 @@ class _WeekViewState extends State<WeekView> {
           ));
         }
       }
-
-      final now = _nowMin;
-      if (isToday && now >= start && now <= end) {
-        children.add(Positioned(
-          left: left,
-          width: colW,
-          top: y(now) - 1,
-          child: IgnorePointer(
-            child: Row(children: [
-              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFFF6B5E), shape: BoxShape.circle)),
-              Expanded(child: Container(height: 2, color: const Color(0xFFFF6B5E))),
-            ]),
-          ),
-        ));
-      }
     }
 
+    // Trait rouge « maintenant » sur toute la semaine, appuyé sur le jour même.
+    final nowDay = _dayIndex(DateTime.now());
+    final now = _nowMin;
+    if (nowDay != null) {
+      children.add(Positioned(
+        left: _kGutter,
+        right: 0,
+        top: y(now) - .5,
+        child: IgnorePointer(child: Container(height: 1, color: const Color(0x66FF6B5E))),
+      ));
+      children.add(Positioned(
+        left: _kGutter + nowDay * colW - 4,
+        width: colW + 4,
+        top: y(now) - 4,
+        child: IgnorePointer(
+          child: Row(children: [
+            Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFFF6B5E), shape: BoxShape.circle)),
+            Expanded(child: Container(height: 2, color: const Color(0xFFFF6B5E))),
+          ]),
+        ),
+      ));
+      children.add(Positioned(
+        left: 2,
+        width: _kGutter - 4,
+        top: y(now) - 8,
+        child: IgnorePointer(
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 1),
+            decoration: BoxDecoration(color: const Color(0xFFFF6B5E), borderRadius: BorderRadius.circular(5)),
+            child: Text(_hhmm(now),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white, fontFeatures: _tabular)),
+          ),
+        ),
+      ));
+    }
+
+    // À l'ouverture (et à chaque changement de semaine) : recentré sur
+    // l'heure actuelle cette semaine, sinon sur le début de la journée active.
+    if (!_gridScrolled) {
+      _gridScrolled = true;
+      final target = (nowDay != null ? y(now) - height * .3 : y(_window.startMin) - 6).clamp(0.0, math.max(0.0, total - height));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_gridScroll.hasClients) _gridScroll.jumpTo(target.toDouble());
+      });
+    }
     final stack = SizedBox(height: total, width: width, child: Stack(clipBehavior: Clip.none, children: children));
-    if (total <= height) return stack;
-    return SingleChildScrollView(child: stack);
+    return SingleChildScrollView(controller: _gridScroll, child: stack);
   }
 
   Widget _gridBlock(ScheduleBlock b, DateTime d, bool dated, double h, bool dragging) {
