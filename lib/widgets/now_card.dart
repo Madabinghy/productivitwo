@@ -828,7 +828,7 @@ class _NowCardState extends State<NowCard> {
   static Color modeColorOf(String kind) => switch (kind) {
         kGuerillaKind => const Color(0xFFC5D38A),
         kOffensiveKind => const Color(0xFF7FD3FF),
-        _ => const Color(0xFFFF9B6E),
+        _ => const Color(0xFF7FD3FF),
       };
 
   /// « Autre chose › » (lot 2) : les trois suivantes de l'ordre, puis les modes.
