@@ -32,4 +32,4 @@ final bool kEmbersEnabled = false;
 /// réglage − / + ni de mini-tirs, plus d'ordre à la main, plus de chiffres de
 /// précision au bilan. Le calcul du temps exact et l'enchaînement des tirs
 /// restent. Même principe `final`.
-final bool kSniperTuningEnabled = false;
+final bool kSniperTuningEnabled = true;

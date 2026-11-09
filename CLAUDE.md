@@ -1832,7 +1832,7 @@ Restent comme filets : journée difficile, Le minimum, gel, veille.
 décide) : flag `kSniperTuningEnabled = false` — le viseur devient une simple liste « CE QUI TOMBE » (tap = écarter / remettre),
 sans réglage − / + ni mini-tirs (`_stepper`), sans ordre à la main (`ReorderableListView`, « Ordre conseillé »), sans les chiffres
 précision · enjeux tombés · décision au bilan ; ⓘ `kRuleSniper` sans la carte « Ajuster le tir ». Le calcul du temps exact, les
-tirs, la pause et le badge restent. Revenir = repasser le flag à true (et remettre la carte de la règle).
+tirs, la pause et le badge restent. Revenir = repasser le flag à true (et remettre la carte de la règle). **Fin de l'essai** (2026-11-09, retour user : pouvoir ajuster le nombre de pompes ou le temps) : `kSniperTuningEnabled = true`, la carte « Ajuster le tir » est remise dans `kRuleSniper` ; le Sniper repasse aussi dans sa palette bleu ciel (`kSniperAccent` `0xFF7FD3FF`, fond `_bg` bleu nuit), comme l'Offensive.
 **Sniper : rien n'enchaîne tout seul, le temps en plus est tracé** (2026-11-07, retour user) : au bout du minuteur, l'alarme sonne
 mais la cible ne tombe plus d'elle-même — le chrono CONTINUE, l'anneau passe au vert avec « +05:12 · en plus · le chrono continue »
 (`_overSec` ; « +5 min » se cache) ; le bouton dit « Suivant › » (`_touch`, aussi « Fait plus tôt · suivant » avant la fin) et passe
