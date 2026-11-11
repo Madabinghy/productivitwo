@@ -719,6 +719,7 @@ class TodayViewState extends State<TodayView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final stakes = _showTomorrow ? null : _stakeBoard();
+    final lostYesterday = _showTomorrow ? 0 : widget.logic.lostSeriesYesterday().length;
     final now = DateTime.now();
     // Journée vécue : avant la bascule (5 h), « aujourd'hui » = la veille.
     final date = _showTomorrow
@@ -764,23 +765,20 @@ class TodayViewState extends State<TodayView> {
                   ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
-                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
-                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
-                      const SizedBox(height: 12),
-                      EveningLedgerCard(ledger: ledger, compact: true, onTap: _openStakesSheet),
-                    ],
-                  ] else if (stakes case final board? when !board.isEmpty) ...[
+                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow) && !_eveningLedger(board).isEmpty) ...[
                     const SizedBox(height: 12),
-                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: widget.logic.lostSeriesYesterday().length),
+                    EveningLedgerCard(ledger: _eveningLedger(board), compact: true, onTap: _openStakesSheet),
+                    if (lostYesterday > 0) _lostYesterdayLink(lostYesterday),
+                  ] else if (stakes case final board? when !isEvening(widget.logic.livedNowMinNow) && !board.isEmpty) ...[
+                    const SizedBox(height: 12),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: lostYesterday),
+                  ] else if (lostYesterday > 0) ...[
+                    const SizedBox(height: 12),
+                    _lostYesterdayLink(lostYesterday),
                   ],
-                  // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
-                  // Le minimum : plus de carte sur la page, la tuile AU MINIMUM l'ouvre (retour user 2026-11-06).
-                  // La remontée aussi : la tuile REMONTÉE l'annonce et ouvre la carte (retour user 2026-11-07).
-                  LostYesterdaySection(
-                    logic: widget.logic,
-                    onChanged: _onEmbersChanged,
-                    onMinimum: () => showMinimumSheet(context, logic: widget.logic, fromYesterday: true),
-                  ),
+                  // Perdu hier (2026-11-11, retour user : avec Ta journée et MAINTENANT, ça faisait beaucoup) :
+                  // plus de carte sur la page. La décision (journée difficile, le minimum) vit dans la feuille
+                  // Ta journée, ouverte par le compteur PERDUS HIER (ou la ligne courte quand il n'est pas là).
                   // Routine acquise : la proposition à 66 jours, l'alerte de décrochage.
                   AcquiredPrompts(logic: widget.logic, onChanged: () {
                     widget.badges?.load(refresh: true);
@@ -1837,6 +1835,32 @@ class TodayViewState extends State<TodayView> {
   /// retour user 2026-10-30) : le tableau (ou le bilan complet du soir) puis la
   /// liste EN JEU. Un +1 garde la feuille ouverte ; un chrono ou la page focus
   /// la ferment.
+  /// Ligne courte « n séries cassées hier · décider › » quand le compteur PERDUS HIER n'est pas affiché.
+  Widget _lostYesterdayLink(int n) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: InkWell(
+        key: const ValueKey('lost-yesterday-link'),
+        borderRadius: BorderRadius.circular(10),
+        onTap: _openStakesSheet,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.local_fire_department_outlined, size: 16, color: kStakeLose),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                n == 1 ? '1 série cassée hier · décider' : '$n séries cassées hier · décider',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kStakeLose),
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: kStakeLose),
+          ]),
+        ),
+      ),
+    );
+  }
+
   void _openStakesSheet() {
     WatchKeepStore.load();
     showFiche<void>(context, builder: (ctx, scroll) {
