@@ -2063,7 +2063,7 @@ réécrite) : UNE carte « Hier, n séries se sont cassées » — « C'était u
 possible ; sinon « déjà prise le … · à nouveau possible le … »), puis « Ou garder une série » avec la braise (3 lignes compactes
 « Garder », le reste replié) ; feuille `showHardDaySheet` (CE QUE ÇA FAIT · CE QUE ÇA COÛTE · « Oui, je gèle la journée d'hier » ·
 « Non, j'utilise plutôt ma braise ») ; hier déclarée : « Hier gelée · n séries gardées » + « Annuler, je préfère perdre ces séries ».
-ⓘ `kRuleHardDay`. Web : pas encore (le deck web ne lit pas `hardDays`). Suite prévue : mode « Le minimum » (période difficile, lot 2)
+**Plus sur la page** (2026-11-11, retour user : avec Ta journée et MAINTENANT, ça faisait beaucoup) : la carte n'est plus dans Aujourd'hui, elle vit dans la feuille Ta journée (`_openStakesSheet`, `LostYesterdaySection(all: true)`) qu'ouvre le compteur PERDUS HIER du tableau ; le soir ou sans tableau, une ligne courte « n séries cassées hier · décider › » (`_lostYesterdayLink`, `lost-yesterday-link`) l'ouvre. ⓘ `kRuleHardDay`. Web : pas encore (le deck web ne lit pas `hardDays`). Suite prévue : mode « Le minimum » (période difficile, lot 2)
 puis gamification (veilleuse, remontée, Tenir bon, famille Luttes, lot 3).
 
 ## Le minimum (2026-11-06, maquette validée « Journée difficile », lot 2)
