@@ -39,6 +39,8 @@ import 'package:productivitwo_v1/utils/tile_charts.dart';
 import 'package:productivitwo_v1/utils/domain_widget.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
+import 'package:productivitwo_v1/utils/week_hours.dart' show weekHours;
+import 'package:productivitwo_v1/widgets/week_hours_card.dart' show WeekHoursCard;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
@@ -360,6 +362,9 @@ class LifeViewState extends State<LifeView> {
           TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
         ]),
         const SizedBox(height: 6),
+        // Les 168 dernières heures en compteur (maquette validée 2026-11-11) ; tap = la feuille en grand.
+        WeekHoursCard(logic: logic, hours: weekHours(sessions: st.sessions, activities: st.activities, now: now)),
+        const SizedBox(height: 10),
         // Saison (refonte 2026-11-04) : la période des objectifs, sa cible sur chaque tuile.
         SeasonBanner(
           logic: logic,
