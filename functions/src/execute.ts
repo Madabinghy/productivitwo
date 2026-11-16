@@ -4111,7 +4111,7 @@ async function executeScheduleDay(
     reportReason: b.reportReason ?? null, // raison donnée au moment du report
     sessionTemplateId: b.sessionTemplateId ?? null, // séance (déroulé) → ▶ = player
     // Bloc de TEMPS (2026-10-31) : "deep" | "small" | "buffer", sans source.
-    // "morning" (2026-11-16) = Miracle morning : les routines du moment à la suite.
+    // "morning" (2026-11-16) = Miracle morning : le bloc ouvre « Mon Miracle Morning ».
     ...(b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "morning" || b.timeBlock === "buffer"
       ? { timeBlock: b.timeBlock }
       : {}),

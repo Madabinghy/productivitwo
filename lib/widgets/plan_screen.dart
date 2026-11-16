@@ -965,7 +965,7 @@ class _PlanScreenState extends State<PlanScreen> {
                       minutes: timeBlockDefaultMin(k),
                       reason: switch (k) {
                         'deep' => 'Offensive · ${_deepPreview()}',
-                        'morning' => 'Les routines du moment, une à une',
+                        'morning' => 'Tes étapes du matin, dans ton ordre',
                         _ => 'Guérilla · routines et petites actions',
                       })),
                 ),

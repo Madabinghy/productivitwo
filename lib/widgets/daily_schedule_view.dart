@@ -1189,7 +1189,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           ? 'Rouvrir'
           : (smallStep
               ? '10 min, malgré tout'
-              : (launchable ? (block.timeBlock == 'deep' ? 'Lancer l’offensive' : (block.timeBlock == 'small' ? 'Lancer la guérilla' : (block.timeBlock == 'morning' ? 'Enchaîner les routines' : (current ? 'Lancer' : 'Commencer')))) : 'Fait')),
+              : (launchable ? (block.timeBlock == 'deep' ? 'Lancer l’offensive' : (block.timeBlock == 'small' ? 'Lancer la guérilla' : (block.timeBlock == 'morning' ? 'Lancer mon Miracle Morning' : (current ? 'Lancer' : 'Commencer')))) : 'Fait')),
       primaryIcon: isDone ? Icons.undo_rounded : (smallStep ? Icons.timer_outlined : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded)),
       chainLabel: smallStep ? 'Tout le bloc · ${fmtMin(block.durationMin)}' : null,
       chainIcon: smallStep ? Icons.play_arrow_rounded : null,

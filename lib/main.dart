@@ -1,7 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
-import 'package:productivitwo_v1/widgets/routine_chain_screen.dart' show showRoutineChainScreen, routinesLeftNow;
 import 'package:productivitwo_v1/widgets/life_view.dart' show LifeView, LifeViewState;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
@@ -138,6 +137,7 @@ import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
+import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
@@ -3131,17 +3131,20 @@ class _AppRootState extends State<AppRoot>
     if (st == null) return;
     // Un bloc de temps réserve un MODE (retour user 2026-10-31) : Deep work =
     // Offensive, Petites choses = Guérilla ; leur chrono compte pour le bloc.
-    // Miracle morning (2026-11-16) : les routines du moment, une à une. Le
-    // bloc est fait quand il n'en reste plus (sinon il attend, comme les autres).
+    // Miracle morning (2026-11-16) : le bloc ouvre « Mon Miracle Morning »
+    // (tes étapes, dans ton ordre ; reprise d'une session en route). Il est
+    // fait quand le Miracle Morning du jour l'est, sinon il attend.
     if (block.timeBlock == 'morning') {
-      if (routinesLeftNow(logic) == 0) {
+      if (logic.miracleToday != null) {
         ScaffoldMessenger.of(context).showClosingSnackBar(
-            const SnackBar(content: Text('Toutes les routines de ce moment sont faites.')));
+            const SnackBar(content: Text('Ton Miracle Morning est déjà fait aujourd’hui.')));
+      } else if (logic.miracleNow.isEmpty) {
+        await showMiracleSetup(context, logic: logic);
       } else {
-        await showRoutineChainScreen(context, logic: logic);
+        await showMiracleMorning(context, logic: logic);
       }
       if (!mounted) return;
-      if (routinesLeftNow(logic) == 0 && block.status == 'pending') {
+      if (logic.miracleToday != null && block.status == 'pending') {
         await _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done');
       }
       setState(() {});
