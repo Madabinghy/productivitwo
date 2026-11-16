@@ -136,6 +136,7 @@ import 'package:productivitwo_v1/widgets/freedom_screens.dart' show reopenPendin
 import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
@@ -1864,6 +1865,8 @@ class _AppRootState extends State<AppRoot>
       final sameGym = gymJson == _gymJson;
       final freedomJson = jsonEncode(m['freedoms'] ?? const {});
       final sameFreedom = freedomJson == _freedomJson;
+      final miracle = MiracleMorning.from(m['miracleMorning']);
+      final sameMiracle = jsonEncode(miracle?.toJson()) == jsonEncode(logic.miracleMorning?.toJson());
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1879,6 +1882,7 @@ class _AppRootState extends State<AppRoot>
           sameGroceries &&
           sameGym &&
           sameFreedom &&
+          sameMiracle &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
@@ -1940,6 +1944,7 @@ class _AppRootState extends State<AppRoot>
       logic.hardDays = hardDays;
       logic.modules = modules;
       logic.journey = journey;
+      logic.miracleMorning = miracle;
       logic.minimumPeriods = minimum;
       logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;
