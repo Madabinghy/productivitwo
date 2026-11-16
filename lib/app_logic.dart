@@ -46,6 +46,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/miracle_morning.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart' show MealWeek, PlannedMeal;
@@ -2016,6 +2017,21 @@ class AppLogic implements HuntStore {
     if (clear) journey = ModuleJourney(since: journey.since, lastProposed: journey.lastProposed, declined: journey.declined);
     onChange();
     await sync?.setMetaFields({'modules': {...modules.toJson(), if (clear) 'pending': null, if (clear) 'pendingBy': null}});
+  }
+
+  /// Miracle Morning (2026-11-16, `utils/miracle_morning.dart`) : null = jamais réglé (on part des routines du matin).
+  MiracleMorning? miracleMorning;
+
+  /// Les étapes à jouer : le réglage, sinon les routines du matin.
+  MiracleMorning get miracleNow => miracleMorning ?? defaultMiracle(state.activeActivities);
+
+  /// La matinée de ce jour vécu, si elle a été faite.
+  ChainRun? get miracleToday => miracleDoneOn(state.chainRuns, livedTodayYmd);
+
+  Future<void> saveMiracleMorning(MiracleMorning m) async {
+    miracleMorning = m;
+    onChange();
+    await sync?.setMetaFields({'miracleMorning': m.toJson()});
   }
 
   /// Le parcours (lot 3) : la proposition en attente, les refus, le début (`data/meta.modules`).

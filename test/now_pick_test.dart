@@ -72,6 +72,11 @@ void main() {
     final m = pickNow(blocks: [blk('c', '09:00', 60, title: 'Contenu')], now: morning, nowMin: 7 * 60 + 40, dayStartMin: 300, board: board, chainAvailable: true);
     expect(m.kind, NowPickKind.morning);
     expect(m.items, ['Faire mon lit', 'Louanges']);
+    // Miracle Morning à faire : il passe devant « Enchaîner le matin » (items vides = la carte du Miracle Morning).
+    final mm = pickNow(blocks: [blk('c', '09:00', 60, title: 'Contenu')], now: morning, nowMin: 7 * 60 + 40, dayStartMin: 300, board: board, chainAvailable: true, miracleAvailable: true);
+    expect(mm.kind, NowPickKind.morning);
+    expect(mm.items, isEmpty);
+    expect(mm.why, contains('Contenu à 09:00'));
     final evening = DateTime(2026, 11, 7, 20, 45);
     final e = pickNow(blocks: [blk('s', '22:00', 420, title: 'Sommeil')], now: evening, nowMin: 20 * 60 + 45, dayStartMin: 300, board: board, chainAvailable: true);
     expect(e.kind, NowPickKind.evening);

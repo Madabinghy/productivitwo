@@ -73,6 +73,8 @@ import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActi
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin, postponesCleared;
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/miracle_morning.dart' show miracleNames;
+import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMiracleAccent, showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 import 'package:productivitwo_v1/utils/modules.dart';
@@ -824,6 +826,8 @@ class TodayViewState extends State<TodayView> {
                   const SizedBox(height: 16),
                   NowCard(
                     onGoToBed: _goToBed,
+                    miracle: _miracleDue,
+                    onMiracle: _openMiracle,
                     stakes: stakes,
                     onStake: _runStake,
                     modeOfMoment: _modeKind == null || !_on(AppModule.modes)
@@ -979,7 +983,12 @@ class TodayViewState extends State<TodayView> {
           ModePill(logic: widget.logic, badges: widget.badges),
           const SizedBox(height: 8),
         ],
-        Row(mainAxisSize: MainAxisSize.min, children: [
+        FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [
+          // Miracle Morning (2026-11-16) : tant qu'il n'est pas fait aujourd'hui ; appui long = les étapes.
+          if (!_showTomorrow && _on(AppModule.modes) && widget.logic.miracleToday == null) ...[
+            _miracleBtn(cs),
+            const SizedBox(width: 8),
+          ],
           // Le mode du moment a son gros bouton sous l'en-tête (2026-11-01) : ici, les autres.
           for (final l in _launchers)
             if (_on(AppModule.modes) && (_showTomorrow || l.kind != _modeKind)) ...[
@@ -987,9 +996,53 @@ class TodayViewState extends State<TodayView> {
               const SizedBox(width: 8),
             ],
           if (_on(AppModule.planning)) _planBtn(cs),
-        ]),
+        ])),
       ]),
     ]);
+  }
+
+  /// Le Miracle Morning à proposer dans MAINTENANT : module Modes d'action, des étapes, pas encore fait aujourd'hui.
+  ({String names, int steps, int minutes})? get _miracleDue {
+    final logic = widget.logic;
+    if (_showTomorrow || !_on(AppModule.modes) || logic.miracleToday != null) return null;
+    final m = logic.miracleNow;
+    if (m.isEmpty) return null;
+    return (names: miracleNames(m), steps: m.steps.length, minutes: m.totalMin);
+  }
+
+  Future<void> _openMiracle() async {
+    final logic = widget.logic;
+    if (logic.miracleNow.isEmpty) {
+      await showMiracleSetup(context, logic: logic);
+    } else {
+      await showMiracleMorning(context, logic: logic);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _miracleBtn(ColorScheme cs) {
+    final dark = cs.brightness == Brightness.dark;
+    final c = dark ? kMiracleAccent : const Color(0xFF9A5A16);
+    final m = widget.logic.miracleNow;
+    final tip = m.isEmpty ? 'Miracle Morning · choisir mes étapes' : 'Miracle Morning · ${m.steps.length} étapes · ${fmtMin(m.totalMin)}';
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Material(
+        key: const ValueKey('miracle-launcher'),
+        color: c.withValues(alpha: .12),
+        shape: CircleBorder(side: BorderSide(color: c.withValues(alpha: .55))),
+        child: InkWell(
+          onTap: _openMiracle,
+          onLongPress: () async {
+            await showMiracleSetup(context, logic: widget.logic);
+            if (mounted) setState(() {});
+          },
+          customBorder: const CircleBorder(),
+          child: Tooltip(message: tip, child: Center(child: Icon(Icons.wb_twilight_rounded, size: 22, color: c, semanticLabel: tip))),
+        ),
+      ),
+    );
   }
 
   static const _launchers = [

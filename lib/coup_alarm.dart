@@ -1,5 +1,5 @@
 import 'package:alarm/alarm.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/notifications.dart';
 
@@ -9,11 +9,15 @@ import 'package:productivitwo_v1/notifications.dart';
 /// notification programmée si l'app est tuée. Deux ids qui alternent : la fin
 /// d'un coup ne coupe pas la sonnerie du précédent quand le suivant démarre.
 class CoupAlarm {
+  /// Coupé dans les tests d'écran (le plugin d'alarme y attend indéfiniment).
+  @visibleForTesting
+  static bool enabled = true;
+
   static const _ids = [43, 44];
   static var _slot = 0;
 
   static Future<void> schedule(AppLogic logic, {required DateTime endsAt, required String title, required String body}) async {
-    if (kIsWeb) return;
+    if (kIsWeb || !enabled) return;
     _slot = 1 - _slot;
     final id = _ids[_slot];
     final ringtone = ringtoneByKey(logic.state.alarmSound);
@@ -39,7 +43,7 @@ class CoupAlarm {
   /// Annule les alarmes des coups (fait, passé, arrêté) ; `all: false` =
   /// seulement celle du coup en cours (on rajoute du temps).
   static Future<void> cancel({bool all = true}) async {
-    if (kIsWeb) return;
+    if (kIsWeb || !enabled) return;
     try {
       if (all) {
         for (final id in _ids) {
