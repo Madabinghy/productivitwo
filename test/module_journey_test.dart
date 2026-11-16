@@ -51,4 +51,16 @@ void main() {
     expect(j.pending, AppModule.sleep);
     expect(j.declined, {AppModule.game: 'never'});
   });
+
+  test('repartir comme un débutant, puis retrouver son app', () {
+    final json = beginnerModules(ModuleSettings.everything, '2026-11-16');
+    final s = parseModules(json);
+    final j = ModuleJourney.from(json);
+    expect(s.count, 0);
+    expect(j.since, '2026-11-16');
+    expect(j.before!.length, kModules.length);
+    final back = parseModules(restoredModules(j));
+    expect(back.count, kModules.length);
+    expect(ModuleJourney.from(restoredModules(j)).before, isNull);
+  });
 }

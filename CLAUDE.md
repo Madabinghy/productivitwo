@@ -1806,7 +1806,12 @@ les `kProposalGapDays` (7) j, jamais quand bloqué = Le minimum, remontée, lend
 `AppLogic.journey` / `proposeModule` / `declineModule` ; `setModule(on)` efface la proposition en attente. Carte « Nouveau pour toi »
 (`widgets/module_proposal_card.dart`, `ModuleProposalCard`, en tête d'Aujourd'hui via `_moduleProposal`) : phrase, pourquoi
 maintenant, ce que le module apporte, Essayer · Plus tard · Pas pour moi ; Essayer = SnackBar « … allumé · tu le trouves dans … »
-(`kModuleWhere`). Rien ne s'affiche tant que tout est allumé.
+(`kModuleWhere`). Rien ne s'affiche tant que tout est allumé. **Lot 4 livré (repartir comme un débutant)** : « Repartir comme un débutant »
+en bas de Mes modules → `showRestartSheet` (tu gardes tout · mis de côté, pas effacé · ce qui repart à zéro, « Repartir du premier
+jour ») → `AppLogic.restartAsBeginner` : `beginnerModules` (cœur seul, `since` = aujourd'hui, `before` = les modules allumés avant) ;
+le champ `modules` est REMPLACÉ en entier (`FirestoreSync.replaceMetaField`, sinon la fusion garderait refus et proposition). Le
+parcours se recompte depuis ce jour. « Retrouver mon app complète » (même écran, tant que `before` existe) → `restoreFullApp`
+(`restoredModules`). Rien n'est effacé : les données des modules éteints reviennent avec eux.
 
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 
