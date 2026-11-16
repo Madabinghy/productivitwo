@@ -8,7 +8,6 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts, RoutineToday;
-import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 
 ScheduleBlock _b(String id, String start, int dur, {String status = 'pending', String? title}) =>
@@ -205,14 +204,14 @@ void main() {
       routines: [RoutineToday(r('Pompes'), 1, 1), RoutineToday(r('Cuisiner'), 0, 1)],
       blocks: [_b('Café', '07:00', 30, status: 'done'), _b('Contenu', '15:00', 60)],
     );
-    final t = perfectDayTile(facts, const EmberLedger(stock: 2))!;
+    final t = perfectDayTile(facts)!;
     expect(t.label, 'JOURNÉE PARFAITE');
     expect(t.value, 'Il manque 2');
     expect(t.sub, 'Cuisiner · 1 bloc');
     expect(t.badge, isNull);
     expect(t.mini, [TileMark.on, TileMark.on, TileMark.off, TileMark.off]);
     final done = TodayFacts(ymd: '2026-10-29', now: DateTime(2026, 10, 29, 20), routines: [RoutineToday(r('Pompes'), 1, 1)]);
-    expect(perfectDayTile(done, const EmberLedger(stock: 3))!.sub, 'tout est tenu');
-    expect(perfectDayTile(null, EmberLedger.empty), isNull);
+    expect(perfectDayTile(done)!.sub, 'tout est tenu');
+    expect(perfectDayTile(null), isNull);
   });
 }

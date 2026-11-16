@@ -41,16 +41,6 @@ const kRuleLetGo = GameRule('Retirer un bloc', [
   RuleCard('➡️', 'Une case perdue, pas la journée', 'Ce qui suit compte autant qu’avant. C’est maintenant que ça se joue.'),
 ]);
 
-const kRuleEmbers = GameRule('Braises', [
-  RuleCard('🔥', 'Gagner une braise', 'Une journée parfaite forge une braise. Ta réserve en garde trois.'),
-  RuleCard('🕯️', 'Rallumer une série',
-      'Une série de routine cassée hier peut être rallumée avec une braise, le lendemain seulement.'),
-  RuleCard('🎯', 'À une condition',
-      'Atteindre la routine aujourd’hui. Sinon la braise n’est pas dépensée.'),
-  RuleCard('⏳', 'Une fois par mois',
-      'Une même série ne se rallume qu’une fois tous les 30 jours. Le jour comblé compte pour la série, pas pour la journée parfaite.'),
-]);
-
 const kRuleHardDay = GameRule('Journée difficile', [
   RuleCard('🧊', 'Hier était dur ?', 'Le lendemain, tu peux déclarer la journée difficile : toutes les séries cassées ce jour-là sont gelées, pas cassées.'),
   RuleCard('⏸️', 'Gelée, pas gagnée', 'Les séries reprennent là où elles étaient, sans gagner de jour. Hier ne compte ni pour Journée parfaite, ni pour Métronome ni pour Montre suisse.'),

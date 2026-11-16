@@ -874,7 +874,6 @@ class TodayViewState extends State<TodayView> {
         dayStart: livedDayStart(now, widget.dayStartMin),
         now: now,
         perfectToday: _facts != null && isPerfectSoFar(_facts!),
-        emberStock: _deck().embers.available,
       );
       if (ledger.isEmpty) return const [];
       return [EveningLedgerCard(ledger: ledger), const SizedBox(height: 18)];
@@ -937,7 +936,7 @@ class TodayViewState extends State<TodayView> {
   /// journée parfaite, braises. Tap = le tableau complet.
   Widget _dayStrip() {
     final board = _board();
-    final perfect = perfectDayTile(_facts, _deck().embers);
+    final perfect = perfectDayTile(_facts);
     if (board.isEmpty && perfect == null) return const SizedBox.shrink();
     Widget n(int v, String label, Color c) => Text.rich(
           TextSpan(children: [
@@ -1185,8 +1184,6 @@ class TodayViewState extends State<TodayView> {
           child: BadgesInPlayScreen(
             data: data,
             onRun: _runStake,
-            embers: _deck().embers,
-            names: {for (final a in widget.activities) a.id: a.name},
           ),
         ),
       ),

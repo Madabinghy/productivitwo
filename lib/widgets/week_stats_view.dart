@@ -1,4 +1,3 @@
-import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/utils/meal_day.dart';
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
@@ -315,7 +314,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
           const SizedBox(height: 6),
           Text(
             hw.missing == 0
-                ? 'Cette semaine : $pct % du contrat · tenue${kEmbersEnabled ? ', une braise dimanche soir' : ''}'
+                ? 'Cette semaine : $pct % du contrat · tenue'
                 : 'Cette semaine : $pct % du contrat · encore ${hw.missing} coche${hw.missing > 1 ? 's' : ''} d’ici dimanche',
             style: TextStyle(fontSize: 12, color: muted),
           ),

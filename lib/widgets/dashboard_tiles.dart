@@ -1,4 +1,3 @@
-import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/badge_card.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart';
@@ -7,8 +6,6 @@ import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show FicheHeader;
-import 'package:productivitwo_v1/widgets/embers_view.dart' show EmberLedgerPanel;
-import 'package:productivitwo_v1/utils/embers.dart' show EmberLedger;
 import 'package:productivitwo_v1/widgets/stakes_section.dart' show kStakeLose, kStakeTier, kStakeHunt, StakeGauge;
 
 /// « TON TABLEAU DE BORD » (lot 3) : une tuile par vue, son état en une ligne,
@@ -308,10 +305,7 @@ class BadgesInPlayScreen extends StatelessWidget {
   /// Feuille (`showFiche`, Aujourd'hui mobile) : liste sans Scaffold, sur le
   /// défilement de la feuille, avec l'en-tête des fiches.
   final ScrollController? sheetScroll;
-  /// Braises : réserve et historique en tête (null = pas de bloc).
-  final EmberLedger? embers;
-  final Map<String, String> names;
-  const BadgesInPlayScreen({super.key, required this.data, this.onRun, this.onAll, this.sheetScroll, this.embers, this.names = const {}});
+  const BadgesInPlayScreen({super.key, required this.data, this.onRun, this.onAll, this.sheetScroll});
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +344,6 @@ class BadgesInPlayScreen extends StatelessWidget {
         padding: sheet ? const EdgeInsets.fromLTRB(20, 14, 20, 32) : const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           if (sheet) FicheHeader(title: 'Badges en jeu', chip: '${data.today} aujourd’hui', chipColor: kStakeHunt),
-          if (embers case final e? when kEmbersEnabled) EmberLedgerPanel(ledger: e, names: names),
           if (data.today == 0)
             const Padding(
               padding: EdgeInsets.only(top: 24),

@@ -74,11 +74,9 @@ void main() {
     expect(noEmber.single.blocked, 'aucune braise en réserve');
   });
 
-  test('écriture : rallumer puis annuler l’attente', () {
-    final w = withRekindle(const [], 'p', today);
-    expect(w.single.lostYmd, '2026-10-28');
-    expect(withoutPending(w, 'p', today), isEmpty);
-    expect(EmberSpend.listFrom([w.single.toJson(), {'bad': 1}]).single.activityId, 'p');
+  test('relecture des rallumages déjà faits', () {
+    const w = EmberSpend(activityId: 'p', lostYmd: '2026-10-28', spentYmd: today);
+    expect(EmberSpend.listFrom([w.toJson(), {'bad': 1}]).single.activityId, 'p');
   });
 
   test('deck : le jour comblé tient la série, jamais la journée parfaite', () {

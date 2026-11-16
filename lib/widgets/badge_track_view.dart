@@ -31,7 +31,7 @@ class BadgeTrackView extends StatelessWidget {
             (TrackCell.miss, track.missLabel),
             if (track.cells.contains(TrackCell.neutral)) (TrackCell.neutral, 'rien à tenir'),
             if (track.cells.contains(TrackCell.current)) (TrackCell.current, 'en cours'),
-            if (track.cells.contains(TrackCell.bridged)) (TrackCell.bridged, 'rallumé (braise)'),
+            if (track.cells.contains(TrackCell.bridged)) (TrackCell.bridged, 'rallumé'),
             if (track.cells.contains(TrackCell.frozen)) (TrackCell.frozen, 'gelé (veille)'),
           ])
             Row(mainAxisSize: MainAxisSize.min, children: [
