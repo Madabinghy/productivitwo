@@ -1679,6 +1679,17 @@ rendez-vous libres (`applyMirrorMemory`, comme le mobile) ; glisser une activit�
 autres rendez-vous du même nom ») — ils comptent dans le reste de la Montre suisse ; « Annuler » défait aussi la mémoire
 (`FirestoreSync.forgetMirrorActivity`). Au lancement, mobile comme web, un rendez-vous associé lance le chrono sur SON activité.
 
+**Retoucher une séance depuis la semaine** (2026-11-16, retour user : « je veux travailler autre chose avec les enfants demain ») :
+`web/session_rework_dialog.dart` (`showSessionReworkDialog`) — « Ce que tu fais pendant cette séance » (le titre de la séance native ;
+ses trois tâches 📝 / 🎯 / ✅ et leur `groupLabel` suivent), PRÉPARATION (actions ouvertes de la 📝 : renommer, ✕, ajouter), DÉROULÉ
+(étapes pas encore cochées de l'action « Dérouler… » : renommer, ✕, ajouter), « Ouvrir dans le projet » ; rien n'est écrit avant
+« Enregistrer » (`saveProject`). Logique pure `utils/session_rework.dart` (`ReworkLine`, `prepLinesOf`, `stepLinesOf`,
+`applySessionRework` : une action faite ou une étape cochée ne bouge jamais, une ligne vidée ou absente retire, sans id = nouvelle ;
+`sessionTaskIds`). Entrées dans Cette semaine : ✎ sur une ligne de SÉANCES À PRÉPARER (`_PlaceItem.onTap`,
+`week-place-edit-prep:<id>`) et ✎ à côté d'une cible de séance dans « Modifier le bloc » (`canRework` / `onRework`,
+`block-target-rework-<i>`) — une prépa posée dans un bloc reste donc retouchable. Un bloc vise la séance par son id, pas par son
+texte : après un changement de thème, les blocs de la semaine dont le titre vient de l'app sont renommés (`_reworkSession`).
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

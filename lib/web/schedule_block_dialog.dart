@@ -23,12 +23,21 @@ Future<ScheduleBlock?> showScheduleBlockDialog(
   List<Activity>? activities,
   List<Project>? projects,
   List<Domain> domains = const [],
+  bool Function(BlockTarget target)? canRework,
+  Future<void> Function(BlockTarget target)? onRework,
 }) {
   return showDesktopDialog<ScheduleBlock>(
     context,
     maxWidth: 520,
     builder: (_) =>
-        _ScheduleBlockDialog(block: block, isNew: isNew, activities: activities, projects: projects, domains: domains),
+        _ScheduleBlockDialog(
+            block: block,
+            isNew: isNew,
+            activities: activities,
+            projects: projects,
+            domains: domains,
+            canRework: canRework,
+            onRework: onRework),
   );
 }
 
@@ -45,8 +54,19 @@ class _ScheduleBlockDialog extends StatefulWidget {
   final List<Activity>? activities;
   final List<Project>? projects;
   final List<Domain> domains;
+
+  /// Une cible qui est une séance (sa préparation, son jalon) se retouche
+  /// d'ici : thème, préparation, déroulé.
+  final bool Function(BlockTarget target)? canRework;
+  final Future<void> Function(BlockTarget target)? onRework;
   const _ScheduleBlockDialog(
-      {required this.block, required this.isNew, this.activities, this.projects, this.domains = const []});
+      {required this.block,
+      required this.isNew,
+      this.activities,
+      this.projects,
+      this.domains = const [],
+      this.canRework,
+      this.onRework});
 
   @override
   State<_ScheduleBlockDialog> createState() => _ScheduleBlockDialogState();
@@ -131,6 +151,22 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
           ),
           ),
         ),
+        if (widget.onRework != null && (widget.canRework?.call(t) ?? false))
+          IconButton(
+            key: ValueKey('block-target-rework-$index'),
+            tooltip: 'Retoucher la séance',
+            icon: const Icon(Icons.edit_outlined, size: 17, color: kBText3),
+            onPressed: () async {
+              final oldAuto = _autoTitle(_layers);
+              await widget.onRework!(t);
+              if (!mounted) return;
+              // La séance a pu changer de nom : les listes et le titre de l'app suivent.
+              setState(() {
+                _tick++;
+                _title.text = retitled(_title.text, oldAuto, _autoTitle(_layers));
+              });
+            },
+          ),
         IconButton(
           key: ValueKey('block-target-remove-$index'),
           tooltip: 'Retirer du bloc',

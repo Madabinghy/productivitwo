@@ -10,7 +10,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
-import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf, stripLeadEmoji;
+import 'package:productivitwo_v1/utils/interventions.dart' show Intervention, interventionsOf, stripLeadEmoji;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
 import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
 import 'package:productivitwo_v1/utils/planning.dart' show deepWorkTitle;
@@ -23,6 +23,8 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
+import 'package:productivitwo_v1/web/session_rework_dialog.dart';
+import 'package:productivitwo_v1/utils/session_rework.dart' show sessionTaskIds;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1054,7 +1056,15 @@ class _WeekViewState extends State<WeekView> {
     }
     final key = ymdOf(d);
     final updated = await showScheduleBlockDialog(context,
-        block: b, activities: widget.activities, projects: widget.projects, domains: widget.domains);
+        block: b,
+        activities: widget.activities,
+        projects: widget.projects,
+        domains: widget.domains,
+        canRework: (t) => t.taskId != null && _sessionOfTask(t.taskId!) != null,
+        onRework: (t) async {
+          final s = t.taskId == null ? null : _sessionOfTask(t.taskId!);
+          if (s != null) await _reworkSession(s);
+        });
     if (updated == null || !mounted) return;
     setState(() {});
     await widget.sync.upsertScheduleBlock(key, updated);
@@ -1064,6 +1074,44 @@ class _WeekViewState extends State<WeekView> {
   // Un bloc porte un MODE (Deep work · Petites choses), une ACTIVITÉ (où le
   // temps compte) et une CIBLE (projet, tâche). Une ligne de « À placer »
   // lâchée sur un bloc y ajoute sa couche au lieu de créer un bloc.
+
+  /// La séance dont [taskId] est la préparation, le jalon ou la clôture.
+  Intervention? _sessionOfTask(String taskId) {
+    for (final p in widget.projects) {
+      for (final iv in interventionsOf(p)) {
+        if (sessionTaskIds(iv).contains(taskId)) return iv;
+      }
+    }
+    return null;
+  }
+
+  /// « Retoucher la séance » (2026-11-16) : son thème, sa préparation, son
+  /// déroulé, sans quitter la semaine. Les blocs qui la visent et dont le
+  /// titre vient de l'app suivent le nouveau titre.
+  Future<void> _reworkSession(Intervention s) async {
+    final ids = sessionTaskIds(s);
+    final before = <(String, ScheduleBlock, String)>[
+      for (final e in _byDay.entries)
+        for (final b in e.value)
+          if (b.gcalEventId == null && b.targetTaskIds.any(ids.contains)) (e.key, b, _autoTitleOf(BlockLayers.of(b))),
+    ];
+    final saved = await showSessionReworkDialog(context,
+        session: s,
+        sync: widget.sync,
+        onOpenProject: () => widget.onOpenProject(s.project, taskId: (s.prep ?? s.milestone).id));
+    if (!saved || !mounted) return;
+    var renamed = 0;
+    for (final (key, b, oldAuto) in before) {
+      final next = retitled(b.title, oldAuto, _autoTitleOf(BlockLayers.of(b)));
+      if (next == b.title) continue;
+      b.title = next;
+      renamed++;
+      await widget.sync.upsertScheduleBlock(key, b);
+    }
+    if (!mounted) return;
+    setState(() {});
+    _snack('Séance retouchée : ${s.title}${renamed > 0 ? ' · $renamed bloc${renamed > 1 ? 's' : ''} renommé${renamed > 1 ? 's' : ''}' : ''}');
+  }
 
   String? _activityName(BlockLayers l) =>
       l.activityId == null ? null : widget.activities.where((x) => x.id == l.activityId).firstOrNull?.name;
@@ -1266,6 +1314,8 @@ class _WeekViewState extends State<WeekView> {
           sub: 'séance ${_dm(iv.date)}${iv.timeRange != null ? ' · ${iv.timeRange}' : ''}',
           defaultMin: prep.estimatedMin ?? 60,
           color: kBAttention,
+          onTap: () => _reworkSession(iv),
+          tapHint: 'Retoucher la séance',
           make: (s, dur) => ScheduleBlock(
             startTime: _hhmm(s),
             durationMin: dur,
@@ -1528,6 +1578,19 @@ class _WeekViewState extends State<WeekView> {
               Text(_fmtHm(it.remainingMin),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kBAttention, fontFeatures: _tabular)),
             ],
+            if (it.onTap != null)
+              Tooltip(
+                message: it.tapHint ?? 'Modifier',
+                child: InkWell(
+                  key: ValueKey('week-place-edit-${it.key}'),
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: it.onTap,
+                  child: const Padding(
+                    padding: EdgeInsets.all(5),
+                    child: Icon(Icons.edit_outlined, size: 15, color: kBText3),
+                  ),
+                ),
+              ),
           ]),
         ),
       );
@@ -2349,6 +2412,10 @@ class _PlaceItem {
   final Color color;
   final DateTime? sortKey;
   final ScheduleBlock Function(int startMin, int durationMin) make;
+
+  /// Clic sur la ligne (sans la glisser) : retoucher ce qu'elle désigne.
+  final VoidCallback? onTap;
+  final String? tapHint;
   const _PlaceItem({
     required this.key,
     required this.group,
@@ -2359,6 +2426,8 @@ class _PlaceItem {
     required this.color,
     this.sortKey,
     required this.make,
+    this.onTap,
+    this.tapHint,
   });
 }
 
