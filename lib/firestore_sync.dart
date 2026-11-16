@@ -4034,6 +4034,15 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Oublie la mémoire « titre de rendez-vous → activité » d'un titre (annuler
+  /// une association posée par erreur).
+  Future<void> forgetMirrorActivity(String title) async {
+    if (uid == null) return;
+    await _meta().set({
+      'mirrorActivities': {mirrorKey(title): FieldValue.delete()},
+    }, SetOptions(merge: true));
+  }
+
   Future<void> addScheduleBlock(String date, ScheduleBlock block) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');

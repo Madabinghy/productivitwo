@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/web/mode_web.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -95,6 +96,9 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   // à cette heure, pas à minuit — comme le mobile.
   StreamSubscription<Map<String, dynamic>>? _metaSub;
   int _dayStartMin = kDefaultDayStartMin;
+
+  /// Mémoire « titre de rendez-vous → activité » (`data/meta.mirrorActivities`).
+  Map<String, String> _mirrorActivities = const {};
   bool? _autoPlan;
   // Mode du jour (Modes et coups lot 5) = dernier pointage d'élan de la journée vécue.
   StreamSubscription<List<MoodMark>>? _moodSub;
@@ -132,6 +136,9 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       final v = parseDayStartMin(m['dayStartMin']);
       focusDayStartMin = v;
       if (v != _dayStartMin && mounted) setState(() => _dayStartMin = v);
+      final raw = m['mirrorActivities'];
+      final memory = raw is Map ? {for (final e in raw.entries) e.key.toString(): e.value.toString()} : const <String, String>{};
+      if (mounted && !mapEquals(memory, _mirrorActivities)) setState(() => _mirrorActivities = memory);
     });
     _autoPlanSub = _sync.streamAutoPlan().listen((v) {
       if (mounted) setState(() => _autoPlan = v);
@@ -394,6 +401,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               onOpenActions: () => _go(WebTab.actions),
               dayStartMin: _dayStartMin,
               mode: _mode,
+              mirrorActivities: _mirrorActivities,
             ),
             WeekView(
               projects: _projects,
@@ -403,6 +411,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               dayStartMin: _dayStartMin,
               activities: _activities,
               objectives: _objectives,
+              mirrorActivities: _mirrorActivities,
             ),
             ProjectsView(
               projects: _projects,

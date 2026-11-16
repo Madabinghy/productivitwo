@@ -27,6 +27,9 @@ class _FakeSync extends FirestoreSync {
   Future<DayWindow> fetchDayWindow() async => const DayWindow(8 * 60, 22 * 60);
   @override
   Future<ApiToken> ensureWidgetToken() async => throw StateError('hors ligne');
+  final forgotten = <String>[];
+  @override
+  Future<void> forgetMirrorActivity(String title) async => forgotten.add(title);
   @override
   Future<void> upsertScheduleBlock(String date, ScheduleBlock block, {bool rememberMirror = true}) async =>
       upserts.add(ScheduleBlock.from(block.toJson()));
@@ -153,6 +156,76 @@ void main() {
     expect(saved.title, 'Préparer la séance + 1');
     // Posée dans le bloc, t2 n'est plus « à placer ».
     expect(find.byKey(const ValueKey('week-place-due:t2')), findsNothing);
+
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 3));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+  testWidgets('minimum couvert : l’activité reste glissable, et les rendez-vous du même nom suivent', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1700, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final monday = weekStart(DateTime.now());
+    final saturday = monday.add(const Duration(days: 5)), sunday = monday.add(const Duration(days: 6));
+    ScheduleBlock rdv(String id) => ScheduleBlock(
+        id: id, startTime: '23:00', durationMin: 59, title: 'Mathématiques - 6e/5e', category: 'personal', gcalEventId: 'g-$id');
+    final sync = _FakeSync({
+      ymdOf(saturday): DailySchedule(date: ymdOf(saturday), generatedBy: 'user', blocks: [rdv('sam')]),
+      ymdOf(sunday): DailySchedule(date: ymdOf(sunday), generatedBy: 'user', blocks: [rdv('dim')]),
+    });
+    // Sans minimum : jamais dans « Montre suisse · reste ».
+    final activities = [Activity(id: 'a1', domainId: 'd1', name: 'Interventions', goalMin: 0)];
+
+    await tester.pumpWidget(MaterialApp(
+      builder: (ctx, child) =>
+          MediaQuery(data: MediaQuery.of(ctx).copyWith(textScaler: const TextScaler.linear(.7)), child: child!),
+      home: Scaffold(
+        body: WeekView(
+          projects: const [],
+          domains: [Domain(id: 'd1', name: 'Travail')],
+          sync: sync,
+          onOpenProject: (p, {taskId}) {},
+          dayStartMin: 0,
+          activities: activities,
+        ),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('week-place-watch:a1')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('week-other-acts')));
+    await tester.pump(const Duration(milliseconds: 50));
+    final row = find.byKey(const ValueKey('week-place-act:a1'));
+    final target = find.byKey(const ValueKey('week-block-dim'));
+    expect(row, findsOneWidget);
+    await tester.ensureVisible(target);
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final g = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.moveBy(const Offset(30, 10));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.moveTo(tester.getCenter(target));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Seul le rendez-vous visé est écrit ; son titre vient de l'agenda.
+    final saved = sync.upserts.single;
+    expect((saved.id, saved.activityId, saved.title), ('dim', 'a1', 'Mathématiques - 6e/5e'));
+    expect(find.textContaining('1 autre rendez-vous du même nom'), findsOneWidget);
+
+    // Annuler : l'association et sa mémoire repartent.
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.tap(find.text('Annuler'));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(sync.upserts.last.activityId, isNull);
+    expect(sync.forgotten, ['Mathématiques - 6e/5e']);
 
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(seconds: 3));
