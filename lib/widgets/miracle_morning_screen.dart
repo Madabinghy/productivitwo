@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin, pickDurationMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -174,14 +176,25 @@ class _MiracleSetupState extends State<_MiracleSetup> {
 
 // ── Le dérouler : une étape à la fois ──────────────────────────────────────
 
-Future<void> showMiracleMorning(BuildContext context, {required AppLogic logic}) =>
-    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => MiracleMorningScreen(logic: logic)));
+/// Lance le Miracle Morning, ou reprend celui qui attend (app fermée en route) ; [resume] force une session.
+Future<void> showMiracleMorning(BuildContext context, {required AppLogic logic, PendingRun? resume}) {
+  final p = resume ?? pendingMiracle(logic);
+  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => MiracleMorningScreen(logic: logic, resume: p)));
+}
+
+/// Le Miracle Morning resté en route aujourd'hui (même jour vécu, moins de 45 min sans rien), sinon null.
+PendingRun? pendingMiracle(AppLogic logic) {
+  final p = RunSessionStore.current;
+  return p != null && p.kind == kMiracleKind && p.isLive(DateTime.now(), logic.livedTodayYmd) ? p : null;
+}
 
 enum _StepState { done, skipped }
 
 class MiracleMorningScreen extends StatefulWidget {
   final AppLogic logic;
-  const MiracleMorningScreen({super.key, required this.logic});
+  /// Session quittée en route (2026-11-16) : on reprend à l'étape où on en était.
+  final PendingRun? resume;
+  const MiracleMorningScreen({super.key, required this.logic, this.resume});
 
   @override
   State<MiracleMorningScreen> createState() => _MiracleMorningScreenState();
@@ -202,6 +215,7 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
   late DateTime _endsAt = DateTime.now();
   bool _ownChrono = false;
   Timer? _tick;
+  late final String _runId = widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
 
   AppLogic get logic => widget.logic;
   MiracleStep get _step => _steps[_index];
@@ -213,11 +227,64 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
-    if (_steps.isEmpty) {
+    final r = widget.resume;
+    if (r != null) {
+      _restore(r);
+    } else if (_steps.isEmpty) {
       _end = true;
     } else {
       _enter(0);
     }
+  }
+
+  /// Reprise : les étapes déjà faites / passées restent ; l'étape en cours repart avec son temps d'avant.
+  void _restore(PendingRun r) {
+    _startedAt = r.startedAt;
+    final st = r.extra['states'];
+    if (st is Map) {
+      st.forEach((k, v) => _states['$k'] = v == 'done' ? _StepState.done : _StepState.skipped);
+    }
+    final sp = r.extra['spent'];
+    if (sp is Map) sp.forEach((k, v) => _spent['$k'] = (v as num).toInt());
+    _plusOne.addAll(r.strings('plusOne'));
+    _chrono.addAll(r.strings('chrono'));
+    final cur = r.extra['cur']?.toString();
+    var i = _steps.indexWhere((s) => s.id == cur);
+    if (i < 0) i = _steps.indexWhere((s) => !_states.containsKey(s.id));
+    if (i < 0) {
+      _save();
+      RunSessionStore.clear();
+      _end = true;
+      return;
+    }
+    final start = r.intOf('stepStart'), ends = r.intOf('endsAt');
+    if (_steps[i].id == cur && start != null && ends != null) {
+      _enter(i, start: DateTime.fromMillisecondsSinceEpoch(start), ends: DateTime.fromMillisecondsSinceEpoch(ends));
+    } else {
+      _enter(i);
+    }
+  }
+
+  void _persist() {
+    final now = DateTime.now();
+    RunSessionStore.save(PendingRun(
+      kind: kMiracleKind,
+      runId: _runId,
+      date: ymdOf(livedDate(now, logic.dayStartMin)),
+      startedAt: _startedAt,
+      lastActiveAt: now,
+      done: _states.values.where((v) => v == _StepState.done).length,
+      extra: {
+        'total': _steps.length,
+        'cur': _end ? null : _step.id,
+        'stepStart': _stepStart.millisecondsSinceEpoch,
+        'endsAt': _endsAt.millisecondsSinceEpoch,
+        'states': {for (final e in _states.entries) e.key: e.value == _StepState.done ? 'done' : 'skipped'},
+        'spent': _spent,
+        'plusOne': _plusOne.toList(),
+        'chrono': _chrono.toList(),
+      },
+    ));
   }
 
   @override
@@ -231,16 +298,22 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
 
   Activity? _routine(MiracleStep s) => s.routineId == null ? null : logic.state.activeActivities.where((a) => a.id == s.routineId).firstOrNull;
 
-  void _enter(int i) {
+  void _enter(int i, {DateTime? start, DateTime? ends}) {
     _index = i;
-    _stepStart = DateTime.now();
-    _endsAt = _stepStart.add(Duration(minutes: _steps[i].minutes));
-    CoupAlarm.schedule(logic, endsAt: _endsAt, title: 'Miracle Morning', body: '${_steps[i].name} : c’est le temps prévu. Passe à la suite quand tu veux.');
+    _stepStart = start ?? DateTime.now();
+    _endsAt = ends ?? _stepStart.add(Duration(minutes: _steps[i].minutes));
+    if (_endsAt.isAfter(DateTime.now())) {
+      CoupAlarm.schedule(logic, endsAt: _endsAt, title: 'Miracle Morning', body: '${_steps[i].name} : c’est le temps prévu. Passe à la suite quand tu veux.');
+    }
     // Le chrono de l'activité liée de la routine (Lecture, Sport), jamais par-dessus un chrono lancé à la main.
     final r = _routine(_steps[i]);
     final linked = (r?.linkedActivityId ?? '').trim();
     final running = logic.state.sessions.any((s) => s.endAt == null && !s.deleted);
-    if (linked.isNotEmpty && (!running || _ownChrono) && logic.state.activities.any((a) => a.id == linked && !a.deleted)) {
+    // Reprise : le chrono de cette étape tourne encore (app fermée en route), on le garde.
+    if (start != null && linked.isNotEmpty && logic.state.sessions.any((s) => s.endAt == null && !s.deleted && s.activityId == linked && !s.startAt.isBefore(_startedAt))) {
+      _ownChrono = true;
+      _chrono.add(_steps[i].id);
+    } else if (linked.isNotEmpty && (!running || _ownChrono) && logic.state.activities.any((a) => a.id == linked && !a.deleted)) {
       if (_ownChrono) logic.stopActive();
       logic.start(linked);
       _ownChrono = true;
@@ -249,7 +322,8 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
       logic.stopActive();
       _ownChrono = false;
     }
-    setState(() {});
+    _persist();
+    if (mounted) setState(() {});
   }
 
   void _leave(_StepState st) {
@@ -276,7 +350,8 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
     _ownChrono = false;
     CoupAlarm.cancel();
     _save();
-    setState(() => _end = true);
+    RunSessionStore.clear();
+    if (mounted) setState(() => _end = true);
   }
 
   void _save() {
@@ -285,6 +360,7 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
     _saved = true;
     final now = DateTime.now();
     final run = ChainRun(
+      id: _runId,
       date: ymdOf(livedDate(now, logic.dayStartMin)),
       startedAt: _startedAt,
       endedAt: now,
@@ -425,6 +501,7 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
           onPressed: () {
             final base = _endsAt.isBefore(DateTime.now()) ? DateTime.now() : _endsAt;
             setState(() => _endsAt = base.add(const Duration(minutes: 2)));
+            _persist();
             CoupAlarm.schedule(logic, endsAt: _endsAt, title: 'Miracle Morning', body: '${s.name} : c’est le temps prévu.');
           },
           child: const Text('+2 min', style: TextStyle(color: _text2)),

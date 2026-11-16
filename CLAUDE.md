@@ -1417,8 +1417,12 @@ par-dessus un chrono lancé à la main) puis le bilan (« k sur n · m min », r
 forme = `setMode`, ENSUITE le prochain bloc, « Ta journée commence »). Entrées : MAINTENANT le matin (`pickNow(miracleAvailable:)` avant
 midi, rien de fait, ≥ 15 min avant le prochain bloc ; `NowCard.miracle` / `onMiracle` : « Lancer mon Miracle Morning · 42 min ») et le rond
 🌅 de l'en-tête d'Aujourd'hui tant qu'il n'est pas fait (`_miracleBtn` : tap = lancer, ou régler s'il n'y a aucune étape ; appui long = les
-étapes ; la rangée des ronds se réduit si besoin, `FittedBox`). `CoupAlarm.enabled` (tests d'écran seulement). Pas encore reprenable si
-l'app est tuée (les +1 déjà donnés restent).
+étapes ; la rangée des ronds se réduit si besoin, `FittedBox`). `CoupAlarm.enabled` (tests d'écran seulement). **Reprenable** (2026-11-16) : la
+session est écrite sur l'appareil à chaque étape (`PendingRun` `kind:"miracle"`, `RunSessionStore`, comme la Guérilla : étapes faites /
+passées, temps de chaque étape, étape en cours avec son début et sa fin, +1 déjà donnés) ; tant que le jour vécu est le même et < 45 min
+sans rien, `PendingRunCard` la rouvre d'elle-même au lancement (« Miracle Morning en cours · n étapes faites », Reprendre · Terminer ici),
+le rond 🌅 porte un point et reprend (`pendingMiracle`) ; à la reprise l'étape repart avec son temps d'avant et garde le chrono qui tourne.
+Expirée = close telle quelle (ses étapes comptent).
 
 ## Plongé, pas perdu (2026-11-03, maquette validée « Plongé, pas perdu »)
 
