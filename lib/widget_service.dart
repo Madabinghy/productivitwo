@@ -21,7 +21,6 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn;
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart' show perfectDayTile;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/domain_widget.dart';
-import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayBlocks;
 import 'package:productivitwo_v1/utils/mode.dart' show kModeLabels;
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
@@ -335,11 +334,10 @@ class WidgetService {
       out['running'] = {'activity': a?.name ?? 'Chrono', 'startMs': run.startAt.millisecondsSinceEpoch};
     }
 
-    // Journée parfaite, braises, mode.
+    // Journée parfaite, mode.
     final bc = badges;
     final facts = bc?.todayFacts();
-    final ledger = logic.emberLedgerNow();
-    final tile = perfectDayTile(facts, ledger);
+    final tile = perfectDayTile(facts);
     if (facts != null && tile != null) {
       final total = facts.routines.length + facts.countedBlocks.length;
       final done = facts.routinesReached + facts.blocksDone;
@@ -351,7 +349,6 @@ class WidgetService {
         'total': total,
       };
     }
-    out['embers'] = '${ledger.available} / $kEmberCap';
     out['mode'] = {
       'label': logic.inRecharge ? 'Recharge' : kModeLabels[logic.mode],
       'key': logic.inRecharge ? 'recharge' : logic.mode.name,

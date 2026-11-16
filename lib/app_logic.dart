@@ -2701,18 +2701,6 @@ class AppLogic implements HuntStore {
     );
   }
 
-  Future<void> rekindle(String activityId) async {
-    emberSpends = withRekindle(emberSpends, activityId, livedTodayYmd);
-    onChange();
-    await (sync ?? FirestoreSync()).setEmberSpends(emberSpends.map((s) => s.toJson()).toList());
-  }
-
-  Future<void> cancelRekindle(String activityId) async {
-    emberSpends = withoutPending(emberSpends, activityId, livedTodayYmd);
-    onChange();
-    await (sync ?? FirestoreSync()).setEmberSpends(emberSpends.map((s) => s.toJson()).toList());
-  }
-
   // ── Chasse aux badges (lot A, 2026-10) ────────────────────────────────────
   /// Chasses en cours (`data/meta.badgeHunts`, alimentées par le flux meta).
   List<BadgeHunt> badgeHunts = const [];

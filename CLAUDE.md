@@ -1812,6 +1812,13 @@ restent annulables ; la journée difficile s'offre dès UNE série cassée), plu
 BRAISES dans sa feuille ni dans « Badges en jeu », bilan du soir « Journée parfaite · tout est tenu », textes et règles sans
 braise. Le registre (`emberLedger`) est toujours rejoué : les jours déjà comblés le restent, aucune série ne casse après coup.
 Restent comme filets : journée difficile, Le minimum, gel, veille.
+**Braises : code retiré** (2026-11-16, décision user « on simplifie ») : plus de flag `kEmbersEnabled`, ni de rallumage
+(`rekindle`, `withRekindle`, `showRekindleSheet`), ni de réserve à l'écran (`EmberDots`, `EmberLedgerPanel`, `LostSeriesRow`,
+`kRuleEmbers`), ni de `perfectDayTile(…, ledger)` / `buildEveningLedger(emberStock:)`, ni d'`embers` dans l'instantané coach et le widget
+iOS. On garde seulement `utils/embers.dart` (`emberLedger` rejoue les rallumages déjà enregistrés dans `data/meta.emberSpends`, pour que
+leurs jours comblés tiennent toujours les séries ; `perfectYmds` sert à la Revue et au Sommeil ; `lostYesterday` alimente la carte Perdu
+hier) et `LostYesterdaySection` (`embers_view.dart`) = journée difficile + Le minimum seulement. Le serveur lit encore `embers` s'il est
+là (rien à déployer).
 **Sniper allégé** (lot 3, même jour, À L'ESSAI — le user pense que régler le tir fait l'intérêt du Sniper, il teste puis on
 décide) : flag `kSniperTuningEnabled = false` — le viseur devient une simple liste « CE QUI TOMBE » (tap = écarter / remettre),
 sans réglage − / + ni mini-tirs (`_stepper`), sans ordre à la main (`ReorderableListView`, « Ordre conseillé »), sans les chiffres

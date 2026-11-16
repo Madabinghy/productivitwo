@@ -65,8 +65,7 @@ import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName, bedtimePrompt;
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
 import 'package:productivitwo_v1/widgets/minimum_view.dart' show ClimbCard, MinimumCard, minimumTile, showMinimumSheet;
-import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
-import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
+import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection;
 import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen, kPalierAmber;
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
@@ -1202,7 +1201,7 @@ class TodayViewState extends State<TodayView> {
         objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: _on(AppModule.game) ? badgesTile(bc?.deck, board) : null,
-        perfect: minimumTile(widget.logic) ?? perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
+        perfect: minimumTile(widget.logic) ?? perfectDayTile(bc?.todayFacts()),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
         projects: projectTile,
         onProgram: _openProgramSheet,
@@ -1365,7 +1364,6 @@ class TodayViewState extends State<TodayView> {
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
         final facts = bc.todayFacts();
-        final ledger = widget.logic.emberLedgerNow();
         final routines = [for (final r in facts.routines) if (!r.reached) r];
         final blocks = facts.pendingBlocks..sort((a, b) => a.startTime.compareTo(b.startTime));
         final missing = routines.length + blocks.length;
@@ -1404,26 +1402,7 @@ class TodayViewState extends State<TodayView> {
               FicheTitle('BLOCS À FAIRE · ${blocks.length}'),
               _perfectBlocks(ctx, blocks),
             ],
-            if (total > 0 && missing == 0 && !kEmbersEnabled) const FicheNote('Tout est tenu.'),
-            if (total > 0 && missing == 0 && kEmbersEnabled)
-              FicheNote(ledger.stock >= kEmberCap
-                  ? 'Tout est tenu. La réserve est pleine : pas de braise de plus ce soir.'
-                  : 'Tout est tenu : une braise s\'ajoute à la bascule de la journée.'),
-            if (kEmbersEnabled) ...[
-            const FicheTitle('BRAISES'),
-            Row(children: [
-              EmberDots(stock: ledger.available),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('${ledger.available} sur $kEmberCap en réserve${ledger.pending != null ? ' · une en attente' : ''}',
-                    style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .7))),
-              ),
-            ]),
-            const SizedBox(height: 6),
-            const FicheNote('Une journée parfaite forge une braise (3 au plus). Une braise rallume une série de routine cassée hier, si la routine est atteinte aujourd\'hui.'),
-            const SizedBox(height: 8),
-            EmberLedgerPanel(ledger: ledger, names: {for (final a in widget.logic.state.activities) a.id: a.name}),
-            ],
+            if (total > 0 && missing == 0) const FicheNote('Tout est tenu.'),
             const SizedBox(height: 14),
             TextButton(
               key: const ValueKey('perfect-to-minimum'),
@@ -1986,7 +1965,6 @@ class TodayViewState extends State<TodayView> {
       dayStart: livedDayStart(now, widget.logic.dayStartMin),
       now: now,
       perfectToday: widget.logic.minimumNow == null && facts != null && isPerfectSoFar(facts),
-      emberStock: widget.logic.emberLedgerNow().available,
       excusedToday: widget.logic.excusedRoutinesToday(),
     );
   }

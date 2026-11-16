@@ -220,19 +220,3 @@ String _short(String ymd) {
   final d = _parse(ymd);
   return '${d.day} ${months[d.month - 1]}';
 }
-
-/// Nouvelle liste à écrire pour rallumer [activityId] aujourd'hui (les plus
-/// anciens rallumages au-delà de [kEmberSpendsKept] sont oubliés).
-List<EmberSpend> withRekindle(List<EmberSpend> spends, String activityId, String todayYmd) {
-  final next = [
-    for (final s in spends)
-      if (!(s.activityId == activityId && s.spentYmd == todayYmd)) s,
-    EmberSpend(activityId: activityId, lostYmd: ymdShift(todayYmd, -1), spentYmd: todayYmd),
-  ];
-  return next.length > kEmberSpendsKept ? next.sublist(next.length - kEmberSpendsKept) : next;
-}
-
-/// Annule le rallumage armé aujourd'hui pour [activityId] (seulement s'il est
-/// encore en attente : un rallumage effectif ne se défait pas).
-List<EmberSpend> withoutPending(List<EmberSpend> spends, String activityId, String todayYmd) =>
-    [for (final s in spends) if (!(s.activityId == activityId && s.spentYmd == todayYmd)) s];

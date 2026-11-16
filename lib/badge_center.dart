@@ -9,7 +9,6 @@ import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/coach_signals.dart';
 import 'package:productivitwo_v1/utils/today_facts.dart';
-import 'package:productivitwo_v1/utils/embers.dart' show EmberEventKind;
 import 'dart:convert' show jsonEncode;
 
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -163,21 +162,10 @@ class BadgeCenter extends ChangeNotifier {
             'domainId': logic.state.activities.where((a) => a.id == b.def.subjectId).firstOrNull?.domainId,
         },
     ];
-    final since = ymdOf(DateTime.now().subtract(const Duration(days: 30)));
-    final acts = {for (final a in logic.state.activities) a.id: a};
     final body = {
       'acquired': sharedDeck.acquired,
       'total': sharedDeck.total,
       'badges': badges,
-      // Braises : réserve et séries rallumées sur 30 jours (vue coach, filtrées par domaine partagé côté serveur).
-      'embers': {
-        'stock': d.embers.stock,
-        'rekindled': [
-          for (final e in d.embers.history)
-            if (e.kind == EmberEventKind.spent && e.ymd.compareTo(since) >= 0)
-              {'name': acts[e.activityId]?.name ?? 'Routine', 'ymd': e.ymd, 'domainId': acts[e.activityId]?.domainId},
-        ],
-      },
     };
     // Signaux de la semaine pour le coach (2026-11-01, `utils/coach_signals.dart`).
     body['signals'] = coachSignals(

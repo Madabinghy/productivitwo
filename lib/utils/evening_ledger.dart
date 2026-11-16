@@ -1,11 +1,9 @@
-import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
-import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 
 /// « Aujourd'hui en enjeux », lot 4 : le bilan du soir. À partir de 19 h (sur
@@ -50,11 +48,9 @@ EveningLedger buildEveningLedger({
   required List<ObjectiveDay> objectiveDays,
   required DateTime dayStart,
   required DateTime now,
-  /// Journée en cours parfaite (toutes les routines, tous les blocs) : une braise à la bascule.
+  /// Journée en cours parfaite (toutes les routines, tous les blocs).
   bool perfectToday = false,
-  /// Braises libres maintenant (pour « n sur 3 »).
-  int emberStock = 0,
-  /// Routines excusées « pas aujourd'hui » : la journée reste parfaite, mais ne forge pas de braise.
+  /// Routines excusées « pas aujourd'hui » : la journée reste parfaite, on le dit.
   int excusedToday = 0,
 }) {
   final advanced = <LedgerLine>[];
@@ -62,32 +58,8 @@ EveningLedger buildEveningLedger({
   final tomorrow = <String>[];
   final calToday = DateTime(dayStart.year, dayStart.month, dayStart.day);
 
-  // ── Braise : la journée parfaite en forge une à la bascule ────────────────
-  if (!kEmbersEnabled) {
-    if (perfectToday) advanced.add(LedgerLine('✓', 'Journée parfaite', excusedToday > 0 ? '$excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}' : 'tout est tenu'));
-  } else if (perfectToday && excusedToday > 0) {
-    advanced.add(LedgerLine(
-      '✓',
-      'Journée parfaite · $excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}',
-      'pas de braise ce soir : elle se forge sans « pas aujourd\'hui »',
-    ));
-  } else if (perfectToday) {
-    advanced.add(LedgerLine(
-      '+1',
-      'Journée parfaite · une braise',
-      emberStock >= kEmberCap ? 'réserve pleine ($kEmberCap sur $kEmberCap) : rien de plus' : 'acquise à la bascule · ${emberStock + 1} sur $kEmberCap en réserve',
-    ));
-  }
-  // ── Braise : le dimanche, une semaine tenue en forge une aussi ────────────
-  final week = deck?.weeks.thisWeek;
-  if (kEmbersEnabled && week != null && week.pct != null && calToday.weekday == DateTime.sunday && deck!.weeks.missing == 0) {
-    final stock = emberStock + (perfectToday && excusedToday == 0 ? 1 : 0);
-    advanced.add(LedgerLine(
-      '+1',
-      'Semaine tenue · ${deck.weeks.current + 1} d’affilée · une braise',
-      stock >= kEmberCap ? 'réserve pleine ($kEmberCap sur $kEmberCap) : rien de plus' : 'acquise à la bascule · ${stock + 1} sur $kEmberCap en réserve',
-    ));
-  }
+  // ── Journée parfaite (sans braise depuis le 2026-11-07) ─────────────────
+  if (perfectToday) advanced.add(LedgerLine('✓', 'Journée parfaite', excusedToday > 0 ? '$excusedToday routine${excusedToday > 1 ? 's' : ''} excusée${excusedToday > 1 ? 's' : ''}' : 'tout est tenu'));
 
   // ── Badges : paliers obtenus aujourd'hui, puis séries / chasses tenues ─────
   final tiered = <String>{};

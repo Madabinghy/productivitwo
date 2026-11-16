@@ -1,4 +1,3 @@
-import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
@@ -784,7 +783,7 @@ class _PlanScreenState extends State<PlanScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                    '${off.length} écartée${off.length > 1 ? 's' : ''} pour $when : Journée parfaite reste possible sans elle${off.length > 1 ? 's' : ''}${kEmbersEnabled ? ', sans braise,' : ''} et ${off.length > 1 ? 'leurs séries s\'arrêtent' : 'sa série s\'arrête'}.',
+                    '${off.length} écartée${off.length > 1 ? 's' : ''} pour $when : Journée parfaite reste possible sans elle${off.length > 1 ? 's' : ''} et ${off.length > 1 ? 'leurs séries s\'arrêtent' : 'sa série s\'arrête'}.',
                     style: const TextStyle(fontSize: 12.5, color: _gold, height: 1.35)),
               ),
           ],
@@ -1067,7 +1066,7 @@ class _PlanScreenState extends State<PlanScreen> {
                 padding: const EdgeInsets.only(top: 4),
                 child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                   Text('Écartée${excusedNames.length > 1 ? 's' : ''} $when : ', style: const TextStyle(fontSize: 13, color: _ember)),
-                  Text('${excusedNames.join(', ')} · série${excusedNames.length > 1 ? 's' : ''} arrêtée${excusedNames.length > 1 ? 's' : ''} ${kEmbersEnabled ? '· pas de braise ' : ''}· ',
+                  Text('${excusedNames.join(', ')} · série${excusedNames.length > 1 ? 's' : ''} arrêtée${excusedNames.length > 1 ? 's' : ''} · ',
                       style: const TextStyle(fontSize: 13, color: _text3)),
                   GestureDetector(
                     key: const ValueKey('plan-restore-excused'),

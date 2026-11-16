@@ -20,13 +20,6 @@ final bool kGameLayerEnabled = false;
 /// restent des cartes simples dans l'album. Même principe `final`.
 final bool kCollectionMetaEnabled = false;
 
-/// Braises (audit 2026-11-07, décision user : trop de filets pour les séries) :
-/// false = plus de réserve à forger ni de série à rallumer dans l'interface ; la
-/// journée difficile, le minimum et le gel restent. Les rallumages déjà faits
-/// gardent leur jour comblé (le registre est toujours rejoué) : aucune série ne
-/// casse rétroactivement. Même principe `final`.
-final bool kEmbersEnabled = false;
-
 /// Sniper allégé (audit 2026-11-07) : false = le viseur est une simple liste
 /// « ce qui tombe, avec combien de temps » (on écarte d'un tap) — plus de
 /// réglage − / + ni de mini-tirs, plus d'ordre à la main, plus de chiffres de
