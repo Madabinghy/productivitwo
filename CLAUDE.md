@@ -171,7 +171,9 @@ Dates · Capacité ; plus de bascule 7 / 14 jours (la grille montre toujours la 
 (`importGcalDay`, `functions/src/gcal.ts`) n'ignore plus tout événement marqué « source: productivitwo » — seuls les événements de la
 synchro native (`isNativeEvent`, propriété privée pwo) sont ignorés d'office ; un événement marqué par Claude l'est seulement s'il recopie
 un bloc ordinaire du programme, même retiré ou sauté (`isCopyOfBlock`, même début et même titre ou même durée). Sinon il arrive en miroir
-comme un rendez-vous (⚠️ `firebase deploy --only functions`).
+comme un rendez-vous. Une **copie faite à la main** dans Google (« Dupliquer » un événement poussé par l'app) garde la propriété pwo avec le
+jour d'origine : `isNativeEvent(ev, date)` ne l'ignore que si `pwoDate` est le jour importé, et `syncDayToGcal` ne touche qu'aux événements
+qui tombent vraiment ce jour-là (une copie posée ailleurs n'est plus ramenée ni supprimée) (⚠️ `firebase deploy --only functions`).
 **Google Agenda sur toute la semaine** (2026-11-07, retour user : préparer la semaine prochaine) : le mobile ne synchronise qu'aujourd'hui
 et demain ; la vue relit chaque jour à venir de la semaine affichée (`_syncAgenda` → `gcalSyncDay`, même appel que le ⟳ d'Aujourd'hui) à
 l'ouverture et à chaque changement de semaine, état « agenda Google à jour · HH:MM » cliquable dans l'en-tête (`_agendaStatus`).

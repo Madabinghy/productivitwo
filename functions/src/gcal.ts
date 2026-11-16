@@ -172,9 +172,15 @@ export function isOurEvent(ev: { extendedProperties?: { private?: Record<string,
   return title.endsWith(" - productivitwo") || title.endsWith(" – productivitwo");
 }
 
-/** Poussé par la synchro de l'app elle-même (propriété privée pwo) : jamais importé. */
-export function isNativeEvent(ev: { extendedProperties?: { private?: Record<string, unknown> } }): boolean {
-  return ev.extendedProperties?.private?.pwo === "1";
+/**
+ * Poussé par la synchro de l'app elle-même (propriété privée pwo) POUR CE JOUR : jamais importé. Une copie faite à la
+ * main dans Google Agenda (« Dupliquer ») garde la propriété avec le jour d'origine : posée un autre jour, c'est un
+ * rendez-vous de l'utilisateur (retour user 2026-11-16, « Cléa Num » dupliqué du 13 vers le 17 et le 20).
+ */
+export function isNativeEvent(ev: { extendedProperties?: { private?: Record<string, unknown> } }, date?: string): boolean {
+  const p = ev.extendedProperties?.private;
+  if (p?.pwo !== "1") return false;
+  return date == null || p.pwoDate == null || String(p.pwoDate) === date;
 }
 
 /**
@@ -234,7 +240,7 @@ export async function importGcalDay(
   const events = new Map<string, { title: string; startMin: number; durationMin: number }>();
   for (const ev of items) {
     if (ev.status === "cancelled") continue;
-    if (isNativeEvent(ev)) continue;
+    if (isNativeEvent(ev, date)) continue;
     const startIso = ev.start?.dateTime as string | undefined;
     const endIso = ev.end?.dateTime as string | undefined;
     if (!startIso || !endIso) continue; // journée entière
@@ -250,7 +256,7 @@ export async function importGcalDay(
       startMin: parseInt(local.slice(11, 13), 10) * 60 + parseInt(local.slice(14, 16), 10),
       durationMin: Math.max(5, Math.round((endMs - startMs) / 60_000)),
     };
-    // Marqué « source: productivitwo » par Claude : ignoré seulement s'il recopie un bloc du programme.
+    // Marqué « source: productivitwo » (Claude, ou copie d'un envoi de l'app) : ignoré seulement s'il recopie un bloc du programme.
     if (isOurEvent(ev)) {
       const hm = `${String(Math.floor(slot.startMin / 60)).padStart(2, "0")}:${String(slot.startMin % 60).padStart(2, "0")}`;
       if (isCopyOfBlock({ startTime: hm, durationMin: slot.durationMin, title: slot.title }, blocks as Record<string, unknown>[])) continue;
@@ -358,7 +364,13 @@ export async function syncDayToGcal(
   const existing = new Map<string, Json>();
   for (const ev of (listBody.items as Json[]) ?? []) {
     const bid = ev.extendedProperties?.private?.pwoBlockId;
-    if (bid) existing.set(String(bid), ev);
+    // Une copie faite à la main posée un autre jour garde pwoDate : ce n'est plus notre événement, on n'y touche pas.
+    const startIso = String(ev.start?.dateTime ?? "");
+    if (tzOff != null && startIso) {
+      const local = new Date(Date.parse(startIso) + tzOff * 60_000).toISOString().slice(0, 10);
+      if (local !== date) continue;
+    }
+    if (bid && !existing.has(String(bid))) existing.set(String(bid), ev);
   }
 
   let created = 0, updated = 0, deleted = 0;

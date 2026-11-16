@@ -25,6 +25,10 @@ test("rendez-vous de l'utilisateur : importé", () => {
 test("marqué par Claude : ignoré seulement s'il recopie un bloc du programme", () => {
   assert.equal(isNativeEvent({ extendedProperties: { private: { pwo: "1" } } }), true);
   assert.equal(isNativeEvent({ description: "source: productivitwo" }), false);
+  // Copie dupliquée à la main : garde pwoDate du jour d'origine.
+  const copy = { extendedProperties: { private: { pwo: "1", pwoBlockId: "b", pwoDate: "2026-11-13" } } };
+  assert.equal(isNativeEvent(copy, "2026-11-13"), true);
+  assert.equal(isNativeEvent(copy, "2026-11-17"), false);
   const blocks = [
     { startTime: "09:00", durationMin: 60, title: "Deep work", status: "pending" },
     { startTime: "14:00", durationMin: 30, title: "Pause", status: "deleted" },
