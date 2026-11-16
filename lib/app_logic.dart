@@ -47,6 +47,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart' show MealWeek, PlannedMeal;
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides, kSportSessionMin, resolveSportPick;
 
@@ -2011,8 +2012,30 @@ class AppLogic implements HuntStore {
 
   Future<void> setModule(AppModule m, bool on) async {
     modules = withModule(modules, m, on);
+    final clear = on && journey.pending == m;
+    if (clear) journey = ModuleJourney(since: journey.since, lastProposed: journey.lastProposed, declined: journey.declined);
     onChange();
-    await sync?.setMetaFields({'modules': modules.toJson()});
+    await sync?.setMetaFields({'modules': {...modules.toJson(), if (clear) 'pending': null}});
+  }
+
+  /// Le parcours (lot 3) : la proposition en attente, les refus, le début (`data/meta.modules`).
+  ModuleJourney journey = const ModuleJourney();
+
+  /// Pose la proposition du jour (une seule fois : elle reste jusqu'à sa réponse).
+  Future<void> proposeModule(AppModule m) async {
+    if (journey.pending == m) return;
+    final today = livedTodayYmd;
+    journey = ModuleJourney(since: journey.since, pending: m, lastProposed: today, declined: journey.declined);
+    onChange();
+    await sync?.setMetaFields({'modules': {'pending': moduleInfo(m).key, 'lastProposed': today}});
+  }
+
+  /// « Plus tard » (reproposé dans 30 jours) ou « Pas pour moi » (plus jamais).
+  Future<void> declineModule(AppModule m, {bool never = false}) async {
+    final v = never ? 'never' : 'later:${laterUntil(livedTodayYmd)}';
+    journey = ModuleJourney(since: journey.since, lastProposed: journey.lastProposed, declined: {...journey.declined, m: v});
+    onChange();
+    await sync?.setMetaFields({'modules': {'pending': null, 'declined': {moduleInfo(m).key: v}}});
   }
 
   /// Cartes Liberté masquées de l'album (`data/meta.freedomCardsHidden`) : elles sortent alors du total et de Collectionneur.
