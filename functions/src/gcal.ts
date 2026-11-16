@@ -1,4 +1,4 @@
-import { dropPlainDuplicates } from "./schedule_dedupe";
+import { dropPlainDuplicates, sameSlot } from "./schedule_dedupe";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue } from "firebase-admin/firestore";
@@ -172,6 +172,21 @@ export function isOurEvent(ev: { extendedProperties?: { private?: Record<string,
   return title.endsWith(" - productivitwo") || title.endsWith(" – productivitwo");
 }
 
+/** Poussé par la synchro de l'app elle-même (propriété privée pwo) : jamais importé. */
+export function isNativeEvent(ev: { extendedProperties?: { private?: Record<string, unknown> } }): boolean {
+  return ev.extendedProperties?.private?.pwo === "1";
+}
+
+/**
+ * Événement marqué « source: productivitwo » sans propriété privée (créé par Claude via son connecteur) :
+ * c'est la copie d'un bloc du programme SEULEMENT si un bloc ordinaire (même retiré ou sauté : sa copie ne doit
+ * pas revenir en miroir) a le même créneau (même début et même titre ou même durée). Sinon c'est un vrai rendez-vous posé par Claude (bug user
+ * 2026-11-16 : « Cléa Num » du 17 et du 20 nov. créés par Claude n'arrivaient jamais dans l'app).
+ */
+export function isCopyOfBlock(slot: { startTime: string; durationMin: number; title: string }, blocks: Record<string, unknown>[]): boolean {
+  return blocks.some((b) => b.gcalEventId == null && sameSlot(b, slot));
+}
+
 export async function importGcalDay(
   uid: string,
   date: string
@@ -208,10 +223,18 @@ export async function importGcalDay(
   // « source: productivitwo », titre « … - Productivitwo ») : ce connecteur ne
   // peut pas poser de propriété privée, et sans ce filtre ces events revenaient
   // en blocs MIROIRS protégés — doublons + réorganisation figée (constaté).
+  // Depuis le 2026-11-16, un événement marqué par Claude n'est ignoré que s'il
+  // recopie un bloc du programme (`isCopyOfBlock`) ; sinon c'est un vrai rendez-vous.
+
+  // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  const blocks = ((snap.data()?.blocks as Json[]) ?? []).slice();
+
   const events = new Map<string, { title: string; startMin: number; durationMin: number }>();
   for (const ev of items) {
     if (ev.status === "cancelled") continue;
-    if (isOurEvent(ev)) continue;
+    if (isNativeEvent(ev)) continue;
     const startIso = ev.start?.dateTime as string | undefined;
     const endIso = ev.end?.dateTime as string | undefined;
     if (!startIso || !endIso) continue; // journée entière
@@ -222,17 +245,18 @@ export async function importGcalDay(
     if (!isFinite(startMs) || !isFinite(endMs)) continue;
     const local = new Date(startMs + tzOff * 60_000).toISOString();
     if (local.slice(0, 10) !== date) continue; // instance d'un autre jour vécu
-    events.set(String(ev.id), {
+    const slot = {
       title: String(ev.summary ?? "(Sans titre)").trim() || "(Sans titre)",
       startMin: parseInt(local.slice(11, 13), 10) * 60 + parseInt(local.slice(14, 16), 10),
       durationMin: Math.max(5, Math.round((endMs - startMs) / 60_000)),
-    });
+    };
+    // Marqué « source: productivitwo » par Claude : ignoré seulement s'il recopie un bloc du programme.
+    if (isOurEvent(ev)) {
+      const hm = `${String(Math.floor(slot.startMin / 60)).padStart(2, "0")}:${String(slot.startMin % 60).padStart(2, "0")}`;
+      if (isCopyOfBlock({ startTime: hm, durationMin: slot.durationMin, title: slot.title }, blocks as Record<string, unknown>[])) continue;
+    }
+    events.set(String(ev.id), slot);
   }
-
-  // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
-  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
-  const snap = await ref.get();
-  const blocks = ((snap.data()?.blocks as Json[]) ?? []).slice();
   let imported = 0, updated = 0, removed = 0;
 
   for (let i = blocks.length - 1; i >= 0; i--) {
