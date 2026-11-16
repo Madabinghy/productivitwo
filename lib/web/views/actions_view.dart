@@ -310,7 +310,7 @@ class _ActionsViewState extends State<ActionsView> {
     final today = _livedToday;
     final programIds = {
       for (final b in _todayBlocks)
-        if (b.actionId != null && b.status == 'pending') b.actionId!,
+        if (b.status == 'pending') ...b.targetActionIds,
     };
     var open = 0, program = 0, focused = 0, late = 0, stale = 0;
     void count(TaskAction a, ProjectTask? t) {
@@ -753,7 +753,8 @@ class _ActionsViewState extends State<ActionsView> {
     final week = today.add(const Duration(days: 6));
     final blockOf = <String, ScheduleBlock>{
       for (final b in _todayBlocks)
-        if (b.actionId != null && b.status == 'pending') b.actionId!: b,
+        if (b.status == 'pending')
+          for (final id in b.targetActionIds) id: b,
     };
     final seen = <String>{};
     final sections = <String, List<_UrgentEntry>>{
@@ -1071,7 +1072,7 @@ class _ActionsViewState extends State<ActionsView> {
         ? '${root != null && root.id != p.id ? '${root.title} › ' : ''}${p.title} › ${e.task!.title}'
         : '${e.activity?.name ?? 'Action'} · sans projet';
     final spent = spentByAction(_sessions)[a.id] ?? 0;
-    final block = _todayBlocks.where((b) => b.actionId == a.id && b.status == 'pending').firstOrNull;
+    final block = _todayBlocks.where((b) => b.targetActionIds.contains(a.id) && b.status == 'pending').firstOrNull;
     final running = _sessions.where((s) => s.endAt == null && s.actionId == a.id).firstOrNull;
     final chronoId = _chronoActivityOf(e);
     final due = effectiveDueDate(a, e.task);

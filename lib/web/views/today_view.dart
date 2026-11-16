@@ -3017,7 +3017,9 @@ class TodayViewState extends State<TodayView> {
                   Text('${pt.project.title} › ${pt.task.title}',
                       style: const TextStyle(fontSize: 12, color: kBText3)),
                   const SizedBox(height: 10),
-                  ..._taskWork(pt.project, pt.task, b),
+                  ..._taskWork(pt.project, pt.task, b.actionId),
+                  // Plusieurs cibles : les suivantes, dans l'ordre du bloc.
+                  for (final x in b.extraTargets) ..._extraTargetWork(x),
                 ] else
                   _agendaContent(b),
                 const SizedBox(height: 12),
@@ -3043,8 +3045,30 @@ class TodayViewState extends State<TodayView> {
   /// Action visée en avant (étapes cochables, ajout), autres actions ouvertes
   /// avec leurs étapes, nombre de faites — même découpage que l'écran bloc
   /// mobile (`blockWork`).
-  List<Widget> _taskWork(Project p, ProjectTask t, ScheduleBlock b) {
-    final w = blockWork(t, b.actionId);
+  /// Une cible suivante du bloc : « Projet › Tâche », puis son travail.
+  List<Widget> _extraTargetWork(BlockTarget x) {
+    final p = _project(x.projectId);
+    if (p == null) return const [];
+    final t = x.taskId == null ? null : p.tasks.where((e) => e.id == x.taskId).firstOrNull;
+    return [
+      const SizedBox(height: 14),
+      const Divider(height: 1, color: kBLine),
+      const SizedBox(height: 10),
+      InkWell(
+        key: ValueKey('detail-target-${x.projectId}-${x.taskId ?? ''}'),
+        onTap: () {
+          setState(() => _detailId = null);
+          widget.onOpenProject(p, taskId: x.taskId);
+        },
+        child: Text(t == null ? '${p.title} · tout le projet' : '${p.title} › ${t.title}',
+            style: const TextStyle(fontSize: 12, color: kBText3)),
+      ),
+      if (t != null) ...[const SizedBox(height: 10), ..._taskWork(p, t, x.actionId)],
+    ];
+  }
+
+  List<Widget> _taskWork(Project p, ProjectTask t, String? actionId) {
+    final w = blockWork(t, actionId);
     return [
       if (w.focus == null)
         const Text('Aucune action ouverte sur cette tâche.',

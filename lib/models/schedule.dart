@@ -201,6 +201,14 @@ class ScheduleBlock {
     extraTargets = list.sublist(1);
   }
 
+  /// Les actions visées par le bloc (principale et suivantes) : ce qui est
+  /// « au programme ».
+  Set<String> get targetActionIds => {
+        if (actionId != null) actionId!,
+        for (final t in extraTargets)
+          if (t.actionId != null) t.actionId!,
+      };
+
   /// Les tâches visées par le bloc (principale et suivantes).
   Set<String> get targetTaskIds => {
         if (taskId != null) taskId!,

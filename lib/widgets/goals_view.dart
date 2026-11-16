@@ -708,7 +708,7 @@ class _GoalsViewState extends State<GoalsView> {
     if (logic == null) return const [];
     final today = focusToday(now);
     final parole = logic.paroles[logic.livedTodayYmd]?.ids.toSet() ?? const <String>{};
-    final program = {for (final b in logic.todayBlocks) if (b.status == 'pending' && b.actionId != null) b.actionId!};
+    final program = {for (final b in logic.todayBlocks) if (b.status == 'pending') ...b.targetActionIds};
     final list = todayActions(projects: _projects, activities: widget.activities, today: today, paroleIds: parole, programActionIds: program);
     _inToday = {for (final x in list) x.action.id};
     final shown = _todayAll ? list : list.take(_kTodayMax).toList();

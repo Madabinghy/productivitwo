@@ -1665,8 +1665,13 @@ un Deep work à plusieurs cibles ouvre l'Offensive sur le front « Ce bloc · n 
 ouvertes de chaque tâche visée, l'action du bloc d'abord, un projet entier = ses actions prêtes ; gardé dans la session
 `extra.blockTargets`). **Serveur** (⚠️ `firebase deploy --only functions`) : logique pure `functions/src/block_targets.ts`
 (`normalizeExtraTargets`, `extraTargetLinks`) ; `schedule_day` accepte `extraTargets` sur un bloc, `get_day_schedule` les montre
-(« aussi projet:… tâche:… »). **Pas fait** : les cibles suivantes ne sont pas encore lues par « au programme » des actions, le détail
-d'un bloc d'Aujourd'hui (web), Enchaîner, les widgets iOS, `update_block` et `delete_task` (ils ne voient que la principale).
+(« aussi projet:… tâche:… »). **Le reste de l'app lit toutes les cibles** (2026-11-16, lot 2) : `ScheduleBlock.targetActionIds` →
+« au programme » des actions (Actions mobile et web, Projets mobile et web) et `targetTaskIds` (Projets web, Enchaîner) ;
+`activeTargetOf(block, projects)` (`utils/block_work.dart`) = la cible DU MOMENT, la première dans l'ordre du bloc où il reste à
+faire → MAINTENANT (« Projet › Tâche · 2 / 3 ») et les widgets iOS (`widgetBlock` : contexte, action, étape et ids de la cible du
+moment, donc « Étape faite » agit sur elle) ; Enchaîner (`chainItemsOf`) déroule la tâche principale puis les suivantes ; le détail
+d'un bloc d'Aujourd'hui web (`_extraTargetWork`) liste chaque cible suivante avec son travail cochable. **Pas fait** : côté serveur,
+`update_block` et `delete_task` ne voient que la cible principale.
 
 **Rendez-vous associés à une activité** (2026-11-16, retour user : une fois le minimum d'« Interventions » posé, la ligne quittait
 « À placer » et on ne pouvait plus associer les rendez-vous restants) : sous les groupes de « À placer », section repliée **AUTRES
