@@ -136,6 +136,7 @@ import 'package:productivitwo_v1/widgets/freedom_screens.dart' show reopenPendin
 import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
@@ -1840,9 +1841,10 @@ class _AppRootState extends State<AppRoot>
       // Nouveau compte (2026-11-16) : meta presque vide et pas encore de réglage des modules → le cœur seul.
       // Un compte qui existe a déjà ses réglages dans meta : il garde tout allumé.
       if (!logic.metaLoaded && m['modules'] == null && m.length <= 2) {
-        _sync.setMetaFields({'modules': const ModuleSettings.only({}).toJson()});
+        _sync.setMetaFields({'modules': {...const ModuleSettings.only({}).toJson(), 'since': logic.livedTodayYmd}});
       }
       final modules = parseModules(m['modules']);
+      final journey = ModuleJourney.from(m['modules']);
       final minimum = parseMinimumPeriods(m['minimumPeriods']);
       final seasons = parseSeasons(m['seasons']);
       final acquired = parseAcquired(m['acquired']);
@@ -1884,6 +1886,7 @@ class _AppRootState extends State<AppRoot>
           freezes.map((x) => x.toJson().toString()).join('|') == logic.freezes.map((x) => x.toJson().toString()).join('|') &&
           hardDays.join('|') == logic.hardDays.join('|') &&
           modules.sameAs(logic.modules) &&
+          journey.sameAs(logic.journey) &&
           minimumPeriodsToJson(minimum).toString() == minimumPeriodsToJson(logic.minimumPeriods).toString() &&
           seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
           acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
@@ -1936,6 +1939,7 @@ class _AppRootState extends State<AppRoot>
       logic.freezes = freezes;
       logic.hardDays = hardDays;
       logic.modules = modules;
+      logic.journey = journey;
       logic.minimumPeriods = minimum;
       logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;

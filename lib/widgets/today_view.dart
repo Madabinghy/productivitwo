@@ -78,6 +78,8 @@ import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/utils/module_journey.dart';
+import 'package:productivitwo_v1/widgets/module_proposal_card.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -716,6 +718,36 @@ class TodayViewState extends State<TodayView> {
     }
   }
 
+  /// Le parcours (lot 3 des modules) : UN module proposé quand un signal montre qu'on est prêt.
+  Widget? _moduleProposal() {
+    final logic = widget.logic;
+    if (logic.modules.isEverything || !logic.metaLoaded) return null;
+    final st = logic.state;
+    final facts = journeyFactsOf(
+      sessions: st.sessions,
+      hits: st.habitHits,
+      activities: st.activities,
+      domains: st.domains,
+      moods: st.moodMarks,
+      objectives: _objectives,
+      now: DateTime.now(),
+      dayStartMin: logic.dayStartMin,
+      since: logic.journey.since,
+    );
+    final m = nextProposal(
+      settings: logic.modules,
+      journey: logic.journey,
+      facts: facts,
+      today: logic.livedTodayYmd,
+      blocked: logic.minimumNow != null || logic.climbNow != null || logic.yesterdayIsHard,
+    );
+    if (m == null) return null;
+    if (logic.journey.pending != m) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => logic.proposeModule(m));
+    }
+    return ModuleProposalCard(logic: logic, module: m, facts: facts);
+  }
+
   /// Modules (2026-11-16) : ce qui n'est pas du cœur suit son interrupteur.
   bool _on(AppModule m) => widget.logic.moduleOn(m);
 
@@ -769,6 +801,7 @@ class TodayViewState extends State<TodayView> {
                       }),
                     ),
                   if (_on(AppModule.planning)) ..._weekReviewCards(),
+                  if (_moduleProposal() case final card?) card,
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
                   if (stakes case final board? when isEvening(widget.logic.livedNowMinNow) && !_eveningLedger(board).isEmpty) ...[

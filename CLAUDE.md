@@ -1796,7 +1796,17 @@ tuile Recul ; Jeu et badges = enjeux (tableau Ta journée, se perd ce soir de MA
 Propositions et Orion suivent Assistant. Organisation (`life_view.dart`) : compteur des 168 h (Analyse), bandeau de saison, section
 Liberté ; une nature à feuille (Nuit, Séances, Repas, Finances) dont le module est éteint redevient une tuile de domaine
 (`_kSheetModules` → `_fallbackNature`). **Nouveau compte = le cœur seul** : au premier flux meta, sans `modules` et avec un meta
-presque vide (≤ 2 champs), `modules {on: []}` est écrit. Pas encore branchés : Formateur (séances), le web.
+presque vide (≤ 2 champs), `modules {on: []}` est écrit. Pas encore branchés : Formateur (séances), le web. **Lot 3 livré (le parcours)** : logique pure
+`utils/module_journey.dart` — `ModuleJourney` (`since`, `pending`, `lastProposed`, `declined {clé: never | later:YYYY-MM-DD}`, rangés
+dans `data/meta.modules` à côté de `on`), `JourneyFacts` / `journeyFactsOf` (comptés depuis `since` : jours d'usage, jours avec chrono
+sur 7, jours en Flemme sur 7, jours à 70 % des routines quotidiennes sur 14, objectif engagé depuis 14 j, nuits et séances
+chronométrées, routine Repas tenue 7 j, domaine ou objectif d'argent), `moduleSignal` (seuil, « pourquoi maintenant », phrase ;
+Liberté, Formateur, Assistant jamais proposés), `nextProposal` (la proposition en attente reste jusqu'à sa réponse ; sinon une tous
+les `kProposalGapDays` (7) j, jamais quand bloqué = Le minimum, remontée, lendemain de journée difficile ; « Plus tard » = 30 j).
+`AppLogic.journey` / `proposeModule` / `declineModule` ; `setModule(on)` efface la proposition en attente. Carte « Nouveau pour toi »
+(`widgets/module_proposal_card.dart`, `ModuleProposalCard`, en tête d'Aujourd'hui via `_moduleProposal`) : phrase, pourquoi
+maintenant, ce que le module apporte, Essayer · Plus tard · Pas pour moi ; Essayer = SnackBar « … allumé · tu le trouves dans … »
+(`kModuleWhere`). Rien ne s'affiche tant que tout est allumé.
 
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 
