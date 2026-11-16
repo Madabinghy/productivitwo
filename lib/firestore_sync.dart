@@ -4026,6 +4026,9 @@ class FirestoreSync {
       // Fusion : les clés que le modèle Dart ne porte pas (ex. `subtitle`
       // des miroirs Google Agenda) survivent à la réécriture.
       blocks[idx] = {...blocks[idx], ...block.toJson()};
+      // `timeBlock` n'est écrit que posé : retiré du bloc (mode enlevé dans
+      // « Modifier le bloc »), il ne doit pas survivre à la fusion.
+      if (block.timeBlock == null) blocks[idx].remove('timeBlock');
     }
     await ref.update({'blocks': blocks});
   }

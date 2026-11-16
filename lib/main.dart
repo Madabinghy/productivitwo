@@ -3124,7 +3124,16 @@ class _AppRootState extends State<AppRoot>
       final resume = pending != null && pending.kind == kind && pending.isLive(DateTime.now(), logic.livedTodayYmd) ? pending : null;
       if (block.timeBlock == 'deep') {
         // Deep work visé (2026-11-03) : le front = son projet, ou les projets de son activité.
-        await showOffensiveScreen(context, logic, resume: resume, projectId: block.projectId, activityId: block.projectId == null ? block.activityId : null);
+        // Bloc empilé (2026-11-16) : avec un projet ET une activité, le chrono
+        // des coups tourne sur l'activité du bloc ; une tâche visée = on
+        // commence par son action.
+        final own = block.projectId == null ? null : _blockTimeActivity(block);
+        await showOffensiveScreen(context, logic,
+            resume: resume,
+            projectId: block.projectId,
+            firstActionId: block.projectId == null ? null : block.actionId,
+            activityId: block.projectId == null ? block.activityId : null,
+            chronoActivityId: own?.id);
       } else {
         await showGuerillaScreen(context, logic, resume: resume);
       }
@@ -3169,6 +3178,11 @@ class _AppRootState extends State<AppRoot>
       _focusTask = null;
     });
   }
+
+  /// L'activité-temps que porte un bloc (null = aucune, routine ou retirée).
+  Activity? _blockTimeActivity(ScheduleBlock block) => block.activityId == null
+      ? null
+      : _state?.activities.firstWhereOrNull((a) => a.id == block.activityId && !a.isHabit && !a.deleted);
 
   Future<void> _launchScheduledBlock(ScheduleBlock block,
       {bool goToNow = true}) async {
@@ -3282,8 +3296,11 @@ class _AppRootState extends State<AppRoot>
         .where((a) =>
             a.domainId == project.domainId && !a.isHabit && !a.deleted)
         .toList();
-    Activity? activity;
-    if (domainActs.length == 1) {
+    // Bloc empilé : l'activité que porte le bloc reçoit le temps, sans question.
+    Activity? activity = _blockTimeActivity(block);
+    if (activity != null) {
+      // rien à choisir
+    } else if (domainActs.length == 1) {
       activity = domainActs.first;
     } else if (domainActs.isNotEmpty) {
       final id = await showActivityPicker(context,
