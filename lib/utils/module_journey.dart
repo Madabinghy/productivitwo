@@ -19,7 +19,9 @@ class ModuleJourney {
   final Map<AppModule, String> declined;
   /// « Repartir comme un débutant » (lot 4) : les modules allumés avant le redémarrage, null = pas de redémarrage.
   final List<AppModule>? before;
-  const ModuleJourney({this.since, this.pending, this.lastProposed, this.declined = const {}, this.before});
+  /// Proposition posée par le coach (lot 5) : `pendingBy: 'coach'`, `pendingCoach` = son nom.
+  final String? pendingCoach;
+  const ModuleJourney({this.since, this.pending, this.lastProposed, this.declined = const {}, this.before, this.pendingCoach});
 
   static ModuleJourney from(dynamic raw) {
     if (raw is! Map) return const ModuleJourney();
@@ -34,6 +36,7 @@ class ModuleJourney {
     final p = raw['pending'];
     final b = raw['before'];
     return ModuleJourney(
+      pendingCoach: raw['pendingBy'] == 'coach' && p is String ? (raw['pendingCoach'] is String ? raw['pendingCoach'] as String : 'Ton coach') : null,
       before: b is List ? [for (final k in b) if (moduleOfKey('$k') case final m?) m] : null,
       since: raw['since'] is String ? raw['since'] as String : null,
       pending: p is String ? moduleOfKey(p) : null,
@@ -45,6 +48,7 @@ class ModuleJourney {
   bool sameAs(ModuleJourney o) =>
       since == o.since &&
       pending == o.pending &&
+      pendingCoach == o.pendingCoach &&
       lastProposed == o.lastProposed &&
       declined.length == o.declined.length &&
       (before?.join(',') ?? '-') == (o.before?.join(',') ?? '-') &&

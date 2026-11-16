@@ -10,6 +10,7 @@ const db_1 = require("./db");
 const execute_1 = require("./execute");
 const elan_1 = require("./elan");
 const badges_mcp_1 = require("./badges_mcp");
+const modules_coach_1 = require("./modules_coach");
 const coach_signals_1 = require("./coach_signals");
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
 // lib/utils/engagement_stats.dart (kKeptRatio).
@@ -395,7 +396,7 @@ function buildPresessionReport(fiche, dash) {
 }
 // ── coachApi : POST + Authorization: Bearer <ID token Firebase du coach> ──────
 exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -409,7 +410,7 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
         res.status(403).json({ error: "Accès coach requis" });
         return;
     }
-    const { action, id, email, name, status, notes, nextSession, text, targetDate } = req.body;
+    const { action, id, email, name, status, notes, nextSession, text, targetDate, module } = req.body;
     /** Fiche appartenant à CE coach — null sinon (jamais celle d'un autre). */
     const ownDoc = async (docId) => {
         if (!docId)
@@ -571,7 +572,37 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 return;
             }
             const dash = await buildDashboard(coacheeUid, sharing);
-            res.status(200).json({ ok: true, dashboard: dash });
+            // Modules (lot 5) : ceux qu'il a allumés, jamais Liberté.
+            const meta = (_c = (await db_1.db.doc(`users/${coacheeUid}/data/meta`).get()).data()) !== null && _c !== void 0 ? _c : {};
+            res.status(200).json({ ok: true, dashboard: Object.assign(Object.assign({}, dash), { modules: (0, modules_coach_1.coachModuleView)(meta.modules) }) });
+            return;
+        }
+        if (action === "proposeModule") {
+            // Le coach propose un module ; le coaché l'accepte ou non dans son app (carte « Nouveau pour toi »).
+            const doc = await ownDoc(id);
+            if (!doc) {
+                res.status(404).json({ error: "Fiche introuvable" });
+                return;
+            }
+            if (doc.consent !== "granted") {
+                res.status(200).json({ ok: false, reason: "consent_required" });
+                return;
+            }
+            const coacheeUid = await resolveCoacheeUid(doc.id, doc);
+            if (!coacheeUid) {
+                res.status(200).json({ ok: false, reason: "no_account" });
+                return;
+            }
+            const metaRef = db_1.db.doc(`users/${coacheeUid}/data/meta`);
+            const meta = (_d = (await metaRef.get()).data()) !== null && _d !== void 0 ? _d : {};
+            const coachName = (_e = (await admin.auth().getUser(coachUid)).displayName) !== null && _e !== void 0 ? _e : "Ton coach";
+            const plan = (0, modules_coach_1.planCoachProposal)(meta.modules, module !== null && module !== void 0 ? module : "", coachName, new Date().toISOString().slice(0, 10));
+            if ("error" in plan) {
+                res.status(200).json({ ok: false, reason: plan.error });
+                return;
+            }
+            await metaRef.set({ modules: plan.patch }, { merge: true });
+            res.status(200).json({ ok: true });
             return;
         }
         if (action === "presession") {
@@ -622,7 +653,7 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 res.status(400).json({ error: "text requis" });
                 return;
             }
-            const coachName = (_c = (await admin.auth().getUser(coachUid)).displayName) !== null && _c !== void 0 ? _c : "Ton coach";
+            const coachName = (_f = (await admin.auth().getUser(coachUid)).displayName) !== null && _f !== void 0 ? _f : "Ton coach";
             const date = targetDate && /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
                 ? targetDate
                 : new Date().toISOString().slice(0, 10);

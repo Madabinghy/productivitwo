@@ -55,6 +55,10 @@ class _Coachee {
   bool get sleepShared => (fiche['sharing'] as Map?)?['sleep'] == true || dash?['sleepShared'] == true;
   Map<String, dynamic>? get signals => dash?['signals'] is Map ? Map<String, dynamic>.from(dash!['signals'] as Map) : null;
   String? get watchFlag => dash?['watchFlag'] is String ? dash!['watchFlag'] as String : null;
+  /// Modules allumés (lot 5 des modules) : jamais Liberté.
+  List<String> get modulesOn => (((dash?['modules'] as Map?)?['on'] as List?) ?? const []).map((e) => '$e').toList();
+  List<String> get modulesOffered => (((dash?['modules'] as Map?)?['offered'] as List?) ?? const []).map((e) => '$e').toList();
+  String? get modulePending => (dash?['modules'] as Map?)?['pending'] as String?;
   List<String> get talkingPoints => ((dash?['talkingPoints'] as List?) ?? const []).map((e) => '$e').toList();
 
   List<Map<String, dynamic>> get engagements =>
@@ -901,6 +905,12 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
         _factCard(cs, [for (final p in c.talkingPoints) '• $p']),
       ],
 
+      // Modules (lot 5) : ce qu'il a allumé ; le coach peut en proposer un.
+      if (c.dash?['modules'] is Map) ...[
+        sectionLabel('SES MODULES'),
+        _modulesRow(cs, c),
+      ],
+
       // Badges (des faits) et, si partagé, l'état de la semaine.
       if (c.badges != null) ...[
         sectionLabel('SES BADGES'),
@@ -995,6 +1005,68 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
         : Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: column);
+  }
+
+  static const _kModuleNames = {
+    'modes': "Modes d'action",
+    'planning': 'Planification',
+    'game': 'Jeu et badges',
+    'seasons': 'Saisons',
+    'sleep': 'Sommeil',
+    'sport': 'Sport',
+    'kitchen': 'Cuisine',
+    'finances': 'Finances',
+    'analysis': 'Analyse',
+    'trainer': 'Formateur',
+    'assistant': 'Assistant',
+  };
+
+  Widget _modulesRow(ColorScheme cs, _Coachee c) {
+    final on = c.modulesOn;
+    final pending = c.modulePending;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        const Chip(label: Text('Le cœur'), visualDensity: VisualDensity.compact),
+        for (final k in on) Chip(label: Text(_kModuleNames[k] ?? k), visualDensity: VisualDensity.compact),
+      ]),
+      const SizedBox(height: 6),
+      Row(children: [
+        if (pending != null)
+          Expanded(
+            child: Text('Proposé, en attente de sa réponse : ${_kModuleNames[pending] ?? pending}',
+                style: const TextStyle(fontSize: 12.5, color: _kGreen)),
+          )
+        else
+          const Spacer(),
+        if (c.modulesOffered.isNotEmpty)
+          PopupMenuButton<String>(
+            key: const ValueKey('coach-propose-module'),
+            tooltip: 'Proposer un module',
+            onSelected: (k) => _proposeModule(c, k),
+            itemBuilder: (_) => [for (final k in c.modulesOffered) PopupMenuItem(value: k, child: Text(_kModuleNames[k] ?? k))],
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Text('+ Proposer un module', style: TextStyle(fontWeight: FontWeight.w700, color: _kGreen)),
+            ),
+          ),
+      ]),
+    ]);
+  }
+
+  Future<void> _proposeModule(_Coachee c, String key) async {
+    try {
+      final r = await coachCall({'action': 'proposeModule', 'id': c.id, 'module': key});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+          content: Text(r['ok'] == true
+              ? '${_kModuleNames[key] ?? key} proposé : il le verra en tête de sa journée, et choisira.'
+              : 'Impossible (${r['reason']}).')));
+      if (r['ok'] == true) {
+        setState(() => (c.dash?['modules'] as Map?)?['pending'] = key);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   Widget _factCard(ColorScheme cs, List<String> lines, {bool muted = false}) => Container(

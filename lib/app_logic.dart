@@ -2015,7 +2015,7 @@ class AppLogic implements HuntStore {
     final clear = on && journey.pending == m;
     if (clear) journey = ModuleJourney(since: journey.since, lastProposed: journey.lastProposed, declined: journey.declined);
     onChange();
-    await sync?.setMetaFields({'modules': {...modules.toJson(), if (clear) 'pending': null}});
+    await sync?.setMetaFields({'modules': {...modules.toJson(), if (clear) 'pending': null, if (clear) 'pendingBy': null}});
   }
 
   /// Le parcours (lot 3) : la proposition en attente, les refus, le début (`data/meta.modules`).
@@ -2053,7 +2053,7 @@ class AppLogic implements HuntStore {
     final v = never ? 'never' : 'later:${laterUntil(livedTodayYmd)}';
     journey = ModuleJourney(since: journey.since, lastProposed: journey.lastProposed, declined: {...journey.declined, m: v});
     onChange();
-    await sync?.setMetaFields({'modules': {'pending': null, 'declined': {moduleInfo(m).key: v}}});
+    await sync?.setMetaFields({'modules': {'pending': null, 'pendingBy': null, 'declined': {moduleInfo(m).key: v}}});
   }
 
   /// Cartes Liberté masquées de l'album (`data/meta.freedomCardsHidden`) : elles sortent alors du total et de Collectionneur.
