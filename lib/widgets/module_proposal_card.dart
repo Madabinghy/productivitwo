@@ -33,6 +33,7 @@ class ModuleProposalCard extends StatelessWidget {
     final info = moduleInfo(module);
     final signal = moduleSignal(module, facts);
     final on = logic.modules.count;
+    final coach = logic.journey.pending == module ? logic.journey.pendingCoach : null;
     return Container(
       key: const ValueKey('module-proposal'),
       margin: const EdgeInsets.only(top: 12),
@@ -44,14 +45,15 @@ class ModuleProposalCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          const Expanded(
-            child: Text('NOUVEAU POUR TOI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: _kAccent)),
+          Expanded(
+            child: Text(coach == null ? 'NOUVEAU POUR TOI' : 'PROPOSÉ PAR ${coach.toUpperCase()}',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: _kAccent)),
           ),
           Text('$on / ${kModules.length} modules', style: const TextStyle(fontSize: 12, color: _kAccent)),
         ]),
         const SizedBox(height: 8),
         Text(signal?.pitch ?? info.name, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, height: 1.25, color: cs.onSurface)),
-        if (signal != null) ...[
+        if (signal != null && coach == null) ...[
           const SizedBox(height: 6),
           Text('Pourquoi maintenant : ${signal.why}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
         ],

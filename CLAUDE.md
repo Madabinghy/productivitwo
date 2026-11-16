@@ -1811,7 +1811,12 @@ en bas de Mes modules → `showRestartSheet` (tu gardes tout · mis de côté, p
 jour ») → `AppLogic.restartAsBeginner` : `beginnerModules` (cœur seul, `since` = aujourd'hui, `before` = les modules allumés avant) ;
 le champ `modules` est REMPLACÉ en entier (`FirestoreSync.replaceMetaField`, sinon la fusion garderait refus et proposition). Le
 parcours se recompte depuis ce jour. « Retrouver mon app complète » (même écran, tant que `before` existe) → `restoreFullApp`
-(`restoredModules`). Rien n'est effacé : les données des modules éteints reviennent avec eux.
+(`restoredModules`). Rien n'est effacé : les données des modules éteints reviennent avec eux. **Lot 5 livré (le coach propose)** (⚠️ `firebase deploy --only
+functions`) : logique pure `functions/src/modules_coach.ts` (`coachModuleView` : allumés / proposables / en attente, JAMAIS Liberté ;
+`planCoachProposal` : refuse privé, déjà allumé, inconnu → `pending`, `pendingBy:"coach"`, `pendingCoach`, `lastProposed`) ; le
+dashboard de `coachApi` porte `modules`, action `proposeModule {id, module}` (consentement requis). Console web : SES MODULES (puces,
+« Proposé, en attente de sa réponse », « + Proposer un module »). App : `ModuleJourney.pendingCoach`, la carte dit « PROPOSÉ PAR
+MARIE » (une proposition du coach passe avant celle de l'app, même bloquée) ; accepter / refuser efface `pendingBy`.
 
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 

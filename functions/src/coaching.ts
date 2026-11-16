@@ -7,6 +7,7 @@ import { db } from "./db";
 import { executePushAssistantMessage } from "./execute";
 import { elanSummary, formatElanSummary, livedParts, DEFAULT_DAY_START_MIN, MoodMarkDoc, BlockLite, SessionLite } from "./elan";
 import { parseSnapshot, parseHunts, badgesForCoach, badgesSummary } from "./badges_mcp";
+import { coachModuleView, planCoachProposal } from "./modules_coach";
 import { CoachSignals, signalsForCoach, signalTiles, signalReportLines, talkingPoints, watchFlag } from "./coach_signals";
 
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
@@ -446,11 +447,11 @@ export const coachApi = onRequest(
     const coachUid = await coachUidFrom(req.headers.authorization ?? "");
     if (!coachUid) { res.status(403).json({ error: "Accès coach requis" }); return; }
 
-    const { action, id, email, name, status, notes, nextSession, text, targetDate } =
+    const { action, id, email, name, status, notes, nextSession, text, targetDate, module } =
       req.body as {
         action?: string; id?: string; email?: string; name?: string;
         status?: string; notes?: string; nextSession?: string;
-        text?: string; targetDate?: string;
+        text?: string; targetDate?: string; module?: string;
       };
 
     /** Fiche appartenant à CE coach — null sinon (jamais celle d'un autre). */
@@ -600,7 +601,30 @@ export const coachApi = onRequest(
           res.status(200).json({ ok: false, reason: "no_scope" }); return;
         }
         const dash = await buildDashboard(coacheeUid, sharing);
-        res.status(200).json({ ok: true, dashboard: dash });
+        // Modules (lot 5) : ceux qu'il a allumés, jamais Liberté.
+        const meta = (await db.doc(`users/${coacheeUid}/data/meta`).get()).data() ?? {};
+        res.status(200).json({ ok: true, dashboard: { ...dash, modules: coachModuleView(meta.modules) } });
+        return;
+      }
+
+      if (action === "proposeModule") {
+        // Le coach propose un module ; le coaché l'accepte ou non dans son app (carte « Nouveau pour toi »).
+        const doc = await ownDoc(id);
+        if (!doc) { res.status(404).json({ error: "Fiche introuvable" }); return; }
+        if (doc.consent !== "granted") {
+          res.status(200).json({ ok: false, reason: "consent_required" }); return;
+        }
+        const coacheeUid = await resolveCoacheeUid(doc.id as string, doc);
+        if (!coacheeUid) {
+          res.status(200).json({ ok: false, reason: "no_account" }); return;
+        }
+        const metaRef = db.doc(`users/${coacheeUid}/data/meta`);
+        const meta = (await metaRef.get()).data() ?? {};
+        const coachName = (await admin.auth().getUser(coachUid)).displayName ?? "Ton coach";
+        const plan = planCoachProposal(meta.modules, module ?? "", coachName, new Date().toISOString().slice(0, 10));
+        if ("error" in plan) { res.status(200).json({ ok: false, reason: plan.error }); return; }
+        await metaRef.set({ modules: plan.patch }, { merge: true });
+        res.status(200).json({ ok: true });
         return;
       }
 
