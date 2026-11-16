@@ -1620,6 +1620,30 @@ Normal / À fond) ; un Tampon existant reste modifiable. **« Nouveau bloc »** 
 (Deep work 90 min · Petites choses 45 · Tampon 45, `_pickTimeBlock`, `daily_schedule_view.dart`) en tête, avant BLOC D'ACTIVITÉ — un bloc
 de temps se pose le jour même en un tap ; le Planifier « La fin d'aujourd'hui » propose aussi des blocs de temps.
 
+## Empiler sur un bloc (2026-11-16, retour user sur « Cette semaine » web)
+
+Retour user : « j'ai un temps associé à une activité, que j'utilise en Deep work ou Petites choses pour faire telle tâche, séance ou
+projet ». **Rien de neuf en base** : un bloc porte déjà trois COUCHES indépendantes — un MODE (`timeBlock` deep · small), une ACTIVITÉ
+(`activityId`, là où le temps compte) et une CIBLE (`projectId` / `taskId` / `actionId`). Logique pure `utils/block_stack.dart` :
+`BlockLayers` (`of`, `applyTo`, `withoutMode` / `withoutActivity` / `withoutTarget`), `stackLayers(base, add)` (chaque couche apportée
+remplace la sienne, les autres restent ; une cible vient entière ; changer d'activité sans cible lâche l'action propre de l'ancienne),
+`canStackOn` / `stackRefusal` (bloc à faire, normal, pas une pause ; un rendez-vous d'agenda ne reçoit qu'une activité), `layersTitle`
+(« Deep work · Préparer la séance »), `retitled` (un titre posé par l'app suit les couches, un titre écrit à la main reste),
+`layersLine` (les couches que le titre ne dit pas déjà). **Web, Cette semaine** (`week_view.dart`) : chaque bloc de la grille est une
+`DragTarget<_PlaceItem>` — une ligne de « À placer » (activité de la Montre suisse, prépa de séance, projet en retard, échéance) ou
+Deep work / Petites choses lâchée SUR un bloc s'y ajoute (`_stackOn`, survol « + … » `week-stack-<id>`, SnackBar « ajouté à … ·
+Annuler ») au lieu de créer un bloc ; jamais sur un jour passé, un besoin de base ni la suite d'une nuit ; le bloc affiche ses couches
+sous l'heure (`_layersLineOf`, `week-layers-<id>`) ; la Montre suisse « reste » retranche tout bloc à venir qui porte l'activité, tâche
+visée ou non. **« Modifier le bloc »** (`schedule_block_dialog.dart`, avec `activities` / `projects` / `domains` — Cette semaine
+seulement, Aujourd'hui garde l'ancienne fenêtre) : section CE BLOC PORTE = Mode (puces, re-toucher = retirer) · Activité · Projet ·
+Tâche ou séance (« Tout le projet ») ; boutons du bas en `Wrap` (ils débordaient). `upsertScheduleBlock` retire `timeBlock` de la
+fusion quand le mode est enlevé. **Mobile** (main.dart) : un bloc de tâche qui porte une activité-temps lance le chrono sur ELLE sans
+demander (`_blockTimeActivity`) ; un Deep work qui porte projet + activité ouvre l'Offensive sur le projet, commence par l'action
+visée (`firstActionId`) et fait tourner le chrono des coups sur l'activité du bloc (`showOffensiveScreen(chronoActivityId:)`,
+`_chronoOf`, gardée dans la session `extra.blockChrono`). **Pas fait** : plusieurs cibles dans un même bloc (il faudrait une liste, vrai
+changement de modèle), un mode « Miracle morning » (enchaîner les routines du matin), l'empilement dans la frise d'Aujourd'hui et sur
+mobile.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

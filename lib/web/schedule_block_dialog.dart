@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
+import 'package:productivitwo_v1/utils/block_stack.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show stripLeadEmoji;
 import 'package:productivitwo_v1/utils/today_logic.dart' show canCancelBlock, kSkipUnavailable;
+import 'package:productivitwo_v1/widgets/activity_picker.dart' show groupActivitiesByDomain, groupedActivityItems;
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:productivitwo_v1/web/duration_chooser.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -8,15 +12,23 @@ import 'package:productivitwo_v1/web/theme_tokens.dart';
 /// Éditeur de bloc du programme, version desktop (refonte web § 2.3 « Modifier »).
 /// Retourne le bloc modifié (ou créé) via `Navigator.pop`, ou `null` si annulé.
 /// La suppression est un soft-delete : `status: 'deleted'` sur le bloc rendu.
+///
+/// Avec [activities] et [projects] (Cette semaine), la fenêtre montre et règle
+/// CE QUE LE BLOC PORTE : un mode, une activité, un projet ou une tâche
+/// (`utils/block_stack.dart`). Sans eux, les liens du bloc sont gardés tels quels.
 Future<ScheduleBlock?> showScheduleBlockDialog(
   BuildContext context, {
   required ScheduleBlock block,
   bool isNew = false,
+  List<Activity>? activities,
+  List<Project>? projects,
+  List<Domain> domains = const [],
 }) {
   return showDesktopDialog<ScheduleBlock>(
     context,
-    maxWidth: 460,
-    builder: (_) => _ScheduleBlockDialog(block: block, isNew: isNew),
+    maxWidth: 520,
+    builder: (_) =>
+        _ScheduleBlockDialog(block: block, isNew: isNew, activities: activities, projects: projects, domains: domains),
   );
 }
 
@@ -30,7 +42,11 @@ const _kCategories = [
 class _ScheduleBlockDialog extends StatefulWidget {
   final ScheduleBlock block;
   final bool isNew;
-  const _ScheduleBlockDialog({required this.block, required this.isNew});
+  final List<Activity>? activities;
+  final List<Project>? projects;
+  final List<Domain> domains;
+  const _ScheduleBlockDialog(
+      {required this.block, required this.isNew, this.activities, this.projects, this.domains = const []});
 
   @override
   State<_ScheduleBlockDialog> createState() => _ScheduleBlockDialogState();
@@ -41,6 +57,12 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
   late final TextEditingController _start;
   late int _durationMin;
   late String _category;
+  late BlockLayers _layers;
+
+  /// Les couches se règlent ici : listes fournies, et pas un rendez-vous
+  /// d'agenda (il se rattache en glissant une activité dessus).
+  bool get _editsLayers =>
+      widget.activities != null && widget.projects != null && widget.block.gcalEventId == null;
 
   @override
   void initState() {
@@ -49,6 +71,115 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     _start = TextEditingController(text: widget.block.startTime);
     _durationMin = widget.block.durationMin > 0 ? widget.block.durationMin : 30;
     _category = widget.block.category;
+    _layers = BlockLayers.of(widget.block);
+  }
+
+  Project? _projectOf(BlockLayers l) =>
+      l.projectId == null ? null : widget.projects?.where((p) => p.id == l.projectId).firstOrNull;
+
+  String _autoTitle(BlockLayers l) {
+    final p = _projectOf(l);
+    final t = l.taskId == null ? null : p?.tasks.where((x) => x.id == l.taskId).firstOrNull;
+    final a = l.activityId == null ? null : widget.activities?.where((x) => x.id == l.activityId).firstOrNull;
+    return layersTitle(
+        timeBlock: l.timeBlock, activity: a?.name, project: p?.title, task: t == null ? null : stripLeadEmoji(t.title));
+  }
+
+  /// Change les couches ; un titre posé par l'app suit, un titre à la main reste.
+  void _setLayers(BlockLayers next) => setState(() {
+        _title.text = retitled(_title.text, _autoTitle(_layers), _autoTitle(next));
+        if (next.projectId != null && _layers.projectId == null) _category = 'project';
+        _layers = next;
+      });
+
+  Widget _layersSection() {
+    const deco = InputDecoration(border: OutlineInputBorder(), isDense: true);
+    final acts = [
+      for (final a in widget.activities!)
+        if ((!a.deleted && !a.isHabit) || a.id == _layers.activityId) a,
+    ];
+    final all = widget.projects!;
+    final projects = [
+      for (final p in all)
+        if ((p.status == 'active' && !isFolderProject(p, all)) || p.id == _layers.projectId) p,
+    ]..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    final project = _projectOf(_layers);
+    final tasks = [
+      for (final t in project?.tasks ?? const <ProjectTask>[])
+        if ((t.status != 'done' && t.status != 'skipped') || t.id == _layers.taskId) t,
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('CE BLOC PORTE',
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        const Text('Mode', style: TextStyle(fontSize: 12, color: kBText3)),
+        for (final kind in const ['deep', 'small'])
+          ChoiceChip(
+            key: ValueKey('block-mode-$kind'),
+            label: Text(kTimeBlockLabels[kind]!),
+            selected: _layers.timeBlock == kind,
+            onSelected: (on) => _setLayers(on
+                ? stackLayers(_layers, BlockLayers(timeBlock: kind))
+                : _layers.withoutMode()),
+          ),
+      ]),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        key: const ValueKey('block-activity'),
+        value: acts.any((a) => a.id == _layers.activityId) ? _layers.activityId : '',
+        isExpanded: true,
+        decoration: deco.copyWith(labelText: 'Activité · là où le temps compte'),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('Aucune')),
+          ...groupedActivityItems(groupActivitiesByDomain(acts, widget.domains)),
+        ],
+        onChanged: (v) => _setLayers(v == null || v.isEmpty
+            ? _layers.withoutActivity()
+            : stackLayers(_layers, BlockLayers(activityId: v))),
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        key: const ValueKey('block-project'),
+        value: projects.any((p) => p.id == _layers.projectId) ? _layers.projectId : '',
+        isExpanded: true,
+        decoration: deco.copyWith(labelText: 'Projet'),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('Aucun')),
+          for (final p in projects) DropdownMenuItem(value: p.id, child: Text(p.title, overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: (v) => _setLayers(v == null || v.isEmpty
+            ? _layers.withoutTarget()
+            : stackLayers(_layers, BlockLayers(projectId: v))),
+      ),
+      if (project != null && tasks.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          key: ValueKey('block-task-${project.id}'),
+          value: tasks.any((t) => t.id == _layers.taskId) ? _layers.taskId : '',
+          isExpanded: true,
+          decoration: deco.copyWith(labelText: 'Tâche ou séance'),
+          items: [
+            const DropdownMenuItem(value: '', child: Text('Tout le projet')),
+            for (final t in tasks) DropdownMenuItem(value: t.id, child: Text(t.title, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) {
+            final t = tasks.where((x) => x.id == v).firstOrNull;
+            _setLayers(stackLayers(
+                _layers,
+                BlockLayers(
+                    projectId: project.id,
+                    taskId: t?.id,
+                    actionId: t?.actions.where((a) => !a.done).firstOrNull?.id)));
+          },
+        ),
+      ],
+      const SizedBox(height: 8),
+      const Text(
+        'Dans la semaine, tu peux aussi glisser une ligne de « À placer » sur un bloc : elle s’y ajoute.',
+        style: TextStyle(fontSize: 12, color: kBText3, height: 1.35),
+      ),
+    ]);
   }
 
   @override
@@ -84,6 +215,7 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
         '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
     b.durationMin = _durationMin;
     b.category = _category;
+    if (_editsLayers) _layers.applyTo(b);
     if (status != null) b.status = status;
     return b;
   }
@@ -104,6 +236,7 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     final linked = widget.block.projectId != null || widget.block.activityId != null;
     return Container(
       color: kBSurface,
+      child: SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -163,7 +296,10 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
                 onSelected: (_) => setState(() => _category = id),
               ),
           ]),
-          if (linked) ...[
+          if (_editsLayers) ...[
+            const SizedBox(height: 18),
+            _layersSection(),
+          ] else if (linked) ...[
             const SizedBox(height: 12),
             const Text(
               'Bloc lié à un projet ou une activité : le lien est conservé.',
@@ -171,7 +307,9 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
             ),
           ],
           const SizedBox(height: 22),
-          Row(children: [
+          // Deux groupes qui passent à la ligne plutôt que de déborder.
+          Wrap(alignment: WrapAlignment.spaceBetween, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+           Row(mainAxisSize: MainAxisSize.min, children: [
             if (!widget.isNew)
               TextButton.icon(
                 onPressed: () =>
@@ -196,7 +334,8 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
                   style: TextButton.styleFrom(foregroundColor: kBText2),
                 ),
               ),
-            const Spacer(),
+           ]),
+           Row(mainAxisSize: MainAxisSize.min, children: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Annuler'),
@@ -208,8 +347,10 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
                   backgroundColor: kBPrimary, foregroundColor: kBBg),
               child: Text(widget.isNew ? 'Ajouter' : 'Enregistrer'),
             ),
+           ]),
           ]),
         ],
+      ),
       ),
     );
   }

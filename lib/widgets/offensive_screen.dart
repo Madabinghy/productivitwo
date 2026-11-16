@@ -44,10 +44,17 @@ const _amber = Color(0xFFF2C14E);
 /// [activityId] = Deep work visé sur une activité : seuls les projets qui la servent sont proposés (tous si aucun).
 /// [deepWork] = Deep work présélectionné (aucun minuteur, bloc posé dans le programme).
 Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
-    {PendingRun? resume, String? projectId, String? firstActionId, String? activityId, bool deepWork = false}) {
+    {PendingRun? resume, String? projectId, String? firstActionId, String? activityId, String? chronoActivityId, bool deepWork = false}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => OffensiveScreen(logic: logic, resume: resume, projectId: projectId, firstActionId: firstActionId, activityId: activityId, deepWork: deepWork)));
+      builder: (_) => OffensiveScreen(
+          logic: logic,
+          resume: resume,
+          projectId: projectId,
+          firstActionId: firstActionId,
+          activityId: activityId,
+          chronoActivityId: chronoActivityId,
+          deepWork: deepWork)));
 }
 
 enum _Phase { setup, coup, pause, back, end }
@@ -58,8 +65,13 @@ class OffensiveScreen extends StatefulWidget {
   final String? projectId;
   final String? firstActionId;
   final String? activityId;
+
+  /// L'activité que porte le bloc lancé (bloc empilé, 2026-11-16) : le chrono
+  /// de chaque coup tourne sur elle, quelle que soit l'activité de l'action.
+  final String? chronoActivityId;
   final bool deepWork;
-  const OffensiveScreen({super.key, required this.logic, this.resume, this.projectId, this.firstActionId, this.activityId, this.deepWork = false});
+  const OffensiveScreen(
+      {super.key, required this.logic, this.resume, this.projectId, this.firstActionId, this.activityId, this.chronoActivityId, this.deepWork = false});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -129,6 +141,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
     if (widget.deepWork) _duration = kOffensiveUnlimited;
+    _blockChrono = widget.chronoActivityId;
     final r = widget.resume;
     if (r != null) _restore(r);
   }
@@ -139,6 +152,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _duration = r.intOf('duration') ?? 15;
     _liveDeepId = r.extra['liveDeep']?.toString();
     _liveDeepDoc = r.extra['liveDeepDoc']?.toString();
+    _blockChrono = r.extra['blockChrono']?.toString() ?? _blockChrono;
     final ldf = r.intOf('liveDeepFrom');
     _liveDeepFrom = ldf == null ? null : DateTime.fromMillisecondsSinceEpoch(ldf);
     if (_liveDeepId != null) _deepId = _liveDeepId;
@@ -210,10 +224,15 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   /// Le projet choisi comme front, quand aucune de ses actions prêtes n'a
   /// d'activité où compter le temps.
+  String? _blockChrono;
+
+  /// L'activité du chrono d'un coup : celle du bloc lancé d'abord.
+  String? _chronoOf(OffensiveTarget t) => _blockChrono ?? t.chronoActivityId;
+
   Project? _unlinkedFront() {
     if (_front == null) return null;
     final q = _previewQueue();
-    if (q.isEmpty || q.any((t) => t.chronoActivityId != null)) return null;
+    if (q.isEmpty || q.any((t) => _chronoOf(t) != null)) return null;
     return q.first.project;
   }
 
@@ -243,6 +262,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         if (_away) 'away': true,
         if (_liveDeepId != null) 'liveDeep': _liveDeepId,
         if (_liveDeepDoc != null) 'liveDeepDoc': _liveDeepDoc,
+        if (_blockChrono != null) 'blockChrono': _blockChrono,
         if (_liveDeepFrom case final f?) 'liveDeepFrom': f.millisecondsSinceEpoch,
         'passed': _passed.toList(),
         'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
@@ -525,7 +545,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _startChrono() {
     final t = _cur;
     if (t == null) return;
-    final act = t.chronoActivityId;
+    final act = _chronoOf(t);
     if (act == null) {
       // Le chrono de l'action précédente ne doit pas compter pour celle-ci.
       _stopOwnChrono();
@@ -1067,9 +1087,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       Text(
         _unlimited
             ? 'Deep work : rien ne sonne. Le bloc s’écrit dans ton programme, fait dès $kDeepSessionMin min.'
-            : t.chronoActivityId == null
+            : _chronoOf(t) == null
             ? 'Au bout de $_duration:00, le coup est gagné même sans finir.'
-            : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == t.chronoActivityId).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
+            : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == _chronoOf(t)).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 12, color: _text3),
       ),
@@ -1333,7 +1353,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final counted = logic.state.chainRuns.where((r) => r.id != _runId && offensiveCounts(r)).length + (_won >= kOffensiveCountedMin ? 1 : 0);
     final nextTier = kOffensiveTiers.firstWhere((t) => t > counted, orElse: () => kOffensiveTiers.last);
     final chronoMin = (_chronoSec / 60).round();
-    final chronoName = _queue.map((t) => t.chronoActivityId).whereType<String>().toSet();
+    final chronoName = _queue.map(_chronoOf).whereType<String>().toSet();
     final actName = chronoName.length == 1 ? logic.state.activities.where((a) => a.id == chronoName.first).firstOrNull?.name : null;
     final touched = <Project>[
       for (final id in _before.keys)

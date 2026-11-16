@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/interventions.dart' show interventionsOf,
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
 import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
 import 'package:productivitwo_v1/utils/planning.dart' show deepWorkTitle;
+import 'package:productivitwo_v1/utils/block_stack.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName;
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/half_days.dart' show minutesByActivityDay;
@@ -794,24 +795,48 @@ class _WeekViewState extends State<WeekView> {
           child: MouseRegion(
             cursor: canDrag ? SystemMouseCursors.grab : SystemMouseCursors.click,
             child: Stack(fit: StackFit.expand, children: [
-              GestureDetector(
-                key: ValueKey('week-block-${b.id}'),
-                onTap: () => origin != null ? _onGridBlockTap(origin, prevDay) : _onGridBlockTap(b, d),
-                onSecondaryTapUp: origin == null && b.gcalEventId == null && !past
-                    ? (e) => _openDotMenu(b, e.globalPosition)
-                    : null,
-                onPanStart: canDrag ? (_) => _gridDragBegin(b, resize: false) : null,
-                onPanUpdate: canDrag
-                    ? (e) => setState(() {
-                          _gDx += e.delta.dx;
-                          _gDy += e.delta.dy;
-                        })
-                    : null,
-                onPanEnd: canDrag ? (_) => _gridCommit(b, d, ppm, colW) : null,
-                onPanCancel: canDrag ? () => setState(() => _gDragId = null) : null,
-                child: origin != null
-                    ? _gridBlock(origin, prevDay, _isDated(origin, sessionIds), h, false, tail: true)
-                    : _gridBlock(b, d, _isDated(b, sessionIds), h, dragging),
+              // Une ligne de « À placer » lâchée SUR un bloc s'y ajoute (empiler).
+              DragTarget<_PlaceItem>(
+                onWillAcceptWithDetails: (det) => origin == null && _stackRefusal(b, d, det.data) == null,
+                onAcceptWithDetails: (det) => _stackOn(b, d, det.data),
+                builder: (ctx, cand, rej) => Stack(fit: StackFit.expand, children: [
+                  GestureDetector(
+                    key: ValueKey('week-block-${b.id}'),
+                    onTap: () => origin != null ? _onGridBlockTap(origin, prevDay) : _onGridBlockTap(b, d),
+                    onSecondaryTapUp: origin == null && b.gcalEventId == null && !past
+                        ? (e) => _openDotMenu(b, e.globalPosition)
+                        : null,
+                    onPanStart: canDrag ? (_) => _gridDragBegin(b, resize: false) : null,
+                    onPanUpdate: canDrag
+                        ? (e) => setState(() {
+                              _gDx += e.delta.dx;
+                              _gDy += e.delta.dy;
+                            })
+                        : null,
+                    onPanEnd: canDrag ? (_) => _gridCommit(b, d, ppm, colW) : null,
+                    onPanCancel: canDrag ? () => setState(() => _gDragId = null) : null,
+                    child: origin != null
+                        ? _gridBlock(origin, prevDay, _isDated(origin, sessionIds), h, false, tail: true)
+                        : _gridBlock(b, d, _isDated(b, sessionIds), h, dragging),
+                  ),
+                  if (cand.isNotEmpty && cand.first != null)
+                    IgnorePointer(
+                      child: Container(
+                        key: ValueKey('week-stack-${b.id}'),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        alignment: Alignment.bottomLeft,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A3355).withOpacity(.82),
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(color: const Color(0xFF6AA8FF), width: 2),
+                        ),
+                        child: Text('+ ${cand.first!.title}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kBText)),
+                      ),
+                    ),
+                ]),
               ),
               if (canDrag && !crosses)
                 Positioned(
@@ -950,9 +975,11 @@ class _WeekViewState extends State<WeekView> {
                         ? 'pas fait'
                         : '${b.startTime} · ${_fmtHm(b.durationMin)}${b.gcalEventId != null ? ' · agenda' : ''}';
     final prefix = done ? '✓ ' : letGo ? '✋ ' : '';
+    final layers = _layersLineOf(b);
     return Tooltip(
       message: '${b.title.isEmpty ? 'Bloc' : b.title} · ${b.startTime} · ${_fmtHm(b.durationMin)}'
-          '${b.gcalEventId != null ? ' · agenda Google' : ''}',
+          '${b.gcalEventId != null ? ' · agenda Google' : ''}'
+          '${layers.isEmpty ? '' : '\n$layers'}',
       waitDuration: const Duration(milliseconds: 700),
       child: Opacity(
         opacity: past && !dragging ? .78 : 1,
@@ -980,6 +1007,12 @@ class _WeekViewState extends State<WeekView> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 10.5, height: 1.2, color: fg.withOpacity(.75), fontFeatures: _tabular)),
+              if (h >= 48 && layers.isNotEmpty)
+                Text(layers,
+                    key: ValueKey('week-layers-${b.id}'),
+                    maxLines: h >= 64 ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, height: 1.2, color: fg.withOpacity(.75))),
             ]),
           ),
         ),
@@ -1004,9 +1037,65 @@ class _WeekViewState extends State<WeekView> {
       return;
     }
     final key = ymdOf(d);
-    final updated = await showScheduleBlockDialog(context, block: b);
+    final updated = await showScheduleBlockDialog(context,
+        block: b, activities: widget.activities, projects: widget.projects, domains: widget.domains);
     if (updated == null || !mounted) return;
+    setState(() {});
     await widget.sync.upsertScheduleBlock(key, updated);
+  }
+
+  // ── Empiler sur un bloc (2026-11-16) ──────────────────────────────────────
+  // Un bloc porte un MODE (Deep work · Petites choses), une ACTIVITÉ (où le
+  // temps compte) et une CIBLE (projet, tâche). Une ligne de « À placer »
+  // lâchée sur un bloc y ajoute sa couche au lieu de créer un bloc.
+
+  ({String? activity, String? project, String? task}) _namesOf(BlockLayers l) {
+    final p = l.projectId == null ? null : widget.projects.where((x) => x.id == l.projectId).firstOrNull;
+    final t = l.taskId == null ? null : p?.tasks.where((x) => x.id == l.taskId).firstOrNull;
+    final a = l.activityId == null ? null : widget.activities.where((x) => x.id == l.activityId).firstOrNull;
+    return (activity: a?.name, project: p?.title, task: t == null ? null : stripLeadEmoji(t.title));
+  }
+
+  String _autoTitleOf(BlockLayers l) {
+    final n = _namesOf(l);
+    return layersTitle(timeBlock: l.timeBlock, activity: n.activity, project: n.project, task: n.task);
+  }
+
+  String _layersLineOf(ScheduleBlock b) {
+    final l = BlockLayers.of(b);
+    if (l.isEmpty) return '';
+    final n = _namesOf(l);
+    return layersLine(timeBlock: l.timeBlock, activity: n.activity, project: n.project, task: n.task, title: b.title);
+  }
+
+  String? _stackRefusal(ScheduleBlock b, DateTime d, _PlaceItem? it) {
+    if (it == null) return 'Rien à ajouter.';
+    if (d.isBefore(_today)) return 'Ce jour est passé.';
+    if (isBasicNeedName(b.title)) return 'Un besoin de base ne reçoit rien.';
+    return stackRefusal(b, BlockLayers.of(it.make(0, 30)));
+  }
+
+  Future<void> _stackOn(ScheduleBlock b, DateTime d, _PlaceItem it) async {
+    if (_stackRefusal(b, d, it) != null) return;
+    final key = ymdOf(d);
+    final before = BlockLayers.of(b);
+    final oldTitle = b.title, oldCategory = b.category;
+    final after = stackLayers(before, BlockLayers.of(it.make(0, 30)));
+    setState(() {
+      after.applyTo(b);
+      // Le titre d'un rendez-vous vient de l'agenda : il ne bouge pas.
+      if (b.gcalEventId == null) b.title = retitled(oldTitle, _autoTitleOf(before), _autoTitleOf(after));
+      if (after.projectId != null && before.projectId == null) b.category = 'project';
+    });
+    await widget.sync.upsertScheduleBlock(key, b);
+    _snack('« ${it.title} » ajouté à « $oldTitle » · ${b.startTime}', actionLabel: 'Annuler', onAction: () async {
+      setState(() {
+        before.applyTo(b);
+        b.title = oldTitle;
+        b.category = oldCategory;
+      });
+      await widget.sync.upsertScheduleBlock(key, b);
+    });
   }
 
   Future<void> _gridCommit(ScheduleBlock b, DateTime from, double ppm, double colW) async {
@@ -1101,7 +1190,7 @@ class _WeekViewState extends State<WeekView> {
       (minutes[a.id] ?? const <String, int>{}).forEach((k, v) {
         if (ymds.contains(k)) done += v;
       });
-      final planned = upcoming.where((b) => b.activityId == a.id && b.taskId == null).fold<int>(0, (s, b) => s + b.durationMin);
+      final planned = upcoming.where((b) => b.activityId == a.id).fold<int>(0, (s, b) => s + b.durationMin);
       final left = need - done - planned;
       if (left < 10) continue;
       watch.add(_PlaceItem(
@@ -1266,7 +1355,7 @@ class _WeekViewState extends State<WeekView> {
                 ? 'Cette semaine est passée.'
                 : items.isEmpty
                     ? 'Tout ce que la semaine demande a sa place.'
-                    : 'Ce que ta semaine demande et qui n’a pas encore de place. Glisse une ligne sur un jour.',
+                    : 'Ce que ta semaine demande et qui n’a pas encore de place. Glisse une ligne sur un jour, ou sur un bloc pour l’y ajouter.',
             style: const TextStyle(fontSize: 12, color: kBText3, height: 1.35)),
         const SizedBox(height: 6),
         Expanded(
