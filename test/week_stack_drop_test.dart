@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/intervention_builder.dart' show prepTitle, sessionTitle;
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart' show weekStart;
 import 'package:productivitwo_v1/web/views/week_view.dart';
@@ -27,6 +28,9 @@ class _FakeSync extends FirestoreSync {
   Future<DayWindow> fetchDayWindow() async => const DayWindow(8 * 60, 22 * 60);
   @override
   Future<ApiToken> ensureWidgetToken() async => throw StateError('hors ligne');
+  final savedProjects = <Project>[];
+  @override
+  Future<void> saveProject(Project project) async => savedProjects.add(project);
   final forgotten = <String>[];
   @override
   Future<void> forgetMirrorActivity(String title) async => forgotten.add(title);
@@ -228,6 +232,90 @@ void main() {
     expect(sync.forgotten, ['Mathématiques - 6e/5e']);
 
     for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 3));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+  testWidgets('retoucher une séance depuis « À placer » : thème, prépa, et le bloc suit', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1700, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final monday = weekStart(DateTime.now());
+    final saturday = monday.add(const Duration(days: 5)), sunday = monday.add(const Duration(days: 6));
+    // Deux séances le dimanche : l'une a déjà son bloc de préparation, l'autre non.
+    ProjectTask task(String id, String title, String iv, String role, {List<TaskAction>? actions}) =>
+        ProjectTask(id: id, title: title, groupLabel: iv == 'i1' ? 'Quadrillage' : 'Parallèles', startDate: sunday, actions: actions)
+          ..interventionId = iv
+          ..interventionRole = role;
+    final project = Project(id: 'p1', title: 'Maths 6e', startDate: monday, createdBy: 'user', interventions: [
+      ProjectIntervention(id: 'i1', title: 'Quadrillage', date: sunday, startTime: '07:45', endTime: '09:30'),
+      ProjectIntervention(id: 'i2', title: 'Parallèles', date: sunday, startTime: '13:15', endTime: '15:00'),
+    ], tasks: [
+      task('tp1', prepTitle('Quadrillage'), 'i1', 'prep', actions: [TaskAction(id: 'a1', title: 'Produire les supports')]),
+      task('ts1', sessionTitle('Quadrillage', sunday), 'i1', 'session'),
+      task('tp2', prepTitle('Parallèles'), 'i2', 'prep', actions: [TaskAction(id: 'a2', title: 'Imprimer')]),
+      task('ts2', sessionTitle('Parallèles', sunday), 'i2', 'session'),
+    ]);
+    final block = ScheduleBlock(
+        id: 'b1', startTime: '20:00', durationMin: 60, title: 'Préparer — Quadrillage', category: 'project', projectId: 'p1', taskId: 'tp1');
+    final sync = _FakeSync({ymdOf(saturday): DailySchedule(date: ymdOf(saturday), generatedBy: 'user', blocks: [block])});
+
+    await tester.pumpWidget(MaterialApp(
+      builder: (ctx, child) =>
+          MediaQuery(data: MediaQuery.of(ctx).copyWith(textScaler: const TextScaler.linear(.7)), child: child!),
+      home: Scaffold(
+        body: WeekView(projects: [project], domains: const [], sync: sync, onOpenProject: (p, {taskId}) {}, dayStartMin: 0),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // La prépa déjà posée n'est plus « à placer » ; l'autre se retouche d'un clic.
+    expect(find.byKey(const ValueKey('week-place-prep:tp1')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('week-place-edit-prep:tp2')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    expect(find.text('Retoucher la séance'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('rework-title')), 'Soustraction posée');
+    await tester.enterText(find.byKey(const ValueKey('rework-prep-new')), 'Préparer le matériel');
+    await tester.ensureVisible(find.byKey(const ValueKey('rework-save')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('rework-save')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(sync.savedProjects, hasLength(1));
+    expect(project.interventions[1].title, 'Soustraction posée');
+    final prep2 = project.tasks.firstWhere((t) => t.id == 'tp2');
+    expect(prep2.title, '📝 Préparer — Soustraction posée');
+    expect([for (final a in prep2.actions) a.title], ['Imprimer', 'Préparer le matériel']);
+    // La ligne « à placer » porte le nouveau thème ; le bloc de l'autre séance ne bouge pas.
+    expect(find.textContaining('Préparer · Soustraction posée'), findsOneWidget);
+    expect(sync.upserts, isEmpty);
+
+    // La séance déjà posée se retouche depuis son bloc : le titre du bloc suit.
+    await tester.ensureVisible(find.byKey(const ValueKey('week-block-b1')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('week-block-b1')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await tester.ensureVisible(find.byKey(const ValueKey('block-target-rework-0')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('block-target-rework-0')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await tester.enterText(find.byKey(const ValueKey('rework-title')), 'Angles droits');
+    await tester.ensureVisible(find.byKey(const ValueKey('rework-save')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('rework-save')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(project.interventions[0].title, 'Angles droits');
+    expect(sync.upserts.last.title, 'Préparer — Angles droits');
+
+    await tester.tap(find.text('Annuler').last);
+    for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(seconds: 3));
     }
     await tester.pumpWidget(const SizedBox());
