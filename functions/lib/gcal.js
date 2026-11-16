@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = void 0;
 exports.isOurEvent = isOurEvent;
+exports.isNativeEvent = isNativeEvent;
+exports.isCopyOfBlock = isCopyOfBlock;
 exports.importGcalDay = importGcalDay;
 exports.syncDayToGcal = syncDayToGcal;
 const schedule_dedupe_1 = require("./schedule_dedupe");
@@ -128,6 +130,27 @@ function isOurEvent(ev) {
     const title = String((_d = ev.summary) !== null && _d !== void 0 ? _d : "").trim().toLowerCase();
     return title.endsWith(" - productivitwo") || title.endsWith(" – productivitwo");
 }
+/**
+ * Poussé par la synchro de l'app elle-même (propriété privée pwo) POUR CE JOUR : jamais importé. Une copie faite à la
+ * main dans Google Agenda (« Dupliquer ») garde la propriété avec le jour d'origine : posée un autre jour, c'est un
+ * rendez-vous de l'utilisateur (retour user 2026-11-16, « Cléa Num » dupliqué du 13 vers le 17 et le 20).
+ */
+function isNativeEvent(ev, date) {
+    var _a;
+    const p = (_a = ev.extendedProperties) === null || _a === void 0 ? void 0 : _a.private;
+    if ((p === null || p === void 0 ? void 0 : p.pwo) !== "1")
+        return false;
+    return date == null || p.pwoDate == null || String(p.pwoDate) === date;
+}
+/**
+ * Événement marqué « source: productivitwo » sans propriété privée (créé par Claude via son connecteur) :
+ * c'est la copie d'un bloc du programme SEULEMENT si un bloc ordinaire (même retiré ou sauté : sa copie ne doit
+ * pas revenir en miroir) a le même créneau (même début et même titre ou même durée). Sinon c'est un vrai rendez-vous posé par Claude (bug user
+ * 2026-11-16 : « Cléa Num » du 17 et du 20 nov. créés par Claude n'arrivaient jamais dans l'app).
+ */
+function isCopyOfBlock(slot, blocks) {
+    return blocks.some((b) => b.gcalEventId == null && (0, schedule_dedupe_1.sameSlot)(b, slot));
+}
 async function importGcalDay(uid, date) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     const none = { imported: 0, updated: 0, removed: 0 };
@@ -159,17 +182,23 @@ async function importGcalDay(uid, date) {
     // « source: productivitwo », titre « … - Productivitwo ») : ce connecteur ne
     // peut pas poser de propriété privée, et sans ce filtre ces events revenaient
     // en blocs MIROIRS protégés — doublons + réorganisation figée (constaté).
+    // Depuis le 2026-11-16, un événement marqué par Claude n'est ignoré que s'il
+    // recopie un bloc du programme (`isCopyOfBlock`) ; sinon c'est un vrai rendez-vous.
+    // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    const blocks = ((_d = (_c = snap.data()) === null || _c === void 0 ? void 0 : _c.blocks) !== null && _d !== void 0 ? _d : []).slice();
     const events = new Map();
     for (const ev of items) {
         if (ev.status === "cancelled")
             continue;
-        if (isOurEvent(ev))
+        if (isNativeEvent(ev, date))
             continue;
-        const startIso = (_c = ev.start) === null || _c === void 0 ? void 0 : _c.dateTime;
-        const endIso = (_d = ev.end) === null || _d === void 0 ? void 0 : _d.dateTime;
+        const startIso = (_e = ev.start) === null || _e === void 0 ? void 0 : _e.dateTime;
+        const endIso = (_f = ev.end) === null || _f === void 0 ? void 0 : _f.dateTime;
         if (!startIso || !endIso)
             continue; // journée entière
-        const self = ((_e = ev.attendees) !== null && _e !== void 0 ? _e : []).find((a) => a.self === true);
+        const self = ((_g = ev.attendees) !== null && _g !== void 0 ? _g : []).find((a) => a.self === true);
         if ((self === null || self === void 0 ? void 0 : self.responseStatus) === "declined")
             continue;
         const startMs = Date.parse(startIso);
@@ -179,16 +208,19 @@ async function importGcalDay(uid, date) {
         const local = new Date(startMs + tzOff * 60000).toISOString();
         if (local.slice(0, 10) !== date)
             continue; // instance d'un autre jour vécu
-        events.set(String(ev.id), {
-            title: String((_f = ev.summary) !== null && _f !== void 0 ? _f : "(Sans titre)").trim() || "(Sans titre)",
+        const slot = {
+            title: String((_h = ev.summary) !== null && _h !== void 0 ? _h : "(Sans titre)").trim() || "(Sans titre)",
             startMin: parseInt(local.slice(11, 13), 10) * 60 + parseInt(local.slice(14, 16), 10),
             durationMin: Math.max(5, Math.round((endMs - startMs) / 60000)),
-        });
+        };
+        // Marqué « source: productivitwo » (Claude, ou copie d'un envoi de l'app) : ignoré seulement s'il recopie un bloc du programme.
+        if (isOurEvent(ev)) {
+            const hm = `${String(Math.floor(slot.startMin / 60)).padStart(2, "0")}:${String(slot.startMin % 60).padStart(2, "0")}`;
+            if (isCopyOfBlock({ startTime: hm, durationMin: slot.durationMin, title: slot.title }, blocks))
+                continue;
+        }
+        events.set(String(ev.id), slot);
     }
-    // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
-    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
-    const snap = await ref.get();
-    const blocks = ((_h = (_g = snap.data()) === null || _g === void 0 ? void 0 : _g.blocks) !== null && _h !== void 0 ? _h : []).slice();
     let imported = 0, updated = 0, removed = 0;
     for (let i = blocks.length - 1; i >= 0; i--) {
         const b = blocks[i];
@@ -250,7 +282,7 @@ async function importGcalDay(uid, date) {
     return { ok: true, imported, updated, removed };
 }
 async function syncDayToGcal(uid, date) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
     const none = { created: 0, updated: 0, deleted: 0 };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return Object.assign(Object.assign({ ok: false }, none), { reason: "bad_date" });
@@ -284,7 +316,14 @@ async function syncDayToGcal(uid, date) {
     const existing = new Map();
     for (const ev of (_c = listBody.items) !== null && _c !== void 0 ? _c : []) {
         const bid = (_e = (_d = ev.extendedProperties) === null || _d === void 0 ? void 0 : _d.private) === null || _e === void 0 ? void 0 : _e.pwoBlockId;
-        if (bid)
+        // Une copie faite à la main posée un autre jour garde pwoDate : ce n'est plus notre événement, on n'y touche pas.
+        const startIso = String((_g = (_f = ev.start) === null || _f === void 0 ? void 0 : _f.dateTime) !== null && _g !== void 0 ? _g : "");
+        if (tzOff != null && startIso) {
+            const local = new Date(Date.parse(startIso) + tzOff * 60000).toISOString().slice(0, 10);
+            if (local !== date)
+                continue;
+        }
+        if (bid && !existing.has(String(bid)))
             existing.set(String(bid), ev);
     }
     let created = 0, updated = 0, deleted = 0;
@@ -293,7 +332,7 @@ async function syncDayToGcal(uid, date) {
         const id = String(b.id);
         seen.add(id);
         const startMin = hmToMin(String(b.startTime));
-        const dur = Math.max(5, Number((_f = b.durationMin) !== null && _f !== void 0 ? _f : 30));
+        const dur = Math.max(5, Number((_h = b.durationMin) !== null && _h !== void 0 ? _h : 30));
         const start = dateTimeOf(date, startMin);
         const end = dateTimeOf(date, startMin + dur);
         const desired = {
@@ -326,13 +365,13 @@ async function syncDayToGcal(uid, date) {
             // Avec offset connu : comparaison d'INSTANTS (Google peut renvoyer la
             // même heure sous une autre représentation). Sinon, heure de mur.
             const sameStart = tzOff != null
-                ? Date.parse(String((_h = (_g = ev.start) === null || _g === void 0 ? void 0 : _g.dateTime) !== null && _h !== void 0 ? _h : "")) ===
+                ? Date.parse(String((_k = (_j = ev.start) === null || _j === void 0 ? void 0 : _j.dateTime) !== null && _k !== void 0 ? _k : "")) ===
                     Date.parse(`${start.ymd}T${start.hm}:00${offsetStr(tzOff)}`)
-                : String((_k = (_j = ev.start) === null || _j === void 0 ? void 0 : _j.dateTime) !== null && _k !== void 0 ? _k : "").startsWith(`${start.ymd}T${start.hm}`);
+                : String((_m = (_l = ev.start) === null || _l === void 0 ? void 0 : _l.dateTime) !== null && _m !== void 0 ? _m : "").startsWith(`${start.ymd}T${start.hm}`);
             const sameEnd = tzOff != null
-                ? Date.parse(String((_m = (_l = ev.end) === null || _l === void 0 ? void 0 : _l.dateTime) !== null && _m !== void 0 ? _m : "")) ===
+                ? Date.parse(String((_p = (_o = ev.end) === null || _o === void 0 ? void 0 : _o.dateTime) !== null && _p !== void 0 ? _p : "")) ===
                     Date.parse(`${end.ymd}T${end.hm}:00${offsetStr(tzOff)}`)
-                : String((_p = (_o = ev.end) === null || _o === void 0 ? void 0 : _o.dateTime) !== null && _p !== void 0 ? _p : "").startsWith(`${end.ymd}T${end.hm}`);
+                : String((_r = (_q = ev.end) === null || _q === void 0 ? void 0 : _q.dateTime) !== null && _r !== void 0 ? _r : "").startsWith(`${end.ymd}T${end.hm}`);
             if (ev.summary !== desired.summary || !sameStart || !sameEnd) {
                 const r = await fetch(`${base}/events/${ev.id}`, {
                     method: "PATCH",
