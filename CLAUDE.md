@@ -1517,67 +1517,10 @@ progression Cap tenu). « Poser » AJOUTE les blocs au doc du jour visé (rien n
 **Chaque case fait quelque chose** (2026-11-06, retour user : 21 cases cochées pour un seul bloc posé, sans savoir où il était allé ; maquette validée « Planification lisible ») : CE QUI SE JOUE = DÉJÀ POSÉ (verrouillé) · À PLACER DANS LE TEMPS (enjeux avec activité → blocs) · À NOTER (relevés) · ROUTINES repliées, toutes cochées (`_routinesOpen`) — une routine DÉCOCHÉE est écartée « pas ce soir / pas demain » à la pose (`_applyExcuses` → `nowDoneByYmd` de la journée vécue visée, `_excuseYmd` ; mêmes effets que « Pas aujourd'hui » : hors Journée parfaite, série arrêtée, pas de braise ; recochée = remise ; une routine déjà écartée arrive décochée ; en fin de journée une routine déjà atteinte n'est plus listée) ; bouton « Placer n choses · écarter k ». REMPLIR : chaque bloc dit « pour : … » (enjeux cochés de son activité, `_coveredBy`) et « n choses en 1 h : ≈ 20 min chacune · touche pour allonger » ; bouton « Ajouter au programme · n blocs ». POSÉ : « Ajouté à ton programme » (blocs, heures, ce qu'ils couvrent), « Voir mon programme » (`showPlanScreen(onOpenProgram:)` → feuille Programme d'Aujourd'hui), ROUTINES « n à tenir » + « Écartées ce soir : … · séries arrêtées · pas de braise · annuler » (`_restoreExcused`), LAISSÉ POUR PLUS TARD sans les routines.
 **Chrono visible** (2026-10-31, retour user : le chrono tournait sans se voir) : pastille dans la barre de chaque étape (temps qui défile ; tap = arrêter / relancer, « ▶ Chrono » s'il ne tourne pas) ; l'interrupteur du cap est activé d'office seulement si une activité « Planification » existe, puis mémorise le dernier choix (`plan_chrono`, SharedPreferences) ; « Terminer » / ✕ arrêtent le chrono s'il tourne sur Planification.
 **Lot 3 (badge)** : `cap-tenu` (Discipline, symbole `compass`, paliers 5 · 20 · 50) dans `computeBadges` — journées closes `capHeld`, faits « Journées posées la veille » · « Tenues à 70 % » · « La dernière ».
-**⚠️ Planifier la semaine RETIRÉ de l'interface le 2026-11-01** (retour user : « pas exploitable », on y reviendra autrement) : `kWeekPlanEnabled = false` (`plan_screen.dart`) cache le choix « La semaine » du cap et ignore `showPlanScreen(week: true)` ; la Revue du dimanche finit sur « Terminer la revue ». Le code décrit ci-dessous reste en place. **Lot 4 (semaine)** : 3ᵉ choix « La semaine du … au … » au cap (lundi prochain → dimanche ; `_week`) → CE QUI SE JOUE CETTE SEMAINE
-(`_weekStakesView` : barre « déjà pris » par jour sur la journée active, libre ou dates ; DATES QUI NE BOUGENT PAS = miroirs agenda /
-blocs de séance + séances natives de la semaine ; LE CONTRAT = minimums ×7 (Montre suisse, hors besoins de base, activités en pause et
-domaines en veille), engagements de temps des objectifs actifs, 2 h par projet en retard sur le plan (3 max), nombre de routines
-quotidiennes) → RÉPARTIR (`_weekSpreadView` : grille activités × jours, tap sur une case = 45 min → 1h30 → rien, ligne « Dates »,
-charge ok / plein / repos, « LE CONTRAT · RÉPARTI » fait / dû ; « Répartir pour moi » = prépa 1 h la veille de chaque séance (projet
-avec activité liée) puis `spreadWeek` (`utils/planning.dart` : morceaux de 45 min, jour le plus libre d'abord, une fois par jour
-d'abord) sur 80 % du libre) → LA SEMAINE EST POSÉE (une ligne par jour). « Valider » ajoute à chaque jour ses blocs d'activité via
-`proposeDay` dans ses créneaux libres, `generatedBy:"plan"`, `plannedAt` (chaque jour compte pour Cap tenu).
-**Répartir par familles** (2026-11-01, maquette validée « Répartir la semaine, autrement », retour user : « Manger 45 min un jour sur
-deux, pas naturel ») : logique pure `utils/week_spread.dart` remplace `spreadWeek` dans l'écran. `classifyWants` trie le contrat —
-réglage de l'utilisateur d'abord (`plan_families` en SharedPreferences, tap sur une activité du contrat = feuille de famille),
-puis **Déjà dans ta journée** (`isBasicNeedName` : jamais posé, même engagé dans un objectif), **Le corps** (activités-temps de sport
-suivies, `resolveSportPick`), **Au quotidien** (< `kDailyMaxMin` 30 min / j : aucun bloc, temps gardé libre chaque jour =
-`dailyReserve`), **Le fond** (≤ `kFondMaxMin` 60 min / j : un bloc chaque jour, posé en premier dans la journée donc à la même heure),
-**Le travail** (au-delà, plus les activités de ≥ 30 min / j d'un domaine de travail). `spreadByFamily` : fond tous les jours ; séances
-du corps (`bodySessions` : 45 min, 1 h au-delà de 3 h / sem, 1 à 4 séances) jamais deux jours de suite pour la même activité ni trois
-jours de séance d'affilée, étalées ; travail en Deep work (2 h, 1 h 30, puis le reste) du lundi au vendredi (samedi si « Travailler le
-samedi », `plan_work_saturday`), à tour de rôle, une fois par activité et par jour, `kMaxWorkBlocksPerDay` (2) ; ce qui ne tient pas
-va dans `unplaced` et est DIT (« … ne tiennent pas dans la semaine »), jamais tassé dans le week-end ; `reasons` = « Pourquoi ici ».
-Écrans : CE QUI SE JOUE → « LE CONTRAT, TRIÉ » (une carte par famille : règle, puces, total, alerte quand le travail dépasse le libre
-des jours ouvrés) ; RÉPARTIR → « Ta semaine » jour par jour (barre de charge, dates en pointillés, blocs colorés par famille, tap = feuille
-Jour · Durée · Pourquoi ici · Enlever), pied « + n au quotidien gardées libres » et ce qui ne tient pas, interrupteur « Travailler le
-samedi », Recommencer · Valider (blocs posés fond d'abord, puis travail, puis corps).
-**Poser sa semaine : toi qui places** (2026-11-01, maquette validée « toi qui places, l'app qui aide », retour user : « j'ai
-l'impression qu'il veut planifier tout seul pour moi ») : l'écran ne répartit plus rien d'office. Étape 1 « Cette semaine, je
-veux… » (`_weekStakesView`) : le contrat en lignes à cocher, chacune en morceaux « n × durée » (− / +, tap sur la durée = 30 → 2 h,
-appui long = famille ; découpage par défaut `pieceSpecOf`, logique pure `utils/week_place.dart` : travail 1h30, fond un par jour,
-corps ses séances, prépa d'une séance 1 h), « Ajouter une activité » (`showActivityPicker`), SANS BLOC (au fil de la journée,
-déjà dans ta journée — tap = lui donner une famille à blocs), « Placer · n choses ». Étape 2 « Je place » (`_weekSpreadView`) : la
-semaine VIDE sauf les dates, un plateau de cartes en bas (« reste 2 × 45 ») ; tap sur une carte puis sur un jour = un morceau posé
-(`WeekPiece`), les jours où il tient s'allument (« + Courir ici »), les autres grisés ; tap sur un bloc posé = Jour · Durée ·
-Pourquoi ici · Enlever. « 💡 Proposer » (la carte choisie, sinon tout) pose des FANTÔMES en contour (`spreadByFamily` puis
-`ghostsFromSpread`, prépa la veille des séances) : tap = garder, appui long = retirer, « Garder tout » / « Ignorer » ; un fantôme
-ne compte pas (`placedCount`, `dayLoad`, `remainingPieces`). OÙ J'EN SUIS = placé / voulu par activité. « Valider la semaine »
-demande quoi faire des fantômes restants, puis pose chaque morceau gardé en bloc d'activité (`proposeDay`). Le « Répartir par
-familles » ci-dessus ne sert plus qu'aux propositions. **Dates qui comptent** (retour user 2026-11-01 : « mes cours sont
-déjà mon activité Interventions ») : le temps des dates de la semaine compte pour leur activité (`_datedMin` : bloc avec activité ou
-projet lié, miroir agenda apparié à une séance par `linkMirrorsToSessions` sur des COPIES, séance native sans bloc = son créneau,
-sinon 1 h) et se retire de ce qu'il reste à placer (« 21h · dont 6h déjà dans l'agenda », « Couvert par tes dates », Où j'en suis
-compté avec les dates) ; Sommeil et besoins de base ne sont plus listés en dates. **Ce qui prend la journée** (même jour) : chaque jour de « Je place » porte
-« déjà posé : n blocs · 11h › voir » → feuille de la journée (`_showDay` : journée active, blocs déjà posés avec heures, ✕ = retirer
-un bloc du doc du jour, hors agenda et séances — `_removed`, appliqué à la validation en `status:"deleted"`) ; un jour plein
-accepte quand même un morceau (« + GDS quand même », « dépasse 15 ») et l'écran final dit combien de blocs n'ont pas trouvé de
-créneau (`_weekUnfit`).
-**Une activité à la fois** (2026-11-01, maquette validée « Semaine activité par activité », remplace le plateau de cartes et 💡
-Proposer de « Je place ») : après « Je veux… », « Placer · n activités » (`_startPlacing`, ordre = `_onWants`) enchaîne pour CHAQUE
-activité deux écrans. **Quels jours ?** (`_Step.weekDays`, `_weekDaysView`) : 7 jours à cocher, sous chacun déjà pris / libre sans
-compter l'activité (`_freeFor`) et « × 2 » quand il y a plus de blocs que de jours (`perDay`), « 💡 Suggérer des jours » (règle de
-la famille, `spreadByFamily` sur cette seule activité), « Passer cette activité ». **À quelle heure ?** (`_Step.weekTimes`,
-`_weekTimesView`) : la semaine en colonnes sur la journée active (`_weekGrid` : blocs déjà posés bleu nuit, dates en contour or,
-activités déjà placées dans leur couleur, jours choisis en bleu ; tap sur un jour en tête = `_showDay`) ; les blocs de l'activité
-arrivent à une heure PROPOSÉE (premier créneau libre, `firstFreeStart`, `WeekPiece.start` / `proposed`, « Courir ? » en contour) ;
-tap dans une colonne = y poser / y déplacer le bloc (`_tapGrid`), glisser = changer l'heure (quart d'heure), tap = garder l'heure,
-appui long = enlever ; « Même heure tous les jours » cale les heures encore proposées des autres jours (`_setTime`, si libre).
-**Ta semaine** (`_weekSpreadView`) : la grille complète, OÙ J'EN SUIS (tap = revenir sur l'activité), « Valider la semaine » pose
-chaque bloc À SON HEURE (`PlannedBlock` direct ; sans heure → `proposeDay`, sinon compté dans `_weekUnfit`). **Agenda, ✕ et zoom** (retour user
-2026-11-01) : à l'ouverture de la semaine, `gcalSyncDay` (le ⟳ d'Aujourd'hui) tourne pour les 7 jours avant la lecture des docs :
-les rendez-vous Google sont dans la grille en contour or (`_gcalState` → « 📅 agenda Google à jour » / « non connecté ») ; chaque
-bloc de l'activité en cours porte un ✕ (`_removePiece`, l'appui long marche toujours) et son heure quand il est assez haut ;
-zoom vertical ×1 · ×1,5 · ×2 · ×3 (`_zoomBar`, `_gridH`, repères chaque heure à partir de 700 px), aussi sur Ta semaine.
+**Planifier la semaine : code supprimé** (2026-11-16, ménage du lot 6 des modules ; retiré de l'interface depuis le 2026-11-01,
+retour user « pas exploitable ») — plus de choix « La semaine » au cap, ni de `showPlanScreen(week:)`, ni de `week_place.dart` /
+`week_spread.dart` / `spreadWeek`. La Revue du dimanche finit sur « Terminer la revue ». Une autre approche viendra plus tard ; l'état
+d'avant reste dans l'historique git (avant la PR « Ménage : supprimer Planifier la semaine »).
 
 ## Parole tenue (2026-10-31, maquette validée « Parole tenue »)
 
