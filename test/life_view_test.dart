@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart' show euros;
 import 'package:productivitwo_v1/widgets/life_view.dart';
+import 'package:productivitwo_v1/utils/modules.dart';
 
 void main() {
   testWidgets('Organisation : tuiles par nature, sans modes', (tester) async {
@@ -56,6 +57,39 @@ void main() {
     expect(opened, 'Business');
     await tester.tap(find.text('SOMMEIL'));
     expect(opened, 'sleep');
+  });
+
+  testWidgets('Modules éteints : plus de compteur des 168 h, de saison, ni de tuile Sommeil', (tester) async {
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'sl', name: 'Sommeil'), Domain(id: 'b', name: 'Business')], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})
+      ..dayStartMin = 0
+      ..modules = const ModuleSettings.only({});
+    var opened = '';
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: LifeView(
+          logic: logic,
+          sync: FirestoreSync(),
+          projects: const [],
+          onOpenDomain: (d) async {
+            opened = d.name;
+            return null;
+          },
+          onOpenSleep: () => opened = 'sleep',
+          onManageDomains: () {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('week-hours-card')), findsNothing);
+    expect(find.text('PAS DE SAISON EN COURS'), findsNothing);
+    expect(find.text('BUSINESS'), findsOneWidget);
+    // Le domaine Sommeil garde sa tuile, en domaine : il ouvre sa page, pas la feuille Sommeil.
+    await tester.tap(find.text('SOMMEIL'));
+    expect(opened, 'Sommeil');
   });
 
   testWidgets('Ma vie : la tuile Finances montre le solde du compte', (tester) async {

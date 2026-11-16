@@ -77,6 +77,7 @@ import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNo
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
+import 'package:productivitwo_v1/utils/modules.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -715,10 +716,13 @@ class TodayViewState extends State<TodayView> {
     }
   }
 
+  /// Modules (2026-11-16) : ce qui n'est pas du cœur suit son interrupteur.
+  bool _on(AppModule m) => widget.logic.moduleOn(m);
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final stakes = _showTomorrow ? null : _stakeBoard();
+    final stakes = _showTomorrow || !_on(AppModule.game) ? null : _stakeBoard();
     final lostYesterday = _showTomorrow ? 0 : widget.logic.lostSeriesYesterday().length;
     final now = DateTime.now();
     // Journée vécue : avant la bascule (5 h), « aujourd'hui » = la veille.
@@ -746,15 +750,17 @@ class TodayViewState extends State<TodayView> {
                 ...[
                 if (!_showTomorrow) ...[
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
-                  RechargeCard(logic: widget.logic),
-                  _bedtimeCard(),
+                  if (_on(AppModule.sleep)) ...[
+                    RechargeCard(logic: widget.logic),
+                    _bedtimeCard(),
+                  ],
                   PendingRunCard(logic: widget.logic, badges: widget.badges),
                   // Liberté (2026-11-04) : une envie en cours, écran quitté pour faire autre chose.
-                  PendingUrgeCard(logic: widget.logic),
+                  if (_on(AppModule.freedom)) PendingUrgeCard(logic: widget.logic),
                   // Badges en cartes (2026-11-01) : les cartes gagnées se retournent.
                   if (kCollectionMetaEnabled) CardRevealPrompt(badges: widget.badges, onOpenAlbum: _openBadgeGallery),
                   // Saisons (2026-11-04) : le bilan d'une saison close, une fois, en tête.
-                  if (widget.sync case final sync?)
+                  if (widget.sync case final sync? when _on(AppModule.seasons))
                     SeasonBilanCard(
                       logic: widget.logic,
                       onOpen: (season) => showSeasonBilanSheet(context, logic: widget.logic, season: season, objectives: _objectives, sync: sync, projects: widget.logic.currentProjects)
@@ -762,7 +768,7 @@ class TodayViewState extends State<TodayView> {
                         if (mounted) setState(() {});
                       }),
                     ),
-                  ..._weekReviewCards(),
+                  if (_on(AppModule.planning)) ..._weekReviewCards(),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
                   if (stakes case final board? when isEvening(widget.logic.livedNowMinNow) && !_eveningLedger(board).isEmpty) ...[
@@ -791,7 +797,7 @@ class TodayViewState extends State<TodayView> {
                     onGoToBed: _goToBed,
                     stakes: stakes,
                     onStake: _runStake,
-                    modeOfMoment: _modeKind == null
+                    modeOfMoment: _modeKind == null || !_on(AppModule.modes)
                         ? null
                         : (kind: _modeKind!, label: switch (_modeKind) { kGuerillaKind => 'Guérilla', kOffensiveKind => 'Offensive', _ => 'Sniper' }),
                     onMode: openRun,
@@ -947,11 +953,11 @@ class TodayViewState extends State<TodayView> {
         Row(mainAxisSize: MainAxisSize.min, children: [
           // Le mode du moment a son gros bouton sous l'en-tête (2026-11-01) : ici, les autres.
           for (final l in _launchers)
-            if (_showTomorrow || l.kind != _modeKind) ...[
+            if (_on(AppModule.modes) && (_showTomorrow || l.kind != _modeKind)) ...[
               _launcherBtn(cs, l.kind, l.tooltip, l.accent, l.light),
               const SizedBox(width: 8),
             ],
-          _planBtn(cs),
+          if (_on(AppModule.planning)) _planBtn(cs),
         ]),
       ]),
     ]);
@@ -1162,7 +1168,7 @@ class TodayViewState extends State<TodayView> {
             const ProgramTile(value: 'Rien de prévu', sub: 'touche pour voir le programme et ajouter un bloc', strip: []),
         objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
-        badges: badgesTile(bc?.deck, board),
+        badges: _on(AppModule.game) ? badgesTile(bc?.deck, board) : null,
         perfect: minimumTile(widget.logic) ?? perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
         projects: projectTile,
@@ -1171,7 +1177,7 @@ class TodayViewState extends State<TodayView> {
         // aujourd'hui, le lanceur (FAB) montre toutes les routines.
         perfectWide: true,
         // Le mode du moment : une tuile carrée, l'icône seule (2026-11-03, « Modes en tuile »).
-        modeTile: _showTomorrow ? null : _modeTile(cs),
+        modeTile: _showTomorrow || !_on(AppModule.modes) ? null : _modeTile(cs),
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         // La tuile Collection ouvre l'album (ce qui se joue ce soir y est en tête, 2026-11-01).
         onBadges: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
@@ -1180,7 +1186,7 @@ class TodayViewState extends State<TodayView> {
         onActions: _openFocusedActionsSheet,
         // Résumé du jour + Où on va : une tuile dans la case libre (retour
         // user 2026-10-30), à la place des deux boutons du bas de page.
-        review: const DashTile(label: 'RECUL', value: 'Bilan · cap', sub: 'résumé du jour · où on va'),
+        review: _on(AppModule.planning) ? const DashTile(label: 'RECUL', value: 'Bilan · cap', sub: 'résumé du jour · où on va') : null,
         onReview: _openReviewChoice,
         onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
@@ -1865,7 +1871,8 @@ class TodayViewState extends State<TodayView> {
     WatchKeepStore.load();
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
-        final board = _stakeBoard() ?? StakeBoard.empty;
+        final game = _on(AppModule.game);
+        final board = (game ? _stakeBoard() : null) ?? StakeBoard.empty;
         final evening = isEvening(widget.logic.livedNowMinNow);
         final ledger = evening ? _eveningLedger(board) : null;
         final stakes = StakesList(
@@ -1894,16 +1901,22 @@ class TodayViewState extends State<TodayView> {
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
           children: [
-            FicheHeader(
-              title: evening ? 'Ce soir' : 'Ta journée',
-              info: const InfoDot(kRuleStakes),
-              chip: board.inPlay == 0 ? 'rien en jeu' : '${board.inPlay} en jeu',
-              chipColor: kStakeHunt,
-            ),
+            // Sans le module Jeu et badges (2026-11-16) : la feuille ne garde que les séries d'hier.
+            if (!game)
+              const FicheHeader(title: 'Hier')
+            else
+              FicheHeader(
+                title: evening ? 'Ce soir' : 'Ta journée',
+                info: const InfoDot(kRuleStakes),
+                chip: board.inPlay == 0 ? 'rien en jeu' : '${board.inPlay} en jeu',
+                chipColor: kStakeHunt,
+              ),
             const SizedBox(height: 12),
             // Le soir, ENCORE POSSIBLE CE SOIR passe en tête (retour user 2026-10-30) : le bilan après.
-            if (evening) ...[stakes, const SizedBox(height: 12)],
-            if (ledger != null && !ledger.isEmpty)
+            if (game && evening) ...[stakes, const SizedBox(height: 12)],
+            if (!game)
+              const SizedBox.shrink()
+            else if (ledger != null && !ledger.isEmpty)
               EveningLedgerCard(ledger: ledger)
             else if (!evening)
               StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), lostYesterday: widget.logic.lostSeriesYesterday().length),
@@ -1916,7 +1929,7 @@ class TodayViewState extends State<TodayView> {
                 setLocal(() {});
               },
             ),
-            if (!evening) stakes,
+            if (game && !evening) stakes,
           ],
         );
       });

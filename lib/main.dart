@@ -1837,6 +1837,11 @@ class _AppRootState extends State<AppRoot>
       final periods = parseRestPeriods(m['restPeriods']);
       final freezes = parseRestPeriods(m['freezes']);
       final hardDays = parseHardDays(m['hardDays']);
+      // Nouveau compte (2026-11-16) : meta presque vide et pas encore de réglage des modules → le cœur seul.
+      // Un compte qui existe a déjà ses réglages dans meta : il garde tout allumé.
+      if (!logic.metaLoaded && m['modules'] == null && m.length <= 2) {
+        _sync.setMetaFields({'modules': const ModuleSettings.only({}).toJson()});
+      }
       final modules = parseModules(m['modules']);
       final minimum = parseMinimumPeriods(m['minimumPeriods']);
       final seasons = parseSeasons(m['seasons']);
@@ -4747,9 +4752,13 @@ class _AppRootState extends State<AppRoot>
                   child: ValueListenableBuilder<int>(
                     valueListenable: _tick,
                     builder: (context, _, __) => Row(mainAxisSize: MainAxisSize.min, children: [
-                      SleepBars(logic: logic, onTap: _openSleepActivity),
-                      const SizedBox(width: 6),
+                      // Modules (2026-11-16) : sommeil, sport et repas suivent leur interrupteur.
+                      if (logic.moduleOn(AppModule.sleep)) ...[
+                        SleepBars(logic: logic, onTap: _openSleepActivity),
+                        const SizedBox(width: 6),
+                      ],
                       // Bouton Sport (2026-11-01) : la feuille Sport en un tap.
+                      if (logic.moduleOn(AppModule.sport)) ...[
                       Tooltip(
                         message: 'Sport',
                         child: InkResponse(
@@ -4768,7 +4777,9 @@ class _AppRootState extends State<AppRoot>
                         ),
                       ),
                       const SizedBox(width: 6),
+                      ],
                       // Bouton Repas (2026-11-01) : la feuille Repas en un tap.
+                      if (logic.moduleOn(AppModule.kitchen))
                       Tooltip(
                         message: 'Repas',
                         child: InkResponse(
@@ -4885,6 +4896,7 @@ class _AppRootState extends State<AppRoot>
                 ),
               ),
               const PopupMenuDivider(),
+              if (logic.moduleOn(AppModule.assistant))
               const PopupMenuItem(
                 value: 'proposals',
                 child: Row(children: [
@@ -4893,6 +4905,7 @@ class _AppRootState extends State<AppRoot>
                   Text('Propositions à valider'),
                 ]),
               ),
+              if (logic.moduleOn(AppModule.assistant))
               const PopupMenuItem(
                 value: 'orion',
                 child: Row(children: [

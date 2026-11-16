@@ -45,6 +45,7 @@ import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMome
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart';
+import 'package:productivitwo_v1/utils/modules.dart';
 
 const _kNight = Color(0xFF7FB2E8);
 const _kAmber = Color(0xFFF0B44C);
@@ -317,6 +318,9 @@ class LifeViewState extends State<LifeView> {
     final cells = <({WidgetDomain domain, Widget Function() square, Widget Function()? wide})>[];
     for (final d in sorted) {
       var n = _natureOf(d);
+      // Module éteint (2026-11-16) : le domaine garde sa tuile, sans la feuille du module.
+      final sheetModule = _kSheetModules[n];
+      if (sheetModule != null && !logic.moduleOn(sheetModule)) n = _fallbackNature(d);
       if (_natureColors.containsKey(n)) {
         // Nature à feuille déjà prise par un autre domaine : la tuile reste, en tuile de domaine
         // (bug user 2026-11-05 : elle disparaissait sans un mot).
@@ -363,9 +367,12 @@ class LifeViewState extends State<LifeView> {
         ]),
         const SizedBox(height: 6),
         // Les 168 dernières heures en compteur (maquette validée 2026-11-11) ; tap = la feuille en grand.
-        WeekHoursCard(logic: logic, hours: weekHours(sessions: st.sessions, activities: st.activities, now: now)),
-        const SizedBox(height: 10),
+        if (logic.moduleOn(AppModule.analysis)) ...[
+          WeekHoursCard(logic: logic, hours: weekHours(sessions: st.sessions, activities: st.activities, now: now)),
+          const SizedBox(height: 10),
+        ],
         // Saison (refonte 2026-11-04) : la période des objectifs, sa cible sur chaque tuile.
+        if (logic.moduleOn(AppModule.seasons))
         SeasonBanner(
           logic: logic,
           objectives: _objectives,
@@ -380,7 +387,7 @@ class LifeViewState extends State<LifeView> {
           final w = (c.maxWidth - 8) / 2;
           return Wrap(spacing: 8, runSpacing: 8, children: [for (final (t, wide) in tiles) SizedBox(width: wide ? c.maxWidth : w, child: t)]);
         }),
-        _freedomTile(cs, mute),
+        if (logic.moduleOn(AppModule.freedom)) _freedomTile(cs, mute),
         if (orphan.isNotEmpty) ...[
           _section(mute, 'OBJECTIFS SANS DOMAINE'),
           for (final o in orphan) _objectiveLine(cs, o, progress[o.id], cs.primary),
@@ -486,6 +493,13 @@ class LifeViewState extends State<LifeView> {
       ),
     );
   }
+
+  static const _kSheetModules = {
+    DomainNature.night: AppModule.sleep,
+    DomainNature.sessions: AppModule.sport,
+    DomainNature.meals: AppModule.kitchen,
+    DomainNature.money: AppModule.finances,
+  };
 
   /// Nature de repli d'un domaine dont la nature à feuille est déjà prise : Pratique s'il a du temps, sinon Entretien.
   DomainNature _fallbackNature(Domain d) {
