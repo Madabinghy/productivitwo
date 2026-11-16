@@ -1788,8 +1788,15 @@ contenu, `proposedWhen`, `private` pour Liberté), `ModuleSettings` (`on` null =
 `data/meta.modules {v: 1, on: [clés]}` ; ABSENT = compte d'avant les modules, tout allumé (un écrit remplace par la liste explicite,
 jamais de clé `all` : `setMetaFields` fusionne). `AppLogic.modules` / `moduleOn` / `setModule`, flux meta de main.dart, dans
 `kBackupMetaKeys`. Écran `widgets/modules_sheet.dart` (`showModulesSheet`, Paramètres « Mes modules ») : le cœur, ALLUMÉS, À DÉCOUVRIR
-avec « proposé … », un interrupteur par module. **Lot 2** : chaque tuile, rond, carte et entrée suit `moduleOn` ; un nouveau compte
-démarre au cœur seul.
+avec « proposé … », un interrupteur par module. **Lot 2 livré (branchement)** : Aujourd'hui (`today_view.dart`, `_on`) — Modes d'action
+= ronds Guérilla · Sniper · Offensive, tuile du mode, mode du moment de MAINTENANT ; Planification = rond 🧭, cartes Revue du dimanche,
+tuile Recul ; Jeu et badges = enjeux (tableau Ta journée, se perd ce soir de MAINTENANT, tuile Badges ; sans lui la feuille ouverte par
+« n séries cassées hier » ne montre que `LostYesterdaySection`, titre « Hier ») ; Saisons = carte bilan ; Sommeil = carte Recharge et
+« Je vais me coucher » ; Liberté = envie en cours. Barre du haut (main.dart) : barres de sommeil, ronds Sport et Repas ; menu ⋯ :
+Propositions et Orion suivent Assistant. Organisation (`life_view.dart`) : compteur des 168 h (Analyse), bandeau de saison, section
+Liberté ; une nature à feuille (Nuit, Séances, Repas, Finances) dont le module est éteint redevient une tuile de domaine
+(`_kSheetModules` → `_fallbackNature`). **Nouveau compte = le cœur seul** : au premier flux meta, sans `modules` et avec un meta
+presque vide (≤ 2 champs), `modules {on: []}` est écrit. Pas encore branchés : Formateur (séances), le web.
 
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 
