@@ -3319,6 +3319,16 @@ class FirestoreSync {
   }
 
   /// Quelques champs simples du doc meta (fusion).
+  /// Remplace un champ de meta en entier (`setMetaFields` fusionne les maps imbriquées).
+  Future<void> replaceMetaField(String key, Object value) async {
+    if (uid == null) return;
+    try {
+      await _meta().update({key: value});
+    } on FirebaseException {
+      await _meta().set({key: value}, SetOptions(merge: true));
+    }
+  }
+
   Future<void> setMetaFields(Map<String, dynamic> fields) async {
     if (uid == null) return;
     await _meta().set(fields, SetOptions(merge: true));

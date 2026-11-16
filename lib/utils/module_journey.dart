@@ -17,7 +17,9 @@ class ModuleJourney {
   final AppModule? pending;
   final String? lastProposed;
   final Map<AppModule, String> declined;
-  const ModuleJourney({this.since, this.pending, this.lastProposed, this.declined = const {}});
+  /// « Repartir comme un débutant » (lot 4) : les modules allumés avant le redémarrage, null = pas de redémarrage.
+  final List<AppModule>? before;
+  const ModuleJourney({this.since, this.pending, this.lastProposed, this.declined = const {}, this.before});
 
   static ModuleJourney from(dynamic raw) {
     if (raw is! Map) return const ModuleJourney();
@@ -30,7 +32,9 @@ class ModuleJourney {
       });
     }
     final p = raw['pending'];
+    final b = raw['before'];
     return ModuleJourney(
+      before: b is List ? [for (final k in b) if (moduleOfKey('$k') case final m?) m] : null,
       since: raw['since'] is String ? raw['since'] as String : null,
       pending: p is String ? moduleOfKey(p) : null,
       lastProposed: raw['lastProposed'] is String ? raw['lastProposed'] as String : null,
@@ -43,6 +47,7 @@ class ModuleJourney {
       pending == o.pending &&
       lastProposed == o.lastProposed &&
       declined.length == o.declined.length &&
+      (before?.join(',') ?? '-') == (o.before?.join(',') ?? '-') &&
       declined.entries.every((e) => o.declined[e.key] == e.value);
 }
 
@@ -234,3 +239,18 @@ JourneyFacts journeyFactsOf({
     moneyGoal: money,
   );
 }
+
+/// Le réglage écrit par « Repartir comme un débutant » : le cœur seul, le parcours à zéro à partir de
+/// [today], les modules d'avant gardés en photo dans `before` (pour « Retrouver mon app complète »).
+Map<String, dynamic> beginnerModules(ModuleSettings current, String today) => {
+      'v': 1,
+      'on': <String>[],
+      'since': today,
+      'before': [for (final i in kModules) if (current.isOn(i.module)) i.key],
+    };
+
+/// Le réglage qui rend l'app d'avant le redémarrage ; le parcours repart de rien.
+Map<String, dynamic> restoredModules(ModuleJourney j) => {
+      'v': 1,
+      'on': [for (final m in j.before ?? const <AppModule>[]) moduleInfo(m).key],
+    };

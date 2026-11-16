@@ -2030,6 +2030,24 @@ class AppLogic implements HuntStore {
     await sync?.setMetaFields({'modules': {'pending': moduleInfo(m).key, 'lastProposed': today}});
   }
 
+  /// « Repartir comme un débutant » (lot 4) : le cœur seul, le parcours à zéro, rien n'est effacé.
+  Future<void> restartAsBeginner() async {
+    final json = beginnerModules(modules, livedTodayYmd);
+    modules = parseModules(json);
+    journey = ModuleJourney.from(json);
+    onChange();
+    await sync?.replaceMetaField('modules', json);
+  }
+
+  /// « Retrouver mon app complète » : les modules d'avant le redémarrage.
+  Future<void> restoreFullApp() async {
+    final json = restoredModules(journey);
+    modules = parseModules(json);
+    journey = const ModuleJourney();
+    onChange();
+    await sync?.replaceMetaField('modules', json);
+  }
+
   /// « Plus tard » (reproposé dans 30 jours) ou « Pas pour moi » (plus jamais).
   Future<void> declineModule(AppModule m, {bool never = false}) async {
     final v = never ? 'never' : 'later:${laterUntil(livedTodayYmd)}';
