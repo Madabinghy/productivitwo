@@ -273,7 +273,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   /// Ids des actions portées par un bloc du programme d'aujourd'hui.
   Set<String> get _todayActionIds =>
-      {for (final b in _todayBlocks) if (b.actionId != null) b.actionId!};
+      {for (final b in _todayBlocks) ...b.targetActionIds};
 
   /// Minutes réellement passées par action (chrono ciblé), recalculées au build.
   Map<String, int> _spent = const {};

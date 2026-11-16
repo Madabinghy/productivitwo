@@ -130,6 +130,19 @@ List<ChainItem> chainItemsOf(
       if (w.focus != null) ..._itemsOfAction(b, w.focus!, project: project, task: task),
       for (final a in w.open) ..._itemsOfAction(b, a, project: project, task: task),
     ];
+    // Plusieurs cibles : après la tâche principale, les suivantes dans l'ordre
+    // du bloc (une séance s'ouvre depuis son propre bloc, pas d'ici).
+    for (final x in b.extraTargets) {
+      final p2 = projects.where((p) => p.id == x.projectId).firstOrNull;
+      final t2 = x.taskId == null ? null : p2?.tasks.where((t) => t.id == x.taskId).firstOrNull;
+      if (p2 == null || t2 == null || t2.status == 'done' || t2.status == 'skipped') continue;
+      if (t2.interventionRole == 'session' && t2.interventionId != null) continue;
+      final w2 = blockWork(t2, x.actionId);
+      out.addAll([
+        if (w2.focus != null) ..._itemsOfAction(b, w2.focus!, project: p2, task: t2),
+        for (final a in w2.open) ..._itemsOfAction(b, a, project: p2, task: t2),
+      ]);
+    }
     // Tâche sans aucune action : une carte « bloc » (on y définira l'action) ;
     // toutes les actions faites : le bloc est épuisé, rien à montrer.
     if (out.isEmpty && task.actions.isEmpty) {
@@ -343,7 +356,7 @@ List<ChainItem> buildObjectiveChain(
   final live = day.blocks.where((b) => b.status == 'pending' && blockEndMin(b) > nowMin).toList()
     ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
   final inProgram = {for (final b in live) if (b.activityId != null) b.activityId!};
-  final tasksInProgram = {for (final b in live) if (b.taskId != null) b.taskId!};
+  final tasksInProgram = {for (final b in live) ...b.targetTaskIds};
   final out = <ChainItem>[];
   for (final a in day.routines) {
     if (dismissed.contains(a.id) || inProgram.contains(a.id)) continue;

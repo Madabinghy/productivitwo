@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/block_work.dart';
+import 'package:productivitwo_v1/utils/chain.dart';
 import 'package:productivitwo_v1/utils/offensive.dart';
+import 'package:productivitwo_v1/utils/widget_payload.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 
 void main() {
@@ -114,6 +117,46 @@ void main() {
         BlockTarget(projectId: 'nulle-part'),
       ]);
       expect([for (final t in q) t.action.id], ['d2', 'd1']);
+    });
+  });
+  group('les cibles suivantes vues par le reste de l’app', () {
+    TaskAction a(String id, {bool done = false}) => TaskAction(id: id, title: 'Action $id', done: done);
+    Project build({bool firstDone = false}) => Project(id: 'p1', title: 'Maths 6e', startDate: day, createdBy: 'user', tasks: [
+          ProjectTask(id: 't1', title: 'Préparer', startDate: day, actions: [a('a1', done: firstDone)]),
+          ProjectTask(id: 't2', title: 'Corriger', startDate: day, actions: [
+            TaskAction(id: 'b1', title: 'Corriger les copies', checklist: [ChecklistItem(id: 'c1', title: 'Paquet A')]),
+          ]),
+        ]);
+    ScheduleBlock block() =>
+        ScheduleBlock(startTime: '06:00', durationMin: 120, title: 'Bloc', projectId: 'p1', taskId: 't1', actionId: 'a1')
+          ..extraTargets = const [BlockTarget(projectId: 'p1', taskId: 't2', actionId: 'b1')];
+
+    test('targetActionIds : ce qui est « au programme »', () {
+      expect(block().targetActionIds, {'a1', 'b1'});
+    });
+
+    test('activeTargetOf : la première cible où il reste à faire', () {
+      expect(activeTargetOf(block(), [build()])!.taskId, 't1');
+      expect(activeTargetOf(block(), [build(firstDone: true)])!.taskId, 't2');
+      // Une seule cible : elle, même faite.
+      final single = ScheduleBlock(startTime: '06:00', durationMin: 60, title: 'Bloc', projectId: 'p1', taskId: 't1');
+      expect(activeTargetOf(single, [build(firstDone: true)])!.taskId, 't1');
+      expect(activeTargetOf(ScheduleBlock(startTime: '06:00', durationMin: 60, title: 'Libre'), [build()]), isNull);
+    });
+
+    test('Enchaîner déroule la tâche principale puis les suivantes', () {
+      final items = chainItemsOf(block(), projects: [build()], activities: const [], hits: const [], now: day);
+      expect([for (final i in items) i.action?.id], ['a1', 'b1']);
+      expect(items.last.task?.id, 't2');
+      expect(items.last.step?.id, 'c1');
+    });
+
+    test('le widget montre la cible du moment, ses boutons agissent sur elle', () {
+      final w = widgetBlock(block(), day, '2026-11-16', [build(firstDone: true)]);
+      expect(w['ctx'], 'Maths 6e › Corriger');
+      expect((w['taskId'], w['actionId'], w['itemId']), ('t2', 'b1', 'c1'));
+      final first = widgetBlock(block(), day, '2026-11-16', [build()]);
+      expect((first['taskId'], first['actionId']), ('t1', 'a1'));
     });
   });
 }

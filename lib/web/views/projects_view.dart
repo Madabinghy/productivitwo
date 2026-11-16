@@ -180,7 +180,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     ({DateTime day, ScheduleBlock block})? best;
     for (final e in _byDay.entries) {
       for (final b in e.value) {
-        if (b.taskId != taskId || b.status == 'done') continue;
+        if (!b.targetTaskIds.contains(taskId) || b.status == 'done') continue;
         final day = DateTime.parse(e.key);
         if (day.isBefore(_today)) continue;
         if (best == null ||
@@ -497,7 +497,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     final ymd = ymdOf(_today);
     final program = {
       for (final b in _byDay[ymd] ?? const <ScheduleBlock>[])
-        if (b.actionId != null && b.status != 'done') b.actionId!,
+        if (b.status != 'done') ...b.targetActionIds,
     };
     final list = todayActions(
         projects: widget.projects, activities: widget.activities, today: _today, programActionIds: program);

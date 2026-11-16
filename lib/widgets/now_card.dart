@@ -25,7 +25,7 @@ import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 import 'package:productivitwo_v1/utils/stakes.dart' show Stake, StakeBoard;
 import 'package:productivitwo_v1/utils/landing.dart' show sessionTaskIdsOf;
 import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
-import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
+import 'package:productivitwo_v1/utils/block_work.dart' show blockWork, activeTargetOf;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, MomentActionIcons, kMomentIconBtn, kMomentInlineActions;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -402,12 +402,16 @@ class _NowCardState extends State<NowCard> {
     String title = b != null && (current || session == null) && !aside ? b.title : runningName;
     String? origin2 = origin;
     String? stepLine;
-    if (b != null && !aside && (current || session == null) && project != null && b.taskId != null) {
-      final task = project.tasks.where((t) => t.id == b.taskId).firstOrNull;
-      final focusAction = task == null ? null : blockWork(task, b.actionId).focus;
+    // Plusieurs cibles : la carte montre celle du moment (la première où il reste à faire).
+    final target = b == null ? null : activeTargetOf(b, widget.logic.currentProjects);
+    final targetProject = _project(target?.projectId);
+    if (b != null && !aside && (current || session == null) && targetProject != null && target?.taskId != null) {
+      final task = targetProject.tasks.where((t) => t.id == target!.taskId).firstOrNull;
+      final focusAction = task == null ? null : blockWork(task, target!.actionId).focus;
       if (task != null && focusAction != null) {
         title = focusAction.title;
-        origin2 = '${project.title} › ${task.title}';
+        origin2 = '${targetProject.title} › ${task.title}'
+            '${b.extraTargets.isEmpty ? '' : ' · ${b.targets.indexOf(target!) + 1} / ${b.targets.length}'}';
         final nextStep = nextChecklistItem(focusAction);
         if (nextStep != null) stepLine = 'étape : ${nextStep.title}';
       }

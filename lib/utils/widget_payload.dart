@@ -24,12 +24,15 @@ Map<String, dynamic> widgetBlock(ScheduleBlock b, DateTime livedDay, String docY
   final end = start.add(Duration(minutes: b.durationMin));
   String? ctx, action, step, itemId, actionId;
   int stepIdx = 0, stepTotal = 0;
-  if (b.projectId != null && b.taskId != null) {
-    final p = projects.where((x) => x.id == b.projectId).firstOrNull;
-    final t = p?.tasks.where((x) => x.id == b.taskId).firstOrNull;
+  // Plusieurs cibles : le widget montre celle du moment (la première où il
+  // reste à faire), et ses boutons agissent sur elle.
+  final target = activeTargetOf(b, projects);
+  if (target != null && target.taskId != null) {
+    final p = projects.where((x) => x.id == target.projectId).firstOrNull;
+    final t = p?.tasks.where((x) => x.id == target.taskId).firstOrNull;
     if (p != null && t != null) {
       ctx = '${p.title} › ${t.title}';
-      final f = blockWork(t, b.actionId).focus;
+      final f = blockWork(t, target.actionId).focus;
       if (f != null) {
         action = f.title;
         actionId = f.id;
@@ -60,8 +63,8 @@ Map<String, dynamic> widgetBlock(ScheduleBlock b, DateTime livedDay, String docY
     if (step != null) 'step': step,
     if (stepTotal > 0) 'stepIdx': stepIdx,
     if (stepTotal > 0) 'stepTotal': stepTotal,
-    if (b.projectId != null) 'projectId': b.projectId,
-    if (b.taskId != null) 'taskId': b.taskId,
+    if ((target?.projectId ?? b.projectId) != null) 'projectId': target?.projectId ?? b.projectId,
+    if ((target?.taskId ?? b.taskId) != null) 'taskId': target?.taskId ?? b.taskId,
     if (actionId != null) 'actionId': actionId,
     if (itemId != null) 'itemId': itemId,
   };

@@ -25,3 +25,25 @@ BlockWork blockWork(ProjectTask task, String? actionId) {
     [for (final a in task.actions) if (a.done && a.id != focus?.id) a],
   );
 }
+
+/// La cible DU MOMENT d'un bloc à plusieurs cibles (2026-11-16) : la première,
+/// dans l'ordre du bloc, où il reste quelque chose à faire — une tâche ouverte
+/// avec une action ouverte (ou sans action encore), un projet visé en entier
+/// qui a une action ouverte. Tout est fait, ou une seule cible : la principale.
+BlockTarget? activeTargetOf(ScheduleBlock b, List<Project> projects) {
+  final all = b.targets;
+  if (all.length < 2) return all.firstOrNull;
+  for (final t in all) {
+    final p = projects.where((x) => x.id == t.projectId).firstOrNull;
+    if (p == null) continue;
+    bool open(ProjectTask x) =>
+        x.status != 'done' && x.status != 'skipped' && (x.actions.isEmpty || x.actions.any((a) => !a.done));
+    if (t.taskId == null) {
+      if (p.tasks.any((x) => x.actions.any((a) => !a.done) && open(x))) return t;
+      continue;
+    }
+    final task = p.tasks.where((x) => x.id == t.taskId).firstOrNull;
+    if (task != null && open(task)) return t;
+  }
+  return all.first;
+}
