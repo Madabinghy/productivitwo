@@ -46,6 +46,8 @@ void main() {
     expect(find.text('Guérilla'), findsNothing);
     expect(find.text('MES MODES'), findsNothing);
     expect(find.byKey(const ValueKey('life-objectives')), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('recul-day')), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.byKey(const ValueKey('recul-where')), findsOneWidget);
     expect(find.byKey(const ValueKey('week-hours-card')), findsOneWidget);
     expect(find.text('TES 7 DERNIERS JOURS'), findsOneWidget);
     expect(find.text('PAS DE SAISON EN COURS'), findsOneWidget);

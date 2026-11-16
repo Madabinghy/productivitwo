@@ -47,7 +47,6 @@ import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart';
-import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore;
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
@@ -109,7 +108,6 @@ class TodayView extends StatefulWidget {
   // PR 2 : onglet unique — tâche en retard → fiche projet ; résumé du jour ;
   // défi ORION de la carte coach ; minuteur d'une routine (« Le meilleur à faire »).
   final void Function(Project project, ProjectTask task)? onOpenTask;
-  final VoidCallback? onOpenDayReview;
   /// Tuiles du tableau de bord (lot 3) : ouvrir l'onglet Actions / Projets.
   final VoidCallback? onOpenActions;
   final VoidCallback? onOpenProjects;
@@ -135,7 +133,6 @@ class TodayView extends StatefulWidget {
       this.onOpenRoutines,
       this.onOpenActivities,
       this.onOpenTask,
-      this.onOpenDayReview,
       this.onOpenActions,
       this.onOpenProjects,
       this.onStartTimed,
@@ -1217,10 +1214,6 @@ class TodayViewState extends State<TodayView> {
         onBadgesGallery: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
         onPerfect: bc == null ? null : _openPerfectDaySheet,
         onActions: _openFocusedActionsSheet,
-        // Résumé du jour + Où on va : une tuile dans la case libre (retour
-        // user 2026-10-30), à la place des deux boutons du bas de page.
-        review: _on(AppModule.planning) ? const DashTile(label: 'RECUL', value: 'Bilan · cap', sub: 'résumé du jour · où on va') : null,
-        onReview: _openReviewChoice,
         onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
     ];
@@ -1287,46 +1280,6 @@ class TodayViewState extends State<TodayView> {
   Future<void> _openWeekReview() async {
     await showWeekReviewScreen(context, widget.logic, badges: widget.badges);
     if (mounted) setState(() {});
-  }
-
-  void _openReviewChoice() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (widget.onOpenDayReview != null)
-            ListTile(
-              leading: const Icon(Icons.bar_chart_rounded),
-              title: const Text('Résumé du jour'),
-              subtitle: const Text('ce que la journée a donné'),
-              onTap: () {
-                Navigator.pop(ctx);
-                widget.onOpenDayReview!();
-              },
-            ),
-          ListTile(
-            leading: const Icon(Icons.event_repeat_rounded),
-            title: const Text('Revue de la semaine'),
-            subtitle: const Text('ce qui a tenu, ce qui a coûté, la suivante posée'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _openWeekReview();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.explore_outlined),
-            title: const Text('Où on va'),
-            subtitle: const Text('objectifs et cap à long terme'),
-            onTap: () {
-              Navigator.pop(ctx);
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => WhereWeGoScreen(logic: widget.logic)));
-            },
-          ),
-          const SizedBox(height: 8),
-        ]),
-      ),
-    );
   }
 
   /// Feuille de la tuile JOURNÉE PARFAITE : ce qui manque (routines à

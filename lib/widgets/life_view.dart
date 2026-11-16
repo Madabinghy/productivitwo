@@ -3,6 +3,9 @@ import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/widgets/day_review_sheet.dart' show showDayReviewSheet;
+import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
+import 'package:productivitwo_v1/widgets/where_we_go_screen.dart' show WhereWeGoScreen;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -392,6 +395,9 @@ class LifeViewState extends State<LifeView> {
           _section(mute, 'OBJECTIFS SANS DOMAINE'),
           for (final o in orphan) _objectiveLine(cs, o, progress[o.id], cs.primary),
         ],
+        // Prendre du recul (2026-11-16) : ex-tuile Recul d'Aujourd'hui (Aujourd'hui = agir, Organisation = le recul).
+        _section(mute, 'PRENDRE DU RECUL'),
+        _recul(cs),
         ]),
       ),
     );
@@ -456,6 +462,43 @@ class LifeViewState extends State<LifeView> {
       for (final id in ids) card(id),
       add,
     ]);
+  }
+
+  Widget _recul(ColorScheme cs) {
+    Widget item(String key, IconData icon, String label, String sub, VoidCallback onTap) => Expanded(
+          child: Material(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              key: ValueKey(key),
+              borderRadius: BorderRadius.circular(14),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(icon, size: 20, color: cs.primary),
+                  const SizedBox(height: 6),
+                  Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  Text(sub, style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+                ]),
+              ),
+            ),
+          ),
+        );
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        item('recul-day', Icons.bar_chart_rounded, 'Résumé du jour', 'ce que la journée a donné',
+            () => showDayReviewSheet(context, logic: logic, projects: widget.projects)),
+        if (logic.moduleOn(AppModule.planning)) ...[
+          const SizedBox(width: 8),
+          item('recul-week', Icons.event_repeat_rounded, 'Revue de la semaine', 'ce qui a tenu, ce qui a coûté',
+              () => showWeekReviewScreen(context, logic, badges: widget.badges)),
+        ],
+        const SizedBox(width: 8),
+        item('recul-where', Icons.explore_outlined, 'Où on va', 'objectifs et cap',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WhereWeGoScreen(logic: logic)))),
+      ]),
+    );
   }
 
   Widget _section(Color mute, String t, {String? right}) => Padding(
