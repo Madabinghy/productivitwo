@@ -30,6 +30,39 @@ class TodayItem {
 // Un doc par jour : users/{uid}/daily_schedules/{YYYY-MM-DD}
 // Généré par Claude à la demande ou par ORION automatiquement chaque matin.
 
+/// Une cible d'un bloc : un projet, parfois une de ses tâches (ou séances) et
+/// l'action par laquelle commencer.
+class BlockTarget {
+  final String projectId;
+  final String? taskId;
+  final String? actionId;
+  const BlockTarget({required this.projectId, this.taskId, this.actionId});
+
+  /// Même projet et même tâche (l'action de départ ne distingue pas).
+  bool sameAs(BlockTarget o) => o.projectId == projectId && o.taskId == taskId;
+
+  Map<String, dynamic> toJson() => {
+        'projectId': projectId,
+        if (taskId != null) 'taskId': taskId,
+        if (actionId != null) 'actionId': actionId,
+      };
+
+  static BlockTarget? from(Object? j) {
+    if (j is! Map) return null;
+    final p = j['projectId'];
+    if (p is! String || p.isEmpty) return null;
+    final t = j['taskId'], a = j['actionId'];
+    return BlockTarget(projectId: p, taskId: t is String && t.isNotEmpty ? t : null, actionId: a is String && a.isNotEmpty ? a : null);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is BlockTarget && other.projectId == projectId && other.taskId == taskId && other.actionId == actionId;
+
+  @override
+  int get hashCode => Object.hash(projectId, taskId, actionId);
+}
+
 class ScheduleBlock {
   String id;
   String startTime;   // "HH:mm"
@@ -66,6 +99,10 @@ class ScheduleBlock {
   // on choisit quoi faire au moment de le lancer ; il est fait dès que le
   // chrono, sur n'importe quelle activité, couvre 60 % de son créneau.
   String? timeBlock;
+  // Plusieurs cibles dans un même bloc (2026-11-16) : `projectId` / `taskId` /
+  // `actionId` restent LA cible principale (tout le code d'avant la lit) ; les
+  // suivantes vivent ici, dans l'ordre. Vide = une seule cible, comme avant.
+  List<BlockTarget> extraTargets;
   // ── Check-in du soir ───────────────────────────────────────────────────────
   // Pourquoi l'engagement a sauté — fait tracké, écrit par le check-in guidé.
   // Enum ouvert : "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
@@ -117,6 +154,7 @@ class ScheduleBlock {
     this.prepForBlockId,
     this.domainId,
     this.timeBlock,
+    List<BlockTarget>? extraTargets,
     this.skipReason,
     this.reportReason,
     this.carriedFromDate,
@@ -124,7 +162,8 @@ class ScheduleBlock {
     this.gcalEventId,
     this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
-        reminders = reminders ?? [];
+        reminders = reminders ?? [],
+        extraTargets = extraTargets ?? [];
 
   // ── Journée vécue (runtime, JAMAIS sérialisé) ──────────────────────────────
   // Après minuit et avant la bascule (5 h), la nuit appartient encore à la
@@ -137,6 +176,37 @@ class ScheduleBlock {
 
   bool get isPrep => kind == 'prep';
   bool get isTimeBlock => timeBlock != null;
+
+  /// Toutes les cibles du bloc, la principale d'abord. Sans projet principal,
+  /// les suivantes ne comptent pas (jamais écrites ainsi par l'app).
+  List<BlockTarget> get targets => projectId == null
+      ? const []
+      : [BlockTarget(projectId: projectId!, taskId: taskId, actionId: actionId), ...extraTargets];
+
+  /// Pose les cibles : la première devient la principale. Vide = plus de
+  /// cible ; l'action propre d'une activité (sans projet) n'est pas touchée.
+  set targets(List<BlockTarget> list) {
+    if (list.isEmpty) {
+      if (projectId != null) {
+        projectId = null;
+        taskId = null;
+        actionId = null;
+      }
+      extraTargets = [];
+      return;
+    }
+    projectId = list.first.projectId;
+    taskId = list.first.taskId;
+    actionId = list.first.actionId;
+    extraTargets = list.sublist(1);
+  }
+
+  /// Les tâches visées par le bloc (principale et suivantes).
+  Set<String> get targetTaskIds => {
+        if (taskId != null) taskId!,
+        for (final t in extraTargets)
+          if (t.taskId != null) t.taskId!,
+      };
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -159,6 +229,7 @@ class ScheduleBlock {
         'prepForBlockId': prepForBlockId,
         'domainId': domainId,
         if (timeBlock != null) 'timeBlock': timeBlock,
+        if (extraTargets.isNotEmpty) 'extraTargets': [for (final t in extraTargets) t.toJson()],
         'skipReason': skipReason,
         'reportReason': reportReason,
         'carriedFromDate': carriedFromDate,
@@ -188,6 +259,9 @@ class ScheduleBlock {
         prepForBlockId: j['prepForBlockId'],
         domainId: j['domainId'],
         timeBlock: j['timeBlock'] is String ? j['timeBlock'] as String : null,
+        extraTargets: j['projectId'] == null || j['extraTargets'] is! List
+            ? null
+            : [for (final t in j['extraTargets'] as List) BlockTarget.from(t)].whereType<BlockTarget>().toList(),
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
         carriedFromDate: j['carriedFromDate'],

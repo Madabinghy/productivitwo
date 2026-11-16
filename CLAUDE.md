@@ -1647,9 +1647,26 @@ Tâche ou séance (« Tout le projet ») ; boutons du bas en `Wrap` (ils débord
 fusion quand le mode est enlevé. **Mobile** (main.dart) : un bloc de tâche qui porte une activité-temps lance le chrono sur ELLE sans
 demander (`_blockTimeActivity`) ; un Deep work qui porte projet + activité ouvre l'Offensive sur le projet, commence par l'action
 visée (`firstActionId`) et fait tourner le chrono des coups sur l'activité du bloc (`showOffensiveScreen(chronoActivityId:)`,
-`_chronoOf`, gardée dans la session `extra.blockChrono`). **Pas fait** : plusieurs cibles dans un même bloc (il faudrait une liste, vrai
-changement de modèle), un mode « Miracle morning » (enchaîner les routines du matin), l'empilement dans la frise d'Aujourd'hui et sur
-mobile.
+`_chronoOf`, gardée dans la session `extra.blockChrono`). **Pas fait** : un mode « Miracle morning » (enchaîner les routines du
+matin), l'empilement dans la frise d'Aujourd'hui et sur mobile.
+**Plusieurs cibles dans un même bloc** (2026-11-16, demande user ; seul vrai changement de modèle) : `ScheduleBlock.extraTargets`
+(`BlockTarget {projectId, taskId?, actionId?}`, écrit seulement s'il y en a) = les cibles SUIVANTES, dans l'ordre ; `projectId` /
+`taskId` / `actionId` restent LA cible principale, donc tout le code d'avant continue de lire le bloc. Lire toutes les cibles par
+`block.targets` (principale d'abord ; `targets =` pose la liste, la première devient principale) et `targetTaskIds` — jamais
+`extraTargets` seul. `kMaxBlockTargets` = 6. `BlockLayers.targets` (liste) + `ownActionId` (action propre d'un bloc d'activité sans
+projet) ; `stackLayers` : mode et activité REMPLACENT, une cible S'AJOUTE (déjà portée = même projet et même tâche, `sameAs` → rien) ;
+`withoutTargetAt` (la suivante devient principale), `withTargetAt`. Titre de l'app « Deep work · Préparer la séance + 2 »
+(`layersTitle`), ligne du bloc « Maths 6e › Préparer + Corriger + CM » (`layersLine`, projet répété dit une fois). **Chrono** : le temps
+de CHAQUE cible compte pour le bloc (`sessionMatchesBlock`, `loggedMinForBlock`). **Web** : glisser une 2ᵉ tâche sur un bloc l'ajoute
+(« n cibles dans ce bloc »), une tâche posée comme cible suivante sort de « À placer » ; « Modifier le bloc » liste les cibles (une
+ligne par cible : sa tâche réglable ou « Tout le projet », ✕ = retirer) + « Ajouter un projet ». **Mobile** : ouvrir ou lancer un
+bloc à plusieurs cibles demande « sur quoi ? » (`_pickBlockTarget`, la cible choisie passe en tête pour l'écran bloc et le chrono) ;
+un Deep work à plusieurs cibles ouvre l'Offensive sur le front « Ce bloc · n cibles » (`kBlockFront`, `buildBlockQueue` : les actions
+ouvertes de chaque tâche visée, l'action du bloc d'abord, un projet entier = ses actions prêtes ; gardé dans la session
+`extra.blockTargets`). **Serveur** (⚠️ `firebase deploy --only functions`) : logique pure `functions/src/block_targets.ts`
+(`normalizeExtraTargets`, `extraTargetLinks`) ; `schedule_day` accepte `extraTargets` sur un bloc, `get_day_schedule` les montre
+(« aussi projet:… tâche:… »). **Pas fait** : les cibles suivantes ne sont pas encore lues par « au programme » des actions, le détail
+d'un bloc d'Aujourd'hui (web), Enchaîner, les widgets iOS, `update_block` et `delete_task` (ils ne voient que la principale).
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 

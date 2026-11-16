@@ -98,4 +98,66 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+  testWidgets('une deuxième tâche glissée sur un bloc de tâche s’ajoute aux cibles', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1700, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final sunday = weekStart(DateTime.now()).add(const Duration(days: 6));
+    final key = ymdOf(sunday);
+    final project = Project(id: 'p1', title: 'Maths 6e', startDate: sunday, createdBy: 'user', tasks: [
+      ProjectTask(id: 't1', title: 'Préparer la séance', startDate: sunday),
+      ProjectTask(id: 't2', title: 'Corriger les copies', startDate: sunday, endDate: sunday),
+    ]);
+    final block = ScheduleBlock(
+        id: 'b1', startTime: '23:00', durationMin: 59, title: 'Préparer la séance', category: 'project', projectId: 'p1', taskId: 't1');
+    final sync = _FakeSync({key: DailySchedule(date: key, generatedBy: 'user', blocks: [block])});
+
+    await tester.pumpWidget(MaterialApp(
+      builder: (ctx, child) =>
+          MediaQuery(data: MediaQuery.of(ctx).copyWith(textScaler: const TextScaler.linear(.7)), child: child!),
+      home: Scaffold(
+        body: WeekView(
+          projects: [project],
+          domains: const [],
+          sync: sync,
+          onOpenProject: (p, {taskId}) {},
+          dayStartMin: 0,
+        ),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // t1 a son bloc : seule t2 reste « à placer ».
+    final row = find.byKey(const ValueKey('week-place-due:t2'));
+    final target = find.byKey(const ValueKey('week-block-b1'));
+    expect(row, findsOneWidget);
+    expect(find.byKey(const ValueKey('week-place-due:t1')), findsNothing);
+    await tester.ensureVisible(target);
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final g = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.moveBy(const Offset(30, 10));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.moveTo(tester.getCenter(target));
+    await tester.pump(const Duration(milliseconds: 20));
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final saved = sync.upserts.single;
+    expect((saved.projectId, saved.taskId), ('p1', 't1'));
+    expect(saved.extraTargets, [const BlockTarget(projectId: 'p1', taskId: 't2')]);
+    expect(saved.title, 'Préparer la séance + 1');
+    // Posée dans le bloc, t2 n'est plus « à placer ».
+    expect(find.byKey(const ValueKey('week-place-due:t2')), findsNothing);
+
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 3));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }

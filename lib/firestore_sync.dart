@@ -4029,6 +4029,7 @@ class FirestoreSync {
       // `timeBlock` n'est écrit que posé : retiré du bloc (mode enlevé dans
       // « Modifier le bloc »), il ne doit pas survivre à la fusion.
       if (block.timeBlock == null) blocks[idx].remove('timeBlock');
+      if (block.extraTargets.isEmpty) blocks[idx].remove('extraTargets');
     }
     await ref.update({'blocks': blocks});
   }

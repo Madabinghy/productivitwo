@@ -133,6 +133,7 @@ const weekly_report_1 = require("./weekly_report");
 const objectives_1 = require("./objectives");
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
+const block_targets_1 = require("./block_targets");
 const focus_dates_1 = require("./focus_dates");
 const objective_trajectory_1 = require("./objective_trajectory");
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -3597,6 +3598,7 @@ async function executeGetDaySchedule(uid, date) {
             ...(b.taskId ? [`tâche:${b.taskId}`] : []),
             ...(b.activityId ? [`activité:${b.activityId}`] : []),
             ...(b.actionId ? [`action:${b.actionId}`] : []),
+            ...(0, block_targets_1.extraTargetLinks)(b.extraTargets),
         ].join(" · ");
         return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${mirrorNote}${deletedNote}`;
     });
@@ -3723,7 +3725,7 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     const generatedBy = opts.generatedBy === "auto" ? "auto" : "claude";
     const normalizedBlocks = blocks.map((b) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
-        return (Object.assign({ id: (0, uuid_1.v4)(), startTime: b.startTime, durationMin: b.durationMin, title: b.title, category: b.category, projectId: (_a = b.projectId) !== null && _a !== void 0 ? _a : null, taskId: (_b = b.taskId) !== null && _b !== void 0 ? _b : null, activityId: (_c = b.activityId) !== null && _c !== void 0 ? _c : null, actionId: (_d = b.actionId) !== null && _d !== void 0 ? _d : null, status: "pending", doneAt: null, kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", prepForDate: (_f = b.prepForDate) !== null && _f !== void 0 ? _f : null, prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null, domainId: (_h = b.domainId) !== null && _h !== void 0 ? _h : null, skipReason: (_j = b.skipReason) !== null && _j !== void 0 ? _j : null, reportReason: (_l = b.reportReason) !== null && _l !== void 0 ? _l : null, sessionTemplateId: (_m = b.sessionTemplateId) !== null && _m !== void 0 ? _m : null }, (b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "buffer" ? { timeBlock: b.timeBlock } : {})));
+        return (Object.assign(Object.assign({ id: (0, uuid_1.v4)(), startTime: b.startTime, durationMin: b.durationMin, title: b.title, category: b.category, projectId: (_a = b.projectId) !== null && _a !== void 0 ? _a : null, taskId: (_b = b.taskId) !== null && _b !== void 0 ? _b : null, activityId: (_c = b.activityId) !== null && _c !== void 0 ? _c : null, actionId: (_d = b.actionId) !== null && _d !== void 0 ? _d : null, status: "pending", doneAt: null, kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", prepForDate: (_f = b.prepForDate) !== null && _f !== void 0 ? _f : null, prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null, domainId: (_h = b.domainId) !== null && _h !== void 0 ? _h : null, skipReason: (_j = b.skipReason) !== null && _j !== void 0 ? _j : null, reportReason: (_l = b.reportReason) !== null && _l !== void 0 ? _l : null, sessionTemplateId: (_m = b.sessionTemplateId) !== null && _m !== void 0 ? _m : null }, (b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "buffer" ? { timeBlock: b.timeBlock } : {})), ((extra) => (extra.length ? { extraTargets: extra } : {}))((0, block_targets_1.normalizeExtraTargets)(b.extraTargets, b))));
     });
     // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du
     // doc (dayReason du check-in, plannedAt/plannedSameDay du rattrapage).

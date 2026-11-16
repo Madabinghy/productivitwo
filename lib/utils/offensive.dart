@@ -170,6 +170,37 @@ List<OffensiveTarget> buildOffensiveQueue(List<Project> projects, DateTime now, 
   return [for (final e in out) e.$1];
 }
 
+/// Front « ce bloc » : l'offensive ne prend que ce que le bloc lancé porte.
+const kBlockFront = '~block';
+
+/// La file d'un bloc à plusieurs cibles (2026-11-16), dans l'ordre du bloc :
+/// une tâche visée donne ses actions ouvertes (celle du bloc d'abord), un
+/// projet visé en entier ses actions prêtes. Une action n'y est qu'une fois.
+List<OffensiveTarget> buildBlockQueue(List<Project> projects, DateTime now, List<BlockTarget> targets) {
+  final out = <OffensiveTarget>[];
+  final seen = <String>{};
+  void add(OffensiveTarget t) {
+    if (seen.add(t.action.id)) out.add(t);
+  }
+
+  for (final target in targets) {
+    final p = projects.where((x) => x.id == target.projectId).firstOrNull;
+    if (p == null) continue;
+    if (target.taskId == null) {
+      openTargets(p, now).forEach(add);
+      continue;
+    }
+    final t = p.tasks.where((x) => x.id == target.taskId).firstOrNull;
+    if (t == null || t.status == 'done' || t.status == 'skipped') continue;
+    final open = [for (final a in t.actions) if (!a.done) a];
+    final first = open.where((a) => a.id == target.actionId).firstOrNull;
+    for (final a in [if (first != null) first, ...open.where((a) => a != first)]) {
+      add(OffensiveTarget(p, t, a));
+    }
+  }
+  return out;
+}
+
 /// Point d'étape dû après [won] coups gagnés.
 bool offensivePauseDue(int won) => won > 0 && won % kOffensivePauseEvery == 0;
 
