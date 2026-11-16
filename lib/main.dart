@@ -3858,8 +3858,6 @@ class _AppRootState extends State<AppRoot>
               targetTaskId: task.id,
               activities: _state?.activities ?? const [],
             ),
-            onOpenDayReview: () => showDayReviewSheet(context,
-                logic: logic, projects: _dashboardProjects),
             // Minuteur d'une routine (« Le meilleur à faire ») : chrono ciblé +
             // décompte, routine cochée à la fin.
             onStartTimed: (a, minutes) {

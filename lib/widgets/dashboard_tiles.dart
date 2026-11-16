@@ -24,8 +24,6 @@ class DashboardTiles extends StatelessWidget {
   final bool perfectWide;
   /// Le mode du moment en tuile carrée, à droite de Journée parfaite (mobile, 2026-11-03).
   final Widget? modeTile;
-  /// « Recul » : résumé du jour + où on va (comble la case libre du mobile).
-  final DashTile? review;
   final DashTile? actions;
   final DashTile? projects;
   final VoidCallback? onProgram;
@@ -34,7 +32,6 @@ class DashboardTiles extends StatelessWidget {
   final VoidCallback? onBadges;
   /// Le compteur « 9 / 72 » de la tuile Badges : la galerie complète (2026-10-30).
   final VoidCallback? onBadgesGallery;
-  final VoidCallback? onReview;
   final VoidCallback? onPerfect;
   final VoidCallback? onActions;
   final VoidCallback? onProjects;
@@ -49,8 +46,6 @@ class DashboardTiles extends StatelessWidget {
     this.objectives,
     this.badges,
     this.perfect,
-    this.review,
-    this.onReview,
     this.actions,
     this.projects,
     this.onProgram,
@@ -75,7 +70,6 @@ class DashboardTiles extends StatelessWidget {
       if (badges != null) (badges!, onBadges),
       if (objectives != null) (objectives!, onObjectives),
       if (actions != null) (actions!, onActions),
-      if (review != null) (review!, onReview),
     ];
     if (row) {
       final all = <(DashTile, VoidCallback?, int)>[
@@ -121,7 +115,7 @@ class DashboardTiles extends StatelessWidget {
 
 extension on DashboardTiles {
   /// Les petites tuiles deux par deux. Sur mobile (`perfectWide`), Collection
-  /// prend la gauche et les deux suivantes (Objectifs, Recul…) s'empilent à
+  /// prend la gauche et les deux suivantes (Objectifs, Actions…) s'empilent à
   /// droite, à sa hauteur (retour user 2026-11-03) ; une tuile seule restante
   /// prend toute la largeur.
   List<Widget> _smallRows(List<(DashTile, VoidCallback?)> small) {
@@ -132,7 +126,6 @@ extension on DashboardTiles {
       final others = [for (var k = 0; k < small.length; k++) if (k != i) small[k]];
       final right = [
         if (objectives != null && others.any((t) => identical(t.$1, objectives))) others.firstWhere((t) => identical(t.$1, objectives)),
-        if (review != null && others.any((t) => identical(t.$1, review))) others.firstWhere((t) => identical(t.$1, review)),
       ];
       for (final t in others) {
         if (right.length >= 2) break;
