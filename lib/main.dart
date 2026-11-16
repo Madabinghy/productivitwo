@@ -135,6 +135,8 @@ import 'package:productivitwo_v1/widgets/routine_catalog_screen.dart' show showR
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show reopenPendingUrge;
 import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
+import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
 
@@ -1835,6 +1837,7 @@ class _AppRootState extends State<AppRoot>
       final periods = parseRestPeriods(m['restPeriods']);
       final freezes = parseRestPeriods(m['freezes']);
       final hardDays = parseHardDays(m['hardDays']);
+      final modules = parseModules(m['modules']);
       final minimum = parseMinimumPeriods(m['minimumPeriods']);
       final seasons = parseSeasons(m['seasons']);
       final acquired = parseAcquired(m['acquired']);
@@ -1875,6 +1878,7 @@ class _AppRootState extends State<AppRoot>
           periods.map((x) => x.toJson().toString()).join('|') == logic.restPeriods.map((x) => x.toJson().toString()).join('|') &&
           freezes.map((x) => x.toJson().toString()).join('|') == logic.freezes.map((x) => x.toJson().toString()).join('|') &&
           hardDays.join('|') == logic.hardDays.join('|') &&
+          modules.sameAs(logic.modules) &&
           minimumPeriodsToJson(minimum).toString() == minimumPeriodsToJson(logic.minimumPeriods).toString() &&
           seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
           acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
@@ -1926,6 +1930,7 @@ class _AppRootState extends State<AppRoot>
       logic.restPeriods = periods;
       logic.freezes = freezes;
       logic.hardDays = hardDays;
+      logic.modules = modules;
       logic.minimumPeriods = minimum;
       logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;
@@ -5333,6 +5338,14 @@ class _AppRootState extends State<AppRoot>
                     maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () => showMomentsEditor(context, logic: logic, sync: _sync),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.extension_outlined),
+                title: const Text('Mes modules'),
+                subtitle: Text('${logic.modules.count} / ${kModules.length} allumés · le cœur est toujours là'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showModulesSheet(context, logic: logic),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
