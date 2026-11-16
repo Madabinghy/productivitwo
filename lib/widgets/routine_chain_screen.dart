@@ -19,6 +19,22 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 /// cible atteinte : plein), « Pas maintenant ▾ » (fin de file / report à un
 /// moment plus tard), « Pas aujourd'hui ». Écran de fin : « Matin terminé ·
 /// 5 sur 5 », reportées, « La suite : à 11 h 30 (midi) ».
+/// Les routines qu'il reste à faire dans le moment en cours (la file que
+/// l'écran déroule) : 0 = le moment est tenu.
+int routinesLeftNow(AppLogic logic) {
+  final ymd = logic.livedYmdNow;
+  return buildRoutineDay(
+    activities: logic.state.activeActivities,
+    hits: logic.state.habitHits,
+    now: DateTime.now(),
+    pushed: logic.routinePushed(ymd),
+    deferred: logic.state.nowSkippedByYmd[ymd] ?? const [],
+    dismissed: logic.nowDoneSet(ymd),
+    dayStartMin: logic.dayStartMin,
+    moments: logic.moments,
+  ).queue.length;
+}
+
 Future<void> showRoutineChainScreen(BuildContext context, {required AppLogic logic}) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,

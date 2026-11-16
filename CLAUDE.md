@@ -1695,6 +1695,17 @@ ses trois tâches 📝 / 🎯 / ✅ et leur `groupLabel` suivent), PRÉPARATION 
 `block-target-rework-<i>`) — une prépa posée dans un bloc reste donc retouchable. Un bloc vise la séance par son id, pas par son
 texte : après un changement de thème, les blocs de la semaine dont le titre vient de l'app sont renommés (`_reworkSession`).
 
+**Miracle morning, 3ᵉ bloc de temps** (2026-11-16, demande user) : `timeBlock: "morning"` (`kTimeBlockLabels`, couleur dans
+`kTimeBlockColors`, `timeBlockDefaultMin` = 60 min, `timeBlockCategory` = `routine`, `utils/planning.dart` — une seule source des
+libellés, `block_stack.dart` la réexporte). Comme Deep work = Offensive et Petites choses = Guérilla, **Miracle morning = Enchaîner
+les routines** : ▶ (`_launchTimeBlock`) ouvre `showRoutineChainScreen` sur la file du moment EN COURS ; au retour le bloc passe fait
+s'il ne reste plus de routine dans le moment (`routinesLeftNow`), sinon il attend (rien à faire = SnackBar). Bouton « Enchaîner les
+routines » sur la carte du bloc et MAINTENANT, « · routines » dans la feuille Journée parfaite. Se pose depuis « Nouveau bloc »
+mobile (puce BLOC DE TEMPS), Planifier (« + Miracle morning »), POSER DU TEMPS de Cette semaine (puces en `Wrap`) et le Mode de
+« Modifier le bloc » ; s'empile comme un mode. Serveur (⚠️ `firebase deploy --only functions`) : `schedule_day` accepte
+`timeBlock:"morning"`, à poser seulement à la demande. Jamais proposé d'office par Planifier (`timeBlockWants`). Reste un bloc de
+temps pour le règlement du soir (60 % du créneau au chrono) ; le web l'affiche comme un bloc libre.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_stack.dart';
+import 'package:productivitwo_v1/utils/planning.dart' show timeBlockCategory, timeBlockDefaultMin, planOrTimeBlockOf, PlannedBlock, PlanWant, timeWantId;
 
 ScheduleBlock _b({String? timeBlock, String? activityId, String? projectId, String? taskId, String? actionId}) => ScheduleBlock(
     startTime: '06:00',
@@ -177,6 +178,29 @@ void main() {
               targets: [prep, fix, cm],
               title: 'Deep work · Préparer la séance + 2'),
           'Interventions · Maths 6e › Préparer la séance + Corriger les copies + CM');
+    });
+  });
+  group('Miracle morning', () {
+    test('un mode comme les autres : libellé, durée, catégorie', () {
+      expect(kTimeBlockLabels['morning'], 'Miracle morning');
+      expect(layersTitle(timeBlock: 'morning'), 'Miracle morning');
+      expect((timeBlockDefaultMin('morning'), timeBlockCategory('morning')), (60, 'routine'));
+      expect((timeBlockDefaultMin('deep'), timeBlockCategory('deep')), (90, 'project'));
+      expect((timeBlockDefaultMin('small'), timeBlockCategory('small')), (45, 'personal'));
+    });
+
+    test('posé par Planifier : un bloc de routine, sans source', () {
+      final b = planOrTimeBlockOf(PlannedBlock(
+          PlanWant(activityId: timeWantId('morning', 100), title: 'Miracle morning', minutes: 60, reason: ''), 5 * 60 + 30, 60));
+      expect((b.timeBlock, b.title, b.category, b.startTime, b.durationMin), ('morning', 'Miracle morning', 'routine', '05:30', 60));
+      expect(b.activityId, isNull);
+    });
+
+    test('il remplace le mode d’un bloc, et se pose sur un bloc libre', () {
+      expect(stackLayers(const BlockLayers(timeBlock: 'deep', activityId: 'a1'), const BlockLayers(timeBlock: 'morning')),
+          const BlockLayers(timeBlock: 'morning', activityId: 'a1'));
+      expect(stackRefusal(_b(), const BlockLayers(timeBlock: 'morning')), isNull);
+      expect(stackRefusal(_b()..gcalEventId = 'g', const BlockLayers(timeBlock: 'morning')), isNotNull);
     });
   });
 }

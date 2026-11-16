@@ -485,7 +485,9 @@ class _NowCardState extends State<NowCard> {
         final tenMin = mode == DayMode.low && widget.onLaunchTimed != null && b.timeBlock == null;
         final label = b.timeBlock == 'deep'
             ? 'Lancer l’offensive'
-            : (b.timeBlock == 'small' ? 'Lancer la guérilla' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer')));
+            : (b.timeBlock == 'small'
+                ? 'Lancer la guérilla'
+                : (b.timeBlock == 'morning' ? 'Enchaîner les routines' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'))));
         buttons.add(Expanded(
             child: _btn(pal, label, primary: true, onTap: () {
           HapticFeedback.lightImpact();

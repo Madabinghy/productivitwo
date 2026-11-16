@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
+import 'package:productivitwo_v1/widgets/routine_chain_screen.dart' show showRoutineChainScreen, routinesLeftNow;
 import 'package:productivitwo_v1/widgets/life_view.dart' show LifeView, LifeViewState;
 import 'package:productivitwo_v1/widgets/meal_sheet.dart' show showMealSheet;
 import 'package:productivitwo_v1/widgets/dishes_sheet.dart' show kMealAccent;
@@ -3130,6 +3131,22 @@ class _AppRootState extends State<AppRoot>
     if (st == null) return;
     // Un bloc de temps réserve un MODE (retour user 2026-10-31) : Deep work =
     // Offensive, Petites choses = Guérilla ; leur chrono compte pour le bloc.
+    // Miracle morning (2026-11-16) : les routines du moment, une à une. Le
+    // bloc est fait quand il n'en reste plus (sinon il attend, comme les autres).
+    if (block.timeBlock == 'morning') {
+      if (routinesLeftNow(logic) == 0) {
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+            const SnackBar(content: Text('Toutes les routines de ce moment sont faites.')));
+      } else {
+        await showRoutineChainScreen(context, logic: logic);
+      }
+      if (!mounted) return;
+      if (routinesLeftNow(logic) == 0 && block.status == 'pending') {
+        await _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done');
+      }
+      setState(() {});
+      return;
+    }
     if (block.timeBlock == 'deep' || block.timeBlock == 'small') {
       final pending = RunSessionStore.current;
       final kind = block.timeBlock == 'deep' ? kOffensiveKind : kGuerillaKind;

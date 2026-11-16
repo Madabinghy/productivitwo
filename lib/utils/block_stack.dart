@@ -1,11 +1,13 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels;
+
+export 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels;
 
 /// Empiler sur un bloc (2026-11-16) : un bloc du programme porte des COUCHES
 /// indépendantes — un MODE (bloc de temps : Deep work · Petites choses), une
 /// ACTIVITÉ (là où le temps compte) et des CIBLES (projets, tâches, séances),
 /// dans l'ordre. Ce sont les champs `timeBlock`, `activityId`, `projectId` /
 /// `taskId` / `actionId` (la cible principale) et `extraTargets` du bloc.
-const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'buffer': 'Tampon'};
 
 /// Au-delà, un bloc n'est plus un bloc : c'est une liste.
 const int kMaxBlockTargets = 6;
