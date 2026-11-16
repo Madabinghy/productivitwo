@@ -3045,9 +3045,16 @@ class _AppRootState extends State<AppRoot>
   /// Tap sur un bloc issu d'une source → ouvre SA fiche : tâche (projet),
   /// routine ou activité. Bloc libre (perso/pause) → géré côté DailyScheduleView
   /// (sheet de renommage), pas d'appel ici.
-  void _openBlockSource(ScheduleBlock block) {
+  void _openBlockSource(ScheduleBlock block, {bool picked = false}) {
     if (block.timeBlock != null) {
       _launchTimeBlock(block);
+      return;
+    }
+    // Plusieurs cibles dans le bloc : on choisit d'abord laquelle ouvrir.
+    if (!picked && block.extraTargets.isNotEmpty) {
+      _pickBlockTarget(block).then((b) {
+        if (b != null && mounted) _openBlockSource(b, picked: true);
+      });
       return;
     }
     if (block.projectId != null) {
@@ -3082,7 +3089,7 @@ class _AppRootState extends State<AppRoot>
             dayStartMin: logic.dayStartMin,
             sync: _sync,
             onStartTimer: isToday && block.status == 'pending'
-                ? () => _launchScheduledBlock(block, goToNow: false)
+                ? () => _launchScheduledBlock(block, goToNow: false, picked: true)
                 : null,
             onOpenTask: openTask,
             onBlockDone: isToday
@@ -3138,7 +3145,8 @@ class _AppRootState extends State<AppRoot>
             projectId: block.projectId,
             firstActionId: block.projectId == null ? null : block.actionId,
             activityId: block.projectId == null ? block.activityId : null,
-            chronoActivityId: own?.id);
+            chronoActivityId: own?.id,
+            blockTargets: block.extraTargets.isEmpty ? null : block.targets);
       } else {
         await showGuerillaScreen(context, logic, resume: resume);
       }
@@ -3189,10 +3197,55 @@ class _AppRootState extends State<AppRoot>
       ? null
       : _state?.activities.firstWhereOrNull((a) => a.id == block.activityId && !a.isHabit && !a.deleted);
 
+  /// Un bloc à plusieurs cibles (2026-11-16) : « Sur quoi ? » — renvoie le
+  /// bloc vu sur la cible choisie (elle passe en tête, les autres suivent),
+  /// null si la feuille est fermée.
+  Future<ScheduleBlock?> _pickBlockTarget(ScheduleBlock block) async {
+    final names = [
+      for (final t in block.targets)
+        () {
+          final p = _dashboardProjects.firstWhereOrNull((x) => x.id == t.projectId);
+          final task = t.taskId == null ? null : p?.tasks.firstWhereOrNull((x) => x.id == t.taskId);
+          return (project: p?.title, task: task == null ? null : stripLeadEmoji(task.title), done: task?.status == 'done');
+        }(),
+    ];
+    final i = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(8, 0, 8, 12), children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Text('${block.title} · sur quoi ?', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          ),
+          for (var k = 0; k < names.length; k++)
+            ListTile(
+              key: ValueKey('block-target-$k'),
+              leading: Icon(names[k].done ? Icons.check_circle : Icons.radio_button_unchecked, size: 20),
+              title: Text(names[k].task ?? names[k].project ?? 'Projet', maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: names[k].task == null ? const Text('tout le projet') : Text(names[k].project ?? ''),
+              onTap: () => Navigator.pop(ctx, k),
+            ),
+        ]),
+      ),
+    );
+    if (i == null) return null;
+    final all = block.targets;
+    return ScheduleBlock.from(block.toJson())
+      ..docDate = block.docDate
+      ..dayOffset = block.dayOffset
+      ..targets = [all[i], for (var k = 0; k < all.length; k++) if (k != i) all[k]];
+  }
+
   Future<void> _launchScheduledBlock(ScheduleBlock block,
-      {bool goToNow = true}) async {
+      {bool goToNow = true, bool picked = false}) async {
     if (block.timeBlock != null) {
       await _launchTimeBlock(block);
+      return;
+    }
+    if (!picked && block.extraTargets.isNotEmpty) {
+      final b = await _pickBlockTarget(block);
+      if (b != null && mounted) await _launchScheduledBlock(b, goToNow: goToNow, picked: true);
       return;
     }
     // Séance programmée : chrono sur l'activité + player sur SON déroulé.

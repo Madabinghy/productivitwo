@@ -1856,6 +1856,19 @@ exports.SCHEDULE_DAY_TOOL = {
                         taskId: { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
                         activityId: { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
                         actionId: { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
+                        extraTargets: {
+                            type: "array",
+                            description: "Cibles SUIVANTES du bloc quand il en porte plusieurs (5 au plus) : la principale reste projectId / taskId / actionId, celles-ci s'ajoutent dans l'ordre. À poser seulement quand l'utilisateur veut plusieurs tâches, séances ou projets dans UN même bloc ; le chrono de chacune compte pour le bloc. Un Deep work peut en porter (l'Offensive ne prend alors que ces cibles).",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    projectId: { type: "string", description: "id du projet" },
+                                    taskId: { type: "string", description: "id de la tâche ou séance (absent = tout le projet)" },
+                                    actionId: { type: "string", description: "action par laquelle commencer (facultatif, avec taskId)" },
+                                },
+                                required: ["projectId"],
+                            },
+                        },
                         timeBlock: { type: "string", enum: ["deep", "small", "buffer"], description: "Bloc de TEMPS, sans projectId / taskId / activityId / actionId : deep = Deep work (titre « Deep work »), small = Petites choses (« Petites choses »), buffer = Tampon (« Tampon »). L'utilisateur choisit quoi faire au lancement ; le bloc est fait dès que le chrono, toutes activités, couvre 60 % de son créneau. Un Deep work peut VISER un projet (projectId seul, sans taskId) ou une activité (activityId seul) : titre « Deep work · <nom> », l'Offensive part sur ce projet (ou les projets de cette activité) ; il reste un bloc de temps (tout chrono du créneau compte)." },
                         sessionTemplateId: { type: "string", description: "id d'un déroulé réutilisable (séance, via list_session_templates) — à poser AVEC l'activityId du déroulé : ▶ lance le chrono sur l'activité et ouvre le player d'étapes sur cette séance." },
                         kind: { type: "string", enum: ["normal", "prep"], description: "défaut 'normal'. 'prep' = mini-bloc de préparation la veille lié à un bloc du lendemain (préfère l'outil add_prep_block pour ajouter une prep sans remplacer le programme)." },

@@ -58,6 +58,7 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
   late int _durationMin;
   late String _category;
   late BlockLayers _layers;
+  int _tick = 0;
 
   /// Les couches se règlent ici : listes fournies, et pas un rendez-vous
   /// d'agenda (il se rattache en glissant une activité dessus).
@@ -74,23 +75,71 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     _layers = BlockLayers.of(widget.block);
   }
 
-  Project? _projectOf(BlockLayers l) =>
-      l.projectId == null ? null : widget.projects?.where((p) => p.id == l.projectId).firstOrNull;
+  Project? _projectById(String id) => widget.projects?.where((p) => p.id == id).firstOrNull;
 
   String _autoTitle(BlockLayers l) {
-    final p = _projectOf(l);
-    final t = l.taskId == null ? null : p?.tasks.where((x) => x.id == l.taskId).firstOrNull;
     final a = l.activityId == null ? null : widget.activities?.where((x) => x.id == l.activityId).firstOrNull;
-    return layersTitle(
-        timeBlock: l.timeBlock, activity: a?.name, project: p?.title, task: t == null ? null : stripLeadEmoji(t.title));
+    return layersTitle(timeBlock: l.timeBlock, activity: a?.name, targets: [
+      for (final t in l.targets)
+        () {
+          final p = _projectById(t.projectId);
+          final task = t.taskId == null ? null : p?.tasks.where((x) => x.id == t.taskId).firstOrNull;
+          return (project: p?.title, task: task == null ? null : stripLeadEmoji(task.title));
+        }(),
+    ]);
   }
 
   /// Change les couches ; un titre posé par l'app suit, un titre à la main reste.
   void _setLayers(BlockLayers next) => setState(() {
+        _tick++; // les listes des cibles reviennent à ce que porte le bloc
         _title.text = retitled(_title.text, _autoTitle(_layers), _autoTitle(next));
-        if (next.projectId != null && _layers.projectId == null) _category = 'project';
+        if (next.hasTarget && !_layers.hasTarget) _category = 'project';
         _layers = next;
       });
+
+  /// Une cible du bloc : son projet, sa tâche réglable, ✕ pour la retirer.
+  Widget _targetRow(int index, BlockTarget t, InputDecoration deco) {
+    final project = _projectById(t.projectId);
+    final tasks = [
+      for (final x in project?.tasks ?? const <ProjectTask>[])
+        if ((x.status != 'done' && x.status != 'skipped') || x.id == t.taskId) x,
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        Expanded(
+          child: KeyedSubtree(
+          key: ValueKey('target-$index-$_tick'),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('block-task-$index'),
+            value: tasks.any((x) => x.id == t.taskId) ? t.taskId : '',
+            isExpanded: true,
+            decoration: deco.copyWith(labelText: project?.title ?? 'Projet'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Tout le projet')),
+              for (final x in tasks) DropdownMenuItem(value: x.id, child: Text(x.title, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) {
+              final task = tasks.where((x) => x.id == v).firstOrNull;
+              _setLayers(_layers.withTargetAt(
+                  index,
+                  BlockTarget(
+                      projectId: t.projectId,
+                      taskId: task?.id,
+                      actionId: task?.actions.where((a) => !a.done).firstOrNull?.id)));
+            },
+          ),
+          ),
+        ),
+        IconButton(
+          key: ValueKey('block-target-remove-$index'),
+          tooltip: 'Retirer du bloc',
+          icon: const Icon(Icons.close, size: 18, color: kBText3),
+          onPressed: () => _setLayers(_layers.withoutTargetAt(index)),
+        ),
+      ]),
+    );
+  }
 
   Widget _layersSection() {
     const deco = InputDecoration(border: OutlineInputBorder(), isDense: true);
@@ -101,13 +150,10 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     final all = widget.projects!;
     final projects = [
       for (final p in all)
-        if ((p.status == 'active' && !isFolderProject(p, all)) || p.id == _layers.projectId) p,
+        if (p.status == 'active' && !isFolderProject(p, all)) p,
     ]..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    final project = _projectOf(_layers);
-    final tasks = [
-      for (final t in project?.tasks ?? const <ProjectTask>[])
-        if ((t.status != 'done' && t.status != 'skipped') || t.id == _layers.taskId) t,
-    ];
+    final targets = _layers.targets;
+    final full = targets.length >= kMaxBlockTargets;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Text('CE BLOC PORTE',
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
@@ -139,41 +185,34 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
             : stackLayers(_layers, BlockLayers(activityId: v))),
       ),
       const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        key: const ValueKey('block-project'),
-        value: projects.any((p) => p.id == _layers.projectId) ? _layers.projectId : '',
-        isExpanded: true,
-        decoration: deco.copyWith(labelText: 'Projet'),
-        items: [
-          const DropdownMenuItem(value: '', child: Text('Aucun')),
-          for (final p in projects) DropdownMenuItem(value: p.id, child: Text(p.title, overflow: TextOverflow.ellipsis)),
-        ],
-        onChanged: (v) => _setLayers(v == null || v.isEmpty
-            ? _layers.withoutTarget()
-            : stackLayers(_layers, BlockLayers(projectId: v))),
-      ),
-      if (project != null && tasks.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          key: ValueKey('block-task-${project.id}'),
-          value: tasks.any((t) => t.id == _layers.taskId) ? _layers.taskId : '',
+      if (targets.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+              targets.length == 1 ? 'Projet, tâche ou séance' : '${targets.length} projets, tâches ou séances, dans l’ordre',
+              style: const TextStyle(fontSize: 12, color: kBText3)),
+        ),
+      for (var i = 0; i < targets.length; i++) _targetRow(i, targets[i], deco),
+      if (!full)
+        KeyedSubtree(
+          // La liste revient à vide après chaque choix.
+          key: ValueKey('target-add-$_tick'),
+          child: DropdownButtonFormField<String>(
+          key: const ValueKey('block-project'),
+          value: '',
           isExpanded: true,
-          decoration: deco.copyWith(labelText: 'Tâche ou séance'),
+          decoration: deco.copyWith(labelText: targets.isEmpty ? 'Projet' : 'Ajouter un projet'),
           items: [
-            const DropdownMenuItem(value: '', child: Text('Tout le projet')),
-            for (final t in tasks) DropdownMenuItem(value: t.id, child: Text(t.title, overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(value: '', child: Text(targets.isEmpty ? 'Aucun' : 'Choisir…')),
+            for (final p in projects) DropdownMenuItem(value: p.id, child: Text(p.title, overflow: TextOverflow.ellipsis)),
           ],
           onChanged: (v) {
-            final t = tasks.where((x) => x.id == v).firstOrNull;
-            _setLayers(stackLayers(
-                _layers,
-                BlockLayers(
-                    projectId: project.id,
-                    taskId: t?.id,
-                    actionId: t?.actions.where((a) => !a.done).firstOrNull?.id)));
+            if (v == null || v.isEmpty) return;
+            // Déjà là « tout le projet » : `stackLayers` ne l'ajoute pas deux fois.
+            _setLayers(stackLayers(_layers, BlockLayers(targets: [BlockTarget(projectId: v)])));
           },
         ),
-      ],
+        ),
       const SizedBox(height: 8),
       const Text(
         'Dans la semaine, tu peux aussi glisser une ligne de « À placer » sur un bloc : elle s’y ajoute.',

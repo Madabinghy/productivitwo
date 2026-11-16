@@ -48,6 +48,7 @@ import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { summarizeObjectives } from "./objectives";
 import { titleAdvice } from "./title_style";
 import { blockAdvice, activityLoad, activityLoadLabel } from "./block_style";
+import { normalizeExtraTargets, extraTargetLinks } from "./block_targets";
 import { migrateTaskFocusDates, migrateOwnFocusDates, focusedActions } from "./focus_dates";
 import {
   summarizeTrajectory, objectiveStartYmd, isReadingDue, parseMetric, parseReadings, upsertReading, latestReading,
@@ -3934,6 +3935,7 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
       ...(b.taskId ? [`tâche:${b.taskId}`] : []),
       ...(b.activityId ? [`activité:${b.activityId}`] : []),
       ...(b.actionId ? [`action:${b.actionId}`] : []),
+      ...extraTargetLinks((b as Record<string, unknown>).extraTargets),
     ].join(" · ");
     return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${mirrorNote}${deletedNote}`;
   });
@@ -4078,6 +4080,7 @@ async function executeScheduleDay(
     reportReason?: string;
     sessionTemplateId?: string;
     timeBlock?: string;
+    extraTargets?: unknown;
   }>,
   opts: { mode?: string; generatedBy?: string } = {}
 ): Promise<string> {
@@ -4109,6 +4112,8 @@ async function executeScheduleDay(
     sessionTemplateId: b.sessionTemplateId ?? null, // séance (déroulé) → ▶ = player
     // Bloc de TEMPS (2026-10-31) : "deep" | "small" | "buffer", sans source.
     ...(b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "buffer" ? { timeBlock: b.timeBlock } : {}),
+    // Plusieurs cibles (2026-11-16) : les suivantes, la principale reste projectId / taskId.
+    ...((extra) => (extra.length ? { extraTargets: extra } : {}))(normalizeExtraTargets(b.extraTargets, b)),
   }));
 
   // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du

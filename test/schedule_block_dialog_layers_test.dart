@@ -13,7 +13,10 @@ void main() {
       title: 'Maths 6e',
       startDate: day,
       createdBy: 'user',
-      tasks: [ProjectTask(id: 't1', title: '📝 Préparer la séance', startDate: day)],
+      tasks: [
+        ProjectTask(id: 't1', title: '📝 Préparer la séance', startDate: day),
+        ProjectTask(id: 't2', title: 'Corriger les copies', startDate: day),
+      ],
     ),
   ];
   final domains = [Domain(id: 'd1', name: 'Travail')];
@@ -64,20 +67,46 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('empiler une activité puis une tâche sur un Deep work', (tester) async {
+  testWidgets('empiler une activité puis deux tâches sur un Deep work', (tester) async {
     final block = ScheduleBlock(startTime: '06:00', durationMin: 120, title: 'Deep work', category: 'project', timeBlock: 'deep');
     await open(tester, block)();
     expect(find.text('CE BLOC PORTE'), findsOneWidget);
 
     await pick(tester, 'block-activity', 'Interventions');
     await pick(tester, 'block-project', 'Maths 6e');
-    await pick(tester, 'block-task-p1', '📝 Préparer la séance');
+    await pick(tester, 'block-task-0', '📝 Préparer la séance');
+    // Le même projet une seconde fois, sur une autre tâche.
+    await pick(tester, 'block-project', 'Maths 6e');
+    await pick(tester, 'block-task-1', 'Corriger les copies');
     await save(tester);
     await tester.pumpAndSettle();
 
-    expect(BlockLayers.of(block), const BlockLayers(timeBlock: 'deep', activityId: 'a1', projectId: 'p1', taskId: 't1'));
+    expect(
+        BlockLayers.of(block),
+        const BlockLayers(timeBlock: 'deep', activityId: 'a1', targets: [
+          BlockTarget(projectId: 'p1', taskId: 't1'),
+          BlockTarget(projectId: 'p1', taskId: 't2'),
+        ]));
+    expect(block.extraTargets, hasLength(1));
     // Le titre posé par l'app a suivi les couches.
-    expect(block.title, 'Deep work · Préparer la séance');
+    expect(block.title, 'Deep work · Préparer la séance + 1');
+  });
+
+  testWidgets('retirer la cible principale : la suivante prend sa place', (tester) async {
+    final block = ScheduleBlock(
+        startTime: '06:00', durationMin: 120, title: 'Mon créneau', category: 'project', projectId: 'p1', taskId: 't1')
+      ..extraTargets = const [BlockTarget(projectId: 'p1', taskId: 't2')];
+    await open(tester, block)();
+    await tester.ensureVisible(find.byKey(const ValueKey('block-target-remove-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('block-target-remove-0')));
+    await tester.pumpAndSettle();
+    await save(tester);
+    await tester.pumpAndSettle();
+
+    expect((block.projectId, block.taskId), ('p1', 't2'));
+    expect(block.extraTargets, isEmpty);
+    expect(block.title, 'Mon créneau');
   });
 
   testWidgets('retirer le mode et l’activité, un titre à la main reste', (tester) async {

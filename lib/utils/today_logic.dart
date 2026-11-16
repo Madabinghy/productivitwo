@@ -103,7 +103,7 @@ List<({String category, int min})> minutesByCategory(List<ScheduleBlock> blocks)
 bool sessionMatchesBlock(Session s, ScheduleBlock b,
     {String? projectLinkedActivityId, String? activityLinkedActivityId}) {
   if (b.timeBlock != null) return true; // bloc de temps : tout chrono compte
-  if (b.taskId != null) return s.taskId == b.taskId;
+  if (b.taskId != null) return s.taskId == b.taskId || (s.taskId != null && b.targetTaskIds.contains(s.taskId));
   if (b.activityId != null) {
     return s.activityId == b.activityId ||
         (activityLinkedActivityId != null && s.activityId == activityLinkedActivityId);
@@ -122,6 +122,15 @@ int loggedMinForBlock(ScheduleBlock b, Iterable<Session> sessions, DateTime star
   bool Function(Session) match;
   if (b.timeBlock != null) {
     match = (_) => true; // bloc de temps : le chrono, quelle que soit l'activité
+  } else if (b.extraTargets.isNotEmpty) {
+    // Plusieurs cibles : le chrono de n'importe laquelle compte pour le bloc.
+    final tasks = b.targetTaskIds;
+    final actions = {
+      for (final t in b.targets)
+        if (t.actionId != null) t.actionId!,
+    };
+    match = (s) =>
+        (s.taskId != null && tasks.contains(s.taskId)) || (s.actionId != null && actions.contains(s.actionId));
   } else if (b.actionId != null) {
     match = (s) => s.actionId == b.actionId;
   } else if (b.taskId != null) {

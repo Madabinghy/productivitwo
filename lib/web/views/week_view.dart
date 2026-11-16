@@ -1049,23 +1049,25 @@ class _WeekViewState extends State<WeekView> {
   // temps compte) et une CIBLE (projet, tâche). Une ligne de « À placer »
   // lâchée sur un bloc y ajoute sa couche au lieu de créer un bloc.
 
-  ({String? activity, String? project, String? task}) _namesOf(BlockLayers l) {
-    final p = l.projectId == null ? null : widget.projects.where((x) => x.id == l.projectId).firstOrNull;
-    final t = l.taskId == null ? null : p?.tasks.where((x) => x.id == l.taskId).firstOrNull;
-    final a = l.activityId == null ? null : widget.activities.where((x) => x.id == l.activityId).firstOrNull;
-    return (activity: a?.name, project: p?.title, task: t == null ? null : stripLeadEmoji(t.title));
-  }
+  String? _activityName(BlockLayers l) =>
+      l.activityId == null ? null : widget.activities.where((x) => x.id == l.activityId).firstOrNull?.name;
 
-  String _autoTitleOf(BlockLayers l) {
-    final n = _namesOf(l);
-    return layersTitle(timeBlock: l.timeBlock, activity: n.activity, project: n.project, task: n.task);
-  }
+  List<TargetName> _targetNames(BlockLayers l) => [
+        for (final t in l.targets)
+          () {
+            final p = widget.projects.where((x) => x.id == t.projectId).firstOrNull;
+            final task = t.taskId == null ? null : p?.tasks.where((x) => x.id == t.taskId).firstOrNull;
+            return (project: p?.title, task: task == null ? null : stripLeadEmoji(task.title));
+          }(),
+      ];
+
+  String _autoTitleOf(BlockLayers l) =>
+      layersTitle(timeBlock: l.timeBlock, activity: _activityName(l), targets: _targetNames(l));
 
   String _layersLineOf(ScheduleBlock b) {
     final l = BlockLayers.of(b);
     if (l.isEmpty) return '';
-    final n = _namesOf(l);
-    return layersLine(timeBlock: l.timeBlock, activity: n.activity, project: n.project, task: n.task, title: b.title);
+    return layersLine(timeBlock: l.timeBlock, activity: _activityName(l), targets: _targetNames(l), title: b.title);
   }
 
   String? _stackRefusal(ScheduleBlock b, DateTime d, _PlaceItem? it) {
@@ -1085,10 +1087,12 @@ class _WeekViewState extends State<WeekView> {
       after.applyTo(b);
       // Le titre d'un rendez-vous vient de l'agenda : il ne bouge pas.
       if (b.gcalEventId == null) b.title = retitled(oldTitle, _autoTitleOf(before), _autoTitleOf(after));
-      if (after.projectId != null && before.projectId == null) b.category = 'project';
+      if (after.hasTarget && !before.hasTarget) b.category = 'project';
     });
     await widget.sync.upsertScheduleBlock(key, b);
-    _snack('« ${it.title} » ajouté à « $oldTitle » · ${b.startTime}', actionLabel: 'Annuler', onAction: () async {
+    final n = after.targets.length;
+    _snack('« ${it.title} » ajouté à « $oldTitle » · ${b.startTime}${n > 1 ? ' · $n cibles dans ce bloc' : ''}',
+        actionLabel: 'Annuler', onAction: () async {
       setState(() {
         before.applyTo(b);
         b.title = oldTitle;
@@ -1176,7 +1180,7 @@ class _WeekViewState extends State<WeekView> {
     final from = _dates.first.isBefore(_today) ? _today : _dates.first;
     final all = [for (final d in _dates) for (final b in _dayBlocks(d)) (d: d, b: b)];
     final upcoming = [for (final e in all) if (e.b.status == 'pending' && _isUpcoming(e.b, e.d)) e.b];
-    final taskIds = {for (final e in all) if (e.b.taskId != null && (e.b.status != 'skipped' || isLetGoBlock(e.b))) e.b.taskId!};
+    final taskIds = {for (final e in all) if (e.b.status != 'skipped' || isLetGoBlock(e.b)) ...e.b.targetTaskIds};
     final out = <_PlaceItem>[];
 
     // Montre suisse : 7 × le minimum sur la semaine, moins le fait et le posé.
@@ -1240,7 +1244,7 @@ class _WeekViewState extends State<WeekView> {
       if (isFolderProject(p, widget.projects)) continue;
       final plan = projectPlan(p, _today);
       if (plan.delta >= 0) continue;
-      if (upcoming.any((b) => b.projectId == p.id && b.taskId == null)) continue;
+      if (upcoming.any((b) => b.targets.any((t) => t.projectId == p.id && t.taskId == null))) continue;
       late.add((p, -plan.delta));
     }
     late.sort((a, b) => b.$2.compareTo(a.$2));
