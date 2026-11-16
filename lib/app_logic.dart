@@ -46,6 +46,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
+import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart' show MealWeek, PlannedMeal;
 import 'package:productivitwo_v1/utils/sport_stats.dart' show SportOverrides, kSportSessionMin, resolveSportPick;
 
@@ -2002,6 +2003,17 @@ class AppLogic implements HuntStore {
   /// Liberté (2026-11-04, `utils/freedom.dart`) : les choses qu'on veut arrêter ou réduire, chacune à part
   /// (`data/meta.freedoms.<id>`).
   Map<String, Freedom> freedoms = const {};
+
+  /// Modules allumés (`data/meta.modules`, 2026-11-16, `utils/modules.dart`). Absent = tout allumé.
+  ModuleSettings modules = ModuleSettings.everything;
+
+  bool moduleOn(AppModule m) => modules.isOn(m);
+
+  Future<void> setModule(AppModule m, bool on) async {
+    modules = withModule(modules, m, on);
+    onChange();
+    await sync?.setMetaFields({'modules': modules.toJson()});
+  }
 
   /// Cartes Liberté masquées de l'album (`data/meta.freedomCardsHidden`) : elles sortent alors du total et de Collectionneur.
   bool freedomCardsHidden = false;

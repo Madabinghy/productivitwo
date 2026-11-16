@@ -1778,6 +1778,19 @@ retard (`computeObjectiveProgress`, % du rythme, tap = fiche trajectoire) et « 
 L'ancien `ObjectivesHomeView` et le corps Domaines (`_buildDashboardBody`) ne sont plus affichés.
 **Les 168 heures** (2026-11-11, maquette validée « Jauge des 168 heures », retour user : voir sa zone d'accélération) : carte en tête d'Organisation (`WeekHoursCard`, `widgets/week_hours_card.dart`, `week-hours-card`) = compteur sur les **7 derniers jours glissants** (maintenant − 168 h, minute par minute) : arc rempli actif · besoins de base · sommeil · dans le flou, aiguille au bout de l'actif, « 62 h actives », « 126 / 168 h tracées », écart aux 7 jours d'avant ; tap = feuille `showWeekHoursSheet` (grand compteur, trait des 7 jours d'avant, légende, heures actives par jour, ZONE D'ACCÉLÉRATION : moyenne par jour, meilleur jour, ce qui sort de la fenêtre d'ici demain). Logique pure `utils/week_hours.dart` (`weekHours` → `WeekHours` : une minute comptée une fois, sommeil > besoins de base > actif, `isSleepName` / `isBasicNeedName`). Pas dans la barre du haut (décision user).
 
+## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
+
+Un coaché commence par le CŒUR (Aujourd'hui, projets, routines, objectifs, coach, filets) et allume des modules au fur et à mesure ;
+l'app lui en proposera un quand il est prêt (parcours, lot 3) ; « Repartir comme un débutant » (lot 4) remet le cœur seul sans rien
+perdre. **Lot 1 livré (interrupteurs, rien n'est encore masqué)** : logique pure `utils/modules.dart` — `AppModule` (modes · planning ·
+game · seasons · sleep · sport · kitchen · finances · freedom · analysis · trainer · assistant), `kModules` / `ModuleInfo` (clé, nom,
+contenu, `proposedWhen`, `private` pour Liberté), `ModuleSettings` (`on` null = tout allumé), `parseModules`, `withModule`. Stockage
+`data/meta.modules {v: 1, on: [clés]}` ; ABSENT = compte d'avant les modules, tout allumé (un écrit remplace par la liste explicite,
+jamais de clé `all` : `setMetaFields` fusionne). `AppLogic.modules` / `moduleOn` / `setModule`, flux meta de main.dart, dans
+`kBackupMetaKeys`. Écran `widgets/modules_sheet.dart` (`showModulesSheet`, Paramètres « Mes modules ») : le cœur, ALLUMÉS, À DÉCOUVRIR
+avec « proposé … », un interrupteur par module. **Lot 2** : chaque tuile, rond, carte et entrée suit `moduleOn` ; un nouveau compte
+démarre au cœur seul.
+
 ## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
 
 Onglet **Objectifs** (`objectives_home_view.dart`) : titre, deux tuiles (`SeasonTile` : saison en cours / bilan / ouvrir, tap =
