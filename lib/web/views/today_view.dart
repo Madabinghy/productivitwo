@@ -100,6 +100,10 @@ class TodayView extends StatefulWidget {
   /// Mode du jour (Modes et coups lot 5), pour l'en-tête ; les chips se calculent sur les pointages.
   final DayMode mode;
 
+  /// Mémoire « titre de rendez-vous → activité » : un rendez-vous du même nom
+  /// qu'un rendez-vous déjà associé prend son activité (en mémoire).
+  final Map<String, String> mirrorActivities;
+
   const TodayView({
     super.key,
     required this.projects,
@@ -114,6 +118,7 @@ class TodayView extends StatefulWidget {
     this.onOpenActions,
     this.dayStartMin = kDefaultDayStartMin,
     this.mode = DayMode.normal,
+    this.mirrorActivities = const {},
   });
 
   @override
@@ -285,6 +290,16 @@ class TodayViewState extends State<TodayView> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant TodayView old) {
+    super.didUpdateWidget(old);
+    // La mémoire des rendez-vous arrive après le programme : on l'applique.
+    if (!identical(old.mirrorActivities, widget.mirrorActivities) &&
+        applyMirrorMemory([..._allBlocks, ..._tomorrowBlocks], widget.mirrorActivities) > 0) {
+      setState(() {});
+    }
+  }
+
   void _onSchedule(DailySchedule? s) {
     if (!mounted) return;
     final all = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
@@ -292,6 +307,7 @@ class TodayViewState extends State<TodayView> {
     // Miroirs agenda du jour d'une séance → reliés à la séance (en mémoire).
     final day = DateTime.tryParse(_today);
     if (day != null) linkMirrorsToSessions(all, widget.projects, day);
+    applyMirrorMemory(all, widget.mirrorActivities);
     // B12 : sautés / déplacés hors de la vue.
     final blocks = all.where((b) => b.status != 'skipped').toList();
     if (!_initialScrollDone && blocks.isNotEmpty) {
@@ -406,6 +422,7 @@ class TodayViewState extends State<TodayView> {
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
       final day = DateTime.tryParse(key);
       if (day != null) linkMirrorsToSessions(blocks, widget.projects, day);
+      applyMirrorMemory(blocks, widget.mirrorActivities);
       setState(() => _tomorrowBlocks = blocks);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {

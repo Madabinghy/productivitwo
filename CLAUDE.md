@@ -1668,6 +1668,17 @@ ouvertes de chaque tâche visée, l'action du bloc d'abord, un projet entier = s
 (« aussi projet:… tâche:… »). **Pas fait** : les cibles suivantes ne sont pas encore lues par « au programme » des actions, le détail
 d'un bloc d'Aujourd'hui (web), Enchaîner, les widgets iOS, `update_block` et `delete_task` (ils ne voient que la principale).
 
+**Rendez-vous associés à une activité** (2026-11-16, retour user : une fois le minimum d'« Interventions » posé, la ligne quittait
+« À placer » et on ne pouvait plus associer les rendez-vous restants) : sous les groupes de « À placer », section repliée **AUTRES
+ACTIVITÉS · n** (`_otherActivities`, `week-other-acts`, lignes `week-place-act:<id>`) = toutes les activités-temps hors besoins de base
+qui ne sont pas dans « Montre suisse · reste » (« minimum de la semaine posé » · « sans minimum » · « reste … à poser »), toujours
+glissables sur un bloc ou un jour, hors du compte « n à placer ». **Mémoire « titre → activité » sur le web** : le shell lit
+`data/meta.mirrorActivities` et la passe à Aujourd'hui et Cette semaine (`mirrorActivities`), qui l'appliquent en mémoire aux
+rendez-vous libres (`applyMirrorMemory`, comme le mobile) ; glisser une activité sur un rendez-vous d'agenda l'écrit sur ce rendez-vous
+(donc dans la mémoire, par `upsertScheduleBlock`) et la donne aussitôt aux autres rendez-vous DU MÊME NOM de la semaine (« … et à n
+autres rendez-vous du même nom ») — ils comptent dans le reste de la Montre suisse ; « Annuler » défait aussi la mémoire
+(`FirestoreSync.forgetMirrorActivity`). Au lancement, mobile comme web, un rendez-vous associé lance le chrono sur SON activité.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

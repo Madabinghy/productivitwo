@@ -69,6 +69,10 @@ class WeekView extends StatefulWidget {
   final List<Activity> activities;
   final List<StrategicObjective> objectives;
 
+  /// Mémoire « titre de rendez-vous → activité » (`data/meta.mirrorActivities`) :
+  /// un rendez-vous du même nom qu'un rendez-vous déjà associé prend son activité.
+  final Map<String, String> mirrorActivities;
+
   const WeekView({
     super.key,
     required this.projects,
@@ -78,6 +82,7 @@ class WeekView extends StatefulWidget {
     this.dayStartMin = kDefaultDayStartMin,
     this.activities = const [],
     this.objectives = const [],
+    this.mirrorActivities = const {},
   });
 
   @override
@@ -144,6 +149,16 @@ class _WeekViewState extends State<WeekView> {
     } catch (_) {}
   }
 
+  @override
+  void didUpdateWidget(covariant WeekView old) {
+    super.didUpdateWidget(old);
+    // La mémoire des rendez-vous arrive après les programmes : on l'applique.
+    if (!identical(old.mirrorActivities, widget.mirrorActivities) &&
+        applyMirrorMemory(_allBlocks, widget.mirrorActivities) > 0) {
+      setState(() {});
+    }
+  }
+
   void _subscribe() {
     for (final s in _subs) {
       s.cancel();
@@ -159,6 +174,7 @@ class _WeekViewState extends State<WeekView> {
         setState(() {
           _byDay[key] = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
             ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+          applyMirrorMemory(_byDay[key]!, widget.mirrorActivities);
         });
       }));
     }
@@ -1083,22 +1099,45 @@ class _WeekViewState extends State<WeekView> {
     final before = BlockLayers.of(b);
     final oldTitle = b.title, oldCategory = b.category;
     final after = stackLayers(before, BlockLayers.of(it.make(0, 30)));
+    // Un rendez-vous associé à une activité : ceux du même nom la prennent
+    // aussi (mémoire « titre → activité », gardée pour les semaines suivantes).
+    final same = b.gcalEventId != null && after.activityId != before.activityId && b.taskId == null
+        ? [
+            for (final x in _allBlocks)
+              if (x != b &&
+                  x.gcalEventId != null &&
+                  x.projectId == null &&
+                  x.activityId == before.activityId &&
+                  mirrorKey(x.title) == mirrorKey(b.title))
+                x,
+          ]
+        : const <ScheduleBlock>[];
     setState(() {
       after.applyTo(b);
       // Le titre d'un rendez-vous vient de l'agenda : il ne bouge pas.
       if (b.gcalEventId == null) b.title = retitled(oldTitle, _autoTitleOf(before), _autoTitleOf(after));
       if (after.hasTarget && !before.hasTarget) b.category = 'project';
+      for (final x in same) {
+        x.activityId = after.activityId;
+      }
     });
     await widget.sync.upsertScheduleBlock(key, b);
     final n = after.targets.length;
-    _snack('« ${it.title} » ajouté à « $oldTitle » · ${b.startTime}${n > 1 ? ' · $n cibles dans ce bloc' : ''}',
+    _snack(
+        '« ${it.title} » ajouté à « $oldTitle » · ${b.startTime}'
+        '${n > 1 ? ' · $n cibles dans ce bloc' : ''}'
+        '${same.isEmpty ? '' : ' · et à ${same.length} autre${same.length > 1 ? 's' : ''} rendez-vous du même nom'}',
         actionLabel: 'Annuler', onAction: () async {
       setState(() {
         before.applyTo(b);
         b.title = oldTitle;
         b.category = oldCategory;
+        for (final x in same) {
+          x.activityId = before.activityId;
+        }
       });
       await widget.sync.upsertScheduleBlock(key, b);
+      if (b.gcalEventId != null && before.activityId == null) await widget.sync.forgetMirrorActivity(b.title);
     });
   }
 
@@ -1187,6 +1226,7 @@ class _WeekViewState extends State<WeekView> {
     final minutes = minutesByActivityDay(_sessions, DateTime.now());
     final ymds = {for (final d in _dates) ymdOf(d)};
     final watch = <_PlaceItem>[];
+    _watchLeft.clear();
     for (final a in widget.activities) {
       if (a.deleted || a.isHabit || a.goalMin <= 0 || isBasicNeedName(a.name)) continue;
       final need = a.goalMin * _days;
@@ -1196,6 +1236,7 @@ class _WeekViewState extends State<WeekView> {
       });
       final planned = upcoming.where((b) => b.activityId == a.id).fold<int>(0, (s, b) => s + b.durationMin);
       final left = need - done - planned;
+      _watchLeft[a.id] = left;
       if (left < 10) continue;
       watch.add(_PlaceItem(
         key: 'watch:${a.id}',
@@ -1301,6 +1342,37 @@ class _WeekViewState extends State<WeekView> {
     return out;
   }
 
+  /// Ce qu'il reste à poser par activité à minimum (calculé par [_toPlace]).
+  final Map<String, int> _watchLeft = {};
+  bool _otherActsOpen = false;
+
+  /// Les activités qui ne sont PAS dans « Montre suisse · reste » (minimum déjà
+  /// posé, ou pas de minimum) : toujours glissables, pour dire d'un rendez-vous
+  /// ou d'un bloc où compte son temps. Hors du compte « à placer ».
+  List<_PlaceItem> _otherActivities(List<_PlaceItem> shown) {
+    final listed = {for (final it in shown) it.key};
+    final acts = [
+      for (final a in widget.activities)
+        if (!a.deleted && !a.isHabit && !isBasicNeedName(a.name) && !listed.contains('watch:${a.id}')) a,
+    ]..sort((x, y) => x.name.toLowerCase().compareTo(y.name.toLowerCase()));
+    return [
+      for (final a in acts)
+        _PlaceItem(
+          key: 'act:${a.id}',
+          group: 'Autres activités',
+          title: a.name,
+          sub: a.goalMin <= 0
+              ? 'sans minimum'
+              : (_watchLeft[a.id] ?? 0) >= 10
+                  ? 'reste ${_fmtHm(_watchLeft[a.id]!)} à poser'
+                  : 'minimum de la semaine posé',
+          defaultMin: 45,
+          color: domainColor(a.domainId, widget.domains) ?? kBPrimary,
+          make: (s, dur) => ScheduleBlock(startTime: _hhmm(s), durationMin: dur, title: a.name, category: 'personal', activityId: a.id),
+        ),
+    ];
+  }
+
   static final _timeItems = [
     _PlaceItem(
       key: 'time:deep',
@@ -1336,6 +1408,7 @@ class _WeekViewState extends State<WeekView> {
       (groups[it.group] ??= []).add(it);
     }
     final past = _dates.last.isBefore(_today);
+    final others = past ? const <_PlaceItem>[] : _otherActivities(items);
     return Container(
       key: const ValueKey('week-place'),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -1371,6 +1444,31 @@ class _WeekViewState extends State<WeekView> {
                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
               ),
               for (final it in e.value) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
+            ],
+            if (others.isNotEmpty) ...[
+              InkWell(
+                key: const ValueKey('week-other-acts'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() => _otherActsOpen = !_otherActsOpen),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 4),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text('AUTRES ACTIVITÉS · ${others.length}',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+                    ),
+                    Icon(_otherActsOpen ? Icons.expand_less : Icons.expand_more, size: 16, color: kBText3),
+                  ]),
+                ),
+              ),
+              if (_otherActsOpen) ...[
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text('À glisser sur un rendez-vous ou un bloc pour dire où compte son temps.',
+                      style: TextStyle(fontSize: 11.5, color: kBText3, height: 1.35)),
+                ),
+                for (final it in others) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
+              ],
             ],
           ]),
         ),
