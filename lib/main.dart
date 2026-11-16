@@ -137,6 +137,7 @@ import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
+import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
@@ -3130,6 +3131,25 @@ class _AppRootState extends State<AppRoot>
     if (st == null) return;
     // Un bloc de temps réserve un MODE (retour user 2026-10-31) : Deep work =
     // Offensive, Petites choses = Guérilla ; leur chrono compte pour le bloc.
+    // Miracle morning (2026-11-16) : le bloc ouvre « Mon Miracle Morning »
+    // (tes étapes, dans ton ordre ; reprise d'une session en route). Il est
+    // fait quand le Miracle Morning du jour l'est, sinon il attend.
+    if (block.timeBlock == 'morning') {
+      if (logic.miracleToday != null) {
+        ScaffoldMessenger.of(context).showClosingSnackBar(
+            const SnackBar(content: Text('Ton Miracle Morning est déjà fait aujourd’hui.')));
+      } else if (logic.miracleNow.isEmpty) {
+        await showMiracleSetup(context, logic: logic);
+      } else {
+        await showMiracleMorning(context, logic: logic);
+      }
+      if (!mounted) return;
+      if (logic.miracleToday != null && block.status == 'pending') {
+        await _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done');
+      }
+      setState(() {});
+      return;
+    }
     if (block.timeBlock == 'deep' || block.timeBlock == 'small') {
       final pending = RunSessionStore.current;
       final kind = block.timeBlock == 'deep' ? kOffensiveKind : kGuerillaKind;

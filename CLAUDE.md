@@ -1647,8 +1647,8 @@ Tâche ou séance (« Tout le projet ») ; boutons du bas en `Wrap` (ils débord
 fusion quand le mode est enlevé. **Mobile** (main.dart) : un bloc de tâche qui porte une activité-temps lance le chrono sur ELLE sans
 demander (`_blockTimeActivity`) ; un Deep work qui porte projet + activité ouvre l'Offensive sur le projet, commence par l'action
 visée (`firstActionId`) et fait tourner le chrono des coups sur l'activité du bloc (`showOffensiveScreen(chronoActivityId:)`,
-`_chronoOf`, gardée dans la session `extra.blockChrono`). **Pas fait** : un mode « Miracle morning » (enchaîner les routines du
-matin), l'empilement dans la frise d'Aujourd'hui et sur mobile.
+`_chronoOf`, gardée dans la session `extra.blockChrono`). **Pas fait** : l'empilement dans la frise d'Aujourd'hui et sur mobile
+(le mode « Miracle morning » est venu ensuite, voir plus bas).
 **Plusieurs cibles dans un même bloc** (2026-11-16, demande user ; seul vrai changement de modèle) : `ScheduleBlock.extraTargets`
 (`BlockTarget {projectId, taskId?, actionId?}`, écrit seulement s'il y en a) = les cibles SUIVANTES, dans l'ordre ; `projectId` /
 `taskId` / `actionId` restent LA cible principale, donc tout le code d'avant continue de lire le bloc. Lire toutes les cibles par
@@ -1694,6 +1694,18 @@ ses trois tâches 📝 / 🎯 / ✅ et leur `groupLabel` suivent), PRÉPARATION 
 `week-place-edit-prep:<id>`) et ✎ à côté d'une cible de séance dans « Modifier le bloc » (`canRework` / `onRework`,
 `block-target-rework-<i>`) — une prépa posée dans un bloc reste donc retouchable. Un bloc vise la séance par son id, pas par son
 texte : après un changement de thème, les blocs de la semaine dont le titre vient de l'app sont renommés (`_reworkSession`).
+
+**Miracle morning, 3ᵉ bloc de temps** (2026-11-16, demande user) : `timeBlock: "morning"` (`kTimeBlockLabels`, couleur dans
+`kTimeBlockColors`, `timeBlockDefaultMin` = 60 min, `timeBlockCategory` = `routine`, `utils/planning.dart` — une seule source des
+libellés, `block_stack.dart` la réexporte). Comme Deep work = Offensive et Petites choses = Guérilla, **Miracle morning = l'écran
+« Mon Miracle Morning »** (voir la section Miracle Morning) : ▶ (`_launchTimeBlock`) ouvre `showMiracleMorning` (reprise d'une
+session en route comprise), `showMiracleSetup` s'il n'y a aucune étape ; au retour le bloc passe fait si le Miracle Morning du jour
+l'est (`logic.miracleToday`), sinon il attend (déjà fait = SnackBar). Bouton « Lancer mon Miracle Morning » sur la carte du bloc et
+MAINTENANT, « · miracle morning » dans la feuille Journée parfaite. Se pose depuis « Nouveau bloc » mobile (puce BLOC DE TEMPS),
+Planifier (« + Miracle morning »), POSER DU TEMPS de Cette semaine (puces en `Wrap`) et le Mode de « Modifier le bloc » ; s'empile
+comme un mode. Serveur (⚠️ `firebase deploy --only functions`) : `schedule_day` accepte `timeBlock:"morning"`, à poser seulement à
+la demande. Jamais proposé d'office par Planifier (`timeBlockWants`). Reste un bloc de temps pour le règlement du soir (60 % du
+créneau au chrono) ; le web l'affiche comme un bloc libre.
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 

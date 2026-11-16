@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:productivitwo_v1/utils/planning.dart' show kTimeBlockLabels, kTimeBlockColors, deepWorkTitle;
+import 'package:productivitwo_v1/utils/planning.dart'
+    show kTimeBlockLabels, kTimeBlockColors, deepWorkTitle, timeBlockCategory, timeBlockDefaultMin;
 import 'package:productivitwo_v1/utils/offensive.dart' show offensiveFronts, frontLine;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -1188,7 +1189,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           ? 'Rouvrir'
           : (smallStep
               ? '10 min, malgré tout'
-              : (launchable ? (block.timeBlock == 'deep' ? 'Lancer l’offensive' : (block.timeBlock == 'small' ? 'Lancer la guérilla' : (current ? 'Lancer' : 'Commencer'))) : 'Fait')),
+              : (launchable ? (block.timeBlock == 'deep' ? 'Lancer l’offensive' : (block.timeBlock == 'small' ? 'Lancer la guérilla' : (block.timeBlock == 'morning' ? 'Lancer mon Miracle Morning' : (current ? 'Lancer' : 'Commencer')))) : 'Fait')),
       primaryIcon: isDone ? Icons.undo_rounded : (smallStep ? Icons.timer_outlined : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded)),
       chainLabel: smallStep ? 'Tout le bloc · ${fmtMin(block.durationMin)}' : null,
       chainIcon: smallStep ? Icons.play_arrow_rounded : null,
@@ -2046,8 +2047,8 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     setState(() {
       _timeBlock = kind;
       _titleCtrl.text = kTimeBlockLabels[kind]!;
-      _category = kind == 'deep' ? 'project' : 'personal';
-      if (widget.isNew) _durationMin = kind == 'deep' ? 90 : 45;
+      _category = timeBlockCategory(kind);
+      if (widget.isNew) _durationMin = timeBlockDefaultMin(kind);
       _activityId = null;
       _projectId = null;
       _taskId = null;
@@ -2233,11 +2234,11 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                     letterSpacing: 1,
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
             const SizedBox(height: 4),
-            Text('Deep work lance une Offensive, Petites choses une Guérilla. Fait dès 60 % du créneau tenu.',
+            Text('Deep work lance une Offensive, Petites choses une Guérilla, Miracle morning enchaîne les routines du moment.',
                 style: TextStyle(fontSize: 11.5, height: 1.3, color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in [ 'deep', 'small', if (widget.block.timeBlock == 'buffer') 'buffer'])
+              for (final k in ['deep', 'small', 'morning', if (widget.block.timeBlock == 'buffer') 'buffer'])
                 ChoiceChip(
                   avatar: Icon(Icons.circle, size: 9, color: kTimeBlockColors[k]),
                   label: Text(kTimeBlockLabels[k]!, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),

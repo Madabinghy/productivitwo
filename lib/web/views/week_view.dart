@@ -1450,6 +1450,20 @@ class _WeekViewState extends State<WeekView> {
           category: 'personal',
           timeBlock: 'small'),
     ),
+    // Miracle morning (2026-11-16) : au ▶ (mobile), les routines du moment s'enchaînent.
+    _PlaceItem(
+      key: 'time:morning',
+      group: 'Poser du temps',
+      title: 'Miracle morning',
+      defaultMin: 60,
+      color: const Color(0xFFF2C14E),
+      make: (s, dur) => ScheduleBlock(
+          startTime: '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}',
+          durationMin: dur,
+          title: 'Miracle morning',
+          category: 'routine',
+          timeBlock: 'morning'),
+    ),
   ];
 
   Widget _placeColumn(List<_PlaceItem> items) {
@@ -1527,11 +1541,8 @@ class _WeekViewState extends State<WeekView> {
           const Text('POSER DU TEMPS',
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
           const SizedBox(height: 6),
-          Row(children: [
-            for (final it in _timeItems) ...[
-              if (it != _timeItems.first) const SizedBox(width: 8),
-              Expanded(child: _draggable(it, _timeChip(it))),
-            ],
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final it in _timeItems) _draggable(it, _timeChip(it)),
           ]),
         ],
       ]),
@@ -1539,8 +1550,8 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _timeChip(_PlaceItem it) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.center,
+        key: ValueKey('week-place-${it.key}'),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(color: it.color.withOpacity(.14), borderRadius: BorderRadius.circular(999)),
         child: Text(it.title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: it.color)),
       );

@@ -954,7 +954,7 @@ class _PlanScreenState extends State<PlanScreen> {
           if (_timeMode) ...[
             _section('AJOUTER'),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in const ['deep', 'small'])
+              for (final k in const ['deep', 'small', 'morning'])
                 ActionChip(
                   label: Text('+ ${kTimeBlockLabels[k]}', style: TextStyle(fontWeight: FontWeight.w700, color: kTimeBlockColors[k])),
                   backgroundColor: Colors.transparent,
@@ -962,8 +962,12 @@ class _PlanScreenState extends State<PlanScreen> {
                   onPressed: () => _addExtra(PlanWant(
                       activityId: timeWantId(k, 100 + _extra.length),
                       title: kTimeBlockLabels[k]!,
-                      minutes: k == 'deep' ? 90 : 45,
-                      reason: k == 'deep' ? 'Offensive · ${_deepPreview()}' : 'Guérilla · routines et petites actions')),
+                      minutes: timeBlockDefaultMin(k),
+                      reason: switch (k) {
+                        'deep' => 'Offensive · ${_deepPreview()}',
+                        'morning' => 'Tes étapes du matin, dans ton ordre',
+                        _ => 'Guérilla · routines et petites actions',
+                      })),
                 ),
             ]),
           ] else if (others.isNotEmpty) ...[

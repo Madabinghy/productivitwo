@@ -165,11 +165,24 @@ int capHeldCount(List<DailySchedule> schedules, String todayYmd) =>
 
 // ── Blocs de temps (2026-10-31, « Planifier du temps, pas des tâches ») ───────
 
-const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'buffer': 'Tampon'};
+/// `morning` (2026-11-16) = Miracle morning : au ▶, les routines du moment
+/// s'enchaînent une à une ; le bloc est fait quand il n'en reste plus.
+const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'morning': 'Miracle morning', 'buffer': 'Tampon'};
+
+/// Durée proposée à la pose d'un bloc de temps.
+int timeBlockDefaultMin(String kind) => switch (kind) { 'deep' => 90, 'morning' => 60, _ => 45 };
+
+/// Catégorie d'un bloc de temps (couleur du programme).
+String timeBlockCategory(String kind) => switch (kind) { 'deep' => 'project', 'morning' => 'routine', _ => 'personal' };
 
 /// Titre d'un Deep work visé (« Deep work · Formation IA », 2026-11-03).
 String deepWorkTitle(String target) => 'Deep work · $target';
-const kTimeBlockColors = {'deep': Color(0xFF6FC3FF), 'small': Color(0xFFF2C14E), 'buffer': Color(0xFF8FA89A)};
+const kTimeBlockColors = {
+  'deep': Color(0xFF6FC3FF),
+  'small': Color(0xFFF2C14E),
+  'morning': Color(0xFFFF9A5C),
+  'buffer': Color(0xFF8FA89A),
+};
 const _kTimePrefix = '~time:';
 
 /// Clé « activité » d'une envie de bloc de temps (`~time:deep:1`).
@@ -211,7 +224,7 @@ ScheduleBlock planOrTimeBlockOf(PlannedBlock p) {
     startTime: hmOf(p.startMin),
     durationMin: p.minutes,
     title: kTimeBlockLabels[kind]!,
-    category: kind == 'deep' ? 'project' : 'personal',
+    category: timeBlockCategory(kind),
     timeBlock: kind,
   );
 }
