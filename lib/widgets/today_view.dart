@@ -74,7 +74,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin, postponesCleared;
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show miracleNames;
-import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMiracleAccent, showMiracleMorning, showMiracleSetup;
+import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMiracleAccent, pendingMiracle, showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 import 'package:productivitwo_v1/utils/modules.dart';
@@ -1024,8 +1024,11 @@ class TodayViewState extends State<TodayView> {
     final dark = cs.brightness == Brightness.dark;
     final c = dark ? kMiracleAccent : const Color(0xFF9A5A16);
     final m = widget.logic.miracleNow;
-    final tip = m.isEmpty ? 'Miracle Morning · choisir mes étapes' : 'Miracle Morning · ${m.steps.length} étapes · ${fmtMin(m.totalMin)}';
-    return SizedBox(
+    final pending = pendingMiracle(widget.logic);
+    final tip = pending != null
+        ? 'Reprendre le Miracle Morning · ${pending.done} faite${pending.done > 1 ? 's' : ''}'
+        : m.isEmpty ? 'Miracle Morning · choisir mes étapes' : 'Miracle Morning · ${m.steps.length} étapes · ${fmtMin(m.totalMin)}';
+    return Stack(clipBehavior: Clip.none, children: [SizedBox(
       width: 44,
       height: 44,
       child: Material(
@@ -1042,7 +1045,14 @@ class TodayViewState extends State<TodayView> {
           child: Tooltip(message: tip, child: Center(child: Icon(Icons.wb_twilight_rounded, size: 22, color: c, semanticLabel: tip))),
         ),
       ),
-    );
+    ),
+      if (pending != null)
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(width: 12, height: 12, decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: Border.all(color: cs.surface, width: 2))),
+        ),
+    ]);
   }
 
   static const _launchers = [

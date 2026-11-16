@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -76,5 +78,42 @@ void main() {
     expect(logic.miracleToday, isNotNull);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 30));
+  });
+
+  testWidgets('reprise : l’app fermée en route, on revient à l’étape où on en était', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    t.view.physicalSize = const Size(1400, 2400);
+    t.view.devicePixelRatio = 2;
+    addTearDown(t.view.reset);
+    CoupAlarm.enabled = false;
+    addTearDown(() => CoupAlarm.enabled = true);
+    await RunSessionStore.clear();
+    final p = routine('p', 'Prier', ctx: 'morning');
+    final st = AppState(domains: [Domain(id: 'd', name: 'Foi')], activities: [p], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})
+      ..dayStartMin = 0
+      ..miracleMorning = const MiracleMorning([
+        MiracleStep(id: '1', name: 'Prière', routineId: 'p', minutes: 5),
+        MiracleStep(id: '2', name: 'Visualisation', minutes: 3),
+      ]);
+    await t.pumpWidget(MaterialApp(home: MiracleMorningScreen(logic: logic)));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('miracle-done')));
+    await t.pump();
+    await t.pumpWidget(const SizedBox());
+    final pending = pendingMiracle(logic);
+    expect(pending, isNotNull);
+    expect(pending!.done, 1);
+    expect(pending.extra['cur'], '2');
+    await t.pumpWidget(MaterialApp(home: MiracleMorningScreen(logic: logic, resume: pending)));
+    await t.pump();
+    expect(find.text('MIRACLE MORNING · 2 / 2'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('miracle-done')));
+    await t.pump();
+    expect(find.textContaining('2 sur 2'), findsOneWidget);
+    expect(st.habitHits.where((h) => h.habitId == 'p').length, 1);
+    expect(RunSessionStore.current, isNull);
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 1));
   });
 }
