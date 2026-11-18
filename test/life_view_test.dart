@@ -7,6 +7,8 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/finances.dart' show euros;
 import 'package:productivitwo_v1/widgets/life_view.dart';
+import 'package:productivitwo_v1/widgets/week_hours_card.dart';
+import 'package:productivitwo_v1/utils/week_hours.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 
 void main() {
@@ -172,7 +174,11 @@ void main() {
     expect(find.text('5 h actives', findRichText: true), findsOneWidget); // le jeu n'y est pas
     expect(find.textContaining('168 h tracées'), findsOneWidget);
     expect(find.textContaining('tracées ·'), findsNothing);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('week-hours-free'))).data, '160 h libres'); // sur sa propre ligne
+    expect(tester.widget<Text>(find.byKey(const ValueKey('week-hours-free'))).data, '160 h libres'); // à part, en menthe
+    expect(tester.widget<Text>(find.byKey(const ValueKey('week-hours-free'))).style?.color, kHoursFree);
+    // Rien de tracé en besoins de base ni en sommeil : leurs lignes ne s'affichent pas.
+    expect(find.byKey(const ValueKey('week-hours-basic')), findsNothing);
+    expect(find.byKey(const ValueKey('week-hours-sleep')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('week-hours-card')));
     await tester.pumpAndSettle();
     expect(find.text('Détente'), findsOneWidget);
@@ -181,6 +187,20 @@ void main() {
     expect(find.text('Libre'), findsOneWidget);
     expect(find.textContaining('dans le flou'), findsNothing);
     expect(find.byKey(const ValueKey('week-hours-reading')), findsOneWidget);
+  });
+
+  testWidgets('carte des 7 jours : besoins de base en jaune, sommeil en bleu, dans l\'ordre du cadran', (tester) async {
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
+    const h = WeekHours(activeMin: 62 * 60, basicMin: 30, sleepMin: 52 * 60, leisureMin: 5 * 60, prevActiveMin: 0, leavingMin: 0, dayActive: [], days: []);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: h)))));
+    Text part(String key) => tester.widget<Text>(find.byKey(ValueKey(key)));
+    expect(part('week-hours-basic').data, '30 min de besoins');
+    expect(part('week-hours-basic').style?.color, kHoursBasic);
+    expect(part('week-hours-sleep').data, '52 h de sommeil');
+    expect(part('week-hours-sleep').style?.color, kHoursSleep);
+    expect(part('week-hours-leisure').data, '5 h de détente');
+    final wrap = tester.widget<Wrap>(find.ancestor(of: find.byKey(const ValueKey('week-hours-basic')), matching: find.byType(Wrap)));
+    expect(wrap.children.map((w) => (w.key as ValueKey).value), ['week-hours-basic', 'week-hours-sleep', 'week-hours-leisure', 'week-hours-free']);
   });
 
   testWidgets('deux domaines de sport devinés : une seule tuile Sport', (tester) async {
