@@ -1862,6 +1862,9 @@ activités). Se pose depuis « Nouveau bloc » mobile, Planifier (« + Détente 
 Mode de « Modifier le bloc » (`block-mode-leisure`) ; s'empile comme un mode. Jamais proposé d'office par Planifier. Serveur (⚠️
 `firebase deploy --only functions`, fait par le déploiement au merge) : `schedule_day` accepte `timeBlock:"leisure"`, à poser quand
 l'utilisateur demande du temps pour lui, jamais pour remplir un trou. Le web l'affiche comme un bloc libre.
+**Feuille « Domaines »** (« Gérer », `_showDomainsSheet` de main.dart ; bug user 2026-11-18 : avec onze domaines, le dernier était hors
+écran et rien ne défilait) : la liste des domaines défile dans la feuille (`Flexible` + `ListView`), l'en-tête et « Ajouter » restent
+en haut, et la feuille s'arrête sous la barre d'état (`useSafeArea`).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 
