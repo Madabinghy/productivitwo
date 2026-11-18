@@ -1865,6 +1865,7 @@ l'utilisateur demande du temps pour lui, jamais pour remplir un trou. Le web l'a
 **Feuille « Domaines »** (« Gérer », `_showDomainsSheet` de main.dart ; bug user 2026-11-18 : avec onze domaines, le dernier était hors
 écran et rien ne défilait) : la liste des domaines défile dans la feuille (`Flexible` + `ListView`), l'en-tête et « Ajouter » restent
 en haut, et la feuille s'arrête sous la barre d'état (`useSafeArea`).
+Couleur d'un domaine (`kColorPickerOptions`, `utils/domain_colors.dart`) : + le rose doux de la détente `#F08BC0` (retour user 2026-11-18).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 
