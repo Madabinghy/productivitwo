@@ -186,7 +186,7 @@ List<FlemmeWin> flemmeWinsIn(
   for (final b in blocks) {
     final t = b.doneAt;
     if (b.status != 'done' || t == null || !w.contains(t)) continue;
-    if (isBasicNeedBlock(b, byId) || isLeisureId(b.activityId)) continue;
+    if (isBasicNeedBlock(b, byId) || b.isLeisureBlock || isLeisureId(b.activityId)) continue;
     if (b.activityId != null && chronoActs.contains(b.activityId)) continue; // déjà compté par son chrono
     out.add(FlemmeWin(t, b.title.isEmpty ? (byId[b.activityId]?.name ?? 'Bloc') : b.title, 'bloc fait'));
   }

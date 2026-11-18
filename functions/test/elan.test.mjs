@@ -114,4 +114,7 @@ test("recharge : le chrono Sommeil ferme le dernier pointage, pas le bloc ; une 
   // Bloc Sieste fait pendant la flemme : pas une victoire.
   const nap = winsIn(ws[0], [{ status: "done", doneAt: "2026-10-28T19:30:00.000Z", title: "Sieste" }], [], [], OFF);
   assert.equal(nap, 0);
+  // Bloc de détente fait pendant la flemme : pas une victoire non plus.
+  const chill = winsIn(ws[0], [{ status: "done", doneAt: "2026-10-28T19:30:00.000Z", title: "Détente", timeBlock: "leisure" }], [], [], OFF);
+  assert.equal(chill, 0);
 });

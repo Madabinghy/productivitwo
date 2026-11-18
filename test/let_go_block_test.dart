@@ -35,6 +35,25 @@ void main() {
     expect(capHeld(day([...done, _b('l', 'skipped', reason: kSkipLetGo)])), isFalse);
   });
 
+  test('un bloc de détente ne pèse sur rien : ni Journée parfaite, ni Cap tenu', () {
+    ScheduleBlock chill(String status, {String? reason}) =>
+        ScheduleBlock(id: 'c', startTime: '20:00', durationMin: 60, title: 'Détente', status: status, skipReason: reason, timeBlock: 'leisure');
+    expect(chill('pending').isLeisureBlock, isTrue);
+    expect(countsForBadges(chill('pending')), isFalse);
+    expect(countsForBadges(chill('done')), isFalse);
+    expect(countsForBadges(chill('skipped', reason: kSkipLetGo)), isFalse);
+    DailySchedule day(List<ScheduleBlock> blocks) => DailySchedule(
+          date: '2026-11-02',
+          generatedBy: 'plan',
+          generatedAt: DateTime(2026, 11, 1, 21),
+          blocks: blocks,
+        )..plannedAt = DateTime(2026, 11, 1, 21);
+    // Deux blocs faits + une détente pas prise : le cap est tenu quand même.
+    expect(capHeld(day([_b('d0', 'done'), _b('d1', 'done'), chill('pending')])), isTrue);
+    // Une détente prise ne rattrape pas un programme pas tenu.
+    expect(capHeld(day([_b('p0', 'pending'), _b('p1', 'pending'), chill('done')])), isFalse);
+  });
+
   testWidgets('feuille « Pourquoi ? » : quatre choix, le lâcher renvoyé', (t) async {
     RemoveBlockChoice? got;
     await t.pumpWidget(MaterialApp(

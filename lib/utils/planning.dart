@@ -154,7 +154,9 @@ bool capHeld(DailySchedule s) {
   if (at == null || p.length != 3) return false;
   final day = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
   if (!at.isBefore(day)) return false;
-  final counted = s.blocks.where((b) => isLetGoBlock(b) || (b.gcalEventId == null && (b.status == 'pending' || b.status == 'done'))).toList();
+  final counted = s.blocks
+      .where((b) => !b.isLeisureBlock && (isLetGoBlock(b) || (b.gcalEventId == null && (b.status == 'pending' || b.status == 'done'))))
+      .toList();
   if (counted.isEmpty) return false;
   return counted.where((b) => b.status == 'done').length / counted.length >= kCapHeldRatio;
 }
@@ -165,12 +167,19 @@ int capHeldCount(List<DailySchedule> schedules, String todayYmd) =>
 
 // ── Blocs de temps (2026-10-31, « Planifier du temps, pas des tâches ») ───────
 
-/// `morning` (2026-11-16) = Miracle morning : au ▶, les routines du moment
-/// s'enchaînent une à une ; le bloc est fait quand il n'en reste plus.
-const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'morning': 'Miracle morning', 'buffer': 'Tampon'};
+/// `morning` (2026-11-16) = Miracle morning : au ▶, l'écran « Mon Miracle
+/// Morning ». `leisure` (2026-11-18) = Détente : au ▶, on choisit de quoi se
+/// détendre ; le bloc ne compte ni pour la Journée parfaite ni pour Cap tenu.
+const kTimeBlockLabels = {
+  'deep': 'Deep work',
+  'small': 'Petites choses',
+  'morning': 'Miracle morning',
+  'leisure': 'Détente',
+  'buffer': 'Tampon',
+};
 
 /// Durée proposée à la pose d'un bloc de temps.
-int timeBlockDefaultMin(String kind) => switch (kind) { 'deep' => 90, 'morning' => 60, _ => 45 };
+int timeBlockDefaultMin(String kind) => switch (kind) { 'deep' => 90, 'morning' || 'leisure' => 60, _ => 45 };
 
 /// Catégorie d'un bloc de temps (couleur du programme).
 String timeBlockCategory(String kind) => switch (kind) { 'deep' => 'project', 'morning' => 'routine', _ => 'personal' };
@@ -181,6 +190,7 @@ const kTimeBlockColors = {
   'deep': Color(0xFF6FC3FF),
   'small': Color(0xFFF2C14E),
   'morning': Color(0xFFFF9A5C),
+  'leisure': Color(0xFFF08BC0),
   'buffer': Color(0xFF8FA89A),
 };
 const _kTimePrefix = '~time:';
