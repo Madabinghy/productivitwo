@@ -199,14 +199,15 @@ class WeekHoursCard extends StatelessWidget {
                   TextSpan(text: spanLabel(h.activeMin), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kHoursActive)),
                   TextSpan(text: ' actives', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: mute)),
                 ])),
-                if (h.leisureMin > 0)
-                  Text('${spanLabel(h.leisureMin)} de détente',
-                      key: const ValueKey('week-hours-leisure'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursLeisure)),
-                Text('${hoursLabel(h.trackedMin)} / 168 h tracées', style: TextStyle(fontSize: 12.5, color: mute)),
-                if (h.untrackedMin > 0)
-                  Text('${spanLabel(h.untrackedMin)} libres',
-                      key: const ValueKey('week-hours-free'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursFree)),
+                // Le reste du cadran, dans son ordre et à ses couleurs.
+                Wrap(spacing: 10, runSpacing: 1, children: [
+                  if (h.basicMin > 0) _part('week-hours-basic', '${spanLabel(h.basicMin)} de besoins', kHoursBasic),
+                  if (h.sleepMin > 0) _part('week-hours-sleep', '${spanLabel(h.sleepMin)} de sommeil', kHoursSleep),
+                  if (h.leisureMin > 0) _part('week-hours-leisure', '${spanLabel(h.leisureMin)} de détente', kHoursLeisure),
+                  if (h.untrackedMin > 0) _part('week-hours-free', '${spanLabel(h.untrackedMin)} libres', kHoursFree),
+                ]),
                 const SizedBox(height: 2),
+                Text('${hoursLabel(h.trackedMin)} / 168 h tracées', style: TextStyle(fontSize: 12.5, color: mute)),
                 Text(_deltaLabel(h.deltaMin),
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: h.deltaMin >= 0 ? kHoursActive : const Color(0xFFF5B041))),
               ]),
@@ -216,6 +217,9 @@ class WeekHoursCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _part(String key, String text, Color color) =>
+      Text(text, key: ValueKey(key), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: color));
 }
 
 const _dayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
