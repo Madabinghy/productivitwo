@@ -1464,6 +1464,20 @@ class _WeekViewState extends State<WeekView> {
           category: 'routine',
           timeBlock: 'morning'),
     ),
+    // Détente (2026-11-18) : du temps pour souffler ; au ▶ (mobile), on choisit de quoi.
+    _PlaceItem(
+      key: 'time:leisure',
+      group: 'Poser du temps',
+      title: 'Détente',
+      defaultMin: 60,
+      color: const Color(0xFFF08BC0),
+      make: (s, dur) => ScheduleBlock(
+          startTime: '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}',
+          durationMin: dur,
+          title: 'Détente',
+          category: 'personal',
+          timeBlock: 'leisure'),
+    ),
   ];
 
   Widget _placeColumn(List<_PlaceItem> items) {

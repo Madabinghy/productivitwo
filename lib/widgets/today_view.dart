@@ -1478,7 +1478,7 @@ class TodayViewState extends State<TodayView> {
             final b = blocks[i];
             final c = colorOf(b);
             final hasSource = b.activityId != null || b.projectId != null || b.taskId != null || b.timeBlock != null;
-            final mode = switch (b.timeBlock) { 'deep' => ' · offensive', 'small' => ' · guérilla', 'morning' => ' · miracle morning', _ => '' };
+            final mode = switch (b.timeBlock) { 'deep' => ' · offensive', 'small' => ' · guérilla', 'morning' => ' · miracle morning', 'leisure' => ' · détente', _ => '' };
             return InkWell(
               onTap: hasSource && widget.onOpenSource != null
                   ? () {

@@ -200,7 +200,7 @@ export function rechargeStartMs(opts: {
 export interface SessionLite { activityId?: string | null; startAt?: string; deleted?: boolean }
 export interface ActivityLite { id: string; name?: string; type?: string; habitFreq?: number | string | null; habitTarget?: number | null; deleted?: boolean }
 export interface HitLite { habitId: string; ts: string }
-export interface BlockLite { status?: string; doneAt?: string | null; title?: string; activityId?: string | null; startTime?: string }
+export interface BlockLite { status?: string; doneAt?: string | null; title?: string; activityId?: string | null; startTime?: string; timeBlock?: string | null }
 
 function isDailyRoutine(a: ActivityLite): boolean {
   if (a.deleted || (a.type !== "habit" && a.type !== "action")) return false;
@@ -223,6 +223,8 @@ export function winsIn(
     if (b.status !== "done" || !b.doneAt) continue;
     // Un besoin de base (sommeil, sieste, repas) n'est pas une chose faite malgré la flemme.
     if (isBasicNeedName(b.title) || isBasicNeedName(names.get(b.activityId ?? ""))) continue;
+    // Un bloc de détente (2026-11-18) non plus.
+    if (b.timeBlock === "leisure") continue;
     const t = Date.parse(b.doneAt);
     if (t >= w.startMs && t < w.endMs) n++;
   }

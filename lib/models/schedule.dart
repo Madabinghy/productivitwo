@@ -177,6 +177,10 @@ class ScheduleBlock {
   bool get isPrep => kind == 'prep';
   bool get isTimeBlock => timeBlock != null;
 
+  /// Bloc de DÉTENTE (`timeBlock: "leisure"`, 2026-11-18) : du temps réservé
+  /// pour souffler. Il ne pèse sur rien : ni Journée parfaite, ni Cap tenu.
+  bool get isLeisureBlock => timeBlock == 'leisure';
+
   /// Toutes les cibles du bloc, la principale d'abord. Sans projet principal,
   /// les suivantes ne comptent pas (jamais écrites ainsi par l'app).
   List<BlockTarget> get targets => projectId == null

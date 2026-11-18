@@ -4112,7 +4112,8 @@ async function executeScheduleDay(
     sessionTemplateId: b.sessionTemplateId ?? null, // séance (déroulé) → ▶ = player
     // Bloc de TEMPS (2026-10-31) : "deep" | "small" | "buffer", sans source.
     // "morning" (2026-11-16) = Miracle morning : le bloc ouvre « Mon Miracle Morning ».
-    ...(b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "morning" || b.timeBlock === "buffer"
+    // "leisure" (2026-11-18) = Détente : du temps pour souffler, qui ne pèse sur rien.
+    ...(b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "morning" || b.timeBlock === "leisure" || b.timeBlock === "buffer"
       ? { timeBlock: b.timeBlock }
       : {}),
     // Plusieurs cibles (2026-11-16) : les suivantes, la principale reste projectId / taskId.

@@ -1851,6 +1851,17 @@ sur la carte (`week-hours-leisure`), ligne Détente dans la feuille, barres du j
 une aide « crée un domaine… ou donne la nature Détente… » (`week-hours-leisure-hint`). **Jamais une victoire sur la flemme** : chrono,
 bloc ou routine d'une activité de détente sont exclus de `flemmeWinsIn` et de l'annonce en direct (`_checkFlemmeChrono`). Montre suisse,
 minimums et objectifs ne changent pas (une activité de détente avec un minimum le garde).
+**Lot 2 livré (bloc Détente)** : quatrième bloc de temps `timeBlock: "leisure"` (« Détente », 60 min par défaut, catégorie `personal`,
+rose `kTimeBlockColors['leisure']`, `ScheduleBlock.isLeisureBlock`) = du temps réservé pour souffler, s'amuser, se reposer. **Il ne pèse
+sur rien** (décision : on ne punit pas quelqu'un d'avoir travaillé au lieu de se reposer) : hors `countsForBadges` (Journée parfaite,
+tuile, notifications) et hors `capHeld`, jamais une victoire sur la flemme (app et `functions/src/elan.ts`). ▶ sur mobile
+(`_launchTimeBlock`) : « Détente · tu fais quoi ? » = `showActivityPicker` sur les activités-temps de détente (toutes les activités, avec
+une aide, s'il n'y a aucun domaine de détente), le chrono part dessus ; un bloc qui porte déjà une activité la lance sans demander.
+Bouton « Me détendre » sur la carte du bloc et MAINTENANT. Comme tout bloc de temps, il se règle au chrono (60 % du créneau, toutes
+activités). Se pose depuis « Nouveau bloc » mobile, Planifier (« + Détente »), POSER DU TEMPS de Cette semaine (`time:leisure`) et le
+Mode de « Modifier le bloc » (`block-mode-leisure`) ; s'empile comme un mode. Jamais proposé d'office par Planifier. Serveur (⚠️
+`firebase deploy --only functions`, fait par le déploiement au merge) : `schedule_day` accepte `timeBlock:"leisure"`, à poser quand
+l'utilisateur demande du temps pour lui, jamais pour remplir un trou. Le web l'affiche comme un bloc libre.
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 

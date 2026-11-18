@@ -418,6 +418,7 @@ class DayScore {
 /// Un bloc LÂCHÉ (`skipped` + [kSkipLetGo]) compte aussi : comme non fait.
 /// Un rendez-vous d'agenda lâché compte aussi (retour user 2026-11-01 : c'était un engagement).
 bool countsForBadges(ScheduleBlock b) =>
+    !b.isLeisureBlock &&
     (b.kind == 'normal' || b.kind == 'deepwork') &&
     (isLetGoBlock(b) || (b.gcalEventId == null && (b.status == 'done' || b.status == 'pending')));
 

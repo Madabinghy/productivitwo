@@ -42,6 +42,13 @@ void main() {
     expect(w.map((x) => x.what).toList(), ['Productivitwo']);
   });
 
+  test('un bloc de détente fait en Flemme n\'est pas une victoire', () {
+    final w = flemmeWinsIn(flemme, hits: const [], activities: acts, now: now, blocks: [
+      ScheduleBlock(id: 'b', startTime: '20:00', durationMin: 60, title: 'Détente', timeBlock: 'leisure', status: 'done', doneAt: DateTime(2026, 10, 30, 20, 30)),
+    ]);
+    expect(w, isEmpty);
+  });
+
   test('un chrono qui tourne encore compte dès 10 min', () {
     final w = flemmeWinsIn(flemme, blocks: const [], hits: const [], activities: acts, now: DateTime(2026, 10, 30, 19, 11), sessions: [
       Session(activityId: 'c', startAt: DateTime(2026, 10, 30, 19)),

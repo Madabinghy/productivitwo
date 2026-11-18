@@ -487,7 +487,7 @@ class _NowCardState extends State<NowCard> {
             ? 'Lancer l’offensive'
             : (b.timeBlock == 'small'
                 ? 'Lancer la guérilla'
-                : (b.timeBlock == 'morning' ? 'Lancer mon Miracle Morning' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'))));
+                : (b.timeBlock == 'morning' ? 'Lancer mon Miracle Morning' : b.isLeisureBlock ? 'Me détendre' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'))));
         buttons.add(Expanded(
             child: _btn(pal, label, primary: true, onTap: () {
           HapticFeedback.lightImpact();

@@ -138,6 +138,7 @@ import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
 import 'package:productivitwo_v1/life_nature_store.dart';
+import 'package:productivitwo_v1/utils/leisure.dart' show isLeisureId;
 import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
@@ -3153,6 +3154,30 @@ class _AppRootState extends State<AppRoot>
         await _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done');
       }
       setState(() {});
+      return;
+    }
+    // Détente (2026-11-18) : on choisit de quoi souffler, le chrono part
+    // dessus. Une activité déjà portée par le bloc = pas de question.
+    if (block.isLeisureBlock) {
+      logic.refreshLeisure();
+      var id = _blockTimeActivity(block)?.id;
+      if (id == null) {
+        final times = st.activeActivities.where((a) => !a.isHabit).toList();
+        final leisure = times.where((a) => isLeisureId(a.id)).toList();
+        id = await showActivityPicker(context,
+            activities: leisure.isEmpty ? times : leisure,
+            domains: st.activeDomains,
+            title: 'Détente · tu fais quoi ?',
+            subtitle: leisure.isEmpty
+                ? 'Aucun domaine de détente pour l’instant : donne la nature Détente à un domaine (Organisation, appui long sur sa tuile) pour ne voir ici que tes loisirs.'
+                : 'Le chrono part sur ce que tu choisis. Ce temps compte en détente, pas en temps actif.');
+      }
+      if (id == null || !mounted) return;
+      logic.start(id);
+      setState(() {
+        _focusProject = null;
+        _focusTask = null;
+      });
       return;
     }
     if (block.timeBlock == 'deep' || block.timeBlock == 'small') {

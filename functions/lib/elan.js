@@ -191,6 +191,9 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
         // Un besoin de base (sommeil, sieste, repas) n'est pas une chose faite malgré la flemme.
         if (isBasicNeedName(b.title) || isBasicNeedName(names.get((_a = b.activityId) !== null && _a !== void 0 ? _a : "")))
             continue;
+        // Un bloc de détente (2026-11-18) non plus.
+        if (b.timeBlock === "leisure")
+            continue;
         const t = Date.parse(b.doneAt);
         if (t >= w.startMs && t < w.endMs)
             n++;
