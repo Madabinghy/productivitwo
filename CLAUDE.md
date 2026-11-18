@@ -1869,6 +1869,7 @@ Couleur d'un domaine (`kColorPickerOptions`, `utils/domain_colors.dart`) : + le 
 **Compteur redessiné** (2026-11-18, maquette validée « Couleurs de la jauge », retour user : l'orange-marron du « flou », une jauge
 plus travaillée, l'aiguille qui ne dit que l'actif, « un peu triste ») : le temps non tracé s'appelle **libre** (« 47 h libres », ligne
 « Libre · pas encore investi ») et se dessine en TIRETS menthe `kHoursFree` — des cases à remplir, du temps à convertir en actif.
+Sur la carte, « 47 h libres » a sa propre ligne en menthe sous « n / 168 h tracées » (`week-hours-free`, retour user 2026-11-18).
 Palette plus vive (`week_hours_card.dart` : actif `kHoursActive` avec halo et dégradé vers `kHoursActiveHi`, besoins de base en jaune
 `kHoursBasic`, sommeil `kHoursSleep` plus franc, détente inchangée). `_GaugePainter` : une graduation par jour (7 traits de 24 h), un
 joint entre les morceaux, et **le socle d'abord** (choix user) : l'ordre du cadran est besoins de base (jaune, ils remplissent le bout arrondi du départ) → sommeil → détente → actif,
