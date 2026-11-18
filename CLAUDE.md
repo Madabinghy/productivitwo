@@ -1871,8 +1871,10 @@ plus travaillée, l'aiguille qui ne dit que l'actif, « un peu triste ») : le t
 « Libre · pas encore investi ») et se dessine en TIRETS menthe `kHoursFree` — des cases à remplir, du temps à convertir en actif.
 Palette plus vive (`week_hours_card.dart` : actif `kHoursActive` avec halo et dégradé vers `kHoursActiveHi`, besoins de base en jaune
 `kHoursBasic`, sommeil `kHoursSleep` plus franc, détente inchangée). `_GaugePainter` : une graduation par jour (7 traits de 24 h), un
-joint entre les morceaux, le filet intérieur = heures actives des 7 jours d'avant (remplace le trait en pointillés), **deux repères** —
-l'aiguille effilée au bout de l'actif, un triangle sur le bord à la fin de tout ce qui est tracé (actif + détente + recharge). Petites
+joint entre les morceaux, et **le socle d'abord** (choix user) : l'ordre du cadran est sommeil → besoins de base → détente → actif,
+l'aiguille effilée au bout du vert compte donc TOUT ce qui est tracé, et l'actif touche le temps libre, dans lequel il grandit ; le
+filet intérieur, sous le vert = heures actives des 7 jours d'avant (remplace le trait en pointillés). Le grand chiffre reste les heures
+actives. Petites
 durées : `spanLabel` (« 30 min » sous une heure, jamais « 0 h » ni « 1 h ») et `gaugeFractions` (un morceau non nul n'est jamais dessiné
 sous 3° sur 240 ; le libre absorbe la différence, les totaux restent exacts). Feuille : le chiffre passe sous le compteur, un paragraphe
 dit comment le lire (`week-hours-reading`).
