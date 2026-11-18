@@ -63,6 +63,29 @@ void main() {
     expect(plain.activeMin, 180 + 60);
   });
 
+  test('petites durées : en minutes sous une heure, et un arc jamais invisible', () {
+    expect(spanLabel(0), '0 h');
+    expect(spanLabel(20), '20 min');
+    expect(spanLabel(30), '30 min');
+    expect(spanLabel(60), '1 h');
+    expect(spanLabel(69 * 60 + 20), '69 h');
+    final all = [...acts, Activity(id: 'j', domainId: 'chill', name: 'Jeux vidéo')];
+    final h = weekHours(now: now, activities: all, leisureIds: {'j'}, sessions: [
+      s('w', DateTime(2026, 11, 10, 8), 12 * 60),
+      s('j', DateTime(2026, 11, 11, 10), 30),
+    ]);
+    final f = gaugeFractions(h);
+    expect(f.length, 5);
+    expect(f[0], closeTo(12 / 168, 1e-9));
+    // 30 min = 0,3 % du cadran : dessiné au plancher de 3° sur 240.
+    expect(f[1], closeTo(3 / 240, 1e-9));
+    expect(f[2], 0);
+    expect(f.fold<double>(0, (a, b) => a + b), closeTo(1, 1e-9));
+    // Rien de tracé : tout le cadran est libre.
+    final empty = gaugeFractions(weekHours(now: now, activities: all, sessions: const []));
+    expect(empty, [0, 0, 0, 0, 1]);
+  });
+
   test('chrono en cours compté jusqu\'à maintenant', () {
     final h = weekHours(now: now, activities: acts, sessions: [Session(activityId: 'w', startAt: DateTime(2026, 11, 11, 14))]);
     expect(h.activeMin, 60);

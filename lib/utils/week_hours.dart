@@ -48,6 +48,24 @@ class WeekHours {
   }
 }
 
+/// « 30 min » sous une heure, « 3 h » au-delà (arrondi à l'heure) : une petite
+/// durée ne s'affiche jamais « 0 h » ni « 1 h ».
+String spanLabel(int min) => min <= 0 ? '0 h' : (min < 60 ? '$min min' : '${(min / 60).round()} h');
+
+/// Les morceaux du compteur en part du cadran : actif · détente · besoins de
+/// base · sommeil · libre. Un morceau non nul n'est jamais dessiné plus petit
+/// que [minFrac] (3° sur 240) ; le temps libre absorbe la différence. Seul le
+/// dessin a un plancher : les totaux affichés restent exacts.
+List<double> gaugeFractions(WeekHours h, {double minFrac = 3 / 240}) {
+  final out = [
+    for (final m in [h.activeMin, h.leisureMin, h.basicMin, h.sleepMin])
+      m <= 0 ? 0.0 : (m / kWeekHoursMin < minFrac ? minFrac : m / kWeekHoursMin),
+  ];
+  final used = out.fold<double>(0, (a, b) => a + b);
+  if (used >= 1) return [for (final f in out) f / used, 0.0];
+  return [...out, 1 - used];
+}
+
 enum _Kind { none, active, leisure, basic, sleep }
 
 int _rank(_Kind k) => _Kind.values.indexOf(k);
