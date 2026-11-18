@@ -7,11 +7,14 @@ import 'package:productivitwo_v1/utils/week_hours.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche, FicheHeader, FicheTitle;
 
 /// Les 168 dernières heures en compteur (maquette validée 2026-11-11) : carte en tête d'Organisation, feuille en grand au tap.
+/// Redessiné le 2026-11-18 (maquette « Couleurs de la jauge », choix user) : palette plus vive, temps libre en tirets,
+/// une graduation par jour, deux repères (l'aiguille = l'actif, le triangle = tout ce qui est tracé).
 const kHoursActive = Color(0xFF3DDC84);
+const kHoursActiveHi = Color(0xFFB4F7D0);
 const kHoursLeisure = Color(0xFFF08BC0);
-const kHoursBasic = Color(0xFF9FB3A8);
-const kHoursSleep = Color(0xFF5B7FC7);
-const kHoursBlur = Color(0x8CF5B041);
+const kHoursBasic = Color(0xFFFFD479);
+const kHoursSleep = Color(0xFF6F92F2);
+const kHoursFree = Color(0xFF7FF0D6);
 
 String hoursLabel(int min) => '${(min / 60).round()} h';
 
@@ -20,8 +23,9 @@ String _deltaLabel(int min) {
   return h == 0 ? 'comme les 7 jours d\'avant' : '${h > 0 ? '+' : '−'}${h.abs()} h sur les 7 jours d\'avant';
 }
 
-/// Le compteur : arc de 240° (les 168 h), rempli actif → détente → besoins → sommeil → flou ; aiguille au bout de l'actif ;
-/// [prevActiveMin] = trait en pointillés des 7 jours d'avant.
+/// Le compteur : arc de 240° (les 168 h), rempli actif → détente → besoins → sommeil, puis le temps libre en tirets.
+/// L'aiguille pointe le bout de l'actif ; un triangle sur le bord marque la fin de tout ce qui est tracé ;
+/// le filet intérieur = les heures actives des 7 jours d'avant ([showPrev]).
 class WeekHoursGauge extends StatelessWidget {
   final WeekHours h;
   final double size;
@@ -32,8 +36,8 @@ class WeekHoursGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return CustomPaint(
-      size: Size(size, size * .8),
-      painter: _GaugePainter(h, track: cs.onSurface.withValues(alpha: .08), needle: cs.onSurface, hole: cs.surface, showPrev: showPrev),
+      size: Size(size, size * .76),
+      painter: _GaugePainter(h, track: cs.onSurface.withValues(alpha: .09), needle: cs.onSurface, hole: cs.surface, showPrev: showPrev),
     );
   }
 }
@@ -46,52 +50,132 @@ class _GaugePainter extends CustomPainter {
 
   static const _start = 150 * math.pi / 180;
   static const _sweep = 240 * math.pi / 180;
+  static const _deg = math.pi / 180;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = size.width * .07;
-    final r = size.width / 2 - stroke / 2 - 2;
-    final c = Offset(size.width / 2, r + stroke / 2 + 2);
+    final w = size.width;
+    final stroke = w * .067;
+    final r = w * .358;
+    final c = Offset(w / 2, w * .467);
     final rect = Rect.fromCircle(center: c, radius: r);
-    Paint p(Color col) => Paint()
+    Offset at(double radius, double a) => c + Offset(math.cos(a), math.sin(a)) * radius;
+    Paint band(Color col) => Paint()
       ..color = col
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
-    canvas.drawArc(rect, _start, _sweep, false, p(track));
-    var at = 0.0;
-    for (final (min, col) in [(h.activeMin, kHoursActive), (h.leisureMin, kHoursLeisure), (h.basicMin, kHoursBasic), (h.sleepMin, kHoursSleep), (h.untrackedMin, kHoursBlur)]) {
-      final f = min / kWeekHoursMin;
-      if (f > 0) canvas.drawArc(rect, _start + _sweep * at, _sweep * f, false, p(col));
-      at += f;
+
+    // Une graduation par jour : 168 h = 7 traits de 24 h.
+    for (var d = 0; d <= 7; d++) {
+      final a = _start + _sweep * d / 7;
+      final edge = d == 0 || d == 7;
+      canvas.drawLine(
+          at(r + stroke / 2 + w * .015, a),
+          at(r + stroke / 2 + w * (edge ? .042 : .032), a),
+          Paint()
+            ..color = needle.withValues(alpha: edge ? .7 : .35)
+            ..strokeWidth = math.max(1, w * .008));
     }
-    if (showPrev && h.prevActiveMin > 0) {
-      final a = _start + _sweep * (h.prevActiveMin / kWeekHoursMin).clamp(0.0, 1.0);
-      final dir = Offset(math.cos(a), math.sin(a));
-      final paint = Paint()
-        ..color = needle.withValues(alpha: .8)
-        ..strokeWidth = math.max(1.5, size.width * .008);
-      final a0 = c + dir * (r - stroke * .9), a1 = c + dir * (r + stroke * .9);
-      const dashes = 4;
-      for (var i = 0; i < dashes; i += 2) {
-        canvas.drawLine(Offset.lerp(a0, a1, i / dashes)!, Offset.lerp(a0, a1, (i + 1) / dashes)!, paint);
+    canvas.drawArc(rect, _start, _sweep, false, band(track)..strokeCap = StrokeCap.round);
+
+    final f = gaugeFractions(h);
+    const colors = [kHoursActive, kHoursLeisure, kHoursBasic, kHoursSleep];
+    const gap = 1.3 * _deg;
+    var a = _start;
+    for (var i = 0; i < colors.length; i++) {
+      final sweep = _sweep * f[i];
+      if (sweep <= 0) continue;
+      final len = sweep > gap * 2.3 ? sweep - gap : sweep;
+      if (i == 0) {
+        // Le vert de l'actif : un halo dessous, un dégradé dessus.
+        canvas.drawArc(rect, a, len, false, band(kHoursActive.withValues(alpha: .45))..maskFilter = MaskFilter.blur(BlurStyle.normal, stroke * .55));
+        canvas.drawArc(
+            rect,
+            a,
+            len,
+            false,
+            band(kHoursActive)
+              ..shader = const LinearGradient(begin: Alignment.bottomLeft, end: Alignment.topRight, colors: [kHoursActive, kHoursActiveHi]).createShader(rect));
+      } else {
+        canvas.drawArc(rect, a, len, false, band(colors[i]));
       }
+      a += sweep;
     }
-    final a = _start + _sweep * (h.activeMin / kWeekHoursMin).clamp(0.0, 1.0);
-    final tip = c + Offset(math.cos(a), math.sin(a)) * (r - stroke * .2);
-    canvas.drawLine(c, tip, Paint()
-      ..color = needle
-      ..strokeWidth = math.max(2.5, size.width * .02)
-      ..strokeCap = StrokeCap.round);
-    canvas.drawCircle(c, size.width * .035, Paint()..color = hole);
-    canvas.drawCircle(c, size.width * .035, Paint()
-      ..color = needle
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(2, size.width * .015));
+    final activeEnd = _start + _sweep * f[0];
+    final trackedEnd = a;
+    const end = _start + _sweep;
+
+    // Le temps libre : des tirets, des cases à remplir.
+    const dash = 4.3 * _deg, space = 3.4 * _deg;
+    final free = band(kHoursFree.withValues(alpha: .85));
+    for (var d = trackedEnd + _deg; d < end - .002; d += dash + space) {
+      canvas.drawArc(rect, d, math.min(dash, end - d), false, free);
+    }
+
+    if (showPrev && h.prevActiveMin > 0) {
+      canvas.drawArc(
+          Rect.fromCircle(center: c, radius: r - stroke / 2 - w * .027),
+          _start,
+          _sweep * (h.prevActiveMin / kWeekHoursMin).clamp(0.0, 1.0),
+          false,
+          Paint()
+            ..color = needle.withValues(alpha: .42)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.2, w * .0125)
+            ..strokeCap = StrokeCap.round);
+    }
+
+    // Second repère : la fin de tout ce qui est tracé (actif, détente, recharge).
+    if (trackedEnd > activeEnd + _deg) {
+      final tip = at(r + stroke / 2 + w * .01, trackedEnd);
+      final l = at(r + stroke / 2 + w * .054, trackedEnd - 3.2 * _deg);
+      final rt = at(r + stroke / 2 + w * .054, trackedEnd + 3.2 * _deg);
+      canvas.drawPath(
+          Path()
+            ..moveTo(tip.dx, tip.dy)
+            ..lineTo(l.dx, l.dy)
+            ..lineTo(rt.dx, rt.dy)
+            ..close(),
+          Paint()..color = needle);
+      canvas.drawLine(
+          c,
+          at(r - stroke / 2 - w * .008, trackedEnd),
+          Paint()
+            ..color = needle.withValues(alpha: .38)
+            ..strokeWidth = math.max(1, w * .01)
+            ..strokeCap = StrokeCap.round);
+    }
+
+    // L'aiguille, effilée, au bout de l'actif.
+    final tip = at(r - w * .008, activeEnd);
+    final b1 = at(w * .022, activeEnd + math.pi / 2), b2 = at(w * .022, activeEnd - math.pi / 2);
+    canvas.drawPath(
+        Path()
+          ..moveTo(b1.dx, b1.dy)
+          ..lineTo(tip.dx, tip.dy)
+          ..lineTo(b2.dx, b2.dy)
+          ..close(),
+        Paint()..color = needle);
+    canvas.drawCircle(c, w * .042, Paint()..color = hole);
+    canvas.drawCircle(
+        c,
+        w * .042,
+        Paint()
+          ..color = needle
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.8, w * .015));
+    canvas.drawCircle(c, w * .013, Paint()..color = kHoursActive);
   }
 
   @override
   bool shouldRepaint(covariant _GaugePainter o) =>
-      o.h.activeMin != h.activeMin || o.h.leisureMin != h.leisureMin || o.h.basicMin != h.basicMin || o.h.sleepMin != h.sleepMin || o.h.prevActiveMin != h.prevActiveMin || o.track != track;
+      o.h.activeMin != h.activeMin ||
+      o.h.leisureMin != h.leisureMin ||
+      o.h.basicMin != h.basicMin ||
+      o.h.sleepMin != h.sleepMin ||
+      o.h.prevActiveMin != h.prevActiveMin ||
+      o.track != track ||
+      o.needle != needle;
 }
 
 /// Carte compacte en tête d'Organisation.
@@ -116,20 +200,20 @@ class WeekHoursCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: kHoursActive.withValues(alpha: .45), width: 1.5)),
           child: Row(children: [
-            WeekHoursGauge(h: h, size: 112, showPrev: false),
+            WeekHoursGauge(h: h, size: 112),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('TES 7 DERNIERS JOURS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: mute)),
                 const SizedBox(height: 2),
                 Text.rich(TextSpan(children: [
-                  TextSpan(text: hoursLabel(h.activeMin), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kHoursActive)),
+                  TextSpan(text: spanLabel(h.activeMin), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kHoursActive)),
                   TextSpan(text: ' actives', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: mute)),
                 ])),
                 if (h.leisureMin > 0)
-                  Text('${hoursLabel(h.leisureMin)} de détente',
+                  Text('${spanLabel(h.leisureMin)} de détente',
                       key: const ValueKey('week-hours-leisure'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursLeisure)),
-                Text('${hoursLabel(h.trackedMin)} / 168 h tracées · ${hoursLabel(h.untrackedMin)} dans le flou', style: TextStyle(fontSize: 12.5, color: mute)),
+                Text('${hoursLabel(h.trackedMin)} / 168 h tracées · ${hoursLabel(h.untrackedMin)} libres', style: TextStyle(fontSize: 12.5, color: mute)),
                 const SizedBox(height: 2),
                 Text(_deltaLabel(h.deltaMin),
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: h.deltaMin >= 0 ? kHoursActive : const Color(0xFFF5B041))),
@@ -178,7 +262,7 @@ class _WeekHoursSheet extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
             Flexible(child: Text(hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: mute))),
-            SizedBox(width: 52, child: Text(hoursLabel(min), textAlign: TextAlign.right, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700))),
+            SizedBox(width: 60, child: Text(spanLabel(min), textAlign: TextAlign.right, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700))),
           ]),
         );
     return ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(20, 4, 20, 32), children: [
@@ -186,33 +270,33 @@ class _WeekHoursSheet extends StatelessWidget {
       const SizedBox(height: 6),
       Text('La fenêtre glisse : maintenant moins 7 jours.', style: TextStyle(fontSize: 13, color: mute)),
       const SizedBox(height: 14),
+      Center(child: WeekHoursGauge(h: h, size: 300)),
       Center(
-        child: Stack(alignment: Alignment.center, children: [
-          WeekHoursGauge(h: h, size: 300),
-          Positioned(
-            bottom: 18,
-            child: Column(children: [
-              Text(hoursLabel(h.activeMin), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kHoursActive, height: 1)),
-              const SizedBox(height: 4),
-              Text('actives sur 7 jours', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: mute)),
-              Text('${hoursLabel(h.trackedMin)} / 168 h tracées', style: TextStyle(fontSize: 12, color: mute)),
-            ]),
-          ),
+        child: Column(children: [
+          Text(spanLabel(h.activeMin), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kHoursActive, height: 1)),
+          const SizedBox(height: 4),
+          Text('actives sur 7 jours', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: mute)),
         ]),
       ),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text('┆ ', style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w800)),
-        Flexible(
-          child: Text('les 7 jours d\'avant : ${hoursLabel(h.prevActiveMin)} actives · ${_deltaLabel(h.deltaMin)}',
-              style: TextStyle(fontSize: 12.5, color: mute), textAlign: TextAlign.center),
-        ),
-      ]),
+      const SizedBox(height: 12),
+      // Comment lire le compteur : ses deux repères et le filet intérieur.
+      Text.rich(
+        TextSpan(style: TextStyle(fontSize: 12.5, height: 1.45, color: mute), children: [
+          TextSpan(text: 'L\'aiguille', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          const TextSpan(text: ' : tes heures actives. '),
+          TextSpan(text: 'Le triangle ▲', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          TextSpan(text: ' : tout ce que tu as tracé, ${hoursLabel(h.trackedMin)} sur 168. Après lui, ton temps libre. '),
+          TextSpan(text: 'Le filet intérieur', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          TextSpan(text: ' : les 7 jours d\'avant, ${hoursLabel(h.prevActiveMin)} actives · ${_deltaLabel(h.deltaMin)}.'),
+        ]),
+        key: const ValueKey('week-hours-reading'),
+      ),
       const SizedBox(height: 14),
       row(kHoursActive, 'Actif', 'tout le reste', h.activeMin),
       row(kHoursLeisure, 'Détente', leisureActivityIds.isEmpty ? 'aucun domaine' : 'loisirs, jeux', h.leisureMin),
       row(kHoursBasic, 'Besoins de base', 'repas, sieste', h.basicMin),
       row(kHoursSleep, 'Sommeil', 'tes nuits', h.sleepMin),
-      row(kHoursBlur, 'Dans le flou', 'rien de tracé', h.untrackedMin),
+      row(kHoursFree, 'Libre', 'pas encore investi', h.untrackedMin),
       if (leisureActivityIds.isEmpty)
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -224,7 +308,7 @@ class _WeekHoursSheet extends StatelessWidget {
       else if (h.leisureMin > 0 || h.prevLeisureMin > 0)
         Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Text('Détente : ${hoursLabel(h.leisureMin)} sur 7 jours · ${hoursLabel(h.prevLeisureMin)} les 7 jours d\'avant.',
+          child: Text('Détente : ${spanLabel(h.leisureMin)} sur 7 jours · ${spanLabel(h.prevLeisureMin)} les 7 jours d\'avant.',
               style: TextStyle(fontSize: 12.5, color: mute)),
         ),
       const SizedBox(height: 14),
@@ -236,7 +320,7 @@ class _WeekHoursSheet extends StatelessWidget {
           for (var i = 0; i < 7; i++)
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                Text(values[i] == 0 ? '' : hoursLabel(values[i]), style: TextStyle(fontSize: 11, color: i == 6 ? kHoursActive : mute, fontWeight: FontWeight.w700)),
+                Text(values[i] == 0 ? '' : spanLabel(values[i]), style: TextStyle(fontSize: 11, color: i == 6 ? kHoursActive : mute, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 if (leisure[i] > 0)
                   Container(

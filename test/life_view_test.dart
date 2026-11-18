@@ -175,6 +175,9 @@ void main() {
     expect(find.text('Détente'), findsOneWidget);
     expect(find.text('JOUR PAR JOUR · ACTIF ET DÉTENTE'), findsOneWidget);
     expect(find.byKey(const ValueKey('week-hours-leisure-hint')), findsNothing);
+    expect(find.text('Libre'), findsOneWidget);
+    expect(find.textContaining('dans le flou'), findsNothing);
+    expect(find.byKey(const ValueKey('week-hours-reading')), findsOneWidget);
   });
 
   testWidgets('deux domaines de sport devinés : une seule tuile Sport', (tester) async {
