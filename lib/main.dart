@@ -6278,6 +6278,7 @@ class _AppRootState extends State<AppRoot>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setS) {
@@ -6470,9 +6471,11 @@ class _AppRootState extends State<AppRoot>
                     ),
                   ),
                   const Divider(height: 1),
-                  ListView.separated(
+                  // La liste défile dans la feuille (retour user 2026-11-18 : au-delà de
+                  // dix domaines, le dernier était hors écran et rien ne défilait).
+                  Flexible(
+                    child: ListView.separated(
                     shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: domains.length,
                     separatorBuilder: (_, __) =>
                         const Divider(height: 1, indent: 16),
@@ -6587,6 +6590,7 @@ class _AppRootState extends State<AppRoot>
                         ),
                       );
                     },
+                  ),
                   ),
                 ],
               ),
