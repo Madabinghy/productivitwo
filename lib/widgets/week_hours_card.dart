@@ -202,7 +202,10 @@ class WeekHoursCard extends StatelessWidget {
                 if (h.leisureMin > 0)
                   Text('${spanLabel(h.leisureMin)} de détente',
                       key: const ValueKey('week-hours-leisure'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursLeisure)),
-                Text('${hoursLabel(h.trackedMin)} / 168 h tracées · ${hoursLabel(h.untrackedMin)} libres', style: TextStyle(fontSize: 12.5, color: mute)),
+                Text('${hoursLabel(h.trackedMin)} / 168 h tracées', style: TextStyle(fontSize: 12.5, color: mute)),
+                if (h.untrackedMin > 0)
+                  Text('${spanLabel(h.untrackedMin)} libres',
+                      key: const ValueKey('week-hours-free'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursFree)),
                 const SizedBox(height: 2),
                 Text(_deltaLabel(h.deltaMin),
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: h.deltaMin >= 0 ? kHoursActive : const Color(0xFFF5B041))),

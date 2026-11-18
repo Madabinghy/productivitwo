@@ -170,6 +170,9 @@ void main() {
     expect(find.text('CHILL'), findsOneWidget);
     expect(find.text('3 h de détente'), findsOneWidget);
     expect(find.text('5 h actives', findRichText: true), findsOneWidget); // le jeu n'y est pas
+    expect(find.textContaining('168 h tracées'), findsOneWidget);
+    expect(find.textContaining('tracées ·'), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('week-hours-free'))).data, '160 h libres'); // sur sa propre ligne
     await tester.tap(find.byKey(const ValueKey('week-hours-card')));
     await tester.pumpAndSettle();
     expect(find.text('Détente'), findsOneWidget);
