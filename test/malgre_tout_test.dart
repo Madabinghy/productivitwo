@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/leisure.dart';
 import 'package:productivitwo_v1/utils/recharge.dart';
 
 void main() {
@@ -27,6 +28,18 @@ void main() {
     ]);
     expect(w.map((x) => (x.what, x.how)).toList(), [('Cuisiner', 'chrono tenu 12 min')]);
     expect(w.single.at, DateTime(2026, 10, 30, 19, 10));
+  });
+
+  test('un temps de détente n\'est jamais une victoire sur la flemme', () {
+    leisureActivityIds = {'c'};
+    addTearDown(() => leisureActivityIds = const {});
+    final w = flemmeWinsIn(flemme, hits: const [], activities: acts, now: now, sessions: [
+      Session(activityId: 'c', startAt: DateTime(2026, 10, 30, 19), endAt: DateTime(2026, 10, 30, 19, 40)),
+      Session(activityId: 'w', startAt: DateTime(2026, 10, 30, 18), endAt: DateTime(2026, 10, 30, 18, 15)),
+    ], blocks: [
+      ScheduleBlock(id: 'b', startTime: '20:00', durationMin: 30, title: 'Jouer', category: 'personal', activityId: 'c', status: 'done', doneAt: DateTime(2026, 10, 30, 20, 30)),
+    ]);
+    expect(w.map((x) => x.what).toList(), ['Productivitwo']);
   });
 
   test('un chrono qui tourne encore compte dès 10 min', () {

@@ -6,7 +6,7 @@ import 'package:productivitwo_v1/utils/sport_stats.dart' show isSportDomainName;
 /// NATURE qui décide de sa tuile et de ce qui s'ouvre au tap. Devinée au
 /// départ, changeable d'un tap (`life_natures` en SharedPreferences).
 
-enum DomainNature { night, sessions, meals, money, work, practice, tracking, upkeep }
+enum DomainNature { night, sessions, meals, money, work, practice, tracking, upkeep, leisure }
 
 const kNatureLabels = {
   DomainNature.night: 'Nuit',
@@ -17,6 +17,7 @@ const kNatureLabels = {
   DomainNature.practice: 'Pratique',
   DomainNature.tracking: 'Suivi',
   DomainNature.upkeep: 'Entretien',
+  DomainNature.leisure: 'Détente',
 };
 
 const kNatureHints = {
@@ -28,6 +29,7 @@ const kNatureHints = {
   DomainNature.practice: 'jours tenus, routines, minimum',
   DomainNature.tracking: 'relevé, chiffre de l’objectif',
   DomainNature.upkeep: 'routines de la maison, choses à faire',
+  DomainNature.leisure: 'loisirs, jeux, repos choisi · compté à part dans tes 7 jours',
 };
 
 const kNatureEmoji = {
@@ -39,9 +41,28 @@ const kNatureEmoji = {
   DomainNature.practice: '🙏',
   DomainNature.tracking: '📏',
   DomainNature.upkeep: '🏠',
+  DomainNature.leisure: '🌴',
 };
 
 bool _has(String name, String pattern) => RegExp(pattern, caseSensitive: false).hasMatch(name);
+
+/// Un domaine de DÉTENTE d'après son nom (2026-11-18) : Chill, Détente, Loisirs, Jeux, Temps libre…
+bool isLeisureDomainName(String name) =>
+    _has(name, r'chill|détente|detente|loisir|divertissement|hobb|relax|plaisir|amus|temps libre|\bfun\b|\bjeux?\b');
+
+/// Les activités (temps et routines) des domaines de nature Détente : leur
+/// temps est compté à part dans les 7 derniers jours, jamais comme « actif ».
+Set<String> leisureIdsOf(List<Domain> domains, List<Activity> activities, Map<String, DomainNature> overrides) {
+  final leisure = {
+    for (final d in domains)
+      if (!d.deleted && (overrides[d.id] ?? guessNature(d, activities)) == DomainNature.leisure) d.id,
+  };
+  if (leisure.isEmpty) return const {};
+  return {
+    for (final a in activities)
+      if (!a.deleted && leisure.contains(a.domainId)) a.id,
+  };
+}
 
 /// La nature devinée d'un domaine : son nom d'abord, puis ce qu'il contient.
 DomainNature guessNature(Domain d, List<Activity> activities) {
@@ -49,6 +70,7 @@ DomainNature guessNature(Domain d, List<Activity> activities) {
   if (_has(n, r'sommeil|nuit|repos')) return DomainNature.night;
   if (isSportDomainName(n)) return DomainNature.sessions;
   if (_has(n, r'repas|nutrition|alimentation|cuisine|manger')) return DomainNature.meals;
+  if (isLeisureDomainName(n)) return DomainNature.leisure;
   if (_has(n, r'business|travail|pro|boulot|carri|entreprise|job|études|etudes|formation')) return DomainNature.work;
   if (_has(n, r'financ|budget|argent|compta')) return DomainNature.money;
   if (_has(n, r'intendance|maison|ménage|menage|foyer|logement|organisation')) return DomainNature.upkeep;

@@ -137,6 +137,7 @@ import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
+import 'package:productivitwo_v1/life_nature_store.dart';
 import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
@@ -2205,6 +2206,10 @@ class _AppRootState extends State<AppRoot>
 
   void _startMinuteHeartbeat() {
     _heartbeat?.cancel();
+    // Natures de domaine choisies à la main : le temps de détente en dépend.
+    LifeNatureStore.load().then((_) {
+      if (mounted) logic.refreshLeisure();
+    });
 
     final now = DateTime.now();
     final nextMinute =

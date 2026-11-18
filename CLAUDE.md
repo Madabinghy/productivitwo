@@ -1835,6 +1835,23 @@ Planification, `showWeekReviewScreen`) · Où on va (`WhereWeGoScreen`). Sur mob
 et Actions empilés à droite.
 **Les 168 heures** (2026-11-11, maquette validée « Jauge des 168 heures », retour user : voir sa zone d'accélération) : carte en tête d'Organisation (`WeekHoursCard`, `widgets/week_hours_card.dart`, `week-hours-card`) = compteur sur les **7 derniers jours glissants** (maintenant − 168 h, minute par minute) : arc rempli actif · besoins de base · sommeil · dans le flou, aiguille au bout de l'actif, « 62 h actives », « 126 / 168 h tracées », écart aux 7 jours d'avant ; tap = feuille `showWeekHoursSheet` (grand compteur, trait des 7 jours d'avant, légende, heures actives par jour, ZONE D'ACCÉLÉRATION : moyenne par jour, meilleur jour, ce qui sort de la fenêtre d'ici demain). Logique pure `utils/week_hours.dart` (`weekHours` → `WeekHours` : une minute comptée une fois, sommeil > besoins de base > actif, `isSleepName` / `isBasicNeedName`). Pas dans la barre du haut (décision user).
 
+## Détente (2026-11-18, demande user : « un domaine chill, pour s'amuser, se détendre, loisirs »)
+
+À l'écran on dit **Détente** (l'utilisateur nomme son domaine comme il veut : « Chill », « Loisirs »…). **Lot 1 livré (nature + jauge)** :
+neuvième nature de domaine `DomainNature.leisure` (« Détente », 🌴, `utils/life_natures.dart`), devinée par le nom
+(`isLeisureDomainName` : chill · détente · loisir · divertissement · hobby · relax · plaisir · amus… · temps libre · fun · jeu(x) —
+« repos » reste la Nuit) ou choisie par appui long sur la tuile ; sa tuile = le calendrier des 28 jours, comme Pratique. Les natures
+choisies à la main passent par `LifeNatureStore` (`lib/life_nature_store.dart`, même clé `life_natures` en SharedPreferences, chargé au
+lancement par main.dart). **Temps de détente** = les activités (temps et routines) des domaines de nature Détente : `leisureIdsOf`
+(pure) → registre `leisureActivityIds` / `isLeisureId` (`utils/leisure.dart`), posé par `AppLogic.refreshLeisure` (lancement, tick
+minute, changement de nature) ; VIDE sur le web et dans les tests = rien n'est de la détente. **Jauge des 7 jours** (`weekHours(leisureIds:)`) :
+une minute de détente n'est jamais « active » — ordre sommeil > besoins de base > détente > actif ; `WeekHours.leisureMin` /
+`prevLeisureMin` / `dayLeisure`, `trackedMin` la compte ; arc rose `kHoursLeisure` entre l'actif et les besoins, ligne « n h de détente »
+sur la carte (`week-hours-leisure`), ligne Détente dans la feuille, barres du jour empilées actif + détente, et sans domaine de détente
+une aide « crée un domaine… ou donne la nature Détente… » (`week-hours-leisure-hint`). **Jamais une victoire sur la flemme** : chrono,
+bloc ou routine d'une activité de détente sont exclus de `flemmeWinsIn` et de l'annonce en direct (`_checkFlemmeChrono`). Montre suisse,
+minimums et objectifs ne changent pas (une activité de détente avec un minimum le garde).
+
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 
 Un coaché commence par le CŒUR (Aujourd'hui, projets, routines, objectifs, coach, filets) et allume des modules au fur et à mesure ;

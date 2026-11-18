@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue, isBasicNeedBlock, isBasicNeedName;
+import 'package:productivitwo_v1/utils/leisure.dart' show isLeisureId;
 
 /// Élan (lot 2 badges, 2026-10) : logique pure des pointages d'état.
 /// Trois créneaux d'élan par jour vécu (matin < 12 h, après-midi < 18 h,
@@ -156,7 +157,8 @@ List<DoneAction> doneActionsOf(Iterable<Project> projects, Iterable<Activity> ac
 /// Ce qui a été fait dans une fenêtre, en détail : un chrono lancé dans la
 /// fenêtre et tenu [kFlemmeChronoMin] min, une action cochée, un bloc fait (sauf
 /// si un chrono compté porte déjà sur son activité), une routine quotidienne
-/// atteinte par un hit de la fenêtre. Jamais un besoin de base (repos, repas).
+/// atteinte par un hit de la fenêtre. Jamais un besoin de base (repos, repas)
+/// ni un temps de détente (`isLeisureId`, 2026-11-18).
 List<FlemmeWin> flemmeWinsIn(
   ElanWindow w, {
   required List<ScheduleBlock> blocks,
@@ -175,7 +177,7 @@ List<FlemmeWin> flemmeWinsIn(
   for (final s in sessions) {
     if (s.deleted || !w.contains(s.startAt)) continue;
     final name = byId[s.activityId]?.name;
-    if (isBasicNeedName(name)) continue;
+    if (isBasicNeedName(name) || isLeisureId(s.activityId)) continue;
     final mins = (s.endAt ?? t0).difference(s.startAt).inMinutes;
     if (mins < kFlemmeChronoMin) continue;
     chronoActs.add(s.activityId);
@@ -184,7 +186,7 @@ List<FlemmeWin> flemmeWinsIn(
   for (final b in blocks) {
     final t = b.doneAt;
     if (b.status != 'done' || t == null || !w.contains(t)) continue;
-    if (isBasicNeedBlock(b, byId)) continue;
+    if (isBasicNeedBlock(b, byId) || isLeisureId(b.activityId)) continue;
     if (b.activityId != null && chronoActs.contains(b.activityId)) continue; // déjà compté par son chrono
     out.add(FlemmeWin(t, b.title.isEmpty ? (byId[b.activityId]?.name ?? 'Bloc') : b.title, 'bloc fait'));
   }
@@ -194,7 +196,7 @@ List<FlemmeWin> flemmeWinsIn(
   final ymd = w.mark.ymd;
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
-    if (isBasicNeedName(a.name)) continue;
+    if (isBasicNeedName(a.name) || isLeisureId(a.id)) continue;
     final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
     final dayHits = hits.where((h) => h.habitId == a.id && ymdOf(livedDate(h.ts, dayStartMin)) == ymd).toList()
       ..sort((x, y) => x.ts.compareTo(y.ts));
