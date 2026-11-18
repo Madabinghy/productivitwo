@@ -1,5 +1,4 @@
 import 'dart:async' show Timer;
-import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,6 +42,8 @@ import 'package:productivitwo_v1/utils/domain_widget.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/week_hours.dart' show weekHours;
+import 'package:productivitwo_v1/utils/leisure.dart' show leisureActivityIds;
+import 'package:productivitwo_v1/life_nature_store.dart';
 import 'package:productivitwo_v1/widgets/week_hours_card.dart' show WeekHoursCard;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
@@ -64,7 +65,6 @@ const _kSheetNames = {
   DomainNature.meals: 'Repas',
   DomainNature.money: 'Finances',
 };
-const _kNaturesPref = 'life_natures';
 /// Domaines de travail dont la tuile montre les briques du projet du moment (au lieu du cumul).
 const _kBricksPref = 'life_tile_bricks';
 /// Hauteur commune des tuiles de Ma vie (à l'échelle du texte 1).
@@ -150,9 +150,10 @@ class LifeViewState extends State<LifeView> {
 
   Future<void> _load() async {
     try {
+      final natures = await LifeNatureStore.load();
+      logic.refreshLeisure();
+      if (mounted) setState(() => _overrides = natures);
       final p = await SharedPreferences.getInstance();
-      final raw = p.getString(_kNaturesPref);
-      if (raw != null && mounted) setState(() => _overrides = parseNatures(Map<String, dynamic>.from(jsonDecode(raw) as Map)));
       final b = p.getStringList(_kBricksPref);
       if (b != null && mounted) setState(() => _bricks = b.toSet());
     } catch (_) {}
@@ -232,10 +233,10 @@ class LifeViewState extends State<LifeView> {
     if (n == 'bricks') return _toggleBricks(d);
     if (n is! DomainNature || n == cur) return;
     setState(() => _overrides = {..._overrides, d.id: n});
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setString(_kNaturesPref, jsonEncode(_overrides.map((k, v) => MapEntry(k, v.name))));
-    } catch (_) {}
+    await LifeNatureStore.set(d.id, n);
+    // Le temps de détente suit la nature : la jauge des 7 jours se recalcule.
+    logic.refreshLeisure();
+    if (mounted) setState(() {});
   }
 
   String? _domainOf(StrategicObjective o) {
@@ -371,7 +372,7 @@ class LifeViewState extends State<LifeView> {
         const SizedBox(height: 6),
         // Les 168 dernières heures en compteur (maquette validée 2026-11-11) ; tap = la feuille en grand.
         if (logic.moduleOn(AppModule.analysis)) ...[
-          WeekHoursCard(logic: logic, hours: weekHours(sessions: st.sessions, activities: st.activities, now: now)),
+          WeekHoursCard(logic: logic, hours: weekHours(sessions: st.sessions, activities: st.activities, leisureIds: leisureActivityIds, now: now)),
           const SizedBox(height: 10),
         ],
         // Saison (refonte 2026-11-04) : la période des objectifs, sa cible sur chaque tuile.
@@ -641,6 +642,7 @@ class LifeViewState extends State<LifeView> {
       case DomainNature.practice:
       case DomainNature.tracking:
       case DomainNature.upkeep:
+      case DomainNature.leisure:
         if (w != null) {
           if (n == DomainNature.work || (n != DomainNature.upkeep && w.routinesTotal == 0)) {
             value = w.doneMin == 0 ? '—' : fmtMin(w.doneMin);
@@ -776,6 +778,7 @@ class LifeViewState extends State<LifeView> {
           viz: SizedBox(height: kLifeVizHeight, width: double.infinity, child: CustomPaint(painter: _CumulPainter(cc, dc, cs.onSurface))),
         );
       case DomainNature.practice:
+      case DomainNature.leisure:
         // ② Le calendrier des 28 derniers jours (le temps, sinon les coches de ses routines).
         final start = DateTime(day.year, day.month, day.day - 27);
         var daily = dailyMinutesByDomain(st.sessions, st.activities, start, 28, now: now)[d.id] ?? List<int>.filled(28, 0);

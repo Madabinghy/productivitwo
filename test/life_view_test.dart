@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/leisure.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -138,6 +139,43 @@ void main() {
       if (nature == 'work') expect(find.textContaining('sur le rythme'), findsOneWidget);
     });
   }
+
+  testWidgets('un domaine Chill : son temps est de la détente, à part dans la jauge des 7 jours', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(720, 4000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(() => leisureActivityIds = const {});
+    final now = DateTime.now();
+    final t0 = now.subtract(const Duration(hours: 30));
+    final st = AppState(
+      domains: [Domain(id: 'c', name: 'Chill'), Domain(id: 'b', name: 'Business')],
+      activities: [
+        Activity(id: 'jeu', domainId: 'c', name: 'Jeux vidéo', role: ActivityRole.generic, type: 'time', createdAt: DateTime(2026)),
+        Activity(id: 'code', domainId: 'b', name: 'Coder', role: ActivityRole.generic, type: 'time', createdAt: DateTime(2026)),
+      ],
+      sessions: [
+        Session(activityId: 'jeu', startAt: t0, endAt: t0.add(const Duration(hours: 3))),
+        Session(activityId: 'code', startAt: t0.add(const Duration(hours: 4)), endAt: t0.add(const Duration(hours: 9))),
+      ],
+      habitProgress: [],
+    );
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: LifeView(logic: logic, sync: FirestoreSync(), projects: const [], onOpenDomain: (d) async => null, onOpenSleep: () {}, onManageDomains: () {})),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(leisureActivityIds, {'jeu'});
+    expect(find.text('CHILL'), findsOneWidget);
+    expect(find.text('3 h de détente'), findsOneWidget);
+    expect(find.text('5 h actives', findRichText: true), findsOneWidget); // le jeu n'y est pas
+    await tester.tap(find.byKey(const ValueKey('week-hours-card')));
+    await tester.pumpAndSettle();
+    expect(find.text('Détente'), findsOneWidget);
+    expect(find.text('JOUR PAR JOUR · ACTIF ET DÉTENTE'), findsOneWidget);
+    expect(find.byKey(const ValueKey('week-hours-leisure-hint')), findsNothing);
+  });
 
   testWidgets('deux domaines de sport devinés : une seule tuile Sport', (tester) async {
     SharedPreferences.setMockInitialValues({});

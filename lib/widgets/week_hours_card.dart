@@ -2,11 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/utils/leisure.dart' show leisureActivityIds;
 import 'package:productivitwo_v1/utils/week_hours.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche, FicheHeader, FicheTitle;
 
 /// Les 168 dernières heures en compteur (maquette validée 2026-11-11) : carte en tête d'Organisation, feuille en grand au tap.
 const kHoursActive = Color(0xFF3DDC84);
+const kHoursLeisure = Color(0xFFF08BC0);
 const kHoursBasic = Color(0xFF9FB3A8);
 const kHoursSleep = Color(0xFF5B7FC7);
 const kHoursBlur = Color(0x8CF5B041);
@@ -18,7 +20,7 @@ String _deltaLabel(int min) {
   return h == 0 ? 'comme les 7 jours d\'avant' : '${h > 0 ? '+' : '−'}${h.abs()} h sur les 7 jours d\'avant';
 }
 
-/// Le compteur : arc de 240° (les 168 h), rempli actif → besoins → sommeil → flou ; aiguille au bout de l'actif ;
+/// Le compteur : arc de 240° (les 168 h), rempli actif → détente → besoins → sommeil → flou ; aiguille au bout de l'actif ;
 /// [prevActiveMin] = trait en pointillés des 7 jours d'avant.
 class WeekHoursGauge extends StatelessWidget {
   final WeekHours h;
@@ -57,7 +59,7 @@ class _GaugePainter extends CustomPainter {
       ..strokeWidth = stroke;
     canvas.drawArc(rect, _start, _sweep, false, p(track));
     var at = 0.0;
-    for (final (min, col) in [(h.activeMin, kHoursActive), (h.basicMin, kHoursBasic), (h.sleepMin, kHoursSleep), (h.untrackedMin, kHoursBlur)]) {
+    for (final (min, col) in [(h.activeMin, kHoursActive), (h.leisureMin, kHoursLeisure), (h.basicMin, kHoursBasic), (h.sleepMin, kHoursSleep), (h.untrackedMin, kHoursBlur)]) {
       final f = min / kWeekHoursMin;
       if (f > 0) canvas.drawArc(rect, _start + _sweep * at, _sweep * f, false, p(col));
       at += f;
@@ -89,7 +91,7 @@ class _GaugePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GaugePainter o) =>
-      o.h.activeMin != h.activeMin || o.h.basicMin != h.basicMin || o.h.sleepMin != h.sleepMin || o.h.prevActiveMin != h.prevActiveMin || o.track != track;
+      o.h.activeMin != h.activeMin || o.h.leisureMin != h.leisureMin || o.h.basicMin != h.basicMin || o.h.sleepMin != h.sleepMin || o.h.prevActiveMin != h.prevActiveMin || o.track != track;
 }
 
 /// Carte compacte en tête d'Organisation.
@@ -124,6 +126,9 @@ class WeekHoursCard extends StatelessWidget {
                   TextSpan(text: hoursLabel(h.activeMin), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kHoursActive)),
                   TextSpan(text: ' actives', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: mute)),
                 ])),
+                if (h.leisureMin > 0)
+                  Text('${hoursLabel(h.leisureMin)} de détente',
+                      key: const ValueKey('week-hours-leisure'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kHoursLeisure)),
                 Text('${hoursLabel(h.trackedMin)} / 168 h tracées · ${hoursLabel(h.untrackedMin)} dans le flou', style: TextStyle(fontSize: 12.5, color: mute)),
                 const SizedBox(height: 2),
                 Text(_deltaLabel(h.deltaMin),
@@ -153,11 +158,12 @@ class _WeekHoursSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final mute = cs.onSurface.withValues(alpha: .6);
-    final h = weekHours(sessions: logic.state.sessions, activities: logic.state.activities, now: DateTime.now());
+    final h = weekHours(sessions: logic.state.sessions, activities: logic.state.activities, leisureIds: leisureActivityIds, now: DateTime.now());
+    final leisure = h.dayLeisure.sublist(h.dayLeisure.length - 7);
     // Les 7 derniers jours calendaires (le plus ancien, en partie dans la fenêtre, n'a pas de barre).
     final days = h.days.sublist(h.days.length - 7);
     final values = h.dayActive.sublist(h.dayActive.length - 7);
-    final maxV = values.fold<int>(60, math.max);
+    final maxV = [for (var i = 0; i < 7; i++) values[i] + leisure[i]].fold<int>(60, math.max);
     final best = () {
       var b = -1;
       for (var i = 0; i < values.length; i++) {
@@ -171,7 +177,7 @@ class _WeekHoursSheet extends StatelessWidget {
             Container(width: 12, height: 12, decoration: BoxDecoration(color: col, borderRadius: BorderRadius.circular(3))),
             const SizedBox(width: 10),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
-            Text(hint, style: TextStyle(fontSize: 12.5, color: mute)),
+            Flexible(child: Text(hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: mute))),
             SizedBox(width: 52, child: Text(hoursLabel(min), textAlign: TextAlign.right, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700))),
           ]),
         );
@@ -203,20 +209,42 @@ class _WeekHoursSheet extends StatelessWidget {
       ]),
       const SizedBox(height: 14),
       row(kHoursActive, 'Actif', 'tout le reste', h.activeMin),
+      row(kHoursLeisure, 'Détente', leisureActivityIds.isEmpty ? 'aucun domaine' : 'loisirs, jeux', h.leisureMin),
       row(kHoursBasic, 'Besoins de base', 'repas, sieste', h.basicMin),
       row(kHoursSleep, 'Sommeil', 'tes nuits', h.sleepMin),
       row(kHoursBlur, 'Dans le flou', 'rien de tracé', h.untrackedMin),
+      if (leisureActivityIds.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+              'Pour compter ton temps de détente à part : crée un domaine (Détente, Loisirs, Chill…) ou donne la nature Détente à un domaine, par appui long sur sa tuile.',
+              key: const ValueKey('week-hours-leisure-hint'),
+              style: TextStyle(fontSize: 12.5, color: mute)),
+        )
+      else if (h.leisureMin > 0 || h.prevLeisureMin > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('Détente : ${hoursLabel(h.leisureMin)} sur 7 jours · ${hoursLabel(h.prevLeisureMin)} les 7 jours d\'avant.',
+              style: TextStyle(fontSize: 12.5, color: mute)),
+        ),
       const SizedBox(height: 14),
-      const FicheTitle('JOUR PAR JOUR · HEURES ACTIVES'),
+      FicheTitle(h.leisureMin > 0 ? 'JOUR PAR JOUR · ACTIF ET DÉTENTE' : 'JOUR PAR JOUR · HEURES ACTIVES'),
       const SizedBox(height: 8),
       SizedBox(
-        height: 120,
+        height: 130,
         child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           for (var i = 0; i < 7; i++)
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
                 Text(values[i] == 0 ? '' : hoursLabel(values[i]), style: TextStyle(fontSize: 11, color: i == 6 ? kHoursActive : mute, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
+                if (leisure[i] > 0)
+                  Container(
+                    width: 26,
+                    height: math.max(3, 80 * leisure[i] / maxV),
+                    margin: const EdgeInsets.only(bottom: 2),
+                    decoration: BoxDecoration(color: kHoursLeisure.withValues(alpha: i == 6 ? 1 : .75), borderRadius: BorderRadius.circular(4)),
+                  ),
                 Container(
                   width: 26,
                   height: math.max(4, 80 * values[i] / maxV),

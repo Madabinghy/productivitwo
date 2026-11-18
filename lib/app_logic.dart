@@ -47,6 +47,9 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/utils/week_review.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart';
+import 'package:productivitwo_v1/utils/leisure.dart';
+import 'package:productivitwo_v1/utils/life_natures.dart' show leisureIdsOf;
+import 'package:productivitwo_v1/life_nature_store.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/utils/meal_plan.dart' show MealWeek, PlannedMeal;
@@ -1185,6 +1188,12 @@ class AppLogic implements HuntStore {
   void Function(Session session, String activityName)? onFlemmeVictory;
   final Set<String> _flemmeAnnounced = {};
 
+  /// Temps de détente (2026-11-18) : recalcule les activités des domaines de
+  /// nature Détente (nom du domaine, ou nature choisie dans Organisation).
+  void refreshLeisure() {
+    leisureActivityIds = leisureIdsOf(state.domains, state.activities, LifeNatureStore.overrides);
+  }
+
   void _checkFlemmeChrono() {
     final hook = onFlemmeVictory;
     if (hook == null) return;
@@ -1194,7 +1203,7 @@ class AppLogic implements HuntStore {
       if (now.difference(s.startAt).inMinutes < kFlemmeChronoMin) continue;
       if (modeAt(state.moodMarks, s.startAt, dayStartMin) != DayMode.low) continue;
       final name = state.activities.where((a) => a.id == s.activityId).firstOrNull?.name;
-      if (isBasicNeedName(name)) continue;
+      if (isBasicNeedName(name) || isLeisureId(s.activityId)) continue;
       _flemmeAnnounced.add(s.id);
       hook(s, name ?? 'ton chrono');
     }
@@ -1231,6 +1240,7 @@ class AppLogic implements HuntStore {
       unawaited(settleFinishedDay());
       unawaited(freezeTodayParole());
     }
+    refreshLeisure();
     _checkFlemmeChrono();
     _checkSportRoutine();
     if (!askBlockOnChrono) return;

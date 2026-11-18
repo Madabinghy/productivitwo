@@ -39,6 +39,30 @@ void main() {
     expect(h.sleepMin, 60);
   });
 
+  test('détente : comptée à part, jamais dans l\'actif ; le sommeil et les repas priment', () {
+    final all = [...acts, Activity(id: 'j', domainId: 'chill', name: 'Jeux vidéo')];
+    final sessions = [
+      s('w', DateTime(2026, 11, 11, 9), 120),
+      s('j', DateTime(2026, 11, 11, 10), 120), // chevauche 1 h de travail : la détente prime sur l'actif
+      s('j', DateTime(2026, 11, 10, 20), 90),
+      s('m', DateTime(2026, 11, 10, 20), 30), // le repas prime sur la détente
+      s('j', DateTime(2026, 11, 2, 20), 45), // les 7 jours d'avant
+    ];
+    final h = weekHours(now: now, activities: all, sessions: sessions, leisureIds: {'j'});
+    expect(h.activeMin, 60);
+    expect(h.leisureMin, 120 + 60);
+    expect(h.basicMin, 30);
+    expect(h.trackedMin, 60 + 180 + 30);
+    expect(h.prevLeisureMin, 45);
+    expect(h.dayActive.last, 60);
+    expect(h.dayLeisure.last, 120);
+    expect(h.dayLeisure[h.dayLeisure.length - 2], 60);
+    // Sans domaine de détente, tout reste actif comme avant.
+    final plain = weekHours(now: now, activities: all, sessions: sessions);
+    expect(plain.leisureMin, 0);
+    expect(plain.activeMin, 180 + 60);
+  });
+
   test('chrono en cours compté jusqu\'à maintenant', () {
     final h = weekHours(now: now, activities: acts, sessions: [Session(activityId: 'w', startAt: DateTime(2026, 11, 11, 14))]);
     expect(h.activeMin, 60);
