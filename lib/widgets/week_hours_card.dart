@@ -8,7 +8,7 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche, FicheHeader
 
 /// Les 168 dernières heures en compteur (maquette validée 2026-11-11) : carte en tête d'Organisation, feuille en grand au tap.
 /// Redessiné le 2026-11-18 (maquette « Couleurs de la jauge », choix user) : palette plus vive, temps libre en tirets,
-/// une graduation par jour, et « le socle d'abord » : sommeil → besoins → détente → actif, l'aiguille au bout du vert.
+/// une graduation par jour, et « le socle d'abord » : besoins → sommeil → détente → actif, l'aiguille au bout du vert.
 const kHoursActive = Color(0xFF3DDC84);
 const kHoursActiveHi = Color(0xFFB4F7D0);
 const kHoursLeisure = Color(0xFFF08BC0);
@@ -23,8 +23,8 @@ String _deltaLabel(int min) {
   return h == 0 ? 'comme les 7 jours d\'avant' : '${h > 0 ? '+' : '−'}${h.abs()} h sur les 7 jours d\'avant';
 }
 
-/// Le compteur : arc de 240° (les 168 h). Le socle d'abord (choix user 2026-11-18) : sommeil → besoins de base →
-/// détente, puis l'actif, puis le temps libre en tirets. L'aiguille est au bout du vert : elle compte tout ce qui
+/// Le compteur : arc de 240° (les 168 h). Le socle d'abord (choix user 2026-11-18) : besoins de base (ils remplissent
+/// le bout arrondi du départ) → sommeil → détente, puis l'actif, puis le temps libre en tirets. L'aiguille est au bout du vert : elle compte tout ce qui
 /// est tracé, et l'actif touche le temps libre, dans lequel il grandit. Le filet intérieur, sous le vert = les
 /// heures actives des 7 jours d'avant ([showPrev]).
 class WeekHoursGauge extends StatelessWidget {
@@ -84,11 +84,17 @@ class _GaugePainter extends CustomPainter {
     const gap = 1.3 * _deg;
     var a = _start;
     var activeStart = _start;
-    // Le socle d'abord : sommeil, besoins de base, détente, puis l'actif.
-    for (final i in const [3, 2, 1, 0]) {
+    var first = true;
+    // Le socle d'abord : besoins de base, sommeil, détente, puis l'actif.
+    for (final i in const [2, 3, 1, 0]) {
       final sweep = _sweep * f[i];
       if (sweep <= 0) continue;
       final len = sweep > gap * 2.3 ? sweep - gap : sweep;
+      if (first) {
+        // Le premier morceau remplit le bout arrondi du départ.
+        canvas.drawArc(rect, a, .2 * _deg, false, band(colors[i])..strokeCap = StrokeCap.round);
+        first = false;
+      }
       if (i == 0) {
         activeStart = a;
         // Le vert de l'actif : un halo dessous, un dégradé dessus.
@@ -266,7 +272,7 @@ class _WeekHoursSheet extends StatelessWidget {
       Text.rich(
         TextSpan(style: TextStyle(fontSize: 12.5, height: 1.45, color: mute), children: [
           TextSpan(text: 'L\'aiguille', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
-          TextSpan(text: ' : tout ce que tu as tracé, ${hoursLabel(h.trackedMin)} sur 168. D\'abord ton socle (sommeil, besoins de base, détente), puis '),
+          TextSpan(text: ' : tout ce que tu as tracé, ${hoursLabel(h.trackedMin)} sur 168. D\'abord ton socle (besoins de base, sommeil, détente), puis '),
           const TextSpan(text: 'le vert', style: TextStyle(fontWeight: FontWeight.w700, color: kHoursActive)),
           const TextSpan(text: ', tes heures actives : il touche ton temps libre et grandit dedans. '),
           TextSpan(text: 'Le filet sous le vert', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
@@ -275,8 +281,8 @@ class _WeekHoursSheet extends StatelessWidget {
         key: const ValueKey('week-hours-reading'),
       ),
       const SizedBox(height: 14),
-      row(kHoursSleep, 'Sommeil', 'tes nuits', h.sleepMin),
       row(kHoursBasic, 'Besoins de base', 'repas, sieste', h.basicMin),
+      row(kHoursSleep, 'Sommeil', 'tes nuits', h.sleepMin),
       row(kHoursLeisure, 'Détente', leisureActivityIds.isEmpty ? 'aucun domaine' : 'loisirs, jeux', h.leisureMin),
       row(kHoursActive, 'Actif', 'tout le reste', h.activeMin),
       row(kHoursFree, 'Libre', 'pas encore investi', h.untrackedMin),

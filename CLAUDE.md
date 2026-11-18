@@ -1871,7 +1871,7 @@ plus travaillée, l'aiguille qui ne dit que l'actif, « un peu triste ») : le t
 « Libre · pas encore investi ») et se dessine en TIRETS menthe `kHoursFree` — des cases à remplir, du temps à convertir en actif.
 Palette plus vive (`week_hours_card.dart` : actif `kHoursActive` avec halo et dégradé vers `kHoursActiveHi`, besoins de base en jaune
 `kHoursBasic`, sommeil `kHoursSleep` plus franc, détente inchangée). `_GaugePainter` : une graduation par jour (7 traits de 24 h), un
-joint entre les morceaux, et **le socle d'abord** (choix user) : l'ordre du cadran est sommeil → besoins de base → détente → actif,
+joint entre les morceaux, et **le socle d'abord** (choix user) : l'ordre du cadran est besoins de base (jaune, ils remplissent le bout arrondi du départ) → sommeil → détente → actif,
 l'aiguille effilée au bout du vert compte donc TOUT ce qui est tracé, et l'actif touche le temps libre, dans lequel il grandit ; le
 filet intérieur, sous le vert = heures actives des 7 jours d'avant (remplace le trait en pointillés). Le grand chiffre reste les heures
 actives. Petites
