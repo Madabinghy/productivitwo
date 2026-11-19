@@ -2295,7 +2295,17 @@ lisent encore la cible du jour). **Lot 2 livré (lanceur de routines, `routine_l
 soir · +10 = demain libre », − / + et lanceur gardés), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
 « 6 couvertes · Étirements jusqu'à samedi · … · +3 », les plus proches d'abord ; tap = Tout) = routines « sur 7 jours » avec de l'avance
 et hebdomadaires atteintes (`weeklyAheadDays` : elle revient quand sa coche la plus ancienne qui compte sort de la fenêtre). Une routine
-« chaque jour » faite n'apparaît qu'en Tout, comme avant. **À venir** : lot 3 = « 1 coche = n min » de chrono sur l'activité liée.
+« chaque jour » faite n'apparaît qu'en Tout, comme avant. **Lot 3 livré (le chrono coche)** : `Activity.minPerHit` (minutes de chrono
+sur l'activité liée `linkedActivityId` pour UNE coche ; null = non ; toute fréquence) — fiche routine, sous l'activité liée, LE CHRONO
+COCHE : Non · 1 coche = 5 · 10 · 15 · 20 · 30 min (`routine-min-per-hit-<m>`). Logique pure (`routine_cover.dart`) : `hasTimeHits`,
+`livedMinutesOn` (minutes de la journée vécue, chrono en cours compris), `timeHitsEarned` = minutes ÷ durée, `timeHitId` =
+`time-<routine>-<ymd>-<k>` (id FIXE : jamais deux fois, même sur deux appareils), `timeHitsGiven`. `AppLogic.checkTimeHits` (tick minute,
+arrêt du chrono `stopActive`, fin d'un minuteur de routine, choix du réglage) pose les coches manquantes par `incHabit(hitIds:)` et
+annonce « Rangement +1 · 10 min de chrono · Annuler » (`onTimeHits`, main.dart) ; elles s'AJOUTENT aux coches à la main ; une coche
+annulée ne revient pas tant que l'app reste ouverte (`_timeHitsDone` en mémoire — après une relance, la dernière retirée peut revenir).
+Avec ce réglage, la fin du minuteur ne coche plus elle-même et le +1 automatique d'une séance de sport (`_checkSportRoutine`) est
+laissé au chrono. **Les 3 lots sont livrés.** Reste possible : le serveur (MCP `update_activity {rolling, minPerHit}`, contexte de
+Claude), l'app qui PROPOSE « Sur 7 jours » pour les routines à volume.
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

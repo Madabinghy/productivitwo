@@ -1226,10 +1226,34 @@ class AppLogic implements HuntStore {
       _sportCounted.add(s.id);
       for (final r in pick.sessionRoutines) {
         if (r.linkedActivityId != s.activityId) continue;
+        if (hasTimeHits(r)) continue; // « 1 coche = n min » : c'est le chrono qui compte ses coches
         if (state.habitHits.any((h) => h.habitId == r.id && !h.ts.isBefore(start))) continue;
         incHabit(r.id, 1, livedDate(now, dayStartMin));
         onSportRoutineCounted?.call(r);
       }
+    }
+  }
+
+  /// « 1 coche = n min » (2026-11-19) : le chrono de l'activité liée coche la
+  /// routine. Chaque tranche pleine de la journée vécue pose UNE coche à l'id
+  /// fixe (`timeHitId`) : jamais deux fois, même sur deux appareils. Une coche
+  /// retirée à la main ne revient pas tant que l'app reste ouverte.
+  final Map<String, int> _timeHitsDone = {};
+  void Function(Activity routine, int added, int minutes)? onTimeHits;
+
+  void checkTimeHits() {
+    final now = DateTime.now();
+    final ymd = livedTodayYmd;
+    for (final r in [...state.activeActivities]) {
+      if (!hasTimeHits(r)) continue;
+      final earned = timeHitsEarned(r, state.sessions, now, dayStartMin: dayStartMin);
+      if (earned <= 0) continue;
+      final key = '${r.id}|$ymd';
+      final given = math.max(_timeHitsDone[key] ?? 0, timeHitsGiven(r.id, ymd, state.habitHits));
+      if (earned <= given) continue;
+      _timeHitsDone[key] = earned;
+      incHabit(r.id, earned - given, livedDate(now, dayStartMin), hitIds: [for (var k = given + 1; k <= earned; k++) timeHitId(r.id, ymd, k)]);
+      onTimeHits?.call(r, earned - given, earned * r.minPerHit!);
     }
   }
 
@@ -1244,6 +1268,7 @@ class AppLogic implements HuntStore {
     refreshLeisure();
     _checkFlemmeChrono();
     _checkSportRoutine();
+    checkTimeHits();
     if (!askBlockOnChrono) return;
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;
@@ -1503,6 +1528,7 @@ class AppLogic implements HuntStore {
     final ended = run.last;
     ended.endAt = DateTime.now();
     onChange();
+    checkTimeHits();
     if (notify) onUserStopped?.call(ended);
 
     return ended;
@@ -2841,7 +2867,7 @@ class AppLogic implements HuntStore {
     onChange();
   }
 
-  void incHabit(String activityId, int delta, DateTime day) {
+  void incHabit(String activityId, int delta, DateTime day, {List<String>? hitIds}) {
     final key = yyyymmdd(day);
 
     // --- valeur AVANT modif (pour détecter création / seuils)
@@ -2872,6 +2898,7 @@ class AppLogic implements HuntStore {
       final now = DateTime.now();
       for (var i = 0; i < delta; i++) {
         state.habitHits.add(HabitHit(
+          id: hitIds != null && i < hitIds.length ? hitIds[i] : null,
           habitId: activityId,
           ts: now.add(Duration(milliseconds: i)),
           contextActivityId: running?.id,

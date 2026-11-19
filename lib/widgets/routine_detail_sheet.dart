@@ -489,6 +489,39 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 style:
                     TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),
+              // « 1 coche = n min » (2026-11-19) : le chrono de l'activité liée coche la routine.
+              const SizedBox(height: 12),
+              Text('LE CHRONO COCHE',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 5, 10, 15, 20, 30])
+                    ChoiceChip(
+                      key: ValueKey('routine-min-per-hit-$m'),
+                      label: Text(m == 0 ? 'Non' : '1 coche = $m min'),
+                      selected: (act.minPerHit ?? 0) == m,
+                      onSelected: (_) {
+                        act.minPerHit = m == 0 ? null : m;
+                        _applySetting();
+                        if (m > 0) logic.checkTimeHits();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                (act.minPerHit ?? 0) > 0
+                    ? 'Chaque tranche de ${act.minPerHit} min de chrono sur « ${linkedAct.name} » coche la routine une fois, '
+                        'en plus de ce que tu coches à la main.'
+                    : 'Le chrono sur « ${linkedAct.name} » ne coche pas la routine.',
+                key: const ValueKey('routine-min-per-hit-hint'),
+                style:
+                    TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
+              ),
             ] else ...[
               const SizedBox(height: 12),
               Text('MINUTEUR PAR DÉFAUT',
