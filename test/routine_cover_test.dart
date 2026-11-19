@@ -59,7 +59,21 @@ void main() {
       expect(c.aheadDays, 0);
       expect(c.tomorrowTarget, 10);
       expect(c.canGetAhead, isTrue);
+      expect(c.toFreeTomorrow, 10);
       expect(c.heldLabel, isNull);
+    });
+
+    test('semaine à trous : libérer demain demande plus que la cible', () {
+      // Deux jours ratés dans la fenêtre, la cible faite aujourd'hui.
+      final c = routineCover(pompes(), hits([10, 0, 10, 0, 10, 10, 10]), now);
+      expect(c.held, isTrue);
+      expect(c.tomorrowTarget, 10);
+      expect(c.toFreeTomorrow, 30);
+    });
+
+    test('demain déjà couvert : rien à ajouter', () {
+      final c = routineCover(pompes(), hits([10, 10, 10, 10, 10, 10, 30]), now);
+      expect(c.toFreeTomorrow, 0);
     });
 
     test('30 aujourd\'hui : deux jours d\'avance, couverte jusqu\'à samedi', () {

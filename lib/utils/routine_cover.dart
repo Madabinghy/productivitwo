@@ -52,6 +52,9 @@ class RoutineCover {
   final int aheadDays;
   /// Ce que demain demandera si rien d'autre n'est fait aujourd'hui.
   final int tomorrowTarget;
+  /// Coches à faire EN PLUS aujourd'hui pour que demain ne demande rien
+  /// (peut dépasser la cible quand la semaine a des trous).
+  final int toFreeTomorrow;
   /// La journée vécue du calcul.
   final DateTime today;
   const RoutineCover({
@@ -62,6 +65,7 @@ class RoutineCover {
     required this.dayTarget,
     required this.aheadDays,
     required this.tomorrowTarget,
+    required this.toFreeTomorrow,
   });
 
   /// La journée est tenue : la part du jour est faite, ou l'avance la couvre.
@@ -99,8 +103,10 @@ RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int da
   final dayTarget = rollingDayTarget(t, past);
   // Les jours suivants, sans rien faire de plus.
   final future = [...window, todayDone];
-  int nextTarget() => rollingDayTarget(t, future.skip(future.length - (kRoutineWindowDays - 1)).fold<int>(0, (s, v) => s + v));
+  int lastSix() => future.skip(future.length - (kRoutineWindowDays - 1)).fold<int>(0, (s, v) => s + v);
+  int nextTarget() => rollingDayTarget(t, lastSix());
   final tomorrow = nextTarget();
+  final missing = kRoutineWindowDays * t - lastSix();
   var ahead = 0;
   if (todayDone >= dayTarget) {
     while (ahead < kRoutineWindowDays - 1 && nextTarget() == 0) {
@@ -108,7 +114,7 @@ RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int da
       future.add(0);
     }
   }
-  return RoutineCover(today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow);
+  return RoutineCover(today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow, toFreeTomorrow: missing > 0 ? missing : 0);
 }
 
 /// Jours vécus TENUS par une routine « sur 7 jours », jusqu'à [now] compris :
