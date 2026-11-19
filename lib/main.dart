@@ -29,6 +29,7 @@ import 'package:productivitwo_v1/utils/workouts.dart' show Workout, parseGym;
 import 'package:productivitwo_v1/utils/freedom.dart' show parseFreedoms;
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
+import 'package:productivitwo_v1/widgets/activity_fab.dart';
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
@@ -4661,14 +4662,33 @@ class _AppRootState extends State<AppRoot>
           child: const Icon(Icons.repeat_rounded),
         ),
         const SizedBox(width: 10),
-        FloatingActionButton(
-          heroTag: 'fab_launch_activity',
-          tooltip: 'Lancer une activité',
-          onPressed: () => _showLaunchActivitySheet(context),
-          child: const Icon(Icons.play_arrow_rounded),
+        // ▶ lance, ■ arrête le chrono en cours (2026-11-19) : on reclique ensuite pour en lancer une autre.
+        ActivityFab(
+          runningName: logic.runningActivity()?.name,
+          onLaunch: () => _showLaunchActivitySheet(context),
+          onStop: _stopFromFab,
         ),
       ],
     );
+  }
+
+  /// Le ■ du bouton flottant : arrête le chrono en cours, comme « Arrêter » de MAINTENANT, et dit ce qui s'arrête.
+  void _stopFromFab() {
+    final name = logic.runningActivity()?.name;
+    _cancelCountdown();
+    final session = logic.stopActive();
+    setState(() {
+      _focusProject = null;
+      _focusTask = null;
+      _focusActivityId = null;
+    });
+    final end = session?.endAt;
+    if (name == null || session == null || end == null) return;
+    final min = end.difference(session.startAt).inMinutes;
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+      content: Text('Chrono arrêté · $name · ${min < 60 ? '$min min' : '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}'}'),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   /// Lance le minuteur d'une routine : démarre l'activité liée + le décompte

@@ -931,6 +931,12 @@ pause exclues. **Focus · Tout** (2026-10-31, retour user) : bascule sous la rec
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+**Bouton flottant ▶ / ■** (2026-11-19, demande user) : le grand bouton flottant des activités (`ActivityFab`, `widgets/activity_fab.dart`,
+posé par `_buildFab` de main.dart) ouvre le lanceur tant qu'aucun chrono ne tourne (`fab-launch-activity`) ; dès qu'un chrono tourne il
+devient ■ rouge (`fab-stop-activity`) et l'arrête d'un tap (`_stopFromFab` : même arrêt que « Arrêter » de MAINTENANT — décompte annulé,
+`stopActive`, donc la feuille « c'était pour quoi ? » quand elle s'applique —, SnackBar « Chrono arrêté · Lecture · 42 min »), puis
+redevient ▶ pour en lancer une autre. Appui long sur ■ = le lanceur quand même (changer d'activité sans passer par l'arrêt).
+
 ## Suivi du sommeil (2026-11-01, maquette validée « Suivi du sommeil »)
 
 Tap sur les barres de sommeil de la barre du haut = une feuille « Sommeil » dédiée (plus la fiche d'activité générique). Rien à
