@@ -1905,7 +1905,9 @@ heure si rien n'est fait — `WeekHours.tomorrowActiveMin` = heures actives − 
 `tomorrowShare` = sa part du vert ; LE VERT SEUL (choix user : le sommeil et les repas qui sortent ne la font pas reculer, on redormira).
 Le bout du vert qui dépasse l'aiguille est hachuré (`_GaugePainter`, rayures sur fond sombre) = ce qui sort d'ici là ; rien ne sort =
 aiguille au bout du vert, sans hachures. Elle descend quand l'heure qui approche de la sortie était active il y a 6 jours, reste à plat
-sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle garde le milieu des tirets pour « rien de tracé ». Ligne en plus, sans
+sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle parle pareil (retour user 2026-11-19 : au milieu des tirets, il donnait
+l'impression d'avoir travaillé il y a 7 jours) : « rien de tracé » se pose au même endroit que l'aiguille sans chrono (`mark[free]` =
+la position de demain si rien), donc aiguille et triangle sont alignés quand on ne fait rien aujourd'hui comme il y a 7 jours. Ligne en plus, sans
 chrono seulement, sur la carte et la feuille : « Demain si rien · ↘ 55 h · −12 h 27 » (`HoursTomorrowLine`, `hoursTomorrowLabel`,
 `spanExact` ; `week-hours-tomorrow`, `week-hours-sheet-tomorrow` ; ambre `kHoursLoss`, vert « rien ne sort ») ; infobulle de la tuile et
 paragraphe de lecture mis à jour ; les tirets du temps libre ne s'éclairent plus.
