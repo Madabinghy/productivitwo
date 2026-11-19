@@ -403,7 +403,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                     ]),
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(coverSlotLabel(c.today, s),
                     maxLines: 1,
                     softWrap: false,
@@ -505,7 +505,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                 if (cover != null && !dismissed)
                   Padding(
                     key: ValueKey('launcher-cover-bar-${a.id}'),
-                    padding: const EdgeInsets.only(top: 4),
+                    // De l'air autour de la jauge (retour user 2026-11-19 : lignes trop serrées).
+                    padding: const EdgeInsets.only(top: 9, bottom: 10),
                     child: _dayGauge(cs, cover, dc),
                   ),
                 if (s.pushed)
