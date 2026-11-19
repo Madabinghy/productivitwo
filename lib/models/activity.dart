@@ -100,6 +100,10 @@ class Activity {
   /// ce qui est fait en plus couvre les jours suivants. Faux = chaque jour.
   bool rolling;
 
+  /// « 1 coche = n min » (2026-11-19) : minutes de chrono sur l'activité liée
+  /// (`linkedActivityId`) qui valent une coche de la routine. Null = le chrono ne coche pas.
+  int? minPerHit;
+
   /// Routine activée depuis le catalogue (2026-11-01, `catalog/routine_catalog.dart`) :
   /// sa carte porte le dessin du catalogue. Null = routine créée à la main.
   String? catalogId;
@@ -134,6 +138,7 @@ class Activity {
     List<String>? contexts,
     this.catalogId,
     this.rolling = false,
+    this.minPerHit,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
         ownActions = ownActions ?? <TaskAction>[],
@@ -181,6 +186,7 @@ class Activity {
         'contexts': contexts,
         if (catalogId != null) 'catalogId': catalogId,
         'rolling': rolling,
+        'minPerHit': minPerHit,
       };
 
   /// Migration douce :
@@ -238,6 +244,7 @@ class Activity {
       contexts: (j['contexts'] as List?)?.cast<String>(),
       catalogId: j['catalogId'] as String?,
       rolling: j['rolling'] as bool? ?? false,
+      minPerHit: (j['minPerHit'] as num?)?.toInt(),
     );
   }
 
@@ -275,6 +282,7 @@ class Activity {
       linkedActivityId: linkedActivityId ?? null,
       catalogId: catalogId,
       rolling: rolling,
+      minPerHit: minPerHit,
     );
   }
 

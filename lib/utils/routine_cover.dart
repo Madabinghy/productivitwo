@@ -160,3 +160,43 @@ int? weeklyAheadDays(Activity a, List<HabitHit> hits, DateTime now, {int dayStar
   final n = u(livedDate(expiry, dayStartMin)).difference(u(livedDate(now, dayStartMin))).inDays - 1;
   return n < 0 ? 0 : n;
 }
+
+// ── « 1 coche = n min » : le chrono de l'activité liée coche la routine ─────
+
+/// La routine se coche par le chrono : une durée par coche et une activité liée.
+bool hasTimeHits(Activity a) => a.isHabit && (a.minPerHit ?? 0) > 0 && (a.linkedActivityId ?? '').trim().isNotEmpty;
+
+/// Minutes de chrono de la journée vécue sur l'activité [activityId] (chrono en cours compris).
+int livedMinutesOn(String activityId, List<Session> sessions, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
+  final from = livedDayStart(now, dayStartMin);
+  var sec = 0;
+  for (final s in sessions) {
+    if (s.deleted || s.activityId != activityId) continue;
+    final end = s.endAt ?? now;
+    final a = s.startAt.isBefore(from) ? from : s.startAt;
+    final b = end.isAfter(now) ? now : end;
+    if (b.isAfter(a)) sec += b.difference(a).inSeconds;
+  }
+  return sec ~/ 60;
+}
+
+/// Coches que le chrono du jour donne à la routine : minutes ÷ durée d'une coche.
+int timeHitsEarned(Activity routine, List<Session> sessions, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
+  if (!hasTimeHits(routine)) return 0;
+  return livedMinutesOn(routine.linkedActivityId!.trim(), sessions, now, dayStartMin: dayStartMin) ~/ routine.minPerHit!;
+}
+
+/// Id d'une coche du chrono : le même sur tous les appareils, donc jamais posée deux fois.
+String timeHitId(String habitId, String ymd, int k) => 'time-$habitId-$ymd-$k';
+
+/// Rang le plus haut déjà posé par le chrono ce jour-là (0 = aucune).
+int timeHitsGiven(String habitId, String ymd, List<HabitHit> hits) {
+  final prefix = 'time-$habitId-$ymd-';
+  var max = 0;
+  for (final h in hits) {
+    if (!h.id.startsWith(prefix)) continue;
+    final k = int.tryParse(h.id.substring(prefix.length)) ?? 0;
+    if (k > max) max = k;
+  }
+  return max;
+}

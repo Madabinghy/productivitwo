@@ -38,6 +38,8 @@ import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWin
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart' show hasTimeHits;
+import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen;
@@ -2951,7 +2953,13 @@ class _AppRootState extends State<AppRoot>
       // On NE coupe PAS l'activité : le décompte retiré (_countdownEndsAt=null)
       // fait basculer l'UI en chrono count-up → le temps continue de se logguer.
       final now = DateTime.now();
-      logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
+      // « 1 coche = n min » : c'est le chrono qui pose les coches, pas la fin du minuteur.
+      final timed = logic.state.activities.where((a) => a.id == routineId).firstOrNull;
+      if (timed != null && hasTimeHits(timed)) {
+        logic.checkTimeHits();
+      } else {
+        logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
+      }
       // Mode 5 min du donjon : la routine est allée à son terme → on franchit le
       // nœud. (Sur annulation on ne passe jamais ici → pas d'avancement.)
       if (expNode != null && !logic.state.expeditionCleared.contains(expNode)) {
@@ -3885,6 +3893,16 @@ class _AppRootState extends State<AppRoot>
         content: Text('Victoire sur la flemme · 10 min tenues sur $name${wins > 0 ? ' · $wins aujourd’hui' : ''}'),
         duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
+      ));
+    };
+    logic.onTimeHits ??= (r, added, minutes) {
+      if (!mounted) return;
+      final label = fmtMin(minutes);
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+        content: Text('${r.name} +$added · $label de chrono'),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(label: 'Annuler', onPressed: () => logic.incHabit(r.id, -added, logic.livedToday)),
       ));
     };
     logic.onSportRoutineCounted ??= (r) {
