@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/leisure.dart' show leisureActivityIds;
 import 'package:productivitwo_v1/utils/week_hours.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart' show kBSurface;
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche, FicheHeader, FicheTitle;
 
 /// Les 168 dernières heures en compteur (maquette validée 2026-11-11) : carte en tête d'Organisation, feuille en grand au tap.
@@ -262,6 +263,38 @@ class WeekHoursCard extends StatelessWidget {
   }
 
   Widget _part(String key, String text, Color color) => Text(text, key: ValueKey(key), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: color));
+}
+
+/// La jauge seule, en tuile carrée d'Aujourd'hui (à droite de Programme, demande user 2026-11-19) : l'aiguille dit ce
+/// qui tourne, le triangle ce qui tournait il y a 7 jours ; tap = la feuille en grand.
+class WeekHoursTile extends StatelessWidget {
+  final AppLogic logic;
+  final WeekHours hours;
+  const WeekHoursTile({super.key, required this.logic, required this.hours});
+
+  @override
+  Widget build(BuildContext context) {
+    final h = hours;
+    final label = 'Tes 7 derniers jours · ${spanLabel(h.activeMin)} actives · maintenant : ${hoursMomentLabel(h.nowKind, h.nowName, now: true)}'
+        ' · il y a 7 jours : ${hoursMomentLabel(h.pastKind, h.pastName)}';
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          key: const Key('hours-tile'),
+          color: kBSurface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: kHoursActive.withValues(alpha: .45), width: 1.5)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => showWeekHoursSheet(context, logic),
+            child: Center(child: ExcludeSemantics(child: WeekHoursGauge(h: h, size: 90))),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// « Maintenant · ● Détente · Jeux vidéo » (le point de l'aiguille) ou « Il y a 7 jours · ▼ Actif · Coder » (le triangle).

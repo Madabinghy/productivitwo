@@ -78,6 +78,9 @@ import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMira
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 import 'package:productivitwo_v1/utils/modules.dart';
+import 'package:productivitwo_v1/utils/leisure.dart' show leisureActivityIds;
+import 'package:productivitwo_v1/utils/week_hours.dart';
+import 'package:productivitwo_v1/widgets/week_hours_card.dart' show WeekHoursTile;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/module_proposal_card.dart';
 
@@ -1113,6 +1116,21 @@ class TodayViewState extends State<TodayView> {
     );
   }
 
+  // Les 7 jours ne sont recomptés qu'une fois par minute, ou quand un chrono démarre ou s'arrête.
+  String? _hoursKey;
+  WeekHours? _hours;
+
+  Widget _hoursTile(DateTime now) {
+    final st = widget.logic.state;
+    final open = [for (final s in st.sessions) if (s.endAt == null && !s.deleted) s.activityId].join(',');
+    final key = '${now.day}-${now.hour}-${now.minute}|${st.sessions.length}|$open|${leisureActivityIds.length}';
+    if (key != _hoursKey || _hours == null) {
+      _hoursKey = key;
+      _hours = weekHours(sessions: st.sessions, activities: st.activities, leisureIds: leisureActivityIds, now: now);
+    }
+    return WeekHoursTile(logic: widget.logic, hours: _hours!);
+  }
+
   /// Lance (ou reprend) une Guérilla / une Offensive — boutons de l'en-tête
   /// et widget « Lanceurs » de l'écran d'accueil (lien `…://guerilla`).
   Future<void> openRun(String kind) async {
@@ -1270,6 +1288,8 @@ class TodayViewState extends State<TodayView> {
         perfectWide: true,
         // Le mode du moment : une tuile carrée, l'icône seule (2026-11-03, « Modes en tuile »).
         modeTile: _showTomorrow || !_on(AppModule.modes) ? null : _modeTile(cs),
+        // La jauge des 7 jours, seule, à droite de Programme (2026-11-19) ; tap = la feuille.
+        hoursTile: _showTomorrow || !_on(AppModule.analysis) ? null : _hoursTile(now),
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         // La tuile Collection ouvre l'album (ce qui se joue ce soir y est en tête, 2026-11-01).
         onBadges: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
