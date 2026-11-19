@@ -473,7 +473,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               : done
                   ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
                   : (s.share?.label ??
-                      (hasTimer && linked == null
+                      (hasTimer && (linked == null || target <= 1)
                           ? '${a.timerMin} min'
                           : '$count / $target${t.dayTarget == null ? ' sur 7 j' : (cover != null ? ' aujourd\'hui' : '')}'))),
           style: TextStyle(color: dc)),
@@ -527,7 +527,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           if ((!done || ahead) && !dismissed && (plan || linked != null || hasTimer)) ...[
             const SizedBox(width: 6),
             Tooltip(
-              message: plan ? 'Planifier maintenant' : (linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min'),
+              // Une durée réglée passe devant le chrono sans fin : le minuteur à cette durée (2026-11-19).
+              message: plan ? 'Planifier maintenant' : (hasTimer ? 'Minuteur ${a.timerMin} min' : 'Chrono sur « ${linked!.name} »'),
               child: SizedBox(
                 width: 34,
                 height: 34,
@@ -536,8 +537,9 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   shape: const CircleBorder(),
                   child: InkWell(
                     customBorder: const CircleBorder(),
-                    onTap: () => plan ? widget.onPlan!() : (linked != null ? widget.onChrono(linked) : widget.onTimer(a)),
-                    child: Icon(plan ? Icons.explore_outlined : (linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined), size: 18, color: dc),
+                    key: ValueKey(hasTimer && !plan ? 'launcher-timer-${a.id}' : 'launcher-go-${a.id}'),
+                    onTap: () => plan ? widget.onPlan!() : (hasTimer ? widget.onTimer(a) : widget.onChrono(linked!)),
+                    child: Icon(plan ? Icons.explore_outlined : (hasTimer ? Icons.timer_outlined : Icons.play_arrow_rounded), size: 18, color: dc),
                   ),
                 ),
               ),
