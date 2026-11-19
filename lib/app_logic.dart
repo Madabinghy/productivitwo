@@ -966,7 +966,8 @@ class AppLogic implements HuntStore {
   void setActivityTimerMin(String activityId, int? minutes) {
     final idx = state.activities.indexWhere((a) => a.id == activityId);
     if (idx < 0) return;
-    state.activities[idx].timerMin = minutes;
+    // Une routine n'a qu'une durée : le chrono qui coche la suit.
+    state.activities[idx].setOnceMin(minutes);
     onChange();
   }
 

@@ -246,7 +246,9 @@ class Activity {
       routineOrder: (j['routineOrder'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
-      timerMin: (j['timerMin'] as num?)?.toInt(),
+      // Une seule durée par routine (2026-11-19) : quand « le chrono coche » est réglé, sa durée est aussi
+      // celle du minuteur (les deux réglages pouvaient différer avant la fusion ; celle du chrono gagne).
+      timerMin: _oneDuration(j),
       timeContext: j['timeContext'] as String?,
       splitMoments: (j['splitMoments'] as List?)?.map((e) => e.toString()).toList(),
       ownActions: (j['ownActions'] as List?)
@@ -265,6 +267,25 @@ class Activity {
   /// pas — il a été réécrit par une version plus ancienne de l'app, qui pousse
   /// la routine entière sans les champs qu'elle ne connaît pas. Pour ceux-là,
   /// l'appareil garde sa valeur (et la renvoie au serveur au push qui suit).
+  static int? _oneDuration(Map j) {
+    final per = (j['minPerHit'] as num?)?.toInt();
+    if ((j['type'] ?? 'time') == 'habit' && per != null && per > 0) return per;
+    return (j['timerMin'] as num?)?.toInt();
+  }
+
+  /// La durée d'une fois d'une routine : le temps du ⏱ et, si le chrono coche, le temps d'une coche.
+  int? get onceMin => (minPerHit ?? 0) > 0 ? minPerHit : ((timerMin ?? 0) > 0 ? timerMin : null);
+
+  /// Règle la durée d'une fois (null = aucune) : le minuteur, et la coche du chrono si elle est allumée.
+  void setOnceMin(int? minutes) {
+    final m = (minutes ?? 0) > 0 ? minutes : null;
+    timerMin = m;
+    if (minPerHit != null) minPerHit = m;
+  }
+
+  /// Allume ou éteint « le chrono coche » : il compte à la durée d'une fois.
+  void setChronoHits(bool on) => minPerHit = on ? onceMin : null;
+
   static Activity keepLocalFields(Activity local, Activity remote) {
     final keys = remote.docKeys;
     if (keys == null) return remote;
