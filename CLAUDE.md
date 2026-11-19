@@ -1893,6 +1893,16 @@ fort s'il y en a deux) et `pastKind` / `pastName` (chrono qui couvrait maintenan
 (`week-hours-now` « Maintenant · ● … », `week-hours-past` « Il y a 7 jours · ▼ … »). Feuille : les deux mêmes lignes et la phrase
 (`week-hours-sheet-now`, `week-hours-sheet-past`, `week-hours-move`) sous le chiffre, texte de lecture mis à jour. Le total tracé se lit
 à la jonction vert / tirets et dans « n / 168 h tracées ». Pas d'étiquette « il y a 7 j » dessinée sur le cadran (les lignes la disent).
+**L'aiguille qui redescend** (2026-11-19, maquette validée « Aiguille qui redescend », demande user : « un sentiment de jauge qui
+redescend ») : sans chrono, l'aiguille ne va plus au milieu des tirets, elle se pose DANS le vert, là où il s'arrêtera demain à la même
+heure si rien n'est fait — `WeekHours.tomorrowActiveMin` = heures actives − `leavingMin` (l'actif des 24 premières heures de la fenêtre),
+`tomorrowShare` = sa part du vert ; LE VERT SEUL (choix user : le sommeil et les repas qui sortent ne la font pas reculer, on redormira).
+Le bout du vert qui dépasse l'aiguille est hachuré (`_GaugePainter`, rayures sur fond sombre) = ce qui sort d'ici là ; rien ne sort =
+aiguille au bout du vert, sans hachures. Elle descend quand l'heure qui approche de la sortie était active il y a 6 jours, reste à plat
+sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle garde le milieu des tirets pour « rien de tracé ». Ligne en plus, sans
+chrono seulement, sur la carte et la feuille : « Demain si rien · ↘ 55 h · −12 h 27 » (`HoursTomorrowLine`, `hoursTomorrowLabel`,
+`spanExact` ; `week-hours-tomorrow`, `week-hours-sheet-tomorrow` ; ambre `kHoursLoss`, vert « rien ne sort ») ; infobulle de la tuile et
+paragraphe de lecture mis à jour ; les tirets du temps libre ne s'éclairent plus.
 **La jauge dans Aujourd'hui** (2026-11-19, demande user : « un mini widget avec juste la jauge ») : tuile carrée de 104 px à droite de
 PROGRAMME dans TON TABLEAU DE BORD (`DashboardTiles.hoursTile`, mobile ; `WeekHoursTile`, `week_hours_card.dart`, `hours-tile`) — la jauge
 seule, sans texte (le détail en infobulle et pour la lecture d'écran), tap = `showWeekHoursSheet`. Module Analyse, pas sur Demain.

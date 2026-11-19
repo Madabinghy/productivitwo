@@ -123,4 +123,23 @@ void main() {
     expect(hoursMomentLabel(both.nowKind, both.nowName, now: true), 'Sommeil');
     expect(hoursMoveSentence(HoursKind.active, HoursKind.free), 'Le vert avance, ton temps libre recule.');
   });
+
+  test('sans chrono, l\'aiguille dit où sera le vert demain si rien : ce qui sort des 24 premières heures', () {
+    // 3 h il y a 6 jours et demi (elles sortent d'ici demain) et 5 h avant-hier (elles restent).
+    final h = weekHours(now: now, activities: acts, sessions: [s('w', DateTime(2026, 11, 5, 1), 180), s('w', DateTime(2026, 11, 9, 9), 300)]);
+    expect((h.activeMin, h.leavingMin, h.tomorrowActiveMin), (480, 180, 300));
+    expect(h.tomorrowShare, closeTo(300 / 480, 1e-9));
+    expect(hoursTomorrowLabel(h), '5 h · −3 h');
+    // Rien ne sort : l'aiguille reste au bout du vert.
+    final keep = weekHours(now: now, activities: acts, sessions: [s('w', DateTime(2026, 11, 9, 9), 300)]);
+    expect((keep.leavingMin, keep.tomorrowActiveMin, keep.tomorrowShare), (0, 300, 1.0));
+    expect(hoursTomorrowLabel(keep), '5 h · rien ne sort');
+    // Aucune heure active : pas de division par zéro.
+    final none = weekHours(now: now, activities: acts, sessions: const []);
+    expect((none.tomorrowActiveMin, none.tomorrowShare), (0, 1.0));
+    // Sommeil et repas qui sortent ne font pas reculer l'aiguille : le vert seul.
+    final sleep = weekHours(now: now, activities: acts, sessions: [s('s', DateTime(2026, 11, 5, 0), 360), s('w', DateTime(2026, 11, 9, 9), 60)]);
+    expect((sleep.leavingMin, sleep.tomorrowActiveMin), (0, 60));
+    expect([spanExact(0), spanExact(45), spanExact(60), spanExact(747)], ['0 min', '45 min', '1 h', '12 h 27']);
+  });
 }

@@ -12,12 +12,17 @@ import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche, FicheHeader
 /// une graduation par jour, et « le socle d'abord » : besoins → sommeil → détente → actif.
 /// Aiguille et repère (maquette validée 2026-11-19) : l'aiguille suit ce qui tourne maintenant, le triangle blanc
 /// dit ce qui tournait il y a 7 jours à la même minute.
+/// L'aiguille qui redescend (maquette validée 2026-11-19, demande user) : sans chrono, l'aiguille quitte les tirets et
+/// se pose DANS le vert, là où il s'arrêtera demain à la même heure si rien n'est fait ; le bout du vert qui la
+/// dépasse est hachuré (ce qui sort de la fenêtre d'ici là).
 const kHoursActive = Color(0xFF3DDC84);
 const kHoursActiveHi = Color(0xFFB4F7D0);
 const kHoursLeisure = Color(0xFFF08BC0);
 const kHoursBasic = Color(0xFFFFD479);
 const kHoursSleep = Color(0xFF6F92F2);
 const kHoursFree = Color(0xFF7FF0D6);
+const kHoursLoss = Color(0xFFF5B041);
+const _kHatchBase = Color(0xFF0F2A1E);
 
 Color hoursKindColor(HoursKind k) => switch (k) {
       HoursKind.active => kHoursActive,
@@ -36,9 +41,10 @@ String _deltaLabel(int min) {
 
 /// Le compteur : arc de 240° (les 168 h). Le socle d'abord (choix user 2026-11-18) : besoins de base (ils remplissent
 /// le bout arrondi du départ) → sommeil → détente, puis l'actif, puis le temps libre en tirets. L'actif touche le
-/// temps libre, dans lequel il grandit. L'aiguille se pose au bout du morceau en cours (au milieu des tirets quand
-/// aucun chrono ne tourne), ce morceau s'éclaire ; le triangle blanc, au-dessus du cadran, se pose de la même façon
-/// sur ce qui tournait il y a 7 jours : alignés = tu fais pareil. Le filet intérieur, sous le vert = les heures
+/// temps libre, dans lequel il grandit. L'aiguille se pose au bout du morceau en cours, qui s'éclaire ; sans chrono,
+/// elle recule dans le vert jusqu'aux heures actives de demain si rien n'est fait ([WeekHours.tomorrowShare]) et
+/// ce qui la dépasse est hachuré. Le triangle blanc, au-dessus du cadran, se pose au bout du morceau qui tournait
+/// il y a 7 jours (au milieu des tirets si rien n'était tracé) : alignés = tu fais pareil. Le filet intérieur, sous le vert = les heures
 /// actives des 7 jours d'avant ([showPrev]).
 class WeekHoursGauge extends StatelessWidget {
   final WeekHours h;
@@ -97,6 +103,7 @@ class _GaugePainter extends CustomPainter {
     const gap = 1.3 * _deg;
     var a = _start;
     var activeStart = _start;
+    var activeLen = 0.0;
     var first = true;
     const kinds = [HoursKind.active, HoursKind.leisure, HoursKind.basic, HoursKind.sleep];
     // Où se pose un repère (aiguille, triangle) pour chaque catégorie : au bout de son morceau.
@@ -120,6 +127,7 @@ class _GaugePainter extends CustomPainter {
       }
       if (i == 0) {
         activeStart = a;
+        activeLen = len;
         canvas.drawArc(
             rect, a, len, false, band(kHoursActive)..shader = const LinearGradient(begin: Alignment.bottomLeft, end: Alignment.topRight, colors: [kHoursActive, kHoursActiveHi]).createShader(rect));
       } else {
@@ -130,14 +138,27 @@ class _GaugePainter extends CustomPainter {
     final trackedEnd = a;
     if (f[0] <= 0) activeStart = trackedEnd;
     const end = _start + _sweep;
-    // Sans chrono, le repère va au milieu du temps libre : au bout du vert, il se confondrait avec « actif ».
+    // Rien de tracé il y a 7 jours : le triangle va au milieu du temps libre.
     mark[HoursKind.free] = (trackedEnd + end) / 2;
+    // Sans chrono, l'aiguille recule dans le vert : là où il s'arrêtera demain à la même heure si rien n'est fait.
+    final idle = h.nowKind == HoursKind.free;
+    final idleAt = activeStart + activeLen * h.tomorrowShare;
+    if (idle && h.leavingMin > 0 && activeLen > 0) {
+      // Ce qui sort d'ici là : hachuré.
+      final from = idleAt, to = activeStart + activeLen;
+      canvas.drawArc(rect, from, to - from, false, band(_kHatchBase));
+      final px = math.max(1.3, w * .0085);
+      final step = px / r;
+      final stripe = band(kHoursActive.withValues(alpha: .8));
+      for (var d = from + step; d < to - .001; d += step * 2) {
+        canvas.drawArc(rect, d, math.min(step, to - d), false, stripe);
+      }
+    }
 
     // Le temps libre : des tirets, des cases à remplir.
     const dash = 4.3 * _deg, space = 3.4 * _deg;
     final free = band(kHoursFree.withValues(alpha: .85));
     for (var d = trackedEnd + _deg; d < end - .002; d += dash + space) {
-      if (h.nowKind == HoursKind.free) canvas.drawArc(rect, d, math.min(dash, end - d), false, glow(kHoursFree));
       canvas.drawArc(rect, d, math.min(dash, end - d), false, free);
     }
 
@@ -166,9 +187,9 @@ class _GaugePainter extends CustomPainter {
           ..close(),
         Paint()..color = needle);
 
-    // L'aiguille, effilée : ce qui tourne maintenant.
-    final na = mark[h.nowKind]!;
-    final tip = at(r - w * .008, na);
+    // L'aiguille, effilée : ce qui tourne maintenant, sinon demain si rien (elle traverse alors le vert).
+    final na = idle ? idleAt : mark[h.nowKind]!;
+    final tip = at(idle ? r + stroke / 2 + w * .004 : r - w * .008, na);
     final b1 = at(w * .022, na + math.pi / 2), b2 = at(w * .022, na - math.pi / 2);
     canvas.drawPath(
         Path()
@@ -195,6 +216,7 @@ class _GaugePainter extends CustomPainter {
       o.h.basicMin != h.basicMin ||
       o.h.sleepMin != h.sleepMin ||
       o.h.prevActiveMin != h.prevActiveMin ||
+      o.h.leavingMin != h.leavingMin ||
       o.h.nowKind != h.nowKind ||
       o.h.pastKind != h.pastKind ||
       o.track != track ||
@@ -255,6 +277,10 @@ class WeekHoursCard extends StatelessWidget {
             const SizedBox(height: 8),
             HoursMomentLine(h: h, now: true, labelWidth: 96, key: const ValueKey('week-hours-now')),
             const SizedBox(height: 3),
+            if (h.nowKind == HoursKind.free) ...[
+              HoursTomorrowLine(h: h, labelWidth: 96, key: const ValueKey('week-hours-tomorrow')),
+              const SizedBox(height: 3),
+            ],
             HoursMomentLine(h: h, now: false, labelWidth: 96, key: const ValueKey('week-hours-past')),
           ]),
         ),
@@ -266,7 +292,8 @@ class WeekHoursCard extends StatelessWidget {
 }
 
 /// La jauge seule, en tuile carrée d'Aujourd'hui (à droite de Programme, demande user 2026-11-19) : l'aiguille dit ce
-/// qui tourne, le triangle ce qui tournait il y a 7 jours ; tap = la feuille en grand.
+/// qui tourne (sans chrono : où sera le vert demain si rien), le triangle ce qui tournait il y a 7 jours ; tap = la
+/// feuille en grand.
 class WeekHoursTile extends StatelessWidget {
   final AppLogic logic;
   final WeekHours hours;
@@ -276,6 +303,7 @@ class WeekHoursTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final h = hours;
     final label = 'Tes 7 derniers jours · ${spanLabel(h.activeMin)} actives · maintenant : ${hoursMomentLabel(h.nowKind, h.nowName, now: true)}'
+        '${h.nowKind == HoursKind.free ? ' · demain si rien : ${hoursTomorrowLabel(h)}' : ''}'
         ' · il y a 7 jours : ${hoursMomentLabel(h.pastKind, h.pastName)}';
     return Tooltip(
       message: label,
@@ -320,6 +348,26 @@ class HoursMomentLine extends StatelessWidget {
       Expanded(
         child: Text(hoursMomentLabel(kind, now ? h.nowName : h.pastName, now: now),
             maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: col)),
+      ),
+    ]);
+  }
+}
+
+/// « Demain si rien · ↘ 55 h · −12 h 27 » : ce que montre l'aiguille quand aucun chrono ne tourne.
+class HoursTomorrowLine extends StatelessWidget {
+  final WeekHours h;
+  final double labelWidth;
+  const HoursTomorrowLine({super.key, required this.h, required this.labelWidth});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final col = h.leavingMin > 0 ? kHoursLoss : kHoursActive;
+    return Row(children: [
+      SizedBox(width: labelWidth, child: Text('Demain si rien', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6)))),
+      SizedBox(width: 16, child: Align(alignment: Alignment.centerLeft, child: Icon(h.leavingMin > 0 ? Icons.south_east_rounded : Icons.east_rounded, size: 12, color: col))),
+      Expanded(
+        child: Text(hoursTomorrowLabel(h), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: col)),
       ),
     ]);
   }
@@ -403,6 +451,10 @@ class _WeekHoursSheet extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           HoursMomentLine(h: h, now: true, labelWidth: 104, key: const ValueKey('week-hours-sheet-now')),
           const SizedBox(height: 4),
+          if (h.nowKind == HoursKind.free) ...[
+            HoursTomorrowLine(h: h, labelWidth: 104, key: const ValueKey('week-hours-sheet-tomorrow')),
+            const SizedBox(height: 4),
+          ],
           HoursMomentLine(h: h, now: false, labelWidth: 104, key: const ValueKey('week-hours-sheet-past')),
           const SizedBox(height: 8),
           Text(hoursMoveSentence(h.nowKind, h.pastKind), key: const ValueKey('week-hours-move'), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, height: 1.35)),
@@ -413,7 +465,9 @@ class _WeekHoursSheet extends StatelessWidget {
       Text.rich(
         TextSpan(style: TextStyle(fontSize: 12.5, height: 1.45, color: mute), children: [
           TextSpan(text: 'L\'aiguille', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
-          const TextSpan(text: ' se pose au bout de ce que tu fais maintenant (au milieu des tirets si aucun chrono ne tourne). '),
+          const TextSpan(
+              text: ' se pose au bout de ce que tu fais maintenant. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne fais rien : '
+                  'la partie hachurée est ce qui sort de ta fenêtre d\'ici là. '),
           TextSpan(text: 'Le triangle blanc', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
           const TextSpan(text: ' montre ce que tu faisais il y a 7 jours à la même minute : c\'est la minute qui sort de ta fenêtre. Alignés, tu fais pareil. '),
           const TextSpan(text: 'Le vert', style: TextStyle(fontWeight: FontWeight.w700, color: kHoursActive)),
