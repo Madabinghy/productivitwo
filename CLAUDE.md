@@ -2317,6 +2317,13 @@ posé et le lien n'arrivait pas dans l'app). `get_user_context` porte `rolling` 
 de `plan_day` dit « sur 7 jours · COUVERTE ce jour-là par son avance … ne pas la programmer » / « l'avance réduit la part du jour à 5 »
 et ne pose plus de bloc pour une routine couverte. Les coches du chrono restent posées par l'app. Reste possible : l'app qui PROPOSE
 « Sur 7 jours » pour les routines à volume, le coach (dashboard) qui lit encore la cible du jour.
+**Un champ récent ne se perd plus** (2026-11-19, bug user : Pompes et Tractions réglées « sur 7 jours », puis le réglage disparu du
+serveur) : au lancement les activités du serveur gagnent, et chaque version de l'app repousse la routine ENTIÈRE (`_pushCollection`,
+`batch.set`) — une version plus ancienne, sur un autre appareil ou une autre installation, réécrit donc le document sans les champs
+qu'elle ne connaît pas. `Activity.from` retient les champs du document lu (`docKeys`, runtime) et la fusion
+(`FirestoreSync.merge` → `Activity.keepLocalFields`) garde la valeur de l'appareil pour tout champ ABSENT du document distant ; un champ
+présent gagne toujours, même à faux. Le push qui suit le remet sur le serveur. Limites : seulement les activités (pas les domaines) ;
+un réglage posé par Claude pendant que l'app tourne n'arrive qu'au prochain lancement.
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

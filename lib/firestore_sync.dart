@@ -593,12 +593,15 @@ class FirestoreSync {
         merged.removeWhere((_, d) => d.deleted);
         return merged.values.toList();
       }(),
-      // Activities : remote gagne. Si deleted:true → retiré de l'état local (suppression réelle)
+      // Activities : remote gagne. Si deleted:true → retiré de l'état local (suppression réelle).
+      // Exception : un champ que le document distant ne porte pas (réécrit par une version
+      // plus ancienne de l'app) garde la valeur de l'appareil — `Activity.keepLocalFields`.
       activities: () {
         final remoteMap = byId(remote.activities, (a) => a.id);
         final merged = Map.of(remoteMap);
         for (final a in local.activities) {
-          if (!remoteMap.containsKey(a.id)) merged[a.id] = a;
+          final r = remoteMap[a.id];
+          merged[a.id] = r == null ? a : Activity.keepLocalFields(a, r);
         }
         // Supprimer physiquement les items marqués deleted:true → ils disparaissent du local
         merged.removeWhere((_, a) => a.deleted);

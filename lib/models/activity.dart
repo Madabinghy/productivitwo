@@ -108,6 +108,11 @@ class Activity {
   /// sa carte porte le dessin du catalogue. Null = routine créée à la main.
   String? catalogId;
 
+  /// RUNTIME, jamais sérialisé : les champs que portait le document lu
+  /// (`Activity.from`). Un champ absent a été écrit par une version de l'app
+  /// qui ne le connaît pas : ce n'est pas une valeur (`keepLocalFields`).
+  Set<String>? docKeys;
+
   Activity({
     String? id,
     required this.domainId,
@@ -245,7 +250,25 @@ class Activity {
       catalogId: j['catalogId'] as String?,
       rolling: j['rolling'] as bool? ?? false,
       minPerHit: (j['minPerHit'] as num?)?.toInt(),
-    );
+    )..docKeys = {for (final k in j.keys) k.toString()};
+  }
+
+  /// Fusion au lancement (2026-11-19, bug user : « Sur 7 jours » réglé puis
+  /// perdu) : le serveur gagne, SAUF pour les champs que son document ne porte
+  /// pas — il a été réécrit par une version plus ancienne de l'app, qui pousse
+  /// la routine entière sans les champs qu'elle ne connaît pas. Pour ceux-là,
+  /// l'appareil garde sa valeur (et la renvoie au serveur au push qui suit).
+  static Activity keepLocalFields(Activity local, Activity remote) {
+    final keys = remote.docKeys;
+    if (keys == null) return remote;
+    final mine = local.toJson();
+    final missing = [for (final k in mine.keys) if (!keys.contains(k)) k];
+    if (missing.isEmpty) return remote;
+    final json = remote.toJson();
+    for (final k in missing) {
+      json[k] = mine[k];
+    }
+    return Activity.from(json);
   }
 
   // -------- Utilities --------
