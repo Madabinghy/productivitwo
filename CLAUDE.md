@@ -2288,8 +2288,14 @@ lanceur, Journée parfaite, Enchaîner, Guérilla, web), `AppLogic.habitStreakIn
 `AppLogic.routineCoverOf` / `routineAskedToday` (programme du jour, Le minimum, Planifier, point d'étape de l'Offensive). Une routine
 tenue par son avance affiche « ✓ couverte jusqu'à … » (lanceur, Journée parfaite). Les hebdomadaires comptaient déjà sur 7 jours
 glissants (`rollingStatFor`). Pas touché : semaines tenues (contrat hebdo par coches), victoires sur la flemme, le serveur (MCP, coach
-lisent encore la cible du jour). **À venir** : lot 2 = lanceur Focus en trois étages (à faire · prendre de l'avance · couvertes) et
-jauge au trait des 6 jours passés ; lot 3 = « 1 coche = n min » de chrono sur l'activité liée.
+lisent encore la cible du jour). **Lot 2 livré (lanceur de routines, `routine_launcher_sheet.dart`)** : Focus en trois étages — À FAIRE
+(par domaine, comme avant ; une routine « sur 7 jours » dit « 0 / 5 · 65 / 70 sur 7 j » et porte la jauge des activités, `_coverBar`,
+`launcher-cover-bar-<id>` : tout le fait à la couleur du domaine, TRAIT BLANC = les 6 jours passés, du trait au bout = la part du jour),
+**PRENDRE DE L'AVANCE** (`launcher-ahead` : tenues ce soir mais demain demandera quelque chose, `RoutineCover.canGetAhead` ; « couverte ce
+soir · +10 = demain libre », − / + et lanceur gardés), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
+« 6 couvertes · Étirements jusqu'à samedi · … · +3 », les plus proches d'abord ; tap = Tout) = routines « sur 7 jours » avec de l'avance
+et hebdomadaires atteintes (`weeklyAheadDays` : elle revient quand sa coche la plus ancienne qui compte sort de la fenêtre). Une routine
+« chaque jour » faite n'apparaît qu'en Tout, comme avant. **À venir** : lot 3 = « 1 coche = n min » de chrono sur l'activité liée.
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

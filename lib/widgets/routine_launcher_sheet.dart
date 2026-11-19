@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show ActivityDomainHeader;
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
@@ -164,6 +165,14 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     // Une recherche cherche dans toutes, comme dans Tout.
     final focusing = _focus && q.isEmpty;
     final shown = focusing ? todo : [...todo, ...done];
+    // Sur 7 jours (2026-11-19) : tenues ce soir mais demain demandera quelque chose (prendre de l'avance),
+    // et celles que l'avance couvre encore (repliées sur une ligne).
+    final live = done.where((s) => !day.dismissed.contains(s.id)).toList();
+    final ahead = live.where((s) => s.todo.cover?.canGetAhead ?? false).toList();
+    final covered = [
+      for (final s in live)
+        if (_aheadDaysOf(s) case final n?) (s, n),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
     final series = day.slots.where((s) => s.activity.habitFreq == HabitFreq.daily && logic.habitCurrentStreak(s.id) > 0).length;
     final domains = logic.state.activeDomains;
 
@@ -277,7 +286,104 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           ]),
           for (final s in g.slots) _row(cs, day, s),
         ],
+        if (focusing && ahead.isNotEmpty) ...[
+          Padding(
+            key: const ValueKey('launcher-ahead'),
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 2),
+            child: Row(children: [
+              const Expanded(
+                child: Text('PRENDRE DE L\'AVANCE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.1, color: kRoutineAccent)),
+              ),
+              Text('${ahead.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: kRoutineAccent)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
+            child: Text('Tenues ce soir. Ce que tu fais en plus maintenant te libère demain.',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .5))),
+          ),
+          for (final s in ahead) _row(cs, day, s, ahead: true),
+        ],
+        if (focusing && covered.isNotEmpty) _coveredLine(cs, covered),
       ],
+    );
+  }
+
+  /// Jours à venir encore couverts : avance d'une routine « sur 7 jours », ou
+  /// hebdomadaire atteinte dont les coches restent dans la fenêtre. Null = pas couverte.
+  int? _aheadDaysOf(RoutineSlot s) {
+    final c = s.todo.cover;
+    if (c != null) return c.held && c.aheadDays > 0 ? c.aheadDays : null;
+    if (!s.reached) return null;
+    return weeklyAheadDays(s.activity, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin);
+  }
+
+  /// « 6 couvertes · Étirements jusqu'à samedi · … » : celles auxquelles on n'a plus à penser ; tap = Tout.
+  Widget _coveredLine(ColorScheme cs, List<(RoutineSlot, int)> covered) {
+    final today = logic.livedToday;
+    final names = [for (final c in covered.take(3)) '${c.$1.activity.name} jusqu\'à ${coveredUntilLabel(today, c.$2)}'];
+    final more = covered.length - names.length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Material(
+        key: const ValueKey('launcher-covered'),
+        color: cs.onSurface.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() => _focus = false),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(
+                    text: '${covered.length} couverte${covered.length > 1 ? 's' : ''}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF3DDC84))),
+                TextSpan(text: ' · ${names.join(' · ')}${more > 0 ? ' · +$more' : ''}'),
+              ]),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.35, color: cs.onSurface.withValues(alpha: .6)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Jauge des 7 jours d'une routine « sur 7 jours », comme celle des activités : tout le fait à la
+  /// couleur du domaine, TRAIT BLANC = les 6 jours passés, du trait au bout = la part du jour.
+  Widget _coverBar(ColorScheme cs, RoutineCover c, Color color) {
+    final total = c.windowTarget <= 0 ? 1 : c.windowTarget;
+    final past = (c.pastDone / total).clamp(0.0, 1.0).toDouble();
+    final done = (c.windowDone / total).clamp(0.0, 1.0).toDouble();
+    return SizedBox(
+      height: 11,
+      child: LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth;
+        return Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 3,
+            height: 5,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Stack(children: [
+                Positioned.fill(child: ColoredBox(color: cs.onSurface.withValues(alpha: .08))),
+                Positioned(left: 0, top: 0, bottom: 0, width: w * done, child: ColoredBox(color: color)),
+              ]),
+            ),
+          ),
+          if (past > 0)
+            Positioned(
+              left: (w * past - 1).clamp(0.0, w - 2),
+              top: 0,
+              bottom: 0,
+              width: 2,
+              child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            ),
+        ]);
+      }),
     );
   }
 
@@ -307,7 +413,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   /// Routines) : anneau à la couleur du domaine, nom, UNE ligne d'infos,
   /// lanceur seulement s'il lance quelque chose, puis − / + pour saisir
   /// directement. Tap = le compteur, appui long = les gestes rares.
-  Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s) {
+  Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s, {bool ahead = false}) {
     final a = s.activity;
     final t = s.todo;
     final dismissed = day.dismissed.contains(a.id);
@@ -320,17 +426,22 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final count = t.dayTarget != null ? t.dayDone : t.weekDone;
     final done = s.reached;
     final muted = cs.onSurface.withValues(alpha: .5);
+    final cover = t.cover;
     final infos = <InlineSpan>[
       if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
       TextSpan(
-          text: done
-              ? (t.cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${t.cover!.heldLabel}')
-              : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
+          text: ahead && cover != null
+              ? 'couverte ce soir · +${cover.tomorrowTarget} = demain libre'
+              : done
+                  ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
+                  : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
           style: TextStyle(color: dc)),
+      if (cover != null && !done) TextSpan(text: ' · ${cover.windowDone} / ${cover.windowTarget} sur 7 j'),
       if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)
         TextSpan(text: ' · ${momentOf(s.moment).thisOne}'),
-      if (streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
-      if (linked != null) TextSpan(text: ' · ${linked.name}'),
+      // « Prendre de l'avance » : la ligne ne dit que ce que le geste rapporte.
+      if (!ahead && streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
+      if (!ahead && linked != null) TextSpan(text: ' · ${linked.name}'),
     ];
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -349,12 +460,18 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800, height: 1.2, color: done ? cs.onSurface.withValues(alpha: .6) : null)),
+                        fontSize: 15, fontWeight: FontWeight.w800, height: 1.2, color: done && !ahead ? cs.onSurface.withValues(alpha: .6) : null)),
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text.rich(TextSpan(children: infos),
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
                 ),
+                if (cover != null && (!done || ahead))
+                  Padding(
+                    key: ValueKey('launcher-cover-bar-${a.id}'),
+                    padding: const EdgeInsets.only(top: 3),
+                    child: _coverBar(cs, cover, dc),
+                  ),
                 if (s.pushed)
                   GestureDetector(
                     onTap: () => _clearPush(a),
@@ -364,7 +481,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               ]),
             ),
           ),
-          if (!done && !dismissed && (plan || linked != null || hasTimer)) ...[
+          if ((!done || ahead) && !dismissed && (plan || linked != null || hasTimer)) ...[
             const SizedBox(width: 6),
             Tooltip(
               message: plan ? 'Planifier maintenant' : (linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min'),

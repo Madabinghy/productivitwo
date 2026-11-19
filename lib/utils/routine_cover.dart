@@ -141,3 +141,22 @@ String coveredUntilLabel(DateTime today, int aheadDays) {
   final d = DateTime(today.year, today.month, today.day + aheadDays);
   return names[d.weekday - 1];
 }
+
+/// Routine HEBDO atteinte (n coches sur les 7 derniers jours) : jours À VENIR
+/// encore couverts si rien d'autre n'est fait — elle revient d'elle-même quand
+/// la coche la plus ancienne qui compte sort de la fenêtre. Null si la routine
+/// n'est pas hebdomadaire ou pas atteinte.
+int? weeklyAheadDays(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
+  if (!a.isHabit || a.habitFreq != HabitFreq.weekly) return null;
+  final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
+  final from = now.subtract(const Duration(days: kRoutineWindowDays));
+  final ts = [
+    for (final h in hits)
+      if (h.habitId == a.id && !h.ts.isBefore(from) && !h.ts.isAfter(now.add(const Duration(minutes: 1)))) h.ts,
+  ]..sort();
+  if (ts.length < target) return null;
+  final expiry = ts[ts.length - target].add(const Duration(days: kRoutineWindowDays));
+  DateTime u(DateTime x) => DateTime.utc(x.year, x.month, x.day);
+  final n = u(livedDate(expiry, dayStartMin)).difference(u(livedDate(now, dayStartMin))).inDays - 1;
+  return n < 0 ? 0 : n;
+}
