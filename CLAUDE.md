@@ -2270,6 +2270,27 @@ d'envies restent en Liberté (privées). **Tes luttes** (`showStrugglesSheet`, l
 dans la carte de remontée) : contre la flemme (Malgré tout, guérillas) · contre les envies (privé, seulement si Liberté existe) ·
 contre les journées difficiles (Tenir bon, remontées, reprises).
 
+## Routines sur 7 jours (2026-11-19, maquette validée « Routines sur 7 jours », 3 lots)
+
+Retour user : devoir refaire chaque routine chaque jour, sans que 20 pompes au lieu de 10 ne comptent demain. Une routine QUOTIDIENNE
+peut être réglée « Sur 7 jours » (`Activity.rolling`, faux par défaut ; fiche routine, section **Rythme** : Chaque jour · Sur 7 jours,
+`routine-rhythm-daily` / `routine-rhythm-rolling`). Décisions user : l'avance tient TOUT (série, Métronome, Journée parfaite), le retard
+ne s'accumule PAS, réglage par routine (eau, prière, planifier restent « chaque jour »). **Lot 1 livré (la règle)** : logique pure
+`utils/routine_cover.dart` — `rollingDayTarget(cible, somme des 6 jours d'avant)` = clamp(7 × cible − passé, 0, cible) : l'avance réduit
+la part du jour jusqu'à zéro, un jour raté ne l'augmente jamais ; `routineCover(a, hits, now)` → `RoutineCover {target, todayDone,
+pastDone, dayTarget, aheadDays, tomorrowTarget, held, left, coveredByAdvance, canGetAhead, heldLabel}` (« couverte jusqu'à samedi » /
+« jusqu'à demain soir » / « par ton avance ») ; `rollingHeldDays` = jours tenus, avance comprise, jamais un jour à venir. L'avance vit
+7 jours (elle sort de la fenêtre), on avance mais on ne reporte pas (un soir non couvert arrête la série). Branché aux points
+centraux : `routineReachedDays` (`badges_logic.dart`, donc séries, journées parfaites / solides, Métronome, reprises, séries cassées hier,
+Tenir bon ; `now:` borne les jours), `composeTodayFacts` (`RoutineToday.target` = part du jour, 0 = tenue sans coche → tuile Journée
+parfaite, enjeux, notification du soir, Sniper), `routinesForToday` (`RoutineToDo.cover`, `dayTarget` = part du jour, `reached` = tenue →
+lanceur, Journée parfaite, Enchaîner, Guérilla, web), `AppLogic.habitStreakInfo` / `habitStreakEndingOn` (🔥 des lignes),
+`AppLogic.routineCoverOf` / `routineAskedToday` (programme du jour, Le minimum, Planifier, point d'étape de l'Offensive). Une routine
+tenue par son avance affiche « ✓ couverte jusqu'à … » (lanceur, Journée parfaite). Les hebdomadaires comptaient déjà sur 7 jours
+glissants (`rollingStatFor`). Pas touché : semaines tenues (contrat hebdo par coches), victoires sur la flemme, le serveur (MCP, coach
+lisent encore la cible du jour). **À venir** : lot 2 = lanceur Focus en trois étages (à faire · prendre de l'avance · couvertes) et
+jauge au trait des 6 jours passés ; lot 3 = « 1 coche = n min » de chrono sur l'activité liée.
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /

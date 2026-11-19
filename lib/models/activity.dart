@@ -96,6 +96,10 @@ class Activity {
   /// finir X @maison — Y l'est aussi »).
   List<String> contexts;
 
+  /// Routine quotidienne comptée « sur 7 jours » (2026-11-19, `utils/routine_cover.dart`) :
+  /// ce qui est fait en plus couvre les jours suivants. Faux = chaque jour.
+  bool rolling;
+
   /// Routine activée depuis le catalogue (2026-11-01, `catalog/routine_catalog.dart`) :
   /// sa carte porte le dessin du catalogue. Null = routine créée à la main.
   String? catalogId;
@@ -129,6 +133,7 @@ class Activity {
     List<TaskAction>? ownActions,
     List<String>? contexts,
     this.catalogId,
+    this.rolling = false,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
         ownActions = ownActions ?? <TaskAction>[],
@@ -175,6 +180,7 @@ class Activity {
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
         'contexts': contexts,
         if (catalogId != null) 'catalogId': catalogId,
+        'rolling': rolling,
       };
 
   /// Migration douce :
@@ -231,6 +237,7 @@ class Activity {
           .toList(),
       contexts: (j['contexts'] as List?)?.cast<String>(),
       catalogId: j['catalogId'] as String?,
+      rolling: j['rolling'] as bool? ?? false,
     );
   }
 
@@ -267,6 +274,7 @@ class Activity {
       lastTuneAt: lastTuneAt ?? this.lastTuneAt,
       linkedActivityId: linkedActivityId ?? null,
       catalogId: catalogId,
+      rolling: rolling,
     );
   }
 

@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/workouts.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef, timeContextsWith;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays, routineSeries;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -4122,6 +4123,18 @@ class AppLogic implements HuntStore {
     return newBadges;
   }
 
+  /// Routine « sur 7 jours » (2026-11-19) : ses jours tenus, avance comprise ; null = chaque jour.
+  Set<String>? _rollingHeld(Activity a) =>
+      isRollingRoutine(a) ? rollingHeldDays(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin) : null;
+
+  /// Où en est une routine « sur 7 jours » aujourd'hui ; null = routine « chaque jour ».
+  RoutineCover? routineCoverOf(Activity a) =>
+      isRollingRoutine(a) ? routineCover(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin) : null;
+
+  /// Ce que la routine quotidienne demande AUJOURD'HUI : sa cible, ou ce que
+  /// l'avance des 6 jours passés laisse à faire (0 = couverte).
+  int routineAskedToday(Activity a) => routineCoverOf(a)?.dayTarget ?? routineDayTargetOf(a);
+
   /// Nombre de jours consécutifs où le quota est atteint (en partant d'aujourd'hui ou d'hier).
   /// Retourne 0 pour les routines hebdo/mensuelles.
   /// Longueur de série se terminant le jour [anchor] (inclus s'il est fait/gelé).
@@ -4131,11 +4144,12 @@ class AppLogic implements HuntStore {
     if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
     final quota = dayQuotaFor(act);
     if (quota <= 0) return 0;
+    final held = _rollingHeld(act);
     DateTime d = DateTime(anchor.year, anchor.month, anchor.day);
     int streak = 0;
     while (streak < 3650) {
       final ymd = yyyymmdd(d);
-      if (habitValueOn(habitId, d) >= quota) {
+      if (held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= quota) {
         streak++;
         d = d.subtract(const Duration(days: 1));
       } else if (state.goldGelDays.contains('${habitId}_$ymd')) {
@@ -4157,9 +4171,10 @@ class AppLogic implements HuntStore {
     if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return none;
     final quota = dayQuotaFor(act);
     if (quota <= 0) return none;
+    final held = _rollingHeld(act);
     return computeStreak(
       today: today ?? DateTime.now(),
-      reached: (d) => habitValueOn(habitId, d) >= quota,
+      reached: (d) => held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= quota,
       frozen: (d) => state.goldGelDays.contains('${habitId}_${yyyymmdd(d)}'),
     );
   }

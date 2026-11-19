@@ -332,7 +332,8 @@ RoutineDay buildRoutineDay({
   final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin).where((t) => !exclude.contains(t.activity.id)).toList();
   final slots = <RoutineSlot>[
     for (final t in todos)
-      if (momentShareOf(t.activity, dayDone: t.dayDone, dayTarget: t.dayTarget, nowMin: nowMin, moments: ms) case final share?)
+      // Une routine « sur 7 jours » couverte par son avance n'a plus de part à faire.
+      if ((t.reached ? null : momentShareOf(t.activity, dayDone: t.dayDone, dayTarget: t.dayTarget, nowMin: nowMin, moments: ms)) case final share?)
         RoutineSlot(t, share.moment, pushed[t.activity.id] ?? share.moment, share: share)
       else
         RoutineSlot(t, _homeOf(t.activity), pushed[t.activity.id] ?? _homeOf(t.activity)),

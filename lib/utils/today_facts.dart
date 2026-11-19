@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/chain_session.dart' show PendingChain;
 import 'package:productivitwo_v1/utils/elan_logic.dart' show FlemmeWin, doneActionsOf, elanWindows, flemmeWinsIn;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayStart;
 import 'package:productivitwo_v1/utils/objective_day.dart' show buildObjectiveDays;
+import 'package:productivitwo_v1/utils/routine_cover.dart';
 
 /// Les faits du jour vécu (badges, enjeux), composés depuis les données brutes :
 /// partagé par le mobile (`BadgeCenter.todayFacts`) et le web (Aujourd'hui).
@@ -39,7 +40,9 @@ TodayFacts composeTodayFacts({
     if (excused.contains(a.id)) continue; // « pas aujourd'hui » : plus réclamée
     final t = a.habitTarget ?? 1;
     final done = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(dayStart)).length;
-    routines.add(RoutineToday(a, done, t <= 0 ? 1 : t));
+    // « Sur 7 jours » : la journée demande ce que l'avance ne couvre pas (0 = tenue sans coche).
+    final asked = isRollingRoutine(a) ? routineCover(a, hits, now, dayStartMin: dayStartMin).dayTarget : (t <= 0 ? 1 : t);
+    routines.add(RoutineToday(a, done, asked));
   }
   final elan = moodMarks.where((m) => m.isElan && m.ymd == ymd).toList();
   final blocks = schedule?.blocks ?? const <ScheduleBlock>[];

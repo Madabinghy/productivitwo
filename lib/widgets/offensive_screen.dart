@@ -1198,7 +1198,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     return seriesAtRisk([
       for (final a in logic.state.activeActivities)
         if (a.isHabit && a.habitFreq == HabitFreq.daily && !logic.isAcquired(a.id) && !logic.frozenOf(a.id).contains(ymd))
-          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday), id: a.id),
+          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.routineCoverOf(a)?.dayTarget ?? logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday), id: a.id),
     ]);
   }
 

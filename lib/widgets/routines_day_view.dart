@@ -555,7 +555,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final dismissed = day.dismissed.contains(a.id);
     final infos = <InlineSpan>[
       if (dismissed) TextSpan(text: 'pas aujourd\'hui · ', style: TextStyle(color: pal.text4)),
-      TextSpan(text: done ? '✓ $count / $target' : (s.share?.label ?? (timed ? '${a.timerMin} min' : '$count / $target')), style: TextStyle(color: c)),
+      TextSpan(text: done ? (t.cover?.heldLabel == null ? '✓ $count / $target' : '✓ ${t.cover!.heldLabel}') : (s.share?.label ?? (timed ? '${a.timerMin} min' : '$count / $target')), style: TextStyle(color: c)),
       if (streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
       if (linked != null) TextSpan(text: ' · ${linked.name}'),
     ];
