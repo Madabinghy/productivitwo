@@ -44,6 +44,11 @@ class WeekHours {
   int get trackedMin => activeMin + leisureMin + basicMin + sleepMin;
   int get untrackedMin => (kWeekHoursMin - trackedMin).clamp(0, kWeekHoursMin);
   int get deltaMin => activeMin - prevActiveMin;
+  /// Les heures actives demain à la même heure si rien n'est fait d'ici là : les 24 premières heures de la fenêtre
+  /// sont sorties. C'est là que se pose l'aiguille quand aucun chrono ne tourne (maquette validée 2026-11-19).
+  int get tomorrowActiveMin => (activeMin - leavingMin).clamp(0, activeMin);
+  /// La part du vert qui reste demain (0 = tout sort, 1 = rien ne sort) : la position de l'aiguille dans le vert.
+  double get tomorrowShare => activeMin <= 0 ? 1 : tomorrowActiveMin / activeMin;
   /// Moyenne d'heures actives par jour sur la fenêtre.
   double get perDayMin => activeMin / 7;
   /// Le jour le plus actif de la fenêtre (index dans [days]), -1 si rien.
@@ -59,6 +64,17 @@ class WeekHours {
 /// « 30 min » sous une heure, « 3 h » au-delà (arrondi à l'heure) : une petite
 /// durée ne s'affiche jamais « 0 h » ni « 1 h ».
 String spanLabel(int min) => min <= 0 ? '0 h' : (min < 60 ? '$min min' : '${(min / 60).round()} h');
+
+/// Une durée à la minute : « 45 min », « 12 h », « 12 h 27 ».
+String spanExact(int min) {
+  if (min < 60) return '${min < 0 ? 0 : min} min';
+  final m = min % 60;
+  return m == 0 ? '${min ~/ 60} h' : '${min ~/ 60} h ${m.toString().padLeft(2, '0')}';
+}
+
+/// « 55 h · −12 h 27 » : où sera le vert demain à la même heure si rien n'est fait, et ce qui sort d'ici là.
+String hoursTomorrowLabel(WeekHours h) =>
+    h.leavingMin > 0 ? '${spanLabel(h.tomorrowActiveMin)} · −${spanExact(h.leavingMin)}' : '${spanLabel(h.activeMin)} · rien ne sort';
 
 /// Les morceaux du compteur en part du cadran : actif · détente · besoins de
 /// base · sommeil · libre. Un morceau non nul n'est jamais dessiné plus petit

@@ -206,6 +206,26 @@ void main() {
     expect(wrap.children.map((w) => (w.key as ValueKey).value), ['week-hours-basic', 'week-hours-sleep', 'week-hours-leisure', 'week-hours-free']);
   });
 
+  testWidgets('carte des 7 jours : sans chrono, une ligne dit où sera le vert demain si rien', (tester) async {
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
+    const idle = WeekHours(activeMin: 4075, basicMin: 465, sleepMin: 2912, leisureMin: 22, prevActiveMin: 3360, leavingMin: 747, dayActive: [], days: []);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: idle)))));
+    Text inLine(String key) => tester.widgetList<Text>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Text))).last;
+    expect(find.descendant(of: find.byKey(const ValueKey('week-hours-tomorrow')), matching: find.text('Demain si rien')), findsOneWidget);
+    expect(inLine('week-hours-tomorrow').data, '55 h · −12 h 27');
+    expect(inLine('week-hours-tomorrow').style?.color, kHoursLoss);
+    expect(tester.takeException(), isNull);
+    // Rien ne sort : en vert.
+    const keep = WeekHours(activeMin: 600, basicMin: 0, sleepMin: 0, prevActiveMin: 0, leavingMin: 0, dayActive: [], days: []);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: keep)))));
+    expect(inLine('week-hours-tomorrow').data, '10 h · rien ne sort');
+    expect(inLine('week-hours-tomorrow').style?.color, kHoursActive);
+    // Un chrono tourne : l'aiguille le suit, la ligne disparaît.
+    const running = WeekHours(activeMin: 600, basicMin: 0, sleepMin: 0, prevActiveMin: 0, leavingMin: 120, dayActive: [], days: [], nowKind: HoursKind.active, nowName: 'Coder');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: running)))));
+    expect(find.byKey(const ValueKey('week-hours-tomorrow')), findsNothing);
+  });
+
   testWidgets('carte des 7 jours : deux lignes disent l\'aiguille (maintenant) et le triangle (il y a 7 jours)', (tester) async {
     final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
     const h = WeekHours(
