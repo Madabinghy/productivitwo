@@ -1903,6 +1903,11 @@ sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle garde le mil
 chrono seulement, sur la carte et la feuille : « Demain si rien · ↘ 55 h · −12 h 27 » (`HoursTomorrowLine`, `hoursTomorrowLabel`,
 `spanExact` ; `week-hours-tomorrow`, `week-hours-sheet-tomorrow` ; ambre `kHoursLoss`, vert « rien ne sort ») ; infobulle de la tuile et
 paragraphe de lecture mis à jour ; les tirets du temps libre ne s'éclairent plus.
+**Tableau de bord tout en haut d'Aujourd'hui** (2026-11-19, essai demandé par l'user : « dès qu'on change de page, on voit tout de
+suite où on en est sur la jauge et le réalisé ») : sur mobile, « TON TABLEAU DE BORD » (`_parallelSection`, `today_view.dart`) est posé
+juste sous l'en-tête, AVANT les cartes passagères (Recharge, session en cours, envie, bilan de saison, revue, proposition de module),
+« Ta journée » / « Ce soir », MAINTENANT et la zone coach — il était sous MAINTENANT depuis le 2026-11-06. Revenir en arrière =
+remettre l'appel après `NowCoachZone`.
 **La jauge dans Aujourd'hui** (2026-11-19, demande user : « un mini widget avec juste la jauge ») : tuile carrée de 104 px à droite de
 PROGRAMME dans TON TABLEAU DE BORD (`DashboardTiles.hoursTile`, mobile ; `WeekHoursTile`, `week_hours_card.dart`, `hours-tile`) — la jauge
 seule, sans texte (le détail en infobulle et pour la lecture d'écran), tap = `showWeekHoursSheet`. Module Analyse, pas sur Demain.
