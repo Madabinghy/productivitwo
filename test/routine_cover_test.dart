@@ -113,6 +113,50 @@ void main() {
     });
   });
 
+  group('jauge du jour', () {
+    test('semaine régulière : une case par jour, au prix de la cible', () {
+      final c = routineCover(pompes(), hits([10, 10, 10, 10, 10, 10, 4]), now);
+      expect(c.thresholds.take(4), [10, 20, 30, 40]);
+      final slots = coverSlots(c);
+      expect([for (final s in slots) s.cost], [10, 10, 10, 10]);
+      expect(slots.first.fill, closeTo(.4, 1e-9));
+      expect(slots.first.left, 6);
+      expect(slots[1].fill, 0);
+      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'demain', 'sam.', 'dim.']);
+    });
+
+    test('les coches en plus remplissent le jour suivant', () {
+      final slots = coverSlots(routineCover(pompes(), hits([10, 10, 10, 10, 10, 10, 25]), now));
+      expect(slots[0].full, isTrue);
+      expect(slots[1].full, isTrue);
+      expect(slots[2].fill, closeTo(.5, 1e-9));
+      expect(slots[2].left, 5);
+      expect(slots[3].full, isFalse);
+    });
+
+    test('semaine à trous : demain coûte plus cher, deux jours au même prix fusionnent', () {
+      final c = routineCover(pompes(), hits([10, 0, 10, 0, 10, 10, 0]), now);
+      final slots = coverSlots(c);
+      expect([for (final s in slots) s.cost], [10, 30, 10]);
+      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'dem. + sam.', 'dim.']);
+    });
+
+    test('avance d\'hier : ce soir et demain déjà acquis', () {
+      final c = routineCover(pompes(), hits([10, 10, 10, 10, 10, 30, 0]), now);
+      final slots = coverSlots(c);
+      expect(slots.first.cost, 0);
+      expect(slots.first.full, isTrue);
+      expect(coverSlotLabel(c.today, slots.first), 'ce soir + dem.');
+      expect([for (final s in slots.skip(1)) s.cost], [10, 10]);
+    });
+
+    test('trois jours au même prix : « dem. → dim. »', () {
+      final c = routineCover(pompes(), hits([10, 0, 0, 0, 10, 10, 0]), now);
+      final slots = coverSlots(c);
+      expect(coverSlotLabel(c.today, slots[1]), 'dem. → dim.');
+    });
+  });
+
   group('jours tenus', () {
     test('l\'avance tient les jours sans coche, puis s\'épuise', () {
       // 6 jours à 10, puis 30, puis trois jours sans rien (jusqu'à aujourd'hui).
