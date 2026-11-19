@@ -819,8 +819,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
             ],
 
-            // Rythme (2026-11-19) : chaque jour, ou sur 7 jours glissants — ce
-            // qui est fait en plus couvre alors les jours suivants.
+            // Rythme (2026-11-19) : chaque jour · rattrapable (un jour raté se rattrape dans les 7 jours,
+            // sans avance) · sur 7 jours (rattrapage et avance).
             if (act.habitFreq == HabitFreq.daily) ...[
               const SizedBox(height: 14),
               Text('Rythme',
@@ -831,8 +831,10 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               const SizedBox(height: 4),
               Text(
                   act.rolling
-                      ? 'Ce que tu fais en plus te couvre les jours suivants, 7 jours au plus. Un jour sans avance demande la cible normale.'
-                      : 'La cible se refait chaque jour : ce que tu fais en plus ne compte pas demain.',
+                      ? 'Ce que tu fais en plus rattrape d\'abord un jour raté, puis te couvre les jours suivants, 7 jours au plus.'
+                      : act.catchUp
+                          ? 'Un jour raté se rattrape dans les 7 jours en faisant plus un autre jour : la série recolle. Pas d\'avance sur demain.'
+                          : 'La cible se refait chaque jour : un jour raté reste raté, ce que tu fais en plus ne compte pas demain.',
                   key: const ValueKey('routine-rhythm-hint'),
                   style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
               const SizedBox(height: 8),
@@ -840,14 +842,20 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ChoiceChip(
                   key: const ValueKey('routine-rhythm-daily'),
                   label: const Text('Chaque jour'),
-                  selected: !act.rolling,
-                  onSelected: (_) => _setRolling(false),
+                  selected: !act.rolling && !act.catchUp,
+                  onSelected: (_) => _setRhythm(rolling: false, catchUp: false),
+                ),
+                ChoiceChip(
+                  key: const ValueKey('routine-rhythm-catchup'),
+                  label: const Text('Rattrapable'),
+                  selected: !act.rolling && act.catchUp,
+                  onSelected: (_) => _setRhythm(rolling: false, catchUp: true),
                 ),
                 ChoiceChip(
                   key: const ValueKey('routine-rhythm-rolling'),
                   label: const Text('Sur 7 jours'),
                   selected: act.rolling,
-                  onSelected: (_) => _setRolling(true),
+                  onSelected: (_) => _setRhythm(rolling: true, catchUp: false),
                 ),
               ]),
             ],
@@ -918,9 +926,10 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     );
   }
 
-  void _setRolling(bool v) {
-    if (act.rolling == v) return;
-    act.rolling = v;
+  void _setRhythm({required bool rolling, required bool catchUp}) {
+    if (act.rolling == rolling && act.catchUp == catchUp) return;
+    act.rolling = rolling;
+    act.catchUp = catchUp;
     _applySetting();
   }
 
