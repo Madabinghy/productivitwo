@@ -786,6 +786,39 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
             ],
 
+            // Rythme (2026-11-19) : chaque jour, ou sur 7 jours glissants — ce
+            // qui est fait en plus couvre alors les jours suivants.
+            if (act.habitFreq == HabitFreq.daily) ...[
+              const SizedBox(height: 14),
+              Text('Rythme',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withOpacity(.75),
+                  )),
+              const SizedBox(height: 4),
+              Text(
+                  act.rolling
+                      ? 'Ce que tu fais en plus te couvre les jours suivants, 7 jours au plus. Un jour sans avance demande la cible normale.'
+                      : 'La cible se refait chaque jour : ce que tu fais en plus ne compte pas demain.',
+                  key: const ValueKey('routine-rhythm-hint'),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                ChoiceChip(
+                  key: const ValueKey('routine-rhythm-daily'),
+                  label: const Text('Chaque jour'),
+                  selected: !act.rolling,
+                  onSelected: (_) => _setRolling(false),
+                ),
+                ChoiceChip(
+                  key: const ValueKey('routine-rhythm-rolling'),
+                  label: const Text('Sur 7 jours'),
+                  selected: act.rolling,
+                  onSelected: (_) => _setRolling(true),
+                ),
+              ]),
+            ],
+
             // Moments (2026-10-30, fusion « Contexte horaire » + « Répartir ») :
             // un moment = la fenêtre naturelle de la routine ; plusieurs (routine
             // quotidienne) = la cible du jour se partage entre eux. Auto,
@@ -850,6 +883,12 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
         ),
       ),
     );
+  }
+
+  void _setRolling(bool v) {
+    if (act.rolling == v) return;
+    act.rolling = v;
+    _applySetting();
   }
 
   void _setMoments(String? timeContext, List<String> split) {

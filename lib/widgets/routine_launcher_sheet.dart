@@ -324,7 +324,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
       TextSpan(
           text: done
-              ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}'
+              ? (t.cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${t.cover!.heldLabel}')
               : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
           style: TextStyle(color: dc)),
       if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)

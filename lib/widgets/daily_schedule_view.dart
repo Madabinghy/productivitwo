@@ -390,7 +390,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     var routinesLeft = 0;
     for (final a in widget.logic.state.activeActivities) {
       if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
-      if (routineTodayCount(widget.logic, a) < (a.habitTarget ?? 1).clamp(1, 999)) routinesLeft++;
+      if (routineTodayCount(widget.logic, a) < widget.logic.routineAskedToday(a)) routinesLeft++;
     }
     String? capLine;
     final sch = _schedule;

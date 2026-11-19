@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/hard_days.dart' show hardDaysUpTo;
 import 'package:productivitwo_v1/utils/minimum.dart';
@@ -304,7 +305,12 @@ class RoutineSeries {
 
 /// Jours vécus où la routine QUOTIDIENNE `a` a atteint sa cible
 /// (`habitTarget`, 1 au moins). Les hits nocturnes suivent la journée vécue.
-Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin = kDefaultDayStartMin}) {
+///
+/// Routine « sur 7 jours » (`Activity.rolling`, 2026-11-19) : les jours TENUS,
+/// y compris ceux que l'avance couvre sans coche (`rollingHeldDays`), jusqu'à
+/// [now] (maintenant par défaut).
+Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin = kDefaultDayStartMin, DateTime? now}) {
+  if (isRollingRoutine(a)) return rollingHeldDays(a, hits, now ?? DateTime.now(), dayStartMin: dayStartMin);
   final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
   final counts = <String, int>{};
   for (final h in hits) {
@@ -320,7 +326,7 @@ Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin
 /// du domaine : ni tenus ni manqués.
 RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now,
     {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}, Set<String> frozen = const {}}) {
-  final reachedOnly = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+  final reachedOnly = routineReachedDays(a, hits, dayStartMin: dayStartMin, now: now);
   final days = {...reachedOnly, ...bridged};
   final runs = _runsOf(days, skip: frozen);
   final longest = runs.fold(0, (m, r) => r.$2 > m ? r.$2 : m);
@@ -355,7 +361,7 @@ String? recordLine(int current, int longest) {
 BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now,
     {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}, Set<String> frozen = const {}}) {
   final s = routineSeries(a, hits, now, dayStartMin: dayStartMin, bridged: bridged, frozen: frozen);
-  final reached = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+  final reached = routineReachedDays(a, hits, dayStartMin: dayStartMin, now: now);
   final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
   final today = livedDate(now, dayStartMin);
   final cells = <TrackCell>[];
@@ -472,7 +478,7 @@ List<DayScore> scoreDays({
   final reached = <String, Set<String>>{};
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
-    reached[a.id] = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+    reached[a.id] = routineReachedDays(a, hits, dayStartMin: dayStartMin, now: now);
   }
   final byDate = {for (final s in schedules) s.date: s};
   final yesterday = livedDate(now, dayStartMin).subtract(const Duration(days: 1));
@@ -692,7 +698,7 @@ BadgeDeck computeBadges({
     perfectYmds: [for (final d in days) if (d.forgesEmber) d.ymd],
     heldWeekYmds: weeks.heldSundays,
     spends: emberSpends,
-    reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
+    reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin, now: now)},
     todayYmd: todayYmd,
   );
   final repriseEvents = <(String, RepriseEvent)>[];
@@ -700,7 +706,7 @@ BadgeDeck computeBadges({
   for (final a in routines) {
     final bridged = embers.bridged[a.id] ?? const <String>{};
     out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin, bridged: bridged, frozen: frozenOf(a)));
-    final r = reprisesOf({...routineReachedDays(a, habitHits, dayStartMin: dayStartMin), ...bridged}, frozenOf(a), todayYmd);
+    final r = reprisesOf({...routineReachedDays(a, habitHits, dayStartMin: dayStartMin, now: now), ...bridged}, frozenOf(a), todayYmd);
     for (final e in r.events) {
       repriseEvents.add((a.name, e));
     }
@@ -815,7 +821,7 @@ BadgeDeck computeBadges({
   final metro = metronomeDays(
     ymds: closedYmds,
     activities: activities,
-    reachedDaysByRoutine: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
+    reachedDaysByRoutine: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin, now: now)},
     frozenOf: frozenAllOf,
     acquired: acquired,
     excusedOf: excusedOf,
@@ -972,7 +978,7 @@ BadgeDeck computeBadges({
   ));
   // Luttes (2026-11-06, maquette « Journée difficile ») : Tenir bon = journées tenues au minimum, La remontée =
   // toutes les séries ravivées après une période au minimum. On récompense tenir et remonter, jamais l'entrée.
-  final held = minimumHeldDays(minimumPeriods, {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)}, todayYmd);
+  final held = minimumHeldDays(minimumPeriods, {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin, now: now)}, todayYmd);
   out.add(BadgeState(
     def: const BadgeDef(id: 'tenir-bon', family: BadgeFamily.struggles, name: 'Tenir bon', symbol: 'reed', tiers: kHoldOnTiers, unit: 'j', unitLong: 'journées tenues au minimum'),
     level: _levelOf(kHoldOnTiers, held.length),

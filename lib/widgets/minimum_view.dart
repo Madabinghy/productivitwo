@@ -26,7 +26,7 @@ List<Activity> minimumKept(AppLogic logic) {
   return [for (final a in _dailyRoutines(logic)) if (p.keep.contains(a.id)) a];
 }
 
-bool _reached(AppLogic logic, Activity a) => routineTodayCount(logic, a) >= (a.habitTarget ?? 1).clamp(1, 9999);
+bool _reached(AppLogic logic, Activity a) => routineTodayCount(logic, a) >= logic.routineAskedToday(a);
 
 /// La tuile du tableau de bord pendant la période : « AU MINIMUM · k / n », à la place de Journée parfaite.
 DashTile? minimumTile(AppLogic logic) {

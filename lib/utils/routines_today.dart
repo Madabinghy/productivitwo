@@ -1,6 +1,7 @@
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart';
 
 /// Routines du jour (onglet Aujourd'hui web, même règle que « Le meilleur à
 /// faire » du mobile, `best_to_do_card.dart`) : routines quotidiennes et
@@ -14,8 +15,12 @@ class RoutineToDo {
   final int weekTarget;
   final bool reached;
   final double score; // max(avancement du jour, avancement 7 j), 0..1
+  /// Routine « sur 7 jours » : son avance (null = routine « chaque jour » ou hebdo).
+  /// [dayTarget] est alors la part du jour, [reached] vrai aussi quand l'avance la couvre.
+  final RoutineCover? cover;
 
   const RoutineToDo({
+    this.cover,
     required this.activity,
     required this.dayDone,
     required this.dayTarget,
@@ -56,14 +61,21 @@ List<RoutineToDo> routinesForToday(
     var dayDone = 0;
     int? dayTarget;
     var dayRatio = 0.0;
+    RoutineCover? cover;
     if (a.habitFreq == HabitFreq.daily) {
       final t = a.habitTarget ?? 1;
       dayTarget = t <= 0 ? 1 : t;
       dayDone = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(midnight)).length;
+      // « Sur 7 jours » : la part du jour = ce que l'avance ne couvre pas.
+      if (isRollingRoutine(a)) {
+        cover = routineCover(a, hits, now, dayStartMin: dayStartMin);
+        if (cover.dayTarget > 0) dayTarget = cover.dayTarget;
+      }
       dayRatio = (dayDone / dayTarget).clamp(0.0, 1.0).toDouble();
     }
-    final reached = dayTarget != null ? dayDone >= dayTarget : week.done >= week.target;
+    final reached = cover != null ? cover.held : (dayTarget != null ? dayDone >= dayTarget : week.done >= week.target);
     out.add(RoutineToDo(
+      cover: cover,
       activity: a,
       dayDone: dayDone,
       dayTarget: dayTarget,

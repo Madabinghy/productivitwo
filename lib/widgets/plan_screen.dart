@@ -261,7 +261,7 @@ class _PlanScreenState extends State<PlanScreen> {
       final s = logic.habitCurrentStreak(a.id);
       if (s <= 0) continue;
       // Fin de journée : une routine déjà atteinte ne se joue plus.
-      if (!_tomorrow && routineTodayCount(logic, a) >= logic.effectiveHabitTarget(a).clamp(1, 999999)) continue;
+      if (!_tomorrow && (logic.routineCoverOf(a)?.held ?? routineTodayCount(logic, a) >= logic.effectiveHabitTarget(a).clamp(1, 999999))) continue;
       out.add(PlanStake(id: 'routine:${a.id}', kind: PlanStakeKind.losing, title: a.name, detail: 'série $s j'));
     }
     final facts = widget.badges?.todayFacts();
