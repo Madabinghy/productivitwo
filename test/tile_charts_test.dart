@@ -45,4 +45,17 @@ void main() {
     expect(rows2.single.behind, isTrue);
     expect(rows2.single.right, '3/4');
   });
+
+  test('packTiles : les demi-tuiles vont par deux, une pleine largeur attend que la rangée soit complète', () {
+    const h = false, w = true;
+    // L'écran du retour user : Business (demi), Organisation et Intendance (pleines), Chill (demi).
+    expect(packTiles([h, h, h, w, w, h]), [0, 1, 2, 5, 3, 4]);
+    // Rien à déplacer : rangées déjà complètes, ou que des pleines largeurs.
+    expect(packTiles([h, h, w, h, h]), [0, 1, 2, 3, 4]);
+    expect(packTiles([w, w]), [0, 1]);
+    expect(packTiles([]), isEmpty);
+    // Nombre impair de demi-tuiles : la dernière reste seule, les pleines largeurs passent après elle.
+    expect(packTiles([h, w, w]), [0, 1, 2]);
+    expect(packTiles([w, h, w, h, h]), [0, 1, 3, 2, 4]);
+  });
 }

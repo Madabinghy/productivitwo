@@ -389,7 +389,9 @@ class LifeViewState extends State<LifeView> {
         _section(mute, 'MES DOMAINES', right: 'appui long = nature'),
         LayoutBuilder(builder: (ctx, c) {
           final w = (c.maxWidth - 8) / 2;
-          return Wrap(spacing: 8, runSpacing: 8, children: [for (final (t, wide) in tiles) SizedBox(width: wide ? c.maxWidth : w, child: t)]);
+          // Les demi-tuiles vont par deux : une pleine largeur ne laisse pas de place vide à côté d'une demi-tuile.
+          final order = packTiles([for (final t in tiles) t.$2]);
+          return Wrap(spacing: 8, runSpacing: 8, children: [for (final i in order) SizedBox(width: tiles[i].$2 ? c.maxWidth : w, child: tiles[i].$1)]);
         }),
         if (logic.moduleOn(AppModule.freedom)) _freedomTile(cs, mute),
         if (orphan.isNotEmpty) ...[
