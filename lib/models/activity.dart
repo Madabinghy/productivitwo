@@ -100,6 +100,10 @@ class Activity {
   /// ce qui est fait en plus couvre les jours suivants. Faux = chaque jour.
   bool rolling;
 
+  /// Routine quotidienne « rattrapable » (2026-11-19, maquette validée « Routines rattrapables ») : un jour raté se
+  /// rattrape dans les 7 jours en faisant plus un autre jour, sans avance. « Sur 7 jours » ([rolling]) rattrape aussi.
+  bool catchUp;
+
   /// « 1 coche = n min » (2026-11-19) : minutes de chrono sur l'activité liée
   /// (`linkedActivityId`) qui valent une coche de la routine. Null = le chrono ne coche pas.
   int? minPerHit;
@@ -143,6 +147,7 @@ class Activity {
     List<String>? contexts,
     this.catalogId,
     this.rolling = false,
+    this.catchUp = false,
     this.minPerHit,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
@@ -191,6 +196,7 @@ class Activity {
         'contexts': contexts,
         if (catalogId != null) 'catalogId': catalogId,
         'rolling': rolling,
+        'catchUp': catchUp,
         'minPerHit': minPerHit,
       };
 
@@ -249,6 +255,7 @@ class Activity {
       contexts: (j['contexts'] as List?)?.cast<String>(),
       catalogId: j['catalogId'] as String?,
       rolling: j['rolling'] as bool? ?? false,
+      catchUp: j['catchUp'] as bool? ?? false,
       minPerHit: (j['minPerHit'] as num?)?.toInt(),
     )..docKeys = {for (final k in j.keys) k.toString()};
   }
@@ -305,6 +312,7 @@ class Activity {
       linkedActivityId: linkedActivityId ?? null,
       catalogId: catalogId,
       rolling: rolling,
+      catchUp: catchUp,
       minPerHit: minPerHit,
     );
   }

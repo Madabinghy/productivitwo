@@ -390,12 +390,12 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now,
       ('Série la plus longue', _plural(s.longest, 'jour', 'jours')),
       if (s.longest > s.current && s.current > 0) ('Pour égaler le record', _plural(s.longest - s.current, 'jour', 'jours')),
       if (s.sinceDays > 0) ('Jours atteints sur ${s.sinceDays}', '${s.reachedDays}'),
-      if (bridged.isNotEmpty) ('Jours rallumés', '${bridged.length}'),
+      if (bridged.isNotEmpty) ('Jours rattrapés', '${bridged.length}'),
       if (frozen.isNotEmpty) ('Jours gelés (veille)', '${frozen.length}'),
     ],
     track: BadgeTrack(
         cells: cells,
-        caption: '30 derniers jours · $hits30 jours atteints${bridged30 > 0 ? ' · $bridged30 rallumé${bridged30 > 1 ? 's' : ''}' : ''}${frozen30 > 0 ? ' · $frozen30 gelé${frozen30 > 1 ? 's' : ''}' : ''}'),
+        caption: '30 derniers jours · $hits30 jours atteints${bridged30 > 0 ? ' · $bridged30 rattrapé${bridged30 > 1 ? 's' : ''}' : ''}${frozen30 > 0 ? ' · $frozen30 gelé${frozen30 > 1 ? 's' : ''}' : ''}'),
   );
 }
 
@@ -704,7 +704,11 @@ BadgeDeck computeBadges({
   final repriseEvents = <(String, RepriseEvent)>[];
   final reprisesNow = <String, RepriseNow>{};
   for (final a in routines) {
-    final bridged = embers.bridged[a.id] ?? const <String>{};
+    // Jours comblés : anciens rallumages, et jours RATTRAPÉS d'une routine rattrapable (série seulement).
+    final bridged = {
+      ...?embers.bridged[a.id],
+      ...catchUpOf(a, habitHits, now, dayStartMin: dayStartMin, frozen: frozenOf(a)).repaired,
+    };
     out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin, bridged: bridged, frozen: frozenOf(a)));
     final r = reprisesOf({...routineReachedDays(a, habitHits, dayStartMin: dayStartMin, now: now), ...bridged}, frozenOf(a), todayYmd);
     for (final e in r.events) {

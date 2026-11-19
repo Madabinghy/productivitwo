@@ -2348,6 +2348,23 @@ qu'elle ne connaît pas. `Activity.from` retient les champs du document lu (`doc
 présent gagne toujours, même à faux. Le push qui suit le remet sur le serveur. Limites : seulement les activités (pas les domaines) ;
 un réglage posé par Claude pendant que l'app tourne n'arrive qu'au prochain lancement.
 
+**Routines rattrapables** (2026-11-19, maquette validée « Routines rattrapables », lot 1 : rythme + rattrapage + lanceur) : TROIS
+rythmes pour une routine quotidienne (fiche routine, section Rythme : `routine-rhythm-daily` · `routine-rhythm-catchup` ·
+`routine-rhythm-rolling`) — **Chaque jour** (raté = raté) · **Rattrapable** (`Activity.catchUp`, nouveau : un jour raté se rattrape dans
+les 7 jours, PAS d'avance — vaisselle, rangement) · **Sur 7 jours** (`rolling` : rattrapage ET avance). Logique pure
+`utils/routine_cover.dart` : `isCatchUpRoutine` (catchUp ou rolling), `catchUpOf(a, hits, now, frozen:)` → `CatchUp {repaired, open}` —
+on rejoue les jours : ce qu'un jour fait EN PLUS de ce qu'il demande comble les jours ratés des 6 jours d'avant, le plus récent d'abord
+(déficit partiel possible) ; un jour gelé n'est jamais un trou ; passé 7 jours, le trou ne se rattrape plus. **Un jour rattrapé recolle
+la SÉRIE seulement** (décision user) : il passe par le canal `bridged` (`AppLogic.bridgedOf` = anciens rallumages ∪ `repairedOf`,
+`computeBadges`, `habitStreakInfo` / `habitStreakEndingOn`, `lostSeriesYesterday`) — jamais par `routineReachedDays`, donc ni Journée
+parfaite ni Métronome après coup ; la fiche dit « Jours rattrapés ». `RoutineCover` vaut aussi pour « Rattrapable » (`advance: false`,
+part du jour = la cible, jamais d'avance) et porte `holes`, `holeThresholds`, `holesLeft`, `canCatchUp`, `toNextHole`, `nextHole` ;
+`AppLogic.routineCoverOf` la renvoie pour les deux rythmes. Jauge du jour (`coverSlots`, `CoverSlot.hole`) : ce soir, puis les jours à
+rattraper en AMBRE (3 au plus, étiquette datée « hier », « lun. 16 » pour ne pas se confondre avec un jour à venir), puis l'avance en
+vert (« Sur 7 jours » seulement). Lanceur de routines, Focus : section **À RATTRAPER** (`launcher-catching`, entre À faire et Prendre de
+l'avance : tenue ce soir, un jour raté attend ; « encore 1 = hier rattrapé », en minutes quand le chrono coche : « encore 10 min = hier
+rattrapé ») ; le rattrapage passe avant l'avance. Reste : la durée unique de la fiche (lot 2), le côté Claude (lot 3).
+
 **Durée réglée = minuteur, pas ▶** (2026-11-19, retour user sur la feuille Journée parfaite) : sur la ligne d'une routine, le lanceur
 unique suit cet ordre — Planifier 🧭 · ■ si le chrono de l'activité liée tourne · **⏱ minuteur à la durée réglée (`timerMin`)**, même avec
 une activité liée (il démarre l'activité liée ET le décompte, `_startRoutineTimer`) · ▶ chrono de l'activité liée seulement sans durée

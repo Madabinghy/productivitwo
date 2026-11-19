@@ -67,7 +67,8 @@ List<RoutineToDo> routinesForToday(
       dayTarget = t <= 0 ? 1 : t;
       dayDone = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(midnight)).length;
       // « Sur 7 jours » : la part du jour = ce que l'avance ne couvre pas.
-      if (isRollingRoutine(a)) {
+      // « Rattrapable » : la cible du jour ne change pas, la jauge porte les jours à rattraper.
+      if (isCatchUpRoutine(a)) {
         cover = routineCover(a, hits, now, dayStartMin: dayStartMin);
         if (cover.dayTarget > 0) dayTarget = cover.dayTarget;
       }

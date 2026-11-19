@@ -18,6 +18,10 @@ int routineDayTargetOf(Activity a) {
 
 bool isRollingRoutine(Activity a) => a.isHabit && a.habitFreq == HabitFreq.daily && a.rolling;
 
+/// Un jour raté se rattrape (2026-11-19, maquette validée « Routines rattrapables ») : rythme « Rattrapable »
+/// (`catchUp`, sans avance) ou « Sur 7 jours » (`rolling`, rattrapage et avance).
+bool isCatchUpRoutine(Activity a) => a.isHabit && a.habitFreq == HabitFreq.daily && (a.catchUp || a.rolling);
+
 /// Ce qu'un jour demande d'après les 6 jours d'avant : l'avance le réduit
 /// (jusqu'à zéro), le retard ne l'augmente pas.
 int rollingDayTarget(int target, int pastSum) {
@@ -39,7 +43,68 @@ Map<String, int> routineDayCounts(Activity a, List<HabitHit> hits, {int dayStart
   return counts;
 }
 
-/// Où en est une routine « sur 7 jours » aujourd'hui.
+/// Un jour raté encore rattrapable : ce qu'il lui manque.
+class CatchUpHole {
+  final DateTime day;
+  final int deficit;
+  const CatchUpHole(this.day, this.deficit);
+}
+
+/// Le rattrapage d'une routine : les jours déjà rattrapés, et ceux qui attendent encore AVANT aujourd'hui
+/// (du plus récent au plus ancien, 6 jours au plus).
+class CatchUp {
+  final Set<String> repaired;
+  final List<CatchUpHole> open;
+  const CatchUp({this.repaired = const {}, this.open = const []});
+  static const none = CatchUp();
+}
+
+/// Rejoue les jours d'une routine rattrapable : ce qu'un jour fait EN PLUS de ce qu'il demande comble les jours
+/// ratés des 6 jours d'avant, le plus récent d'abord. Un jour comblé est « rattrapé » : il recolle la série, sans
+/// devenir une journée parfaite après coup. [frozen] = jours gelés, qui ne sont jamais des trous.
+CatchUp catchUpOf(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> frozen = const {}}) {
+  if (!isCatchUpRoutine(a)) return CatchUp.none;
+  final t = routineDayTargetOf(a);
+  final counts = routineDayCounts(a, hits, dayStartMin: dayStartMin);
+  if (counts.isEmpty) return CatchUp.none;
+  final first = DateTime.parse((counts.keys.toList()..sort()).first);
+  final today = _d(livedDate(now, dayStartMin));
+  final repaired = <String>{};
+  var holes = <CatchUpHole>[]; // du plus ancien au plus récent
+  var openBefore = const <CatchUpHole>[];
+  final window = <int>[];
+  var past = 0;
+  for (var d = first; !d.isAfter(today); d = DateTime(d.year, d.month, d.day + 1)) {
+    final limit = DateTime(d.year, d.month, d.day - (kRoutineWindowDays - 1));
+    holes = [for (final h in holes) if (!h.day.isBefore(limit)) h];
+    if (d == today) openBefore = holes.reversed.toList();
+    final k = ymdOf(d);
+    final c = counts[k] ?? 0;
+    final need = a.rolling ? rollingDayTarget(t, past) : t;
+    if (c > need) {
+      var extra = c - need;
+      for (var i = holes.length - 1; i >= 0 && extra > 0; i--) {
+        final h = holes[i];
+        final take = extra < h.deficit ? extra : h.deficit;
+        extra -= take;
+        if (take == h.deficit) {
+          repaired.add(ymdOf(h.day));
+          holes.removeAt(i);
+        } else {
+          holes[i] = CatchUpHole(h.day, h.deficit - take);
+        }
+      }
+    } else if (c < need && d != today && !frozen.contains(k)) {
+      holes.add(CatchUpHole(d, need - c));
+    }
+    window.add(c);
+    past += c;
+    if (window.length > kRoutineWindowDays - 1) past -= window.removeAt(0);
+  }
+  return CatchUp(repaired: repaired, open: openBefore);
+}
+
+/// Où en est une routine « sur 7 jours » ou « rattrapable » aujourd'hui.
 class RoutineCover {
   /// Cible par jour.
   final int target;
@@ -61,7 +126,13 @@ class RoutineCover {
   final List<int> thresholds;
   /// La journée vécue du calcul.
   final DateTime today;
+  /// « Sur 7 jours » : ce qui est fait en plus couvre les jours suivants. Faux = « Rattrapable », sans avance.
+  final bool advance;
+  /// Jours ratés encore rattrapables, du plus récent au plus ancien (avant les coches d'aujourd'hui).
+  final List<CatchUpHole> holes;
   const RoutineCover({
+    this.advance = true,
+    this.holes = const [],
     required this.today,
     required this.target,
     required this.todayDone,
@@ -82,7 +153,29 @@ class RoutineCover {
   int get windowTarget => kRoutineWindowDays * target;
   /// Tenue ce soir, mais demain demandera quelque chose : c'est là qu'on
   /// peut prendre de l'avance.
-  bool get canGetAhead => held && aheadDays == 0 && tomorrowTarget > 0;
+  bool get canGetAhead => advance && held && aheadDays == 0 && tomorrowTarget > 0;
+
+  /// Coches d'aujourd'hui où chaque jour raté est rattrapé : après la part du jour, le plus récent d'abord.
+  List<int> get holeThresholds {
+    var at = dayTarget;
+    return [for (final h in holes) at += h.deficit];
+  }
+
+  /// Jours ratés que les coches d'aujourd'hui ont déjà rattrapés, et ceux qui attendent encore.
+  int get holesFilled => holeThresholds.where((t) => todayDone >= t).length;
+  int get holesLeft => holes.length - holesFilled;
+  /// Tenue ce soir, et un jour raté peut encore se rattraper.
+  bool get canCatchUp => held && holesLeft > 0;
+  /// Coches à faire encore pour rattraper le prochain jour raté (0 = rien à rattraper).
+  int get toNextHole {
+    for (final t in holeThresholds) {
+      if (todayDone < t) return t - todayDone;
+    }
+    return 0;
+  }
+
+  /// Le prochain jour raté à rattraper, null s'il n'y en a plus.
+  CatchUpHole? get nextHole => holesLeft > 0 ? holes[holesFilled] : null;
 
   /// Ce que l'avance tient : « couverte jusqu'à samedi », « couverte par ton
   /// avance » (aujourd'hui seulement) ; null si la journée n'est pas tenue ou
@@ -96,8 +189,20 @@ class RoutineCover {
 }
 
 /// [now] = l'instant ; « aujourd'hui » est la journée vécue.
-RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
+RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> frozen = const {}}) {
   final t = routineDayTargetOf(a);
+  final holes = catchUpOf(a, hits, now, dayStartMin: dayStartMin, frozen: frozen).open;
+  if (!a.rolling) {
+    // « Rattrapable » : chaque jour demande sa cible, rien ne couvre demain.
+    final today = _d(livedDate(now, dayStartMin));
+    final counts = routineDayCounts(a, hits, dayStartMin: dayStartMin);
+    var past = 0;
+    for (var i = 1; i < kRoutineWindowDays; i++) {
+      past += counts[ymdOf(DateTime(today.year, today.month, today.day - i))] ?? 0;
+    }
+    return RoutineCover(
+        advance: false, holes: holes, today: today, target: t, todayDone: counts[ymdOf(today)] ?? 0, pastDone: past, dayTarget: t, aheadDays: 0, tomorrowTarget: t, toFreeTomorrow: 0, thresholds: [t]);
+  }
   final counts = routineDayCounts(a, hits, dayStartMin: dayStartMin);
   final today = _d(livedDate(now, dayStartMin));
   int on(int back) => counts[ymdOf(today.subtract(Duration(days: back)))] ?? 0;
@@ -126,7 +231,7 @@ RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int da
       future.add(0);
     }
   }
-  return RoutineCover(today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow, toFreeTomorrow: missing > 0 ? missing : 0, thresholds: thresholds);
+  return RoutineCover(holes: holes, today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow, toFreeTomorrow: missing > 0 ? missing : 0, thresholds: thresholds);
 }
 
 /// Une case de la jauge du jour (2026-11-19, maquette validée « Jauge des
@@ -141,7 +246,9 @@ class CoverSlot {
   final int lo;
   final int hi;
   final int done;
-  const CoverSlot({required this.from, required this.to, required this.lo, required this.hi, required this.done});
+  /// Case d'un jour RATÉ à rattraper (le jour en question) ; null = ce soir ou un jour à venir.
+  final DateTime? hole;
+  const CoverSlot({required this.from, required this.to, required this.lo, required this.hi, required this.done, this.hole});
 
   /// Prix de la case ; 0 = déjà acquise par l'avance des jours passés.
   int get cost => hi - lo;
@@ -151,26 +258,47 @@ class CoverSlot {
   int get left => full ? 0 : hi - (done > lo ? done : lo);
 }
 
-/// Les cases de la jauge : ce soir et les [days] − 1 jours suivants.
+/// Les cases de la jauge : ce soir, puis les jours ratés à rattraper (le plus récent d'abord, 3 au plus), puis
+/// les jours à venir que l'avance achète (« Sur 7 jours » seulement) — [days] cases de jours à venir au plus.
 List<CoverSlot> coverSlots(RoutineCover c, {int days = 4}) {
-  final out = <CoverSlot>[];
-  final n = days > c.thresholds.length ? c.thresholds.length : days;
-  for (var k = 0; k < n; k++) {
-    final lo = k == 0 ? 0 : c.thresholds[k - 1];
-    final hi = c.thresholds[k];
-    if (hi == lo && out.isNotEmpty) {
-      final p = out.removeLast();
-      out.add(CoverSlot(from: p.from, to: k, lo: p.lo, hi: p.hi, done: c.todayDone));
+  final out = <CoverSlot>[CoverSlot(from: 0, to: 0, lo: 0, hi: c.thresholds[0], done: c.todayDone)];
+  var at = c.thresholds[0];
+  final ht = c.holeThresholds;
+  final nh = ht.length > 3 ? 3 : ht.length;
+  for (var i = 0; i < nh; i++) {
+    out.add(CoverSlot(from: 0, to: 0, lo: at, hi: ht[i], done: c.todayDone, hole: c.holes[i].day));
+    at = ht[i];
+  }
+  if (!c.advance) return out;
+  final room = days - nh < 2 ? 2 : days - nh;
+  final n = room > c.thresholds.length ? c.thresholds.length : room;
+  for (var k = 1; k < n; k++) {
+    // Un jour à venir ne coûte jamais moins que ce qui le précède dans la jauge.
+    final hi = c.thresholds[k] > at ? c.thresholds[k] : at;
+    final p = out.last;
+    if (hi == at && p.hole == null) {
+      out[out.length - 1] = CoverSlot(from: p.from, to: k, lo: p.lo, hi: p.hi, done: c.todayDone);
       continue;
     }
-    out.add(CoverSlot(from: k, to: k, lo: lo, hi: hi, done: c.todayDone));
+    out.add(CoverSlot(from: k, to: k, lo: at, hi: hi, done: c.todayDone));
+    at = hi;
   }
   return out;
 }
 
-/// « ce soir », « demain », « sam. » ; plusieurs jours : « dem. + sam. », « dem. → lun. ».
+/// « mercredi », « hier » : le jour raté qu'on rattrape, en toutes lettres.
+String holeDayLabel(DateTime today, DateTime day) {
+  const names = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+  return DateTime(today.year, today.month, today.day - 1) == day ? 'hier' : names[day.weekday - 1];
+}
+
+/// « ce soir », « demain », « sam. » ; un jour à rattraper : « hier », « mer. 18 » ; plusieurs jours : « dem. + sam. », « dem. → lun. ».
 String coverSlotLabel(DateTime today, CoverSlot s) {
   const names = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+  // Un jour passé qu'on rattrape porte sa date : jamais confondu avec le même jour de la semaine à venir.
+  if (s.hole case final h?) {
+    return DateTime(today.year, today.month, today.day - 1) == h ? 'hier' : '${names[h.weekday - 1]} ${h.day}';
+  }
   String day(int k, {bool short = false}) {
     if (k == 0) return 'ce soir';
     if (k == 1) return short ? 'dem.' : 'demain';
