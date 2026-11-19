@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/utils/week_hours.dart';
+import 'package:productivitwo_v1/widgets/week_hours_card.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/mode_glyph.dart';
@@ -136,6 +139,39 @@ void main() {
     expect(find.text('RECUL'), findsNothing);
     await t.tap(find.text('JOURNÉE PARFAITE'));
     expect(opened, 'perfect');
+  });
+
+  testWidgets('tuile de la jauge : carrée, à droite de Programme, la jauge seule ; tap = la feuille des 7 jours', (t) async {
+    t.view.physicalSize = const Size(800, 3200);
+    t.view.devicePixelRatio = 2;
+    addTearDown(t.view.reset);
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
+    const h = WeekHours(
+        activeMin: 62 * 60, basicMin: 120, sleepMin: 52 * 60, leisureMin: 5 * 60, prevActiveMin: 0, leavingMin: 0, dayActive: [], days: [],
+        nowKind: HoursKind.leisure, nowName: 'Jeux vidéo', pastKind: HoursKind.active, pastName: 'Coder');
+    await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: DashboardTiles(
+      program: const ProgramTile(value: 'Rien de prévu', sub: 'touche pour voir le programme', strip: []),
+      perfect: const DashTile(label: 'JOURNÉE PARFAITE', value: 'Il manque 3', sub: 'routines'),
+      perfectWide: true,
+      hoursTile: WeekHoursTile(logic: logic, hours: h),
+    )))));
+    await t.pump();
+    final tile = find.byKey(const Key('hours-tile'));
+    expect(t.getSize(tile).width, 104);
+    expect(t.getSize(tile).height, greaterThanOrEqualTo(104));
+    expect(t.getTopLeft(tile).dx, greaterThan(t.getTopLeft(find.text('PROGRAMME')).dx));
+    expect(t.getTopLeft(tile).dy, lessThan(t.getTopLeft(find.text('JOURNÉE PARFAITE')).dy));
+    // Juste la jauge : aucun texte dans la tuile, le détail est en infobulle.
+    expect(find.descendant(of: tile, matching: find.byType(Text)), findsNothing);
+    expect(find.descendant(of: tile, matching: find.byType(WeekHoursGauge)), findsOneWidget);
+    expect(find.byTooltip('Tes 7 derniers jours · 62 h actives · maintenant : Détente · Jeux vidéo · il y a 7 jours : Actif · Coder'), findsOneWidget);
+    await t.tap(tile);
+    await t.pumpAndSettle();
+    expect(find.text('Tes 7 derniers jours'), findsOneWidget);
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('tuile du mode : carrée, à droite de Journée parfaite, icône seule', (t) async {

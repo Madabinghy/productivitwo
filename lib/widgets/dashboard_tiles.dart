@@ -21,6 +21,8 @@ class DashboardTiles extends StatelessWidget {
   final bool perfectWide;
   /// Le mode du moment en tuile carrée, à droite de Journée parfaite (mobile, 2026-11-03).
   final Widget? modeTile;
+  /// La jauge des 7 jours, seule, en tuile carrée à droite de Programme (mobile).
+  final Widget? hoursTile;
   final DashTile? actions;
   final DashTile? projects;
   final VoidCallback? onProgram;
@@ -53,6 +55,7 @@ class DashboardTiles extends StatelessWidget {
     this.onPerfect,
     this.perfectWide = false,
     this.modeTile,
+    this.hoursTile,
     this.onActions,
     this.onProjects,
   });
@@ -85,7 +88,18 @@ class DashboardTiles extends StatelessWidget {
       );
     }
     final rows = <Widget>[
-      if (program != null) _Tile(tile: program!, onTap: onProgram),
+      if (program != null)
+        hoursTile == null
+            ? _Tile(tile: program!, onTap: onProgram)
+            // La bande de Programme mesure sa largeur : pas de hauteur intrinsèque possible, la tuile carrée
+            // s'étire donc sur la hauteur de Programme (104 au moins).
+            : Stack(children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 112),
+                  child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 104), child: _Tile(tile: program!, onTap: onProgram)),
+                ),
+                Positioned(right: 0, top: 0, bottom: 0, width: 104, child: hoursTile!),
+              ]),
       if (perfectWide && perfect != null)
         modeTile == null
             ? _Tile(tile: perfect!, onTap: onPerfect)

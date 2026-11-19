@@ -1893,6 +1893,12 @@ fort s'il y en a deux) et `pastKind` / `pastName` (chrono qui couvrait maintenan
 (`week-hours-now` « Maintenant · ● … », `week-hours-past` « Il y a 7 jours · ▼ … »). Feuille : les deux mêmes lignes et la phrase
 (`week-hours-sheet-now`, `week-hours-sheet-past`, `week-hours-move`) sous le chiffre, texte de lecture mis à jour. Le total tracé se lit
 à la jonction vert / tirets et dans « n / 168 h tracées ». Pas d'étiquette « il y a 7 j » dessinée sur le cadran (les lignes la disent).
+**La jauge dans Aujourd'hui** (2026-11-19, demande user : « un mini widget avec juste la jauge ») : tuile carrée de 104 px à droite de
+PROGRAMME dans TON TABLEAU DE BORD (`DashboardTiles.hoursTile`, mobile ; `WeekHoursTile`, `week_hours_card.dart`, `hours-tile`) — la jauge
+seule, sans texte (le détail en infobulle et pour la lecture d'écran), tap = `showWeekHoursSheet`. Module Analyse, pas sur Demain.
+`_hoursTile` (`today_view.dart`) ne recompte les 7 jours qu'une fois par minute ou quand un chrono démarre / s'arrête (`_hoursKey`).
+La bande de Programme mesure sa largeur (`LayoutBuilder`) : pas d'`IntrinsicHeight` sur cette rangée, la tuile est `Positioned` sur la
+hauteur de Programme (104 au moins).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 
