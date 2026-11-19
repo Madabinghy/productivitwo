@@ -2346,6 +2346,13 @@ qu'elle ne connaît pas. `Activity.from` retient les champs du document lu (`doc
 présent gagne toujours, même à faux. Le push qui suit le remet sur le serveur. Limites : seulement les activités (pas les domaines) ;
 un réglage posé par Claude pendant que l'app tourne n'arrive qu'au prochain lancement.
 
+**Durée réglée = minuteur, pas ▶** (2026-11-19, retour user sur la feuille Journée parfaite) : sur la ligne d'une routine, le lanceur
+unique suit cet ordre — Planifier 🧭 · ■ si le chrono de l'activité liée tourne · **⏱ minuteur à la durée réglée (`timerMin`)**, même avec
+une activité liée (il démarre l'activité liée ET le décompte, `_startRoutineTimer`) · ▶ chrono de l'activité liée seulement sans durée
+réglée. Journée parfaite et fiche Routines (`_missingLine`, `routine-timer-<id>`), lanceur de routines (`_row`, `launcher-timer-<id>` /
+`launcher-go-<id>`, infobulle « Minuteur 25 min ») ; dans le lanceur, une routine à durée réglée et cible 1 dit « 25 min » au lieu de
+« 0 / 1 ». Le chrono sans fin reste dans les gestes rares du lanceur (appui long).
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /
