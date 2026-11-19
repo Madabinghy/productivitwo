@@ -666,7 +666,12 @@ async function executeGetUserContext(uid: string): Promise<string> {
       habitTarget: v.habitTarget,
       ...(Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {}),
       ...(v.rolling === true ? { rolling: true } : {}),
+      ...(v.catchUp === true && v.rolling !== true ? { catchUp: true } : {}),
       ...(typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {}),
+      // Durée d'une fois : celle du chrono qui coche, sinon celle du minuteur. `timerMin` n'est joint que s'il
+      // diffère encore en base (routine d'avant la durée unique).
+      ...(v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && !(typeof v.minPerHit === "number" && v.minPerHit > 0) ? { onceMin: v.timerMin } : {}),
+      ...(v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && typeof v.minPerHit === "number" && v.minPerHit > 0 && v.timerMin !== v.minPerHit ? { timerMinBefore: v.timerMin } : {}),
       ...(v.type === "habit" && typeof v.linkedActivityId === "string" && v.linkedActivityId ? { linkedActivityId: v.linkedActivityId } : {}),
       ...(ownActions.length > 0 ? { ownActions } : {}),
       ...(ownDone > 0 ? { ownActionsDone: ownDone } : {}),
@@ -974,12 +979,12 @@ async function executeSetActivityTargets(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown; catchUp?: unknown }
 ): Promise<string> {
   const id = uuidv4();
   const linked = String(args.activityId ?? "").trim();
   const rhythm = rhythmPatch(
-    { rolling: args.rolling, minPerHit: args.minPerHit },
+    { rolling: args.rolling, minPerHit: args.minPerHit, catchUp: args.catchUp },
     { type: "habit", habitFreq: args.habitFreq ?? 0, linkedActivityId: linked },
   );
   const split = args.splitMoments !== undefined && (args.habitFreq ?? 0) === 0 ? normalizeSplitMoments(args.splitMoments).moments : [];
@@ -2062,6 +2067,7 @@ async function executeUpdateActivity(
     pinGoal?: boolean;
     rolling?: unknown;
     minPerHit?: unknown;
+    catchUp?: unknown;
     linkedActivityId?: string;
   }
 ): Promise<string> {
@@ -2126,7 +2132,7 @@ async function executeUpdateActivity(
   {
     const data = snap.data() ?? {};
     const r = rhythmPatch(
-      { rolling: updates.rolling, minPerHit: updates.minPerHit },
+      { rolling: updates.rolling, minPerHit: updates.minPerHit, catchUp: updates.catchUp },
       {
         type: data.type,
         habitFreq: updates.habitFreq ?? data.habitFreq,
