@@ -1881,6 +1881,18 @@ actives. Petites
 durées : `spanLabel` (« 30 min » sous une heure, jamais « 0 h » ni « 1 h ») et `gaugeFractions` (un morceau non nul n'est jamais dessiné
 sous 3° sur 240 ; le libre absorbe la différence, les totaux restent exacts). Feuille : le chiffre passe sous le compteur, un paragraphe
 dit comment le lire (`week-hours-reading`).
+**Aiguille et repère** (2026-11-19, maquette validée « Aiguille et repère », demande user) : l'aiguille ne marque plus la fin du vert, elle
+SUIT CE QUI TOURNE — elle se pose au bout du morceau en cours (sommeil, détente, actif, besoins de base), ce morceau s'éclaire (le halo
+n'est plus toujours sur le vert) et le point du centre prend sa couleur ; sans chrono, elle va au MILIEU des tirets du temps libre (au
+bout du vert elle se confondrait avec « actif »). Un TRIANGLE BLANC au-dessus du cadran se pose de la même façon sur ce qui tournait il
+y a 7 jours à la même minute : alignés = tu fais pareil. C'est la minute qui sort de la fenêtre, remplacée par celle de maintenant,
+d'où la phrase « La détente avance, le vert recule. » (`hoursMoveSentence`). Logique pure `utils/week_hours.dart` : `HoursKind` (free ·
+active · leisure · basic · sleep, public, même ordre de force qu'avant), `WeekHours.nowKind` / `nowName` (chrono encore OUVERT, le plus
+fort s'il y en a deux) et `pastKind` / `pastName` (chrono qui couvrait maintenant − 168 h), `hoursKindLabel`, `hoursMomentLabel`
+(« Détente · Jeux vidéo », le nom n'est pas répété pour « Sommeil »). Carte : deux lignes sous un filet, `HoursMomentLine`
+(`week-hours-now` « Maintenant · ● … », `week-hours-past` « Il y a 7 jours · ▼ … »). Feuille : les deux mêmes lignes et la phrase
+(`week-hours-sheet-now`, `week-hours-sheet-past`, `week-hours-move`) sous le chiffre, texte de lecture mis à jour. Le total tracé se lit
+à la jonction vert / tirets et dans « n / 168 h tracées ». Pas d'étiquette « il y a 7 j » dessinée sur le cadran (les lignes la disent).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 

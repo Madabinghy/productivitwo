@@ -187,6 +187,9 @@ void main() {
     expect(find.text('Libre'), findsOneWidget);
     expect(find.textContaining('dans le flou'), findsNothing);
     expect(find.byKey(const ValueKey('week-hours-reading')), findsOneWidget);
+    // Aucun chrono ne tourne, rien ne tournait il y a 7 jours : la feuille le dit.
+    expect(find.byKey(const ValueKey('week-hours-sheet-now')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('week-hours-move'))).data, contains('ne bouge pas'));
   });
 
   testWidgets('carte des 7 jours : besoins de base en jaune, sommeil en bleu, dans l\'ordre du cadran', (tester) async {
@@ -201,6 +204,22 @@ void main() {
     expect(part('week-hours-leisure').data, '5 h de détente');
     final wrap = tester.widget<Wrap>(find.ancestor(of: find.byKey(const ValueKey('week-hours-basic')), matching: find.byType(Wrap)));
     expect(wrap.children.map((w) => (w.key as ValueKey).value), ['week-hours-basic', 'week-hours-sleep', 'week-hours-leisure', 'week-hours-free']);
+  });
+
+  testWidgets('carte des 7 jours : deux lignes disent l\'aiguille (maintenant) et le triangle (il y a 7 jours)', (tester) async {
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
+    const h = WeekHours(
+        activeMin: 62 * 60, basicMin: 120, sleepMin: 52 * 60, leisureMin: 5 * 60, prevActiveMin: 0, leavingMin: 0, dayActive: [], days: [],
+        nowKind: HoursKind.leisure, nowName: 'Jeux vidéo', pastKind: HoursKind.active, pastName: 'Coder');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: h)))));
+    Text inLine(String key) => tester.widgetList<Text>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Text))).last;
+    expect(find.descendant(of: find.byKey(const ValueKey('week-hours-now')), matching: find.text('Maintenant')), findsOneWidget);
+    expect(inLine('week-hours-now').data, 'Détente · Jeux vidéo');
+    expect(inLine('week-hours-now').style?.color, kHoursLeisure);
+    expect(find.descendant(of: find.byKey(const ValueKey('week-hours-past')), matching: find.text('Il y a 7 jours')), findsOneWidget);
+    expect(inLine('week-hours-past').data, 'Actif · Coder');
+    expect(inLine('week-hours-past').style?.color, kHoursActive);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('deux domaines de sport devinés : une seule tuile Sport', (tester) async {
