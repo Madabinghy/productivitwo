@@ -2304,8 +2304,15 @@ arrêt du chrono `stopActive`, fin d'un minuteur de routine, choix du réglage) 
 annonce « Rangement +1 · 10 min de chrono · Annuler » (`onTimeHits`, main.dart) ; elles s'AJOUTENT aux coches à la main ; une coche
 annulée ne revient pas tant que l'app reste ouverte (`_timeHitsDone` en mémoire — après une relance, la dernière retirée peut revenir).
 Avec ce réglage, la fin du minuteur ne coche plus elle-même et le +1 automatique d'une séance de sport (`_checkSportRoutine`) est
-laissé au chrono. **Les 3 lots sont livrés.** Reste possible : le serveur (MCP `update_activity {rolling, minPerHit}`, contexte de
-Claude), l'app qui PROPOSE « Sur 7 jours » pour les routines à volume.
+laissé au chrono. **Les 3 lots sont livrés.** **Côté Claude** (2026-11-19, demande user, déployé au merge) : logique pure
+`functions/src/routine_cover.ts` ↔ `lib/utils/routine_cover.dart` (**garder alignés** : `rollingDayTarget`, `routineCover`,
+`livedYmdOfTs`, `coverNote`, `normalizeMinPerHit`, `rhythmPatch`). `update_activity {rolling, minPerHit, linkedActivityId}` (`rolling`
+refusé hors routine quotidienne ; `minPerHit: 0` = retirer ; `linkedActivityId: ""` = délier, activité de temps exigée) et
+`create_routine {rolling, minPerHit}` (qui écrit aussi `linkedActivityId`, le champ que l'app lit — avant, seul `activityId` était
+posé et le lien n'arrivait pas dans l'app). `get_user_context` porte `rolling` / `minPerHit` / `linkedActivityId` ; la liste des routines
+de `plan_day` dit « sur 7 jours · COUVERTE ce jour-là par son avance … ne pas la programmer » / « l'avance réduit la part du jour à 5 »
+et ne pose plus de bloc pour une routine couverte. Les coches du chrono restent posées par l'app. Reste possible : l'app qui PROPOSE
+« Sur 7 jours » pour les routines à volume, le coach (dashboard) qui lit encore la cible du jour.
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

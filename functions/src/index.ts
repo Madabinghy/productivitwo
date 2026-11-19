@@ -1,4 +1,5 @@
 import { splitLabel } from "./routine_split";
+import { RoutineCover, coverNote, isRollingRoutine, livedYmdOfTs, routineCover } from "./routine_cover";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
@@ -725,6 +726,27 @@ export const proposeDayPlan = onRequest(
         }
       }
 
+      // Routines « sur 7 jours » : où en est leur avance le jour CIBLE (coches par jour vécu).
+      const coverByHabit = new Map<string, RoutineCover>();
+      {
+        const rolling = acts.filter((a) => isRollingRoutine(a));
+        if (rolling.length) {
+          const counts = new Map<string, Record<string, number>>();
+          for (const d of hitsSnap.docs) {
+            const v = d.data() as Record<string, unknown>;
+            const ymd = livedYmdOfTs(String(v.ts ?? ""));
+            const id = String(v.habitId ?? "");
+            if (!ymd || !id) continue;
+            const c = counts.get(id) ?? {};
+            c[ymd] = (c[ymd] ?? 0) + 1;
+            counts.set(id, c);
+          }
+          for (const a of rolling) {
+            coverByHabit.set(String(a.id), routineCover(Number(a.habitTarget ?? 1), counts.get(String(a.id)) ?? {}, target));
+          }
+        }
+      }
+
       const routineList = acts.filter((a) => a.type === "habit")
         .map((a) => {
           // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
@@ -740,7 +762,9 @@ export const proposeDayPlan = onRequest(
             (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
             (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
               ? ` · répartie : ${splitLabel(Number(a.habitTarget ?? 1), a.splitMoments as string[])}`
-              : "");
+              : "") +
+            (coverByHabit.has(String(a.id)) ? ` · ${coverNote(coverByHabit.get(String(a.id))!)}` : "") +
+            (typeof a.minPerHit === "number" && a.minPerHit > 0 ? ` · le chrono coche : 1 coche = ${a.minPerHit} min` : "");
         })
         .join("\n") || "  Aucune.";
       const activityList = acts.filter((a) => a.type !== "habit")
@@ -1001,6 +1025,8 @@ export const proposeDayPlan = onRequest(
           if (!isDailyHabit(a)) continue;
           const id = String(a.id);
           if (covered.has(id) || doneOnTarget.has(id)) continue;
+          // « Sur 7 jours » : l'avance couvre déjà ce jour, rien à programmer.
+          if (coverByHabit.get(id)?.dayTarget === 0) continue;
           const typical = typicalByHabit.get(id);
           // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
           // contexte) prime sur la cascade aveugle — « Hygiène du soir » se

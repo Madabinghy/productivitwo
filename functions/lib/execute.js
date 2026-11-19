@@ -109,6 +109,7 @@ const meal_plan_mcp_1 = require("./meal_plan_mcp");
 const groceries_1 = require("./groceries");
 const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
+const routine_cover_1 = require("./routine_cover");
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const phase_resolve_1 = require("./phase_resolve");
 const schedule_dedupe_2 = require("./schedule_dedupe");
@@ -637,7 +638,7 @@ async function executeGetUserContext(uid) {
             var _a;
             return (Object.assign(Object.assign(Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, (typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {})), (typeof a.focusDate === "string" && a.focusDate ? { focusDate: a.focusDate } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
         });
-        return Object.assign(Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {})), (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
+        return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {})), (v.rolling === true ? { rolling: true } : {})), (typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {})), (v.type === "habit" && typeof v.linkedActivityId === "string" && v.linkedActivityId ? { linkedActivityId: v.linkedActivityId } : {})), (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
@@ -894,11 +895,16 @@ async function executeSetActivityTargets(uid, args) {
     return lines.join("\n");
 }
 async function executeCreateRoutine(uid, args) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const id = (0, uuid_1.v4)();
-    const split = args.splitMoments !== undefined && ((_a = args.habitFreq) !== null && _a !== void 0 ? _a : 0) === 0 ? (0, routine_split_1.normalizeSplitMoments)(args.splitMoments).moments : [];
-    await db_1.db.collection(`users/${uid}/activities`).doc(id).set(Object.assign({ id, name: args.name, domainId: args.domainId, activityId: (_b = args.activityId) !== null && _b !== void 0 ? _b : null, type: "habit", role: "generic", goalMin: 1, unit: (_c = args.unit) !== null && _c !== void 0 ? _c : null, habitFreq: (_d = args.habitFreq) !== null && _d !== void 0 ? _d : 0, habitTarget: (_e = args.habitTarget) !== null && _e !== void 0 ? _e : 1, manualTarget: false, autoTune: true, createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false, splitMoments: split }, (split.length ? { timeContext: split[0] } : {})));
-    const splitMsg = split.length ? ` Répartie : ${(0, routine_split_1.splitLabel)((_f = args.habitTarget) !== null && _f !== void 0 ? _f : 1, split)}.` : "";
+    const linked = String((_a = args.activityId) !== null && _a !== void 0 ? _a : "").trim();
+    const rhythm = (0, routine_cover_1.rhythmPatch)({ rolling: args.rolling, minPerHit: args.minPerHit }, { type: "habit", habitFreq: (_b = args.habitFreq) !== null && _b !== void 0 ? _b : 0, linkedActivityId: linked });
+    const split = args.splitMoments !== undefined && ((_c = args.habitFreq) !== null && _c !== void 0 ? _c : 0) === 0 ? (0, routine_split_1.normalizeSplitMoments)(args.splitMoments).moments : [];
+    await db_1.db.collection(`users/${uid}/activities`).doc(id).set(Object.assign(Object.assign({ id, name: args.name, domainId: args.domainId, activityId: (_d = args.activityId) !== null && _d !== void 0 ? _d : null, 
+        // L'app lit `linkedActivityId` (chrono de la routine, « le chrono coche »).
+        linkedActivityId: linked || null, type: "habit", role: "generic", goalMin: 1, unit: (_e = args.unit) !== null && _e !== void 0 ? _e : null, habitFreq: (_f = args.habitFreq) !== null && _f !== void 0 ? _f : 0, habitTarget: (_g = args.habitTarget) !== null && _g !== void 0 ? _g : 1, manualTarget: false, autoTune: true, createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false, splitMoments: split }, (split.length ? { timeContext: split[0] } : {})), rhythm.patch));
+    const splitMsg = (split.length ? ` Répartie : ${(0, routine_split_1.splitLabel)((_h = args.habitTarget) !== null && _h !== void 0 ? _h : 1, split)}.` : "") +
+        (rhythm.notes.length ? " " + rhythm.notes.join(" ") : "");
     return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 async function executeGetDayBlocks(uid) {
@@ -1859,7 +1865,7 @@ async function executeDeleteTask(uid, projectId, taskId, force = false) {
             : "");
 }
 async function executeUpdateActivity(uid, activityId, updates) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1908,11 +1914,40 @@ async function executeUpdateActivity(uid, activityId, updates) {
         if (unknown.length)
             splitNote += ` Moments ignorés : ${unknown.join(", ")} (matin · midi · après-midi · soir).`;
     }
+    // Activité-temps liée à une routine (chrono, « le chrono coche ») : "" = délier.
+    let rhythmNote = "";
+    if (updates.linkedActivityId !== undefined) {
+        const linkId = String((_h = updates.linkedActivityId) !== null && _h !== void 0 ? _h : "").trim();
+        if (linkId === "") {
+            patch.linkedActivityId = null;
+            rhythmNote += " Plus d'activité liée.";
+        }
+        else {
+            const linkSnap = await db_1.db.collection(`users/${uid}/activities`).doc(linkId).get();
+            const link = linkSnap.data();
+            if (!linkSnap.exists || (link === null || link === void 0 ? void 0 : link.deleted) === true || (link === null || link === void 0 ? void 0 : link.type) === "habit") {
+                return `Activité liée introuvable ou pas une activité de temps : ${linkId}. Rien n'a été modifié.`;
+            }
+            patch.linkedActivityId = linkId;
+            rhythmNote += ` Activité liée : "${(_j = link === null || link === void 0 ? void 0 : link.name) !== null && _j !== void 0 ? _j : linkId}".`;
+        }
+    }
+    {
+        const data = (_l = snap.data()) !== null && _l !== void 0 ? _l : {};
+        const r = (0, routine_cover_1.rhythmPatch)({ rolling: updates.rolling, minPerHit: updates.minPerHit }, {
+            type: data.type,
+            habitFreq: (_m = updates.habitFreq) !== null && _m !== void 0 ? _m : data.habitFreq,
+            linkedActivityId: patch.linkedActivityId !== undefined ? patch.linkedActivityId : data.linkedActivityId,
+        });
+        Object.assign(patch, r.patch);
+        if (r.notes.length)
+            rhythmNote += " " + r.notes.join(" ");
+    }
     await ref.update(patch);
     if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
-        return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${(_l = (_h = updates.habitTarget) !== null && _h !== void 0 ? _h : (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.habitTarget) !== null && _l !== void 0 ? _l : 1}/j (évalué chaque lundi sur les hits réels).`;
+        return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${(_q = (_o = updates.habitTarget) !== null && _o !== void 0 ? _o : (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.habitTarget) !== null && _q !== void 0 ? _q : 1}/j (évalué chaque lundi sur les hits réels).`;
     }
-    return `✅ Activité "${currentName}" mise à jour.${splitNote}`;
+    return `✅ Activité "${currentName}" mise à jour.${splitNote}${rhythmNote}`;
 }
 async function executeDeleteRoutine(uid, routineId) {
     var _a, _b;
