@@ -461,23 +461,27 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final done = s.reached;
     final muted = cs.onSurface.withValues(alpha: .5);
     final cover = t.cover;
+    // La ligne d'infos passe à la ligne ENTRE deux infos, jamais au milieu (retour user 2026-11-19 :
+    // « ce matin », « cet après-midi » étaient coupés) : espaces insécables dans une info, coupure après « · ».
+    String nb(String v) => v.replaceAll(' ', ' ');
+    const sep = ' · ';
     final infos = <InlineSpan>[
-      if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
+      if (dismissed) TextSpan(text: '${nb('pas aujourd\'hui')}$sep'),
       TextSpan(
-          text: ahead && cover != null
+          text: nb(ahead && cover != null
               ? 'encore ${cover.toFreeTomorrow} = demain libre'
               : done
                   ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
                   : (s.share?.label ??
                       (hasTimer && linked == null
                           ? '${a.timerMin} min'
-                          : '$count / $target${t.dayTarget == null ? ' sur 7 j' : (cover != null ? ' aujourd\'hui' : '')}')),
+                          : '$count / $target${t.dayTarget == null ? ' sur 7 j' : (cover != null ? ' aujourd\'hui' : '')}'))),
           style: TextStyle(color: dc)),
       if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)
-        TextSpan(text: ' · ${momentOf(s.moment).thisOne}'),
+        TextSpan(text: '$sep${nb(momentOf(s.moment).thisOne)}'),
       // « Prendre de l'avance » : la ligne ne dit que ce que le geste rapporte.
-      if (!ahead && streak >= 2) TextSpan(text: ' · 🔥 $streak j', style: const TextStyle(color: Color(0xFFFF8A3D))),
-      if (!ahead && linked != null) TextSpan(text: ' · ${linked.name}'),
+      if (!ahead && streak >= 2) TextSpan(text: '$sep${nb('🔥 $streak j')}', style: const TextStyle(color: Color(0xFFFF8A3D))),
+      if (!ahead && linked != null) TextSpan(text: '$sep${nb(linked.name)}'),
     ];
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -500,13 +504,15 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text.rich(TextSpan(children: infos),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.3, color: muted)),
                 ),
                 if (cover != null && !dismissed)
                   Padding(
                     key: ValueKey('launcher-cover-bar-${a.id}'),
                     // De l'air autour de la jauge (retour user 2026-11-19 : lignes trop serrées).
-                    padding: const EdgeInsets.only(top: 9, bottom: 10),
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
                     child: _dayGauge(cs, cover, dc),
                   ),
                 if (s.pushed)

@@ -8,6 +8,9 @@ import 'package:productivitwo_v1/utils/routine_cover.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// La ligne d'infos garde chaque info d'un seul tenant (espaces insécables).
+String nb(String v) => v.replaceAll(' ', '\u00A0');
+
 void main() {
   Activity routine(String id, String name, {int target = 10, bool rolling = true, HabitFreq freq = HabitFreq.daily}) => Activity(
         id: id,
@@ -53,7 +56,7 @@ void main() {
     await t.pump();
 
     // À faire : la part du jour, et la jauge de ce que les coches du jour achètent.
-    expect(find.textContaining('0 / 10 aujourd\'hui', findRichText: true), findsOneWidget);
+    expect(find.textContaining(nb('0 / 10 aujourd\'hui'), findRichText: true), findsOneWidget);
     final gauge = find.byKey(const ValueKey('launcher-cover-bar-pompes'));
     expect(gauge, findsOneWidget);
     expect(find.descendant(of: gauge, matching: find.text('ce soir')), findsOneWidget);
@@ -65,7 +68,7 @@ void main() {
     // Prendre de l'avance : tenue ce soir, demain demandera 10.
     expect(find.byKey(const ValueKey('launcher-ahead')), findsOneWidget);
     expect(find.text('Abdos'), findsOneWidget);
-    expect(find.textContaining('encore 10 = demain libre', findRichText: true), findsOneWidget);
+    expect(find.textContaining(nb('encore 10 = demain libre'), findRichText: true), findsOneWidget);
     expect(t.getTopLeft(find.text('Abdos')).dy, greaterThan(t.getTopLeft(find.byKey(const ValueKey('launcher-ahead'))).dy));
     expect(t.getTopLeft(find.text('Pompes')).dy, lessThan(t.getTopLeft(find.byKey(const ValueKey('launcher-ahead'))).dy));
 
@@ -79,7 +82,7 @@ void main() {
     await t.tap(covered);
     await t.pump();
     expect(find.text('Gainage'), findsOneWidget);
-    expect(find.textContaining('✓ couverte jusqu\'à demain soir', findRichText: true), findsOneWidget);
+    expect(find.textContaining(nb('✓ couverte jusqu\'à demain soir'), findRichText: true), findsOneWidget);
     // En « Tout », une couverte garde sa jauge : ce soir et demain déjà acquis.
     expect(find.descendant(of: find.byKey(const ValueKey('launcher-cover-bar-gainage')), matching: find.text('ce soir + dem.')), findsOneWidget);
     expect(find.byKey(const ValueKey('launcher-ahead')), findsNothing);
