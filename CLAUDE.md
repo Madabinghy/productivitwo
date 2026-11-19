@@ -2292,7 +2292,7 @@ lisent encore la cible du jour). **Lot 2 livré (lanceur de routines, `routine_l
 (par domaine, comme avant ; une routine « sur 7 jours » dit « 0 / 5 · 65 / 70 sur 7 j » et porte la jauge des activités, `_coverBar`,
 `launcher-cover-bar-<id>` : tout le fait à la couleur du domaine, TRAIT BLANC = les 6 jours passés, du trait au bout = la part du jour),
 **PRENDRE DE L'AVANCE** (`launcher-ahead` : tenues ce soir mais demain demandera quelque chose, `RoutineCover.canGetAhead` ; « couverte ce
-soir · +10 = demain libre », − / + et lanceur gardés), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
+soir · +10 = demain libre », − / + et lanceur gardés ; le nombre = `RoutineCover.toFreeTomorrow`, ce qu'il faut VRAIMENT ajouter pour que demain ne demande rien — plus que la cible quand la semaine a des trous), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
 « 6 couvertes · Étirements jusqu'à samedi · … · +3 », les plus proches d'abord ; tap = Tout) = routines « sur 7 jours » avec de l'avance
 et hebdomadaires atteintes (`weeklyAheadDays` : elle revient quand sa coche la plus ancienne qui compte sort de la fenêtre). Une routine
 « chaque jour » faite n'apparaît qu'en Tout, comme avant. **Lot 3 livré (le chrono coche)** : `Activity.minPerHit` (minutes de chrono

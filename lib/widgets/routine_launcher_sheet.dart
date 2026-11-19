@@ -431,7 +431,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
       TextSpan(
           text: ahead && cover != null
-              ? 'couverte ce soir · +${cover.tomorrowTarget} = demain libre'
+              ? 'couverte ce soir · +${cover.toFreeTomorrow} = demain libre'
               : done
                   ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
                   : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
