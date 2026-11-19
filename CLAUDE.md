@@ -2363,7 +2363,13 @@ part du jour = la cible, jamais d'avance) et porte `holes`, `holeThresholds`, `h
 rattraper en AMBRE (3 au plus, étiquette datée « hier », « lun. 16 » pour ne pas se confondre avec un jour à venir), puis l'avance en
 vert (« Sur 7 jours » seulement). Lanceur de routines, Focus : section **À RATTRAPER** (`launcher-catching`, entre À faire et Prendre de
 l'avance : tenue ce soir, un jour raté attend ; « encore 1 = hier rattrapé », en minutes quand le chrono coche : « encore 10 min = hier
-rattrapé ») ; le rattrapage passe avant l'avance. Reste : le côté Claude (lot 3).
+rattrapé ») ; le rattrapage passe avant l'avance. **Côté Claude** (lot 3, 2026-11-19, déployé au merge) : logique pure `functions/src/routine_cover.ts` ↔ `lib/utils/routine_cover.dart`
+(**garder alignés** : `isCatchUpRoutine`, `catchUpOf`) + `catchUpNote`. `update_activity {catchUp}` et `create_routine {catchUp}`
+(`rhythmPatch` : quotidienne seulement, exclusif de `rolling` — demander les deux garde « sur 7 jours », qui rattrape déjà ; `minPerHit`
+pose aussi `timerMin`, une seule durée). `get_user_context` porte `catchUp`, `onceMin` (durée d'une fois d'une routine sans chrono qui
+coche) et `timerMinBefore` (ancienne durée du minuteur quand elle diffère encore de `minPerHit` en base). La liste des routines de
+`plan_day` dit « rattrapable (pas d'avance) » et « 2 jours ratés encore rattrapables (11-18, 11-17) : 20 min en plus de la part du jour
+recollent la série » (coches lues sur 28 jours).
 **Une seule durée par routine** (lot 2, 2026-11-19) : « la durée d'une fois » remplace les deux réglages qui faisaient doublon dans la
 fiche (« Minuteur » / « Minuteur par défaut » et « Le chrono coche »). `Activity.onceMin` = `minPerHit` s'il est réglé, sinon `timerMin` ;
 `setOnceMin(m)` règle le minuteur ET la coche du chrono si elle est allumée (0 = aucune durée, le chrono ne coche plus) ;

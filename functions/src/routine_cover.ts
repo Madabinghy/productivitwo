@@ -82,6 +82,72 @@ export function isRollingRoutine(a: Record<string, unknown>): boolean {
   return a.type === "habit" && (a.habitFreq === 0 || a.habitFreq === "daily") && a.rolling === true;
 }
 
+/**
+ * Un jour raté se rattrape (2026-11-19, « Routines rattrapables ») : rythme « Rattrapable » (`catchUp`, sans avance)
+ * ou « Sur 7 jours » (`rolling`, rattrapage et avance).
+ */
+export function isCatchUpRoutine(a: Record<string, unknown>): boolean {
+  return a.type === "habit" && (a.habitFreq === 0 || a.habitFreq === "daily") && (a.catchUp === true || a.rolling === true);
+}
+
+export interface CatchUp {
+  /** Jours ratés puis rattrapés. */
+  repaired: string[];
+  /** Jours ratés encore rattrapables AVANT `ymd`, du plus récent au plus ancien, avec ce qu'il leur manque. */
+  open: { ymd: string; deficit: number }[];
+}
+
+/**
+ * Rejoue les jours d'une routine rattrapable jusqu'à `ymd` : ce qu'un jour fait EN PLUS de ce qu'il demande comble
+ * les jours ratés des 6 jours d'avant, le plus récent d'abord. Miroir de `catchUpOf` (app).
+ */
+export function catchUpOf(target: number, counts: Record<string, number>, ymd: string, rolling: boolean): CatchUp {
+  const t = target > 0 ? Math.round(target) : 1;
+  const days = Object.keys(counts).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= ymd).sort();
+  if (!days.length) return { repaired: [], open: [] };
+  const repaired: string[] = [];
+  let holes: { ymd: string; deficit: number }[] = [];
+  let open: { ymd: string; deficit: number }[] = [];
+  const window: number[] = [];
+  let past = 0;
+  for (let d = days[0]; d <= ymd; d = shiftYmd(d, 1)) {
+    const limit = shiftYmd(d, -(ROUTINE_WINDOW_DAYS - 1));
+    holes = holes.filter((h) => h.ymd >= limit);
+    if (d === ymd) open = [...holes].reverse();
+    const c = counts[d] ?? 0;
+    const need = rolling ? rollingDayTarget(t, past) : t;
+    if (c > need) {
+      let extra = c - need;
+      for (let i = holes.length - 1; i >= 0 && extra > 0; i--) {
+        const take = Math.min(extra, holes[i].deficit);
+        extra -= take;
+        if (take === holes[i].deficit) {
+          repaired.push(holes[i].ymd);
+          holes.splice(i, 1);
+        } else {
+          holes[i] = { ymd: holes[i].ymd, deficit: holes[i].deficit - take };
+        }
+      }
+    } else if (c < need && d !== ymd) {
+      holes.push({ ymd: d, deficit: need - c });
+    }
+    window.push(c);
+    past += c;
+    if (window.length > ROUTINE_WINDOW_DAYS - 1) past -= window.shift()!;
+  }
+  return { repaired, open };
+}
+
+/** Ce que Claude lit des jours à rattraper d'une routine, le jour visé ("" = rien à rattraper). */
+export function catchUpNote(c: CatchUp, minPerHit?: number | null): string {
+  if (!c.open.length) return "";
+  const total = c.open.reduce((s, h) => s + h.deficit, 0);
+  const amount = minPerHit && minPerHit > 0 ? `${total * minPerHit} min` : `${total} coche${total > 1 ? "s" : ""}`;
+  const n = c.open.length;
+  return `${n} jour${n > 1 ? "s" : ""} raté${n > 1 ? "s" : ""} encore rattrapable${n > 1 ? "s" : ""} (${c.open.map((h) => h.ymd.slice(5)).join(", ")}) : ` +
+    `${amount} en plus de la part du jour recollent la série`;
+}
+
 /** Ce que Claude lit d'une routine « sur 7 jours » pour le jour visé. */
 export function coverNote(c: RoutineCover): string {
   const window = `${c.pastDone + c.todayDone} / ${ROUTINE_WINDOW_DAYS * c.target} sur 7 j`;
@@ -111,7 +177,7 @@ export function normalizeMinPerHit(v: unknown): number | null {
  * la routine telle qu'elle sera après les autres modifications de l'appel.
  */
 export function rhythmPatch(
-  updates: { rolling?: unknown; minPerHit?: unknown },
+  updates: { rolling?: unknown; minPerHit?: unknown; catchUp?: unknown },
   current: { type?: unknown; habitFreq?: unknown; linkedActivityId?: unknown },
 ): { patch: Record<string, unknown>; notes: string[] } {
   const patch: Record<string, unknown> = {};
@@ -124,11 +190,29 @@ export function rhythmPatch(
       notes.push("⚠️ « Sur 7 jours » ne s'applique qu'aux routines quotidiennes : rien n'a été changé (une hebdomadaire compte déjà sur 7 jours glissants).");
     } else if (isHabit) {
       patch.rolling = on;
+      // Un seul rythme à la fois : « sur 7 jours » rattrape déjà.
+      if (on) patch.catchUp = false;
       notes.push(on
-        ? "Rythme : sur 7 jours — ce qui est fait en plus couvre les jours suivants, un jour raté ne s'ajoute pas."
+        ? "Rythme : sur 7 jours — ce qui est fait en plus rattrape d'abord un jour raté des 7 derniers jours, puis couvre les jours suivants."
         : "Rythme : chaque jour.");
     } else {
       notes.push("⚠️ « Sur 7 jours » concerne les routines, pas les activités de temps.");
+    }
+  }
+  if (updates.catchUp !== undefined) {
+    const on = truthy(updates.catchUp);
+    if (on && !(isHabit && daily)) {
+      notes.push("⚠️ « Rattrapable » ne s'applique qu'aux routines quotidiennes : rien n'a été changé.");
+    } else if (isHabit && on && patch.rolling === true) {
+      notes.push("« Sur 7 jours » rattrape déjà : le rythme reste sur 7 jours.");
+    } else if (isHabit) {
+      patch.catchUp = on;
+      if (on) patch.rolling = false;
+      notes.push(on
+        ? "Rythme : rattrapable — un jour raté se rattrape dans les 7 jours en faisant plus un autre jour (la série recolle), sans avance sur demain."
+        : (patch.rolling === undefined ? "Rythme : plus de rattrapage." : ""));
+    } else {
+      notes.push("⚠️ « Rattrapable » concerne les routines, pas les activités de temps.");
     }
   }
   if (updates.minPerHit !== undefined) {
@@ -137,6 +221,8 @@ export function rhythmPatch(
       notes.push("⚠️ « Le chrono coche » concerne les routines, pas les activités de temps.");
     } else {
       patch.minPerHit = n;
+      // Une seule durée par routine : celle du chrono qui coche est aussi celle du minuteur.
+      if (n !== null) patch.timerMin = n;
       if (n === null) {
         notes.push("Le chrono ne coche plus cette routine.");
       } else {
@@ -146,5 +232,5 @@ export function rhythmPatch(
       }
     }
   }
-  return { patch, notes };
+  return { patch, notes: notes.filter((x) => x) };
 }
