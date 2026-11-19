@@ -6,6 +6,7 @@ import type { AisleState } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
 import { normalizeSplitMoments, splitLabel } from "./routine_split";
+import { rhythmPatch } from "./routine_cover";
 import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
 import { toMin } from "./schedule_dedupe";
@@ -664,6 +665,9 @@ async function executeGetUserContext(uid: string): Promise<string> {
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
       ...(Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {}),
+      ...(v.rolling === true ? { rolling: true } : {}),
+      ...(typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {}),
+      ...(v.type === "habit" && typeof v.linkedActivityId === "string" && v.linkedActivityId ? { linkedActivityId: v.linkedActivityId } : {}),
       ...(ownActions.length > 0 ? { ownActions } : {}),
       ...(ownDone > 0 ? { ownActionsDone: ownDone } : {}),
     };
@@ -970,15 +974,22 @@ async function executeSetActivityTargets(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown }
 ): Promise<string> {
   const id = uuidv4();
+  const linked = String(args.activityId ?? "").trim();
+  const rhythm = rhythmPatch(
+    { rolling: args.rolling, minPerHit: args.minPerHit },
+    { type: "habit", habitFreq: args.habitFreq ?? 0, linkedActivityId: linked },
+  );
   const split = args.splitMoments !== undefined && (args.habitFreq ?? 0) === 0 ? normalizeSplitMoments(args.splitMoments).moments : [];
   await db.collection(`users/${uid}/activities`).doc(id).set({
     id,
     name: args.name,
     domainId: args.domainId,
     activityId: args.activityId ?? null, // lien optionnel vers une activité temps
+    // L'app lit `linkedActivityId` (chrono de la routine, « le chrono coche »).
+    linkedActivityId: linked || null,
     type: "habit",
     role: "generic",
     goalMin: 1,
@@ -994,8 +1005,10 @@ async function executeCreateRoutine(
     deleted: false,
     splitMoments: split,
     ...(split.length ? { timeContext: split[0] } : {}),
+    ...rhythm.patch,
   });
-  const splitMsg = split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split)}.` : "";
+  const splitMsg = (split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split)}.` : "") +
+    (rhythm.notes.length ? " " + rhythm.notes.join(" ") : "");
   return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
@@ -2047,6 +2060,9 @@ async function executeUpdateActivity(
     timeContext?: string;
     splitMoments?: unknown;
     pinGoal?: boolean;
+    rolling?: unknown;
+    minPerHit?: unknown;
+    linkedActivityId?: string;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -2090,11 +2106,42 @@ async function executeUpdateActivity(
     if (unknown.length) splitNote += ` Moments ignorés : ${unknown.join(", ")} (matin · midi · après-midi · soir).`;
   }
 
+  // Activité-temps liée à une routine (chrono, « le chrono coche ») : "" = délier.
+  let rhythmNote = "";
+  if (updates.linkedActivityId !== undefined) {
+    const linkId = String(updates.linkedActivityId ?? "").trim();
+    if (linkId === "") {
+      patch.linkedActivityId = null;
+      rhythmNote += " Plus d'activité liée.";
+    } else {
+      const linkSnap = await db.collection(`users/${uid}/activities`).doc(linkId).get();
+      const link = linkSnap.data();
+      if (!linkSnap.exists || link?.deleted === true || link?.type === "habit") {
+        return `Activité liée introuvable ou pas une activité de temps : ${linkId}. Rien n'a été modifié.`;
+      }
+      patch.linkedActivityId = linkId;
+      rhythmNote += ` Activité liée : "${link?.name ?? linkId}".`;
+    }
+  }
+  {
+    const data = snap.data() ?? {};
+    const r = rhythmPatch(
+      { rolling: updates.rolling, minPerHit: updates.minPerHit },
+      {
+        type: data.type,
+        habitFreq: updates.habitFreq ?? data.habitFreq,
+        linkedActivityId: patch.linkedActivityId !== undefined ? patch.linkedActivityId : data.linkedActivityId,
+      },
+    );
+    Object.assign(patch, r.patch);
+    if (r.notes.length) rhythmNote += " " + r.notes.join(" ");
+  }
+
   await ref.update(patch);
   if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
     return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${updates.habitTarget ?? snap.data()?.habitTarget ?? 1}/j (évalué chaque lundi sur les hits réels).`;
   }
-  return `✅ Activité "${currentName}" mise à jour.${splitNote}`;
+  return `✅ Activité "${currentName}" mise à jour.${splitNote}${rhythmNote}`;
 }
 
 async function executeDeleteRoutine(uid: string, routineId: string): Promise<string> {

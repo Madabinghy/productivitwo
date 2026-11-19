@@ -13,6 +13,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.coachAlertsCron = exports.coacheeApi = exports.coachConsent = exports.coachApi = exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.whereWeGo = exports.nowAssist = exports.pushGantt = void 0;
 const routine_split_1 = require("./routine_split");
+const routine_cover_1 = require("./routine_cover");
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -408,7 +409,7 @@ exports.whereWeGo = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -685,6 +686,27 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 doneOnTarget.add(String((_v = v.habitId) !== null && _v !== void 0 ? _v : ""));
             }
         }
+        // Routines « sur 7 jours » : où en est leur avance le jour CIBLE (coches par jour vécu).
+        const coverByHabit = new Map();
+        {
+            const rolling = acts.filter((a) => (0, routine_cover_1.isRollingRoutine)(a));
+            if (rolling.length) {
+                const counts = new Map();
+                for (const d of hitsSnap.docs) {
+                    const v = d.data();
+                    const ymd = (0, routine_cover_1.livedYmdOfTs)(String((_w = v.ts) !== null && _w !== void 0 ? _w : ""));
+                    const id = String((_x = v.habitId) !== null && _x !== void 0 ? _x : "");
+                    if (!ymd || !id)
+                        continue;
+                    const c = (_y = counts.get(id)) !== null && _y !== void 0 ? _y : {};
+                    c[ymd] = ((_z = c[ymd]) !== null && _z !== void 0 ? _z : 0) + 1;
+                    counts.set(id, c);
+                }
+                for (const a of rolling) {
+                    coverByHabit.set(String(a.id), (0, routine_cover_1.routineCover)(Number((_0 = a.habitTarget) !== null && _0 !== void 0 ? _0 : 1), (_1 = counts.get(String(a.id))) !== null && _1 !== void 0 ? _1 : {}, target));
+                }
+            }
+        }
         const routineList = acts.filter((a) => a.type === "habit")
             .map((a) => {
             var _a, _b;
@@ -701,7 +723,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
                 (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
                     ? ` · répartie : ${(0, routine_split_1.splitLabel)(Number((_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1), a.splitMoments)}`
-                    : "");
+                    : "") +
+                (coverByHabit.has(String(a.id)) ? ` · ${(0, routine_cover_1.coverNote)(coverByHabit.get(String(a.id)))}` : "") +
+                (typeof a.minPerHit === "number" && a.minPerHit > 0 ? ` · le chrono coche : 1 coche = ${a.minPerHit} min` : "");
         })
             .join("\n") || "  Aucune.";
         const activityList = acts.filter((a) => a.type !== "habit")
@@ -908,7 +932,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // Anti-doublon déterministe : le LLM ne doit pas ré-émettre un bloc déjà
         // posé sur la cible (il sera conservé tel quel à la validation).
         const occupiedTitles = new Set(occupiedBlocks.map((e) => normName(e.title)).filter((t) => t.length > 0));
-        const outBlocks = ((_w = proposal.blocks) !== null && _w !== void 0 ? _w : []).filter((b) => {
+        const outBlocks = ((_2 = proposal.blocks) !== null && _2 !== void 0 ? _2 : []).filter((b) => {
             var _a;
             if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
                 return false;
@@ -942,6 +966,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 const id = String(a.id);
                 if (covered.has(id) || doneOnTarget.has(id))
                     continue;
+                // « Sur 7 jours » : l'avance couvre déjà ce jour, rien à programmer.
+                if (((_3 = coverByHabit.get(id)) === null || _3 === void 0 ? void 0 : _3.dayTarget) === 0)
+                    continue;
                 const typical = typicalByHabit.get(id);
                 // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
                 // contexte) prime sur la cascade aveugle — « Hygiène du soir » se
@@ -950,7 +977,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 const startTime = typical !== null && typical !== void 0 ? typical : (ctx ? toHm(ctx.anchorMin) : toHm(fallbackMin));
                 if (!typical && !ctx)
                     fallbackMin += 30;
-                const timerMin = Number((_x = a.timerMin) !== null && _x !== void 0 ? _x : 0);
+                const timerMin = Number((_4 = a.timerMin) !== null && _4 !== void 0 ? _4 : 0);
                 outBlocks.push({
                     startTime,
                     durationMin: timerMin > 0 ? timerMin : 15,
@@ -967,8 +994,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             }
         }
         res.status(200).json({
-            message: (_y = proposal.message) !== null && _y !== void 0 ? _y : "",
-            sources: (_z = proposal.sources) !== null && _z !== void 0 ? _z : [],
+            message: (_5 = proposal.message) !== null && _5 !== void 0 ? _5 : "",
+            sources: (_6 = proposal.sources) !== null && _6 !== void 0 ? _6 : [],
             blocks: repackAfterWake(outBlocks),
             refDate,
             dayReason,
