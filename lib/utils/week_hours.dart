@@ -21,6 +21,10 @@ class WeekHours {
   /// Minutes de détente par jour calendaire, mêmes jours que [dayActive].
   final List<int> dayLeisure;
   final List<DateTime> days;
+  /// Ce qui tourne maintenant (l'aiguille) et ce qui tournait il y a 7 jours à la même minute (le triangle) :
+  /// la minute qui sort de la fenêtre, et celle qui la remplace.
+  final HoursKind nowKind, pastKind;
+  final String? nowName, pastName;
   const WeekHours({
     required this.activeMin,
     required this.basicMin,
@@ -32,6 +36,10 @@ class WeekHours {
     this.leisureMin = 0,
     this.prevLeisureMin = 0,
     this.dayLeisure = const [],
+    this.nowKind = HoursKind.free,
+    this.pastKind = HoursKind.free,
+    this.nowName,
+    this.pastName,
   });
   int get trackedMin => activeMin + leisureMin + basicMin + sleepMin;
   int get untrackedMin => (kWeekHoursMin - trackedMin).clamp(0, kWeekHoursMin);
@@ -66,22 +74,77 @@ List<double> gaugeFractions(WeekHours h, {double minFrac = 3 / 240}) {
   return [...out, 1 - used];
 }
 
-enum _Kind { none, active, leisure, basic, sleep }
+/// Ce qu'une minute contient, du plus faible au plus fort : une minute couverte par deux chronos prend le plus fort.
+enum HoursKind { free, active, leisure, basic, sleep }
 
-int _rank(_Kind k) => _Kind.values.indexOf(k);
+int _rank(HoursKind k) => HoursKind.values.indexOf(k);
+
+HoursKind _kindOf(Session s, Map<String, Activity> byId, Set<String> leisureIds) {
+  final name = byId[s.activityId]?.name;
+  return isSleepName(name)
+      ? HoursKind.sleep
+      : (isBasicNeedName(name) ? HoursKind.basic : (leisureIds.contains(s.activityId) ? HoursKind.leisure : HoursKind.active));
+}
+
+/// Ce qui tourne à l'instant [at] : la catégorie la plus forte parmi les chronos qui le couvrent, et son activité.
+/// [running] : seul un chrono encore ouvert compte (ce qu'on fait maintenant).
+(HoursKind, String?) _momentAt(DateTime at, List<Session> sessions, Map<String, Activity> byId, Set<String> leisureIds, DateTime now,
+    {bool running = false}) {
+  var kind = HoursKind.free;
+  String? name;
+  for (final s in sessions) {
+    if (s.deleted || s.startAt.isAfter(at)) continue;
+    if (running ? s.endAt != null : !(s.endAt ?? now).isAfter(at)) continue;
+    final k = _kindOf(s, byId, leisureIds);
+    if (_rank(k) > _rank(kind)) {
+      kind = k;
+      name = byId[s.activityId]?.name;
+    }
+  }
+  return (kind, name);
+}
+
+const _kindLabels = {
+  HoursKind.free: 'Rien de tracé',
+  HoursKind.active: 'Actif',
+  HoursKind.leisure: 'Détente',
+  HoursKind.basic: 'Besoins de base',
+  HoursKind.sleep: 'Sommeil',
+};
+
+String hoursKindLabel(HoursKind k) => _kindLabels[k]!;
+
+/// « Détente · Jeux vidéo » ; le nom de l'activité n'est pas répété quand il dit la même chose (« Sommeil »).
+String hoursMomentLabel(HoursKind k, String? name, {bool now = false}) {
+  if (k == HoursKind.free) return now ? 'aucun chrono' : 'rien de tracé';
+  final label = hoursKindLabel(k);
+  final n = name?.trim() ?? '';
+  return n.isEmpty || n.toLowerCase() == label.toLowerCase() ? label : '$label · $n';
+}
+
+const _kindNames = {
+  HoursKind.free: 'ton temps libre',
+  HoursKind.active: 'le vert',
+  HoursKind.leisure: 'la détente',
+  HoursKind.basic: 'les besoins de base',
+  HoursKind.sleep: 'le sommeil',
+};
+
+/// La minute d'il y a 7 jours sort de la fenêtre, celle de maintenant y entre : ce qui avance, ce qui recule.
+String hoursMoveSentence(HoursKind now, HoursKind past) {
+  if (now == past) return 'Tu fais comme il y a 7 jours : la minute qui sort est remplacée par la même, la jauge ne bouge pas.';
+  final gain = _kindNames[now]!;
+  return '${gain[0].toUpperCase()}${gain.substring(1)} avance, ${_kindNames[past]} recule.';
+}
 
 /// Remplit [cells] (une case par minute depuis [from]) avec la catégorie la plus forte de chaque minute.
-void _paint(List<_Kind> cells, DateTime from, List<Session> sessions, Map<String, Activity> byId, Set<String> leisureIds, DateTime now) {
+void _paint(List<HoursKind> cells, DateTime from, List<Session> sessions, Map<String, Activity> byId, Set<String> leisureIds, DateTime now) {
   final to = from.add(Duration(minutes: cells.length));
   for (final s in sessions) {
     if (s.deleted) continue;
     final end = s.endAt ?? now;
     if (!end.isAfter(from) || !s.startAt.isBefore(to)) continue;
-    final a = byId[s.activityId];
-    final name = a?.name;
-    final kind = isSleepName(name)
-        ? _Kind.sleep
-        : (isBasicNeedName(name) ? _Kind.basic : (leisureIds.contains(s.activityId) ? _Kind.leisure : _Kind.active));
+    final kind = _kindOf(s, byId, leisureIds);
     final i0 = s.startAt.isBefore(from) ? 0 : s.startAt.difference(from).inMinutes;
     final i1 = (end.isAfter(to) ? cells.length : end.difference(from).inMinutes).clamp(0, cells.length);
     for (var i = i0; i < i1; i++) {
@@ -101,12 +164,12 @@ WeekHours weekHours({
   final nowMin = DateTime(now.year, now.month, now.day, now.hour, now.minute);
   final start = nowMin.subtract(const Duration(minutes: kWeekHoursMin));
   final prevStart = start.subtract(const Duration(minutes: kWeekHoursMin));
-  final cells = List<_Kind>.filled(kWeekHoursMin * 2, _Kind.none);
+  final cells = List<HoursKind>.filled(kWeekHoursMin * 2, HoursKind.free);
   _paint(cells, prevStart, sessions, byId, leisureIds, now);
   var active = 0, leisure = 0, basic = 0, sleep = 0, prev = 0, prevLeisure = 0, leaving = 0;
   for (var i = 0; i < kWeekHoursMin; i++) {
-    if (cells[i] == _Kind.active) prev++;
-    if (cells[i] == _Kind.leisure) prevLeisure++;
+    if (cells[i] == HoursKind.active) prev++;
+    if (cells[i] == HoursKind.leisure) prevLeisure++;
   }
   final today = DateTime(now.year, now.month, now.day);
   final days = [for (var i = 7; i >= 0; i--) DateTime(today.year, today.month, today.day - i)];
@@ -114,16 +177,16 @@ WeekHours weekHours({
   final dayLeisure = List<int>.filled(days.length, 0);
   for (var i = 0; i < kWeekHoursMin; i++) {
     final k = cells[kWeekHoursMin + i];
-    if (k == _Kind.none) continue;
-    if (k == _Kind.sleep) {
+    if (k == HoursKind.free) continue;
+    if (k == HoursKind.sleep) {
       sleep++;
-    } else if (k == _Kind.basic) {
+    } else if (k == HoursKind.basic) {
       basic++;
     } else {
       final t = start.add(Duration(minutes: i));
       final d = DateTime(t.year, t.month, t.day);
       final idx = days.indexWhere((x) => x == d);
-      if (k == _Kind.leisure) {
+      if (k == HoursKind.leisure) {
         leisure++;
         if (idx >= 0) dayLeisure[idx]++;
       } else {
@@ -133,7 +196,13 @@ WeekHours weekHours({
       }
     }
   }
+  final (nowKind, nowName) = _momentAt(now, sessions, byId, leisureIds, now, running: true);
+  final (pastKind, pastName) = _momentAt(now.subtract(const Duration(minutes: kWeekHoursMin)), sessions, byId, leisureIds, now);
   return WeekHours(
+    nowKind: nowKind,
+    nowName: nowName,
+    pastKind: pastKind,
+    pastName: pastName,
     activeMin: active,
     basicMin: basic,
     sleepMin: sleep,

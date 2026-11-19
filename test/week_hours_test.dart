@@ -90,4 +90,37 @@ void main() {
     final h = weekHours(now: now, activities: acts, sessions: [Session(activityId: 'w', startAt: DateTime(2026, 11, 11, 14))]);
     expect(h.activeMin, 60);
   });
+
+  test('aiguille et triangle : ce qui tourne maintenant, ce qui tournait il y a 7 jours à la même minute', () {
+    final all = [...acts, Activity(id: 'j', domainId: 'c', name: 'Jeux vidéo')];
+    final h = weekHours(now: now, activities: all, leisureIds: {'j'}, sessions: [
+      Session(activityId: 'j', startAt: DateTime(2026, 11, 11, 14, 30)), // chrono ouvert : maintenant
+      s('w', DateTime(2026, 11, 4, 14), 120), // couvre le 4 à 15 h : il y a 7 jours
+      s('m', DateTime(2026, 11, 11, 12), 30), // fini : ne dit rien de maintenant
+    ]);
+    expect(h.nowKind, HoursKind.leisure);
+    expect(h.nowName, 'Jeux vidéo');
+    expect(h.pastKind, HoursKind.active);
+    expect(h.pastName, 'Travail');
+    expect(hoursMomentLabel(h.nowKind, h.nowName, now: true), 'Détente · Jeux vidéo');
+    expect(hoursMoveSentence(h.nowKind, h.pastKind), 'La détente avance, le vert recule.');
+
+    // Rien ne tourne, rien ne tournait : la jauge ne bouge pas.
+    final idle = weekHours(now: now, activities: all, sessions: [s('w', DateTime(2026, 11, 4, 15, 1), 60), s('w', DateTime(2026, 11, 11, 13), 60)]);
+    expect(idle.nowKind, HoursKind.free);
+    expect(idle.pastKind, HoursKind.free);
+    expect(hoursMomentLabel(idle.nowKind, null, now: true), 'aucun chrono');
+    expect(hoursMomentLabel(idle.pastKind, null), 'rien de tracé');
+    expect(hoursMoveSentence(HoursKind.free, HoursKind.free), contains('ne bouge pas'));
+
+    // Deux chronos sur la même minute : le plus fort gagne, comme dans le compte ; « Sommeil » ne se répète pas.
+    final both = weekHours(now: now, activities: all, sessions: [
+      Session(activityId: 'w', startAt: DateTime(2026, 11, 11, 9)),
+      Session(activityId: 's', startAt: DateTime(2026, 11, 11, 14)),
+      Session(activityId: 'w', startAt: DateTime(2026, 11, 4, 16), endAt: DateTime(2026, 11, 4, 17), deleted: true),
+    ]);
+    expect(both.nowKind, HoursKind.sleep);
+    expect(hoursMomentLabel(both.nowKind, both.nowName, now: true), 'Sommeil');
+    expect(hoursMoveSentence(HoursKind.active, HoursKind.free), 'Le vert avance, ton temps libre recule.');
+  });
 }
