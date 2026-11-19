@@ -2289,10 +2289,14 @@ lanceur, Journée parfaite, Enchaîner, Guérilla, web), `AppLogic.habitStreakIn
 tenue par son avance affiche « ✓ couverte jusqu'à … » (lanceur, Journée parfaite). Les hebdomadaires comptaient déjà sur 7 jours
 glissants (`rollingStatFor`). Pas touché : semaines tenues (contrat hebdo par coches), victoires sur la flemme, le serveur (MCP, coach
 lisent encore la cible du jour). **Lot 2 livré (lanceur de routines, `routine_launcher_sheet.dart`)** : Focus en trois étages — À FAIRE
-(par domaine, comme avant ; une routine « sur 7 jours » dit « 0 / 5 · 65 / 70 sur 7 j » et porte la jauge des activités, `_coverBar`,
-`launcher-cover-bar-<id>` : tout le fait à la couleur du domaine, TRAIT BLANC = les 6 jours passés, du trait au bout = la part du jour),
-**PRENDRE DE L'AVANCE** (`launcher-ahead` : tenues ce soir mais demain demandera quelque chose, `RoutineCover.canGetAhead` ; « couverte ce
-soir · +10 = demain libre », − / + et lanceur gardés ; le nombre = `RoutineCover.toFreeTomorrow`, ce qu'il faut VRAIMENT ajouter pour que demain ne demande rien — plus que la cible quand la semaine a des trous), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
+(par domaine, comme avant ; une routine « sur 7 jours » dit « 0 / 5 aujourd'hui » et porte la **jauge du jour**, `_dayGauge`,
+`launcher-cover-bar-<id>` — maquette validée 2026-11-19 « Jauge des routines 7 jours », à la place de la jauge de la semaine des activités,
+qui s'arrêtait quand l'avance commence et montrait une dette que la règle ne réclame pas : une case par jour que les coches d'AUJOURD'HUI
+achètent, « ce soir » à la couleur du domaine puis « demain », « sam. », « dim. » en vert, largeur d'une case = son prix en coches, jours au
+même prix fusionnés « dem. + sam. », case déjà acquise par l'avance pleine d'office ; logique pure `RoutineCover.thresholds`, `coverSlots` /
+`CoverSlot`, `coverSlotLabel` ; la jauge reste sur une routine couverte dans l'onglet Tout),
+**PRENDRE DE L'AVANCE** (`launcher-ahead` : tenues ce soir mais demain demandera quelque chose, `RoutineCover.canGetAhead` ; « encore 10 = demain
+libre », − / + et lanceur gardés ; le nombre = `RoutineCover.toFreeTomorrow`, ce qu'il faut VRAIMENT ajouter pour que demain ne demande rien — plus que la cible quand la semaine a des trous), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
 « 6 couvertes · Étirements jusqu'à samedi · … · +3 », les plus proches d'abord ; tap = Tout) = routines « sur 7 jours » avec de l'avance
 et hebdomadaires atteintes (`weeklyAheadDays` : elle revient quand sa coche la plus ancienne qui compte sort de la fenêtre). Une routine
 « chaque jour » faite n'apparaît qu'en Tout, comme avant. **Lot 3 livré (le chrono coche)** : `Activity.minPerHit` (minutes de chrono

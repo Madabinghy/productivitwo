@@ -350,41 +350,75 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     );
   }
 
-  /// Jauge des 7 jours d'une routine « sur 7 jours », comme celle des activités : tout le fait à la
-  /// couleur du domaine, TRAIT BLANC = les 6 jours passés, du trait au bout = la part du jour.
-  Widget _coverBar(ColorScheme cs, RoutineCover c, Color color) {
-    final total = c.windowTarget <= 0 ? 1 : c.windowTarget;
-    final past = (c.pastDone / total).clamp(0.0, 1.0).toDouble();
-    final done = (c.windowDone / total).clamp(0.0, 1.0).toDouble();
-    return SizedBox(
-      height: 11,
-      child: LayoutBuilder(builder: (context, box) {
-        final w = box.maxWidth;
-        return Stack(clipBehavior: Clip.none, children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 3,
-            height: 5,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: Stack(children: [
-                Positioned.fill(child: ColoredBox(color: cs.onSurface.withValues(alpha: .08))),
-                Positioned(left: 0, top: 0, bottom: 0, width: w * done, child: ColoredBox(color: color)),
+  /// Jauge du jour d'une routine « sur 7 jours » (2026-11-19, maquette validée « Jauge des routines
+  /// 7 jours ») : une case par jour que les coches d'AUJOURD'HUI achètent — ce soir à la couleur du
+  /// domaine, puis demain et les jours suivants en vert. La largeur d'une case = son prix en coches.
+  Widget _dayGauge(ColorScheme cs, RoutineCover c, Color color) {
+    const green = Color(0xFF3DDC84);
+    const gap = 3.0;
+    final slots = coverSlots(c);
+    // Largeur minimale d'une case = la place de son nom (« ce soir », « dem. + sam. »).
+    final minOf = [for (final s in slots) s.to > s.from ? 66.0 : 38.0];
+    return LayoutBuilder(builder: (context, box) {
+      // Cases déjà acquises : largeur fixe ; les autres se partagent le reste au prorata du prix.
+      final fixed = [for (final s in slots) s.cost > 0 ? 0.0 : (s.to > s.from ? 84.0 : 46.0)];
+      // −0,5 px : jamais de débordement par arrondi.
+      final room = (box.maxWidth - .5 - gap * (slots.length - 1) - fixed.fold<double>(0, (a, b) => a + b)).clamp(0.0, double.infinity).toDouble();
+      final cost = slots.fold<int>(0, (a, s) => a + s.cost);
+      var widths = [for (var i = 0; i < slots.length; i++) slots[i].cost > 0 ? room * slots[i].cost / cost : fixed[i]];
+      // Une case trop étroite pour son nom prend sa largeur minimale sur les autres.
+      final narrow = [for (var i = 0; i < slots.length; i++) slots[i].cost > 0 && widths[i] < minOf[i]];
+      final taken = [for (var i = 0; i < slots.length; i++) if (narrow[i]) minOf[i]].fold<double>(0, (a, b) => a + b);
+      final wideCost = [for (var i = 0; i < slots.length; i++) if (slots[i].cost > 0 && !narrow[i]) slots[i].cost].fold<int>(0, (a, b) => a + b);
+      if (taken > 0 && wideCost > 0 && room > taken) {
+        widths = [
+          for (var i = 0; i < slots.length; i++)
+            slots[i].cost <= 0 ? fixed[i] : (narrow[i] ? minOf[i] : (room - taken) * slots[i].cost / wideCost),
+        ];
+      }
+      var nextSeen = false;
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < slots.length; i++) ...[
+          if (i > 0) const SizedBox(width: gap),
+          () {
+            final s = slots[i];
+            final next = !s.full && !nextSeen;
+            if (next) nextSeen = true;
+            final fillColor = s.from == 0 && s.cost > 0 ? color : green;
+            return SizedBox(
+              width: widths[i],
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 7,
+                    child: Stack(alignment: Alignment.centerLeft, children: [
+                      Positioned.fill(child: ColoredBox(color: cs.onSurface.withValues(alpha: .16))),
+                      FractionallySizedBox(
+                        widthFactor: s.fill,
+                        heightFactor: 1,
+                        child: DecoratedBox(decoration: BoxDecoration(color: fillColor, borderRadius: BorderRadius.circular(4))),
+                      ),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(coverSlotLabel(c.today, s),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                        color: s.full ? green : cs.onSurface.withValues(alpha: next ? .95 : .45))),
               ]),
-            ),
-          ),
-          if (past > 0)
-            Positioned(
-              left: (w * past - 1).clamp(0.0, w - 2),
-              top: 0,
-              bottom: 0,
-              width: 2,
-              child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
-            ),
-        ]);
-      }),
-    );
+            );
+          }(),
+        ],
+      ]);
+    });
   }
 
   Widget _focusToggle(ColorScheme cs, int left, {required bool searching}) => Row(children: [
@@ -431,12 +465,14 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       if (dismissed) const TextSpan(text: 'pas aujourd\'hui · '),
       TextSpan(
           text: ahead && cover != null
-              ? 'couverte ce soir · +${cover.toFreeTomorrow} = demain libre'
+              ? 'encore ${cover.toFreeTomorrow} = demain libre'
               : done
                   ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
-                  : (s.share?.label ?? (hasTimer && linked == null ? '${a.timerMin} min' : '$count / $target${t.dayTarget == null ? ' sur 7 j' : ''}')),
+                  : (s.share?.label ??
+                      (hasTimer && linked == null
+                          ? '${a.timerMin} min'
+                          : '$count / $target${t.dayTarget == null ? ' sur 7 j' : (cover != null ? ' aujourd\'hui' : '')}')),
           style: TextStyle(color: dc)),
-      if (cover != null && !done) TextSpan(text: ' · ${cover.windowDone} / ${cover.windowTarget} sur 7 j'),
       if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)
         TextSpan(text: ' · ${momentOf(s.moment).thisOne}'),
       // « Prendre de l'avance » : la ligne ne dit que ce que le geste rapporte.
@@ -466,11 +502,11 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   child: Text.rich(TextSpan(children: infos),
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted)),
                 ),
-                if (cover != null && (!done || ahead))
+                if (cover != null && !dismissed)
                   Padding(
                     key: ValueKey('launcher-cover-bar-${a.id}'),
-                    padding: const EdgeInsets.only(top: 3),
-                    child: _coverBar(cs, cover, dc),
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _dayGauge(cs, cover, dc),
                   ),
                 if (s.pushed)
                   GestureDetector(

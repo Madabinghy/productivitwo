@@ -55,6 +55,10 @@ class RoutineCover {
   /// Coches à faire EN PLUS aujourd'hui pour que demain ne demande rien
   /// (peut dépasser la cible quand la semaine a des trous).
   final int toFreeTomorrow;
+  /// Coches d'aujourd'hui qu'il faut pour tenir chaque jour : `[0]` = ce soir
+  /// (la part du jour), `[k]` = le k-ième jour à venir, sans rien y faire.
+  /// Croissant : un jour plus loin ne coûte jamais moins.
+  final List<int> thresholds;
   /// La journée vécue du calcul.
   final DateTime today;
   const RoutineCover({
@@ -66,6 +70,7 @@ class RoutineCover {
     required this.aheadDays,
     required this.tomorrowTarget,
     required this.toFreeTomorrow,
+    required this.thresholds,
   });
 
   /// La journée est tenue : la part du jour est faite, ou l'avance la couvre.
@@ -107,6 +112,13 @@ RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int da
   int nextTarget() => rollingDayTarget(t, lastSix());
   final tomorrow = nextTarget();
   final missing = kRoutineWindowDays * t - lastSix();
+  // Le k-ième jour à venir ne voit plus que les (6 − k) derniers jours passés.
+  final thresholds = <int>[dayTarget];
+  for (var k = 1; k < kRoutineWindowDays; k++) {
+    final kept = window.skip(k).fold<int>(0, (s, v) => s + v);
+    final need = kRoutineWindowDays * t - kept;
+    thresholds.add(need > 0 ? need : 0);
+  }
   var ahead = 0;
   if (todayDone >= dayTarget) {
     while (ahead < kRoutineWindowDays - 1 && nextTarget() == 0) {
@@ -114,7 +126,60 @@ RoutineCover routineCover(Activity a, List<HabitHit> hits, DateTime now, {int da
       future.add(0);
     }
   }
-  return RoutineCover(today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow, toFreeTomorrow: missing > 0 ? missing : 0);
+  return RoutineCover(today: today, target: t, todayDone: todayDone, pastDone: past, dayTarget: dayTarget, aheadDays: ahead, tomorrowTarget: tomorrow, toFreeTomorrow: missing > 0 ? missing : 0, thresholds: thresholds);
+}
+
+/// Une case de la jauge du jour (2026-11-19, maquette validée « Jauge des
+/// routines 7 jours ») : ce que les coches d'AUJOURD'HUI achètent — ce soir,
+/// puis demain, puis les jours suivants. Sa largeur est son prix en coches.
+class CoverSlot {
+  /// Jours couverts par la case : 0 = ce soir, 1 = demain… Plusieurs jours au
+  /// même prix tiennent dans une seule case ([from] … [to]).
+  final int from;
+  final int to;
+  /// Coches d'aujourd'hui où la case commence et où elle est pleine.
+  final int lo;
+  final int hi;
+  final int done;
+  const CoverSlot({required this.from, required this.to, required this.lo, required this.hi, required this.done});
+
+  /// Prix de la case ; 0 = déjà acquise par l'avance des jours passés.
+  int get cost => hi - lo;
+  bool get full => done >= hi;
+  double get fill => cost <= 0 ? 1 : ((done - lo) / cost).clamp(0.0, 1.0).toDouble();
+  /// Ce qu'il manque pour la remplir.
+  int get left => full ? 0 : hi - (done > lo ? done : lo);
+}
+
+/// Les cases de la jauge : ce soir et les [days] − 1 jours suivants.
+List<CoverSlot> coverSlots(RoutineCover c, {int days = 4}) {
+  final out = <CoverSlot>[];
+  final n = days > c.thresholds.length ? c.thresholds.length : days;
+  for (var k = 0; k < n; k++) {
+    final lo = k == 0 ? 0 : c.thresholds[k - 1];
+    final hi = c.thresholds[k];
+    if (hi == lo && out.isNotEmpty) {
+      final p = out.removeLast();
+      out.add(CoverSlot(from: p.from, to: k, lo: p.lo, hi: p.hi, done: c.todayDone));
+      continue;
+    }
+    out.add(CoverSlot(from: k, to: k, lo: lo, hi: hi, done: c.todayDone));
+  }
+  return out;
+}
+
+/// « ce soir », « demain », « sam. » ; plusieurs jours : « dem. + sam. », « dem. → lun. ».
+String coverSlotLabel(DateTime today, CoverSlot s) {
+  const names = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+  String day(int k, {bool short = false}) {
+    if (k == 0) return 'ce soir';
+    if (k == 1) return short ? 'dem.' : 'demain';
+    return names[DateTime(today.year, today.month, today.day + k).weekday - 1];
+  }
+
+  if (s.from == s.to) return day(s.from);
+  if (s.to == s.from + 1) return '${day(s.from, short: true)} + ${day(s.to, short: true)}';
+  return '${day(s.from, short: true)} → ${day(s.to, short: true)}';
 }
 
 /// Jours vécus TENUS par une routine « sur 7 jours », jusqu'à [now] compris :

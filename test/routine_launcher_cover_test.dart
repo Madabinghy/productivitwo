@@ -52,9 +52,12 @@ void main() {
             body: RoutineLauncher(logic: logic, sync: FirestoreSync(), onNew: () {}, onChrono: (_) {}, onTimer: (_) {}))));
     await t.pump();
 
-    // À faire : la part du jour et le total des 7 jours, avec la jauge.
-    expect(find.textContaining('0 / 10 · 60 / 70 sur 7 j', findRichText: true), findsOneWidget);
-    expect(find.byKey(const ValueKey('launcher-cover-bar-pompes')), findsOneWidget);
+    // À faire : la part du jour, et la jauge de ce que les coches du jour achètent.
+    expect(find.textContaining('0 / 10 aujourd\'hui', findRichText: true), findsOneWidget);
+    final gauge = find.byKey(const ValueKey('launcher-cover-bar-pompes'));
+    expect(gauge, findsOneWidget);
+    expect(find.descendant(of: gauge, matching: find.text('ce soir')), findsOneWidget);
+    expect(find.descendant(of: gauge, matching: find.text('demain')), findsOneWidget);
     // Une routine « chaque jour » n'a pas de jauge des 7 jours.
     expect(find.text('Boire de l\'eau'), findsOneWidget);
     expect(find.byKey(const ValueKey('launcher-cover-bar-eau')), findsNothing);
@@ -62,7 +65,7 @@ void main() {
     // Prendre de l'avance : tenue ce soir, demain demandera 10.
     expect(find.byKey(const ValueKey('launcher-ahead')), findsOneWidget);
     expect(find.text('Abdos'), findsOneWidget);
-    expect(find.textContaining('couverte ce soir · +10 = demain libre', findRichText: true), findsOneWidget);
+    expect(find.textContaining('encore 10 = demain libre', findRichText: true), findsOneWidget);
     expect(t.getTopLeft(find.text('Abdos')).dy, greaterThan(t.getTopLeft(find.byKey(const ValueKey('launcher-ahead'))).dy));
     expect(t.getTopLeft(find.text('Pompes')).dy, lessThan(t.getTopLeft(find.byKey(const ValueKey('launcher-ahead'))).dy));
 
@@ -77,6 +80,8 @@ void main() {
     await t.pump();
     expect(find.text('Gainage'), findsOneWidget);
     expect(find.textContaining('✓ couverte jusqu\'à demain soir', findRichText: true), findsOneWidget);
+    // En « Tout », une couverte garde sa jauge : ce soir et demain déjà acquis.
+    expect(find.descendant(of: find.byKey(const ValueKey('launcher-cover-bar-gainage')), matching: find.text('ce soir + dem.')), findsOneWidget);
     expect(find.byKey(const ValueKey('launcher-ahead')), findsNothing);
     expect(t.takeException(), isNull);
   });
