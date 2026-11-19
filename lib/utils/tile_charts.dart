@@ -114,3 +114,30 @@ List<RoutineRow> routineGrid({
   });
   return rows;
 }
+
+/// L'ordre d'affichage des tuiles d'Organisation, deux demi-tuiles par rangée : une tuile pleine largeur ([wide])
+/// qui tomberait après une demi-tuile seule attend que la rangée soit complétée par la demi-tuile suivante (retour
+/// user 2026-11-19 : Business seule à gauche, Chill seule en bas, une place vide à côté de chacune). L'ordre des
+/// demi-tuiles entre elles, et des pleines largeurs entre elles, ne change pas.
+List<int> packTiles(List<bool> wide) {
+  final out = <int>[];
+  final waiting = <int>[];
+  var halfOpen = false;
+  for (var i = 0; i < wide.length; i++) {
+    if (wide[i]) {
+      if (halfOpen) {
+        waiting.add(i);
+      } else {
+        out.add(i);
+      }
+      continue;
+    }
+    out.add(i);
+    halfOpen = !halfOpen;
+    if (!halfOpen) {
+      out.addAll(waiting);
+      waiting.clear();
+    }
+  }
+  return out..addAll(waiting);
+}
