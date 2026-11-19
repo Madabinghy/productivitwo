@@ -2299,7 +2299,7 @@ même prix fusionnés « dem. + sam. », case déjà acquise par l'avance pleine
 libre », − / + et lanceur gardés ; le nombre = `RoutineCover.toFreeTomorrow`, ce qu'il faut VRAIMENT ajouter pour que demain ne demande rien — plus que la cible quand la semaine a des trous), et les **couvertes** repliées sur une ligne (`launcher-covered`, `_coveredLine` :
 « 6 couvertes · Étirements jusqu'à samedi · … · +3 », les plus proches d'abord ; tap = Tout) = routines « sur 7 jours » avec de l'avance
 et hebdomadaires atteintes (`weeklyAheadDays` : elle revient quand sa coche la plus ancienne qui compte sort de la fenêtre). Une routine
-« chaque jour » faite n'apparaît qu'en Tout, comme avant. **Lot 3 livré (le chrono coche)** : `Activity.minPerHit` (minutes de chrono
+« chaque jour » faite n'apparaît qu'en Tout, comme avant. **Infos jamais coupées** (2026-11-19, retour user : « ce matin », « cet après-midi » tronqués) : la ligne d'infos d'une routine (toutes les lignes du lanceur) passe à la ligne ENTRE deux infos, sur 3 lignes au plus — espaces insécables dans une info, coupure après « · » (`nb` / `sep` dans `_row` ; les tests comparent avec `nb(...)`). **Lot 3 livré (le chrono coche)** : `Activity.minPerHit` (minutes de chrono
 sur l'activité liée `linkedActivityId` pour UNE coche ; null = non ; toute fréquence) — fiche routine, sous l'activité liée, LE CHRONO
 COCHE : Non · 1 coche = 5 · 10 · 15 · 20 · 30 min (`routine-min-per-hit-<m>`). Logique pure (`routine_cover.dart`) : `hasTimeHits`,
 `livedMinutesOn` (minutes de la journée vécue, chrono en cours compris), `timeHitsEarned` = minutes ÷ durée, `timeHitId` =
