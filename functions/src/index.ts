@@ -1,5 +1,5 @@
 import { splitLabel } from "./routine_split";
-import { RoutineCover, catchUpNote, catchUpOf, coverNote, isCatchUpRoutine, isRollingRoutine, livedYmdOfTs, routineCover } from "./routine_cover";
+import { RoutineCover, coverNote, isRollingRoutine, livedYmdOfTs, routineCover } from "./routine_cover";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
@@ -728,10 +728,8 @@ export const proposeDayPlan = onRequest(
 
       // Routines « sur 7 jours » : où en est leur avance le jour CIBLE (coches par jour vécu).
       const coverByHabit = new Map<string, RoutineCover>();
-      // Routines rattrapables (« rattrapable » ou « sur 7 jours ») : les jours ratés encore rattrapables ce jour-là.
-      const catchUpByHabit = new Map<string, string>();
       {
-        const rolling = acts.filter((a) => isCatchUpRoutine(a));
+        const rolling = acts.filter((a) => isRollingRoutine(a));
         if (rolling.length) {
           const counts = new Map<string, Record<string, number>>();
           for (const d of hitsSnap.docs) {
@@ -744,10 +742,7 @@ export const proposeDayPlan = onRequest(
             counts.set(id, c);
           }
           for (const a of rolling) {
-            const c = counts.get(String(a.id)) ?? {};
-            if (isRollingRoutine(a)) coverByHabit.set(String(a.id), routineCover(Number(a.habitTarget ?? 1), c, target));
-            const note = catchUpNote(catchUpOf(Number(a.habitTarget ?? 1), c, target, a.rolling === true), typeof a.minPerHit === "number" ? a.minPerHit : null);
-            if (note) catchUpByHabit.set(String(a.id), note);
+            coverByHabit.set(String(a.id), routineCover(Number(a.habitTarget ?? 1), counts.get(String(a.id)) ?? {}, target));
           }
         }
       }
@@ -769,8 +764,6 @@ export const proposeDayPlan = onRequest(
               ? ` · répartie : ${splitLabel(Number(a.habitTarget ?? 1), a.splitMoments as string[])}`
               : "") +
             (coverByHabit.has(String(a.id)) ? ` · ${coverNote(coverByHabit.get(String(a.id))!)}` : "") +
-            (a.catchUp === true && a.rolling !== true ? " · rattrapable (pas d'avance)" : "") +
-            (catchUpByHabit.has(String(a.id)) ? ` · ${catchUpByHabit.get(String(a.id))}` : "") +
             (typeof a.minPerHit === "number" && a.minPerHit > 0 ? ` · le chrono coche : 1 coche = ${a.minPerHit} min` : "");
         })
         .join("\n") || "  Aucune.";

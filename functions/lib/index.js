@@ -409,7 +409,7 @@ exports.whereWeGo = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -688,10 +688,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         }
         // Routines « sur 7 jours » : où en est leur avance le jour CIBLE (coches par jour vécu).
         const coverByHabit = new Map();
-        // Routines rattrapables (« rattrapable » ou « sur 7 jours ») : les jours ratés encore rattrapables ce jour-là.
-        const catchUpByHabit = new Map();
         {
-            const rolling = acts.filter((a) => (0, routine_cover_1.isCatchUpRoutine)(a));
+            const rolling = acts.filter((a) => (0, routine_cover_1.isRollingRoutine)(a));
             if (rolling.length) {
                 const counts = new Map();
                 for (const d of hitsSnap.docs) {
@@ -705,12 +703,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     counts.set(id, c);
                 }
                 for (const a of rolling) {
-                    const c = (_0 = counts.get(String(a.id))) !== null && _0 !== void 0 ? _0 : {};
-                    if ((0, routine_cover_1.isRollingRoutine)(a))
-                        coverByHabit.set(String(a.id), (0, routine_cover_1.routineCover)(Number((_1 = a.habitTarget) !== null && _1 !== void 0 ? _1 : 1), c, target));
-                    const note = (0, routine_cover_1.catchUpNote)((0, routine_cover_1.catchUpOf)(Number((_2 = a.habitTarget) !== null && _2 !== void 0 ? _2 : 1), c, target, a.rolling === true), typeof a.minPerHit === "number" ? a.minPerHit : null);
-                    if (note)
-                        catchUpByHabit.set(String(a.id), note);
+                    coverByHabit.set(String(a.id), (0, routine_cover_1.routineCover)(Number((_0 = a.habitTarget) !== null && _0 !== void 0 ? _0 : 1), (_1 = counts.get(String(a.id))) !== null && _1 !== void 0 ? _1 : {}, target));
                 }
             }
         }
@@ -732,8 +725,6 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     ? ` · répartie : ${(0, routine_split_1.splitLabel)(Number((_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1), a.splitMoments)}`
                     : "") +
                 (coverByHabit.has(String(a.id)) ? ` · ${(0, routine_cover_1.coverNote)(coverByHabit.get(String(a.id)))}` : "") +
-                (a.catchUp === true && a.rolling !== true ? " · rattrapable (pas d'avance)" : "") +
-                (catchUpByHabit.has(String(a.id)) ? ` · ${catchUpByHabit.get(String(a.id))}` : "") +
                 (typeof a.minPerHit === "number" && a.minPerHit > 0 ? ` · le chrono coche : 1 coche = ${a.minPerHit} min` : "");
         })
             .join("\n") || "  Aucune.";
@@ -941,7 +932,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // Anti-doublon déterministe : le LLM ne doit pas ré-émettre un bloc déjà
         // posé sur la cible (il sera conservé tel quel à la validation).
         const occupiedTitles = new Set(occupiedBlocks.map((e) => normName(e.title)).filter((t) => t.length > 0));
-        const outBlocks = ((_3 = proposal.blocks) !== null && _3 !== void 0 ? _3 : []).filter((b) => {
+        const outBlocks = ((_2 = proposal.blocks) !== null && _2 !== void 0 ? _2 : []).filter((b) => {
             var _a;
             if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
                 return false;
@@ -976,7 +967,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 if (covered.has(id) || doneOnTarget.has(id))
                     continue;
                 // « Sur 7 jours » : l'avance couvre déjà ce jour, rien à programmer.
-                if (((_4 = coverByHabit.get(id)) === null || _4 === void 0 ? void 0 : _4.dayTarget) === 0)
+                if (((_3 = coverByHabit.get(id)) === null || _3 === void 0 ? void 0 : _3.dayTarget) === 0)
                     continue;
                 const typical = typicalByHabit.get(id);
                 // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
@@ -986,7 +977,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 const startTime = typical !== null && typical !== void 0 ? typical : (ctx ? toHm(ctx.anchorMin) : toHm(fallbackMin));
                 if (!typical && !ctx)
                     fallbackMin += 30;
-                const timerMin = Number((_5 = a.timerMin) !== null && _5 !== void 0 ? _5 : 0);
+                const timerMin = Number((_4 = a.timerMin) !== null && _4 !== void 0 ? _4 : 0);
                 outBlocks.push({
                     startTime,
                     durationMin: timerMin > 0 ? timerMin : 15,
@@ -1003,8 +994,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             }
         }
         res.status(200).json({
-            message: (_6 = proposal.message) !== null && _6 !== void 0 ? _6 : "",
-            sources: (_7 = proposal.sources) !== null && _7 !== void 0 ? _7 : [],
+            message: (_5 = proposal.message) !== null && _5 !== void 0 ? _5 : "",
+            sources: (_6 = proposal.sources) !== null && _6 !== void 0 ? _6 : [],
             blocks: repackAfterWake(outBlocks),
             refDate,
             dayReason,

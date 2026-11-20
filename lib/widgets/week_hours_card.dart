@@ -43,8 +43,8 @@ String _deltaLabel(int min) {
 /// le bout arrondi du départ) → sommeil → détente, puis l'actif, puis le temps libre en tirets. L'actif touche le
 /// temps libre, dans lequel il grandit. L'aiguille se pose au bout du morceau en cours, qui s'éclaire ; sans chrono,
 /// elle recule dans le vert jusqu'aux heures actives de demain si rien n'est fait ([WeekHours.tomorrowShare]) et
-/// ce qui la dépasse est hachuré. Le triangle blanc, au-dessus du cadran, se pose de la même façon sur ce qui tournait
-/// il y a 7 jours (rien de tracé = le même endroit que l'aiguille sans chrono) : alignés = tu fais pareil. Le filet intérieur, sous le vert = les heures
+/// ce qui la dépasse est hachuré. Le triangle blanc, au-dessus du cadran, se pose au bout du morceau qui tournait
+/// il y a 7 jours (au milieu des tirets si rien n'était tracé) : alignés = tu fais pareil. Le filet intérieur, sous le vert = les heures
 /// actives des 7 jours d'avant ([showPrev]).
 class WeekHoursGauge extends StatelessWidget {
   final WeekHours h;
@@ -138,12 +138,11 @@ class _GaugePainter extends CustomPainter {
     final trackedEnd = a;
     if (f[0] <= 0) activeStart = trackedEnd;
     const end = _start + _sweep;
+    // Rien de tracé il y a 7 jours : le triangle va au milieu du temps libre.
+    mark[HoursKind.free] = (trackedEnd + end) / 2;
     // Sans chrono, l'aiguille recule dans le vert : là où il s'arrêtera demain à la même heure si rien n'est fait.
-    // Le triangle parle pareil (retour user 2026-11-19) : rien de tracé il y a 7 jours = le même endroit, donc
-    // alignés quand on ne fait rien aujourd'hui comme il y a 7 jours.
     final idle = h.nowKind == HoursKind.free;
     final idleAt = activeStart + activeLen * h.tomorrowShare;
-    mark[HoursKind.free] = idleAt;
     if (idle && h.leavingMin > 0 && activeLen > 0) {
       // Ce qui sort d'ici là : hachuré.
       final from = idleAt, to = activeStart + activeLen;
@@ -189,7 +188,7 @@ class _GaugePainter extends CustomPainter {
         Paint()..color = needle);
 
     // L'aiguille, effilée : ce qui tourne maintenant, sinon demain si rien (elle traverse alors le vert).
-    final na = mark[h.nowKind]!;
+    final na = idle ? idleAt : mark[h.nowKind]!;
     final tip = at(idle ? r + stroke / 2 + w * .004 : r - w * .008, na);
     final b1 = at(w * .022, na + math.pi / 2), b2 = at(w * .022, na - math.pi / 2);
     canvas.drawPath(
@@ -470,9 +469,7 @@ class _WeekHoursSheet extends StatelessWidget {
               text: ' se pose au bout de ce que tu fais maintenant. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne fais rien : '
                   'la partie hachurée est ce qui sort de ta fenêtre d\'ici là. '),
           TextSpan(text: 'Le triangle blanc', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
-          const TextSpan(
-              text: ' montre de la même façon ce que tu faisais il y a 7 jours à la même minute (rien de tracé : il se pose là où va l\'aiguille sans chrono) : '
-                  'c\'est la minute qui sort de ta fenêtre. Alignés, tu fais pareil. '),
+          const TextSpan(text: ' montre ce que tu faisais il y a 7 jours à la même minute : c\'est la minute qui sort de ta fenêtre. Alignés, tu fais pareil. '),
           const TextSpan(text: 'Le vert', style: TextStyle(fontWeight: FontWeight.w700, color: kHoursActive)),
           TextSpan(text: ', tes heures actives, touche ton temps libre et grandit dedans : ${hoursLabel(h.trackedMin)} tracées sur 168. '),
           TextSpan(text: 'Le filet sous le vert', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),

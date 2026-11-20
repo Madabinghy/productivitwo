@@ -13,7 +13,6 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
-import 'package:productivitwo_v1/utils/auto_target.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
@@ -265,8 +264,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               ],
             ),
             const SizedBox(height: 4),
-            // Cible, durée et gel en tête (retour user 2026-11-02 : cachés dans les réglages). La durée d'une fois
-            // est le SEUL réglage de temps (2026-11-19) : le ⏱ de la ligne et, si le chrono coche, une coche.
+            // Cible, minuteur et gel en tête (retour user 2026-11-02 : cachés dans les réglages).
             Wrap(spacing: 8, runSpacing: 6, children: [
               ActionChip(
                 avatar: const Icon(Icons.flag_outlined, size: 16),
@@ -274,15 +272,20 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 onPressed: () async {
                   final v = await _pickCount(context, act.habitTarget ?? 1);
                   if (v == null) return;
-                  logic.setRoutineTarget(act, v);
+                  act.habitTarget = v;
                   _applySetting();
                 },
               ),
               ActionChip(
                 avatar: const Icon(Icons.timer_outlined, size: 16),
-                key: const ValueKey('routine-once-min'),
-                label: Text(act.onceMin != null ? 'Durée · ${act.onceMin} min' : 'Durée'),
-                onPressed: _pickOnceMin,
+                label: Text((act.timerMin ?? 0) > 0 ? 'Minuteur · ${act.timerMin} min' : 'Minuteur'),
+                onPressed: () async {
+                  final v = await pickDurationMin(context, initial: act.timerMin ?? 0, title: 'Minuteur de la routine', allowZero: true);
+                  if (v == null) return;
+                  logic.setActivityTimerMin(act.id, v == 0 ? null : v);
+                  widget.onSaved?.call();
+                  setState(() {});
+                },
               ),
               FreezeChip(logic: logic, activity: act, onChanged: () => setState(() {})),
             ]),
@@ -459,30 +462,90 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                   setState(() {});
                 },
               ),
-              // Une seule durée (2026-11-19) : le chrono de l'activité liée coche à la durée d'une fois.
-              const SizedBox(height: 8),
-              SwitchListTile.adaptive(
-                key: const ValueKey('routine-chrono-hits'),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: (act.minPerHit ?? 0) > 0,
-                title: Text('Le chrono de « ${linkedAct.name} » coche tout seul', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                subtitle: Text(
-                    (act.minPerHit ?? 0) > 0
-                        ? '${act.minPerHit} min = 1 fois · ${act.minPerHit! * 2} min = 2 fois, en plus de ce que tu coches à la main.'
-                        : act.onceMin != null
-                            ? 'Éteint : le ⏱ de ${act.onceMin} min coche la routine à la fin, le chrono seul ne coche rien.'
-                            : 'Règle d\'abord la durée d\'une fois.',
-                    key: const ValueKey('routine-chrono-hits-hint'),
-                    style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
-                onChanged: _setChronoHits,
+              const SizedBox(height: 12),
+              Text('MINUTEUR PAR DÉFAUT',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 1, 2, 5, 10, 15, 25])
+                    ChoiceChip(
+                      label: Text(m == 0 ? 'Aucun' : '$m min'),
+                      selected: (act.timerMin ?? 0) == m,
+                      onSelected: (_) {
+                        act.timerMin = m == 0 ? null : m;
+                        _applySetting();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Lancée depuis le FAB, la routine démarrera « ${linkedAct.name} » '
+                'pour cette durée et se cochera à la fin.',
+                style:
+                    TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
+              ),
+              // « 1 coche = n min » (2026-11-19) : le chrono de l'activité liée coche la routine.
+              const SizedBox(height: 12),
+              Text('LE CHRONO COCHE',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 5, 10, 15, 20, 30])
+                    ChoiceChip(
+                      key: ValueKey('routine-min-per-hit-$m'),
+                      label: Text(m == 0 ? 'Non' : '1 coche = $m min'),
+                      selected: (act.minPerHit ?? 0) == m,
+                      onSelected: (_) {
+                        act.minPerHit = m == 0 ? null : m;
+                        _applySetting();
+                        if (m > 0) logic.checkTimeHits();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                (act.minPerHit ?? 0) > 0
+                    ? 'Chaque tranche de ${act.minPerHit} min de chrono sur « ${linkedAct.name} » coche la routine une fois, '
+                        'en plus de ce que tu coches à la main.'
+                    : 'Le chrono sur « ${linkedAct.name} » ne coche pas la routine.',
+                key: const ValueKey('routine-min-per-hit-hint'),
+                style:
+                    TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),
             ] else ...[
+              const SizedBox(height: 12),
+              Text('MINUTEUR PAR DÉFAUT',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
               const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 1, 2, 5, 10, 15, 25])
+                    ChoiceChip(
+                      label: Text(m == 0 ? 'Aucun' : '$m min'),
+                      selected: (act.timerMin ?? 0) == m,
+                      onSelected: (_) {
+                        act.timerMin = m == 0 ? null : m;
+                        _applySetting();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
               Text(
-                act.onceMin != null
-                    ? 'Le ⏱ lance un décompte de ${act.onceMin} min et coche la routine à la fin. Lie une activité temps pour que ce temps soit compté quelque part.'
-                    : 'Règle une durée (en haut) pour lancer la routine au minuteur. Lie une activité temps pour que ce temps soit compté quelque part.',
+                'Le ▶ lancera un décompte de cette durée et cochera la routine à la fin — parfait pour les micro-routines (1 min : vitamines, verre d\'eau). Lie une activité temps si tu veux logguer le temps dessus.',
                 style:
                     TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),
@@ -676,7 +739,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     children: [
                       IconButton(
                         onPressed: () {
-                          logic.setRoutineTarget(act, target - 1);
+                          act.habitTarget = (target - 1).clamp(1, 999);
                           _applySetting();
                         },
                         icon: const Icon(Icons.remove_rounded, size: 18),
@@ -696,7 +759,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                       ),
                       IconButton(
                         onPressed: () {
-                          logic.setRoutineTarget(act, target + 1);
+                          act.habitTarget = (target + 1).clamp(1, 999);
                           _applySetting();
                         },
                         icon: const Icon(Icons.add_rounded, size: 18),
@@ -756,36 +819,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
             ],
 
-            // Cible automatique (2026-11-20) : elle suit ce qui est vraiment fait. Pas avec un cap (les paliers
-            // la pilotent déjà).
-            if (freq == HabitFreq.daily && act.finalTarget == null) ...[
-              const SizedBox(height: 6),
-              SwitchListTile.adaptive(
-                key: const ValueKey('routine-auto-target'),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: act.autoTarget,
-                activeColor: accentColor,
-                title: Text('Cible automatique',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.75))),
-                subtitle: Text(
-                  act.autoTarget
-                      ? 'Tu fais 120 % sur 7 jours : un cran de plus. Moins de 50 % : un cran de moins. '
-                          'Une fois par semaine au plus, et une hausse ne casse jamais ta série.'
-                          '${lastTargetChangeLabel(act) == null ? '' : '\nDernier changement : ${lastTargetChangeLabel(act)}'}'
-                      : 'La cible suit ce que tu fais vraiment : elle monte quand tu la dépasses, redescend si elle est trop haute.',
-                  key: const ValueKey('routine-auto-target-hint'),
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55)),
-                ),
-                onChanged: (v) {
-                  act.autoTarget = v;
-                  _applySetting();
-                },
-              ),
-            ],
-
-            // Rythme (2026-11-19) : chaque jour · rattrapable (un jour raté se rattrape dans les 7 jours,
-            // sans avance) · sur 7 jours (rattrapage et avance).
+            // Rythme (2026-11-19) : chaque jour, ou sur 7 jours glissants — ce
+            // qui est fait en plus couvre alors les jours suivants.
             if (act.habitFreq == HabitFreq.daily) ...[
               const SizedBox(height: 14),
               Text('Rythme',
@@ -796,10 +831,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               const SizedBox(height: 4),
               Text(
                   act.rolling
-                      ? 'Ce que tu fais en plus rattrape d\'abord un jour raté, puis te couvre les jours suivants, 7 jours au plus.'
-                      : act.catchUp
-                          ? 'Un jour raté se rattrape dans les 7 jours en faisant plus un autre jour : la série recolle. Pas d\'avance sur demain.'
-                          : 'La cible se refait chaque jour : un jour raté reste raté, ce que tu fais en plus ne compte pas demain.',
+                      ? 'Ce que tu fais en plus te couvre les jours suivants, 7 jours au plus. Un jour sans avance demande la cible normale.'
+                      : 'La cible se refait chaque jour : ce que tu fais en plus ne compte pas demain.',
                   key: const ValueKey('routine-rhythm-hint'),
                   style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
               const SizedBox(height: 8),
@@ -807,20 +840,14 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ChoiceChip(
                   key: const ValueKey('routine-rhythm-daily'),
                   label: const Text('Chaque jour'),
-                  selected: !act.rolling && !act.catchUp,
-                  onSelected: (_) => _setRhythm(rolling: false, catchUp: false),
-                ),
-                ChoiceChip(
-                  key: const ValueKey('routine-rhythm-catchup'),
-                  label: const Text('Rattrapable'),
-                  selected: !act.rolling && act.catchUp,
-                  onSelected: (_) => _setRhythm(rolling: false, catchUp: true),
+                  selected: !act.rolling,
+                  onSelected: (_) => _setRolling(false),
                 ),
                 ChoiceChip(
                   key: const ValueKey('routine-rhythm-rolling'),
                   label: const Text('Sur 7 jours'),
                   selected: act.rolling,
-                  onSelected: (_) => _setRhythm(rolling: true, catchUp: false),
+                  onSelected: (_) => _setRolling(true),
                 ),
               ]),
             ],
@@ -891,30 +918,9 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     );
   }
 
-  /// La durée d'une fois : le ⏱ de la ligne et, si le chrono coche, le temps d'une coche.
-  Future<void> _pickOnceMin() async {
-    final v = await pickDurationMin(context, initial: act.onceMin ?? 0, title: 'Durée d\'une fois', allowZero: true);
-    if (v == null || !mounted) return;
-    act.setOnceMin(v);
-    _applySetting();
-    if ((act.minPerHit ?? 0) > 0) logic.checkTimeHits();
-  }
-
-  Future<void> _setChronoHits(bool on) async {
-    if (on && act.onceMin == null) {
-      final v = await pickDurationMin(context, initial: 10, title: 'Durée d\'une fois');
-      if (v == null || v <= 0 || !mounted) return;
-      act.setOnceMin(v);
-    }
-    act.setChronoHits(on);
-    _applySetting();
-    if (on) logic.checkTimeHits();
-  }
-
-  void _setRhythm({required bool rolling, required bool catchUp}) {
-    if (act.rolling == rolling && act.catchUp == catchUp) return;
-    act.rolling = rolling;
-    act.catchUp = catchUp;
+  void _setRolling(bool v) {
+    if (act.rolling == v) return;
+    act.rolling = v;
     _applySetting();
   }
 
