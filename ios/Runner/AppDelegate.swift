@@ -5,8 +5,12 @@ import UserNotifications
 import AppIntents
 import alarm
 
+// Cycle de vie « UIScene » (obligatoire à partir d'iOS 27 : sans lui l'app se
+// ferme dès le lancement). La fenêtre n'existe plus dans
+// `didFinishLaunchingWithOptions` : les plugins et les canaux se branchent
+// dans `didInitializeImplicitFlutterEngine`, quand le moteur est prêt.
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let appGroup = "group.com.madabinghy.productivitwo"
   private let channelName = "com.madabinghy.productivitwo/widget"
 
@@ -14,18 +18,30 @@ import alarm
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-
     // Package `alarm` : délégué notifications + enregistrement des background tasks
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
     }
     SwiftAlarmPlugin.registerBackgroundTasks()
 
+    // Sous UIScene, `applicationDidBecomeActive` n'est plus appelé : on écoute
+    // la notification, toujours émise.
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in
+      UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let messenger = engineBridge.applicationRegistrar.messenger()
+
     // Method channel pour écrire directement dans le UserDefaults de l'App Group
     // — bypass home_widget plugin qui peut écrire dans la mauvaise suite sur iOS.
-    let controller = window?.rootViewController as! FlutterViewController
-    let channel = FlutterMethodChannel(name: channelName, binaryMessenger: controller.binaryMessenger)
+    let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
     channel.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else { result(FlutterError(code: "DEALLOC", message: nil, details: nil)); return }
       guard let defaults = UserDefaults(suiteName: self.appGroup) else {
@@ -62,7 +78,7 @@ import alarm
 
     // Method channel Live Activity (minuteur ActivityKit) — délégué au manager.
     let laChannel = FlutterMethodChannel(
-      name: "productivitwo/live_activity", binaryMessenger: controller.binaryMessenger)
+      name: "productivitwo/live_activity", binaryMessenger: messenger)
     laChannel.setMethodCallHandler { (call, result) in
       let args = call.arguments as? [String: Any] ?? [:]
       switch call.method {
@@ -87,12 +103,5 @@ import alarm
         result(FlutterMethodNotImplemented)
       }
     }
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  override func applicationDidBecomeActive(_ application: UIApplication) {
-    super.applicationDidBecomeActive(application)
-    UIApplication.shared.applicationIconBadgeNumber = 0
   }
 }
