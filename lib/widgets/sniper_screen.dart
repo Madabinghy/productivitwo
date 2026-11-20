@@ -107,10 +107,9 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   Timer? _timer;
 
   /// L'impact entre deux tirs (une seconde et demie, toucher = tout de suite).
-  late final AnimationController _impact = AnimationController(vsync: this, duration: kSniperImpact, animationBehavior: AnimationBehavior.preserve)
-    ..addStatusListener((st) {
-      if (st == AnimationStatus.completed) _afterImpact();
-    });
+  /// Créé dans `initState` : un `late final` paresseux serait créé au démontage
+  /// quand aucun impact n'a eu lieu, ce qui casse sous les versions de Flutter de la CI.
+  late final AnimationController _impact;
 
   /// La vibration de fin de minuteur n'est donnée qu'une fois par tir.
   bool _buzzed = false;
@@ -127,6 +126,10 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+    _impact = AnimationController(vsync: this, duration: kSniperImpact, animationBehavior: AnimationBehavior.preserve)
+      ..addStatusListener((st) {
+        if (st == AnimationStatus.completed) _afterImpact();
+      });
     WakelockPlus.enable().catchError((_) {});
     _load();
   }
