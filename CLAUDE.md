@@ -1517,6 +1517,14 @@ d'impact (le mini-tir garde un message). L'ancien écran TOUCHÉ à compte à re
 **Bilan** : le carton de tir (`sniper-card`, « au centre = pile le temps visé »), trois chiffres tirées · visées · précision (à la
 place de précision · enjeux tombés · décision), TOMBÉ avec le numéro du tir. Fond de l'écran : halo radial, vert pendant l'impact.
 Tests : `test/sniper_scope_test.dart`, `test/ui/sniper_screen_test.dart` (`SniperScreen(stakes:)` = enjeux fournis, tests seulement).
+**Le Sniper en feuille** (2026-11-20, demande user : « dans un sheet normal, sans la croix ») : `showSniperScreen` n'ouvre plus un
+écran plein mais une feuille comme la page focus (`ModalBottomSheetRoute` + `DraggableScrollableSheet` à 95 %, coins arrondis,
+poignée `sniper-sheet-handle`) ; son contrôleur pilote la liste de chaque étape (`SniperScreen(sheetScroll:)`), donc tirer vers le
+bas — depuis la liste remontée en haut ou une zone fixe — ou toucher au-dessus la referme. Plus de ✕ dans le viseur. **Refermée
+pendant un tir, la feuille n'arrête rien** (`dispose`) : minuteur, alarme et chrono continuent, la session attend avec ce tir en cours
+(`_away`, `_persist(away: true)`, message « Le minuteur continue · l'alarme sonnera à la fin »), comme « Faire ça dans l'app » ; la
+carte d'Aujourd'hui et la tuile la rouvrent. Seul « Je m'arrête » met fin au Sniper. Refermée au viseur : rien n'a commencé ; au
+bilan : la session est enregistrée comme avant.
 **La lunette dans la tuile du mode** (2026-11-20, demande user : « comme la jauge des 7 jours, la miniature du Sniper dans le
 widget ») : quand le mode du moment est le Sniper, la tuile carrée d'Aujourd'hui (`mode-tile`) n'affiche plus l'icône mais la miniature
 du viseur (`SniperModeTile`, `widgets/sniper_scope.dart` ; `SniperAimScope(mini: true)`, `mode-tile-scope` : arcs épais à la couleur
