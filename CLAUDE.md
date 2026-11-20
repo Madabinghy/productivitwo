@@ -2404,8 +2404,12 @@ compris, la cible valait tant ; `keepTargetUntil(hier)` avant chaque changement 
 `Activity.targetOnYmd(ymd)` — lus par `routineReachedDays`, `rollingHeldDays`, `catchUpOf`, les séries d'`AppLogic`
 (`habitStreakInfo`, `habitStreakEndingOn`, `habitBestStreak`) et `weekTargetFor(monday:)` des semaines tenues : une hausse ne casse
 jamais une série ni une semaine déjà tenue. Les paliers d'une routine à cap (`applyWeeklyProgression`) posent la même trace. Un
-changement À LA MAIN ne pose pas de trace (comme avant : le passé est relu avec la nouvelle cible). Pas fait : routines hebdomadaires,
-le serveur (Claude et le coach lisent la cible du jour), réglage par Claude.
+changement À LA MAIN ne pose pas de trace (comme avant : le passé est relu avec la nouvelle cible). **Côté Claude** (déployé au
+merge) : `update_activity {autoTarget}` et `create_routine {autoTarget}` (`rhythmPatch`, `functions/src/routine_cover.ts` : routine
+quotidienne sans cap seulement, sinon refus expliqué ; seulement à la demande ou sur accord) ; `get_user_context` porte
+`autoTarget` ; une cible changée par `update_activity {habitTarget}` sur une routine à cible automatique pose `lastTuneAt` (l'app
+attend une semaine pleine). La règle reste appliquée par l'app. Pas fait : routines hebdomadaires, l'historique des cibles côté
+serveur (Claude et le coach jugent le passé avec la cible du jour).
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

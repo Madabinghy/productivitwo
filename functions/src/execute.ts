@@ -667,6 +667,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       ...(Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {}),
       ...(v.rolling === true ? { rolling: true } : {}),
       ...(v.catchUp === true && v.rolling !== true ? { catchUp: true } : {}),
+      ...(v.type === "habit" && v.autoTarget === true ? { autoTarget: true } : {}),
       ...(typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {}),
       // Durée d'une fois : celle du chrono qui coche, sinon celle du minuteur. `timerMin` n'est joint que s'il
       // diffère encore en base (routine d'avant la durée unique).
@@ -979,12 +980,12 @@ async function executeSetActivityTargets(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown; catchUp?: unknown }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown; catchUp?: unknown; autoTarget?: unknown }
 ): Promise<string> {
   const id = uuidv4();
   const linked = String(args.activityId ?? "").trim();
   const rhythm = rhythmPatch(
-    { rolling: args.rolling, minPerHit: args.minPerHit, catchUp: args.catchUp },
+    { rolling: args.rolling, minPerHit: args.minPerHit, catchUp: args.catchUp, autoTarget: args.autoTarget },
     { type: "habit", habitFreq: args.habitFreq ?? 0, linkedActivityId: linked },
   );
   const split = args.splitMoments !== undefined && (args.habitFreq ?? 0) === 0 ? normalizeSplitMoments(args.splitMoments).moments : [];
@@ -2068,6 +2069,7 @@ async function executeUpdateActivity(
     rolling?: unknown;
     minPerHit?: unknown;
     catchUp?: unknown;
+    autoTarget?: unknown;
     linkedActivityId?: string;
   }
 ): Promise<string> {
@@ -2132,15 +2134,19 @@ async function executeUpdateActivity(
   {
     const data = snap.data() ?? {};
     const r = rhythmPatch(
-      { rolling: updates.rolling, minPerHit: updates.minPerHit, catchUp: updates.catchUp },
+      { rolling: updates.rolling, minPerHit: updates.minPerHit, catchUp: updates.catchUp, autoTarget: updates.autoTarget },
       {
         type: data.type,
         habitFreq: updates.habitFreq ?? data.habitFreq,
+        finalTarget: updates.finalTarget ?? data.finalTarget,
         linkedActivityId: patch.linkedActivityId !== undefined ? patch.linkedActivityId : data.linkedActivityId,
       },
     );
     Object.assign(patch, r.patch);
     if (r.notes.length) rhythmNote += " " + r.notes.join(" ");
+    // Cible changée ici sur une routine à cible automatique : l'app attend une semaine pleine avant de la juger.
+    const autoOn = patch.autoTarget !== undefined ? patch.autoTarget === true : data.autoTarget === true;
+    if (updates.habitTarget !== undefined && autoOn && data.type === "habit") patch.lastTuneAt = new Date().toISOString();
   }
 
   await ref.update(patch);

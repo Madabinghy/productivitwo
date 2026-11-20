@@ -71,6 +71,26 @@ test("rhythmPatch : sur 7 jours seulement pour une quotidienne", () => {
   assert.deepEqual(r.patch, {});
 });
 
+test("rhythmPatch : la cible automatique, pour une quotidienne sans cap", () => {
+  let r = rhythmPatch({ autoTarget: true }, { type: "habit", habitFreq: 0 });
+  assert.deepEqual(r.patch, { autoTarget: true });
+  assert.match(r.notes[0], /120 %/);
+  r = rhythmPatch({ autoTarget: false }, { type: "habit", habitFreq: 0, finalTarget: 50 });
+  assert.deepEqual(r.patch, { autoTarget: false });
+  // Hebdomadaire, à cap, ou activité de temps : refusé, rien n'est écrit.
+  r = rhythmPatch({ autoTarget: true }, { type: "habit", habitFreq: 1 });
+  assert.deepEqual(r.patch, {});
+  assert.match(r.notes[0], /quotidiennes/);
+  r = rhythmPatch({ autoTarget: true }, { type: "habit", habitFreq: 0, finalTarget: 50 });
+  assert.deepEqual(r.patch, {});
+  assert.match(r.notes[0], /cap/);
+  r = rhythmPatch({ autoTarget: true }, { type: "time" });
+  assert.deepEqual(r.patch, {});
+  // Avec un autre réglage du rythme dans le même appel.
+  r = rhythmPatch({ rolling: true, autoTarget: true }, { type: "habit", habitFreq: 0 });
+  assert.deepEqual(r.patch, { rolling: true, catchUp: false, autoTarget: true });
+});
+
 test("rhythmPatch : le chrono coche, avec ou sans activité liée", () => {
   // Une seule durée par routine : celle du chrono qui coche est aussi celle du minuteur.
   let r = rhythmPatch({ minPerHit: 5 }, { type: "habit", habitFreq: 0, linkedActivityId: "act" });
