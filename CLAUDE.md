@@ -1493,6 +1493,30 @@ le bilan dit « dont 3 pleines · session comptée » / « il faut 3 cibles plei
 (`ReorderableListView`, `_order`) = l'ordre des tirs (`adjustPlan(order:)` ; une cible ajoutée va en fin), lien « Ordre conseillé »
 pour revenir au calcul ; l'ordre des tirs est déjà celui persisté (`aimed`). Le réglage − / + absorbe ses taps (bouton grisé compris) : il n'écarte jamais la cible (bug 2026-11-01). Une routine à minuteur (Louanges 15 min, `timedRoutine`) se règle en minutes (pas de 5) : la coche tombe au bout, jamais un mini-tir. Entrées : lanceur ◎ entre ⚡ et ↗ en haut
 d'Aujourd'hui (`openRun(kSniperKind)`), MES MODES de Ma vie, lien `…://sniper`.
+**Sniper en lunette** (2026-11-20, maquette validée « Sniper en lunette », demande user : « rendre l'écran de sniper plus sexy ») :
+la lunette devient l'image de chaque étape ; règles, calculs et boutons inchangés. Géométrie pure `utils/sniper_scope.dart`
+(`aimScope(costs:, freeMin:, pauseMin:)` → `AimScope {arcs, airStart, airSweep, ticks}` : le tour = le temps libre, un arc par cible à
+sa durée, la pause reste vide entre deux arcs, arc minimum `kScopeMinArc` 9°, un trait par minute jusqu'à `kScopeMinuteTicks` 90 puis
+par 5 min ; `impactRadius(gapMin)` et `kCardRings` ±1 · ±2 · ±3 · ±5 min, `shotCard(shots)` → `CardImpact` — les tirs pile se groupent
+dans le centre, un seul = en plein milieu, mini-tir creux, cible passée = pas d'impact ; `kSniperImpact` 1,5 s). Dessins
+`widgets/sniper_scope.dart` (base 280, `kSniperAccent` / `kSniperInk` y vivent désormais, réexportés par `sniper_screen.dart`) :
+`SniperAimScope`, `SniperShotScope`, `SniperImpactScope`, `SniperShotCard`, `SniperMagazine` (`MagRound`), `SniperTargetDot`,
+`sniperGainColor` / `sniperTargetColor` (rose = se perd ce soir, or = palier ou série, vert = la journée, violet = objectif ; la
+couleur d'une cible = celle de son enjeu le plus lourd, ce qui se perd ce soir d'abord). **Viseur** : plus de titre ni de paragraphe
+(ils sont derrière le ⓘ) — la lunette en tête (`sniper-aim-scope` : « LIBRE JUSQU'À 14:00 · 37 min · visées sur 52 min », arcs colorés
+numérotés, pointillés = l'air), ligne « 4 cibles avant « Cours 6e » · il reste 15 min d'air » (`sniper-aim-line`), puis les cibles : le
+NUMÉRO du tir à la couleur de son arc remplace la case à cocher (écartée = rond gris « + »), bouton « Tirer · n cibles · … ».
+**Tir** : le minuteur est la lunette (`sniper-shot-scope` : anneau lumineux, graduations, réticule, point blanc au bout, un point qui
+fait le tour chaque minute, à l'arrêt en pause ; verte quand le temps est passé), les tirets du haut sont un chargeur (faits en vert,
+en cours allumé, passés en gris), les enjeux du tir portent une petite cible ; **vibration** quand le minuteur arrive à zéro, une fois
+par tir (`_buzzed`, remise par « +5 min »). **Impact** (`_Phase.hit`, `_impactView`, `sniper-impact`) : au « Suivant » d'un tir ENTIER,
+vibration, la lunette se referme en vert avec un éclat, « TOUCHÉ », les enjeux se cochent l'un après l'autre, « TIR 3 · TOUT DE
+SUITE » avec sa barre ; au bout de `kSniperImpact` le tir suivant démarre (ou le bilan), toucher l'écran = tout de suite
+(`_afterImpact`, une seule fois) ; il remplace le message « Touché · … » du bas de l'écran. Un mini-tir et une cible passée n'ont pas
+d'impact (le mini-tir garde un message). L'ancien écran TOUCHÉ à compte à rebours (`_hitView`, `_breakSec`, `_fireNext`) est retiré.
+**Bilan** : le carton de tir (`sniper-card`, « au centre = pile le temps visé »), trois chiffres tirées · visées · précision (à la
+place de précision · enjeux tombés · décision), TOMBÉ avec le numéro du tir. Fond de l'écran : halo radial, vert pendant l'impact.
+Tests : `test/sniper_scope_test.dart`, `test/ui/sniper_screen_test.dart` (`SniperScreen(stakes:)` = enjeux fournis, tests seulement).
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

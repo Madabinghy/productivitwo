@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/gamification_flags.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:productivitwo_v1/app_font.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -16,6 +17,8 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/parole.dart' show kParoleMin, paroleIndex, paroleOfDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
+import 'package:productivitwo_v1/utils/sniper_scope.dart';
+import 'package:productivitwo_v1/widgets/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart' show rarityLabel;
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -26,19 +29,20 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 
-/// Écran Sniper (maquette validée 2026-11-01) : le viseur (cibles au temps
-/// exact dans le temps libre), un tir à la fois (minuteur pile, alarme),
-/// « Touché » puis le tir suivant part tout seul après une courte pause, et
-/// le bilan (cibles touchées, précision, badge). Logique : `utils/sniper.dart`.
-const kSniperAccent = Color(0xFF7FD3FF);
-const kSniperInk = Color(0xFF062130);
+export 'package:productivitwo_v1/widgets/sniper_scope.dart' show kSniperAccent, kSniperInk;
+
+/// Écran Sniper (maquette validée 2026-11-01, « Sniper en lunette » 2026-11-20) :
+/// le viseur (la lunette = le temps libre, un arc par cible), un tir à la fois
+/// (la lunette-minuteur, alarme), l'impact d'une seconde et demie au « Suivant »,
+/// et le bilan (carton de tir, précision, badge). Logique : `utils/sniper.dart`,
+/// dessins : `widgets/sniper_scope.dart`.
 const _bg = Color(0xFF0A1218);
 const _card = Color(0xFF13202A);
 const _card2 = Color(0xFF1A2A35);
 const _line = Color(0xFF24384A);
 const _text2 = Color(0xFFB4C8D4);
 const _text3 = Color(0xFF8DA2AF);
-const _green = Color(0xFF3DDC84);
+const _green = kSniperGreen;
 const _amber = Color(0xFFF5B041);
 
 /// [focus] = Sniper ciblé sur une carte (2026-11-03) : ses tirs en tête, le reste décoché.
@@ -54,13 +58,17 @@ class SniperScreen extends StatefulWidget {
   final BadgeCenter? badges;
   final PendingRun? resume;
   final CardQuest? focus;
-  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus});
+
+  /// Enjeux fournis tels quels (tests d'écran : pas de deck de badges).
+  @visibleForTesting
+  final List<Stake>? stakes;
+  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus, this.stakes});
 
   @override
   State<SniperScreen> createState() => _SniperScreenState();
 }
 
-class _SniperScreenState extends State<SniperScreen> {
+class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderStateMixin {
   List<Stake> _stakes = const [];
   CardQuest? _focus;
   Map<String, int> _routineLeft = const {};
@@ -96,8 +104,15 @@ class _SniperScreenState extends State<SniperScreen> {
   DateTime? _endsAt;
   int? _pausedLeft; // secondes restantes quand le tir est en pause
   int _remaining = 0;
-  int _breakSec = 0;
   Timer? _timer;
+
+  /// L'impact entre deux tirs (une seconde et demie, toucher = tout de suite).
+  /// Créé dans `initState` : un `late final` paresseux serait créé au démontage
+  /// quand aucun impact n'a eu lieu, ce qui casse sous les versions de Flutter de la CI.
+  late final AnimationController _impact;
+
+  /// La vibration de fin de minuteur n'est donnée qu'une fois par tir.
+  bool _buzzed = false;
   bool _ownChrono = false;
   bool _saved = false;
   /// Sorti du Sniper pendant un tir (« Faire ça dans l'app », bug user 2026-11-03 : une cible
@@ -111,6 +126,10 @@ class _SniperScreenState extends State<SniperScreen> {
   @override
   void initState() {
     super.initState();
+    _impact = AnimationController(vsync: this, duration: kSniperImpact, animationBehavior: AnimationBehavior.preserve)
+      ..addStatusListener((st) {
+        if (st == AnimationStatus.completed) _afterImpact();
+      });
     WakelockPlus.enable().catchError((_) {});
     _load();
   }
@@ -154,7 +173,7 @@ class _SniperScreenState extends State<SniperScreen> {
         );
       } catch (_) {}
     }
-    _stakes = [...board.top, ...board.rest];
+    _stakes = widget.stakes ?? [...board.top, ...board.rest];
     _focus = widget.focus ?? _resumedFocus();
     if (_focus case final q?) _stakes = focusStakes(_stakes, q);
     _factor = estimateFactor(logic.currentProjects, spentByAction(st.sessions)) ?? 1;
@@ -365,6 +384,7 @@ class _SniperScreenState extends State<SniperScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _impact.dispose();
     if (!_away) {
       if (_startedAt != null) CoupAlarm.cancel();
       _stopOwnChrono();
@@ -394,6 +414,7 @@ class _SniperScreenState extends State<SniperScreen> {
     _index = i;
     _phase = _Phase.shot;
     _pausedLeft = null;
+    _buzzed = false;
     _shotStart = DateTime.now();
     final t = _aimed[i];
     if (t.minutes > 0) {
@@ -418,14 +439,13 @@ class _SniperScreenState extends State<SniperScreen> {
   }
 
   void _tick() {
-    if (_phase == _Phase.hit) {
-      if (_breakSec > 0) _breakSec--;
-      if (_breakSec <= 0) Future.microtask(_fireNext);
-      return;
-    }
     if (_phase != _Phase.shot || _endsAt == null || _pausedLeft != null) return;
     final left = _endsAt!.difference(DateTime.now()).inSeconds;
     _remaining = left > 0 ? left : 0;
+    if (left <= 0 && !_buzzed) {
+      _buzzed = true;
+      HapticFeedback.heavyImpact();
+    }
     // Au bout du minuteur, l'alarme sonne mais rien n'enchaîne (retour user 2026-11-07) :
     // le chrono continue, le temps en plus s'affiche, « Suivant » fait tomber la cible.
   }
@@ -490,6 +510,7 @@ class _SniperScreenState extends State<SniperScreen> {
     } else {
       final base = _endsAt == null || _endsAt!.isBefore(now) ? now : _endsAt!;
       _endsAt = base.add(const Duration(minutes: 5));
+      _buzzed = false;
       CoupAlarm.cancel(all: false);
       _arm(_aimed[_index]);
     }
@@ -551,21 +572,39 @@ class _SniperScreenState extends State<SniperScreen> {
     _hit.add(t.key);
     _lastHit = t.key;
     _persist();
-    final n = _nextIndex(_index);
-    // Le temps réellement tiré, temps en plus compris (le chrono a tourné jusque-là).
+    // Un tir entier laisse un impact (lunette verte, vibration) ; un mini-tir passe
+    // directement au suivant, avec le message d'avant.
+    if (!t.isMini) {
+      HapticFeedback.mediumImpact();
+      setState(() => _phase = _Phase.hit);
+      _impact.forward(from: 0);
+      return;
+    }
     final fired = _fired[t.key];
     if (t.minutes > 0 && fired != null) {
-      final gap = fired - t.cost;
       ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
-        content: Text('Touché · ${t.title} · ${fmtMin(fired)}${gap > 0 ? ' (+$gap min tracées)' : ''}'),
+        content: Text('Mini-tir · ${t.title} · ${fmtMin(fired)}'),
         duration: const Duration(seconds: 3),
       ));
     }
+    _advance();
+  }
+
+  /// Après l'impact (ou tout de suite au toucher) : une seule fois, même si le
+  /// toucher et la fin de l'animation tombent ensemble.
+  void _afterImpact() {
+    if (!mounted || _phase != _Phase.hit) return;
+    _impact.stop();
+    _advance();
+  }
+
+  /// Le tir suivant, sinon le bilan.
+  void _advance() {
+    final n = _nextIndex(_index);
     if (n == null) {
       setState(() => _phase = _Phase.end);
       return;
     }
-    // Plus de compte à rebours entre deux tirs : « Suivant » vient de passer à la cible suivante.
     _enter(n);
   }
 
@@ -583,30 +622,9 @@ class _SniperScreenState extends State<SniperScreen> {
     }
   }
 
-  void _fireNext() {
-    final n = _nextIndex(_index);
-    if (n == null) {
-      _timer?.cancel();
-      setState(() => _phase = _Phase.end);
-    } else {
-      _enter(n);
-    }
-  }
-
-  void _skipNext() {
-    final n = _nextIndex(_index);
-    if (n == null) return;
-    _skipped.add(_aimed[n].key);
-    _persist();
-    if (_nextIndex(_index) == null) {
-      _timer?.cancel();
-      _phase = _Phase.end;
-    }
-    setState(() {});
-  }
-
   void _stop() {
     _timer?.cancel();
+    _impact.stop();
     CoupAlarm.cancel();
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
@@ -666,30 +684,41 @@ class _SniperScreenState extends State<SniperScreen> {
       data: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: kAppFont).copyWith(scaffoldBackgroundColor: _bg),
       child: Scaffold(
         backgroundColor: _bg,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(color: kSniperAccent))
-                : switch (_phase) {
-                    _Phase.aim => _aim(),
-                    _Phase.shot => _shot(),
-                    _Phase.hit => _hitView(),
-                    _Phase.end => _end(),
-                  },
+        body: DecoratedBox(
+          // Le halo de la lunette derrière l'écran, vert le temps d'un impact.
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0, -.55),
+              radius: 1.1,
+              colors: [_phase == _Phase.hit ? const Color(0xFF0F2A1E) : const Color(0xFF11222F), _bg],
+              stops: const [0, .62],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: kSniperAccent))
+                  : switch (_phase) {
+                      _Phase.aim => _aim(),
+                      _Phase.shot => _shot(),
+                      _Phase.hit => _impactView(),
+                      _Phase.end => _end(),
+                    },
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _header({Widget? trailing, String label = 'SNIPER'}) => SizedBox(
+  Widget _header({Widget? trailing, String label = 'SNIPER', Color color = kSniperAccent, bool info = true}) => SizedBox(
         height: 48,
         child: Row(children: [
-          const Icon(Icons.gps_fixed, color: kSniperAccent, size: 20),
+          Icon(Icons.gps_fixed, color: color, size: 20),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: kSniperAccent)),
-          const InfoDot(kRuleSniper),
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: color))),
+          if (info) const InfoDot(kRuleSniper),
           const Spacer(),
           if (trailing != null) trailing,
         ]),
@@ -735,22 +764,18 @@ class _SniperScreenState extends State<SniperScreen> {
         ),
       );
 
-  Color _gainColor(StakeGain g) {
-    if (g.losesTonight) return const Color(0xFFFFB3AB);
-    return switch (g.kind) {
-      StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise || StakeGainKind.reading => const Color(0xFFFFD98A),
-      StakeGainKind.halfDay || StakeGainKind.week => const Color(0xFF9FF0C1),
-      StakeGainKind.objective || StakeGainKind.session => const Color(0xFFD3C6FF),
-      _ => _text2,
-    };
-  }
+  Color _gainColor(StakeGain g) => sniperGainColor(g);
 
-  Widget _chips(List<StakeGain> gains) => Wrap(spacing: 5, runSpacing: 5, children: [
+  /// [target] : une petite cible devant chaque enjeu (ce que le tir fait tomber).
+  Widget _chips(List<StakeGain> gains, {bool target = false}) => Wrap(spacing: 5, runSpacing: 5, children: [
         for (final g in gains)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: target ? 4 : 2),
             decoration: BoxDecoration(color: _card2, borderRadius: BorderRadius.circular(99), border: Border.all(color: _gainColor(g).withValues(alpha: .35))),
-            child: Text(g.label, style: TextStyle(fontSize: 11.5, color: _gainColor(g))),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (target) ...[SniperTargetDot(color: _gainColor(g)), const SizedBox(width: 6)],
+              Flexible(child: Text(g.label, style: TextStyle(fontSize: target ? 12.5 : 11.5, color: _gainColor(g)))),
+            ]),
           ),
       ]);
 
@@ -759,7 +784,9 @@ class _SniperScreenState extends State<SniperScreen> {
     return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
   }
 
-  Widget _targetRow(SniperTarget t, {required bool on, VoidCallback? onTap, String? reason}) {
+  /// [number] = le rang du tir, à la couleur de son arc dans la lunette (il remplace la case à cocher).
+  Widget _targetRow(SniperTarget t, {required bool on, VoidCallback? onTap, String? reason, int? number}) {
+    final mark = sniperTargetColor(t);
     final sub = switch (t.kind) {
       SniperKind.action => t.stake.gesture.action?.estimatedMin == null
           ? 'estimation par défaut'
@@ -774,15 +801,14 @@ class _SniperScreenState extends State<SniperScreen> {
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
-            width: 20,
-            height: 20,
-            margin: const EdgeInsets.only(top: 2),
-            decoration: BoxDecoration(
-              color: on ? kSniperAccent : null,
-              borderRadius: BorderRadius.circular(6),
-              border: on ? null : Border.all(color: _line, width: 2),
-            ),
-            child: on ? const Icon(Icons.check, size: 15, color: kSniperInk) : null,
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(top: 1),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: on ? mark : _line, width: 1.5)),
+            child: on
+                ? Text('${number ?? ''}', style: TextStyle(fontSize: 11, height: 1, fontWeight: FontWeight.w800, color: mark))
+                : const Icon(Icons.add, size: 14, color: _text3),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -844,15 +870,46 @@ class _SniperScreenState extends State<SniperScreen> {
     final b = _budget;
     final total = _plan.totalMin;
     final until = b.until;
-    final untilLabel = until == null ? 'Libre jusqu’à ${_hm(b.untilMin)}' : 'Libre jusqu’à ${_hm(b.untilMin)} · ${until.title}';
+    final n = _plan.aimed.length;
+    final air = b.minutes - total;
+    // Le tour de la lunette = le temps libre ; chaque cible y prend un arc à sa durée.
+    final scope = aimScope(costs: [for (final t in _plan.aimed) t.cost], freeMin: b.minutes, pauseMin: _plan.pauseMin);
     final excluded = _excludedTargets;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(trailing: IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop())),
       Expanded(
         child: ListView(children: [
-          const Text('Chaque minute, pile où elle compte', style: TextStyle(fontSize: 26, height: 1.15, fontWeight: FontWeight.w800)),
+          SniperAimScope(
+            key: const Key('sniper-aim-scope'),
+            scope: scope,
+            colors: [for (final t in _plan.aimed) sniperTargetColor(t)],
+            label: 'Lunette : ${fmtMin(total)} visées sur ${fmtMin(b.minutes)} libres, $n cible${n > 1 ? 's' : ''}',
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('LIBRE JUSQU’À ${_hm(b.untilMin)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+              const SizedBox(height: 2),
+              if (total < 60)
+                Text.rich(TextSpan(children: [
+                  TextSpan(text: '$total', style: const TextStyle(fontSize: 50, height: 1, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+                  const TextSpan(text: ' min', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _text2)),
+                ]))
+              else
+                Text(fmtMin(total), style: const TextStyle(fontSize: 38, height: 1.1, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+              const SizedBox(height: 2),
+              Text('visées sur ${fmtMin(b.minutes)}', style: const TextStyle(fontSize: 12, color: _text2)),
+            ]),
+          ),
           const SizedBox(height: 6),
-          const Text('L’app a calculé le temps exact qui fait tomber chaque enjeu du jour. Tu enchaînes, sans décider entre deux.', style: TextStyle(fontSize: 14, height: 1.4, color: _text2)),
+          Text.rich(
+            TextSpan(style: const TextStyle(fontSize: 13, height: 1.35, color: _text2), children: [
+              TextSpan(text: n == 0 ? 'Aucune cible' : '$n cible${n > 1 ? 's' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+              if (until != null) TextSpan(text: ' avant « ${until.title} »'),
+              TextSpan(text: air > 0 ? ' · il reste ${fmtMin(air)} d’air' : ' · tout ton temps libre est visé'),
+            ]),
+            key: const Key('sniper-aim-line'),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           if (_focus case final q?) ...[
             const SizedBox(height: 12),
             Container(
@@ -865,33 +922,6 @@ class _SniperScreenState extends State<SniperScreen> {
               ])),
             ),
           ],
-          const SizedBox(height: 14),
-          _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Expanded(child: Text(untilLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: _text2))),
-              Text(fmtMin(b.minutes), style: const TextStyle(fontSize: 13, color: _text2)),
-            ]),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: b.minutes <= 0 ? 0 : (total / b.minutes).clamp(0, 1).toDouble(),
-                minHeight: 8,
-                backgroundColor: _card2,
-                color: kSniperAccent,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(children: [
-              Text('${_plan.aimed.length} cible${_plan.aimed.length > 1 ? 's' : ''} · ', style: const TextStyle(fontSize: 13, color: _text3)),
-              Text(fmtMin(total), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kSniperAccent)),
-              const SizedBox(width: 8),
-              if (b.minutes > total)
-                Expanded(
-                    child: Text('reste ${fmtMin(b.minutes - total)} d’air',
-                        textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: _text3))),
-            ]),
-          ])),
           Row(children: [
             Expanded(child: _label(_order == null || !kSniperTuningEnabled ? 'CE QUI TOMBE · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
             if (_order != null && kSniperTuningEnabled)
@@ -914,9 +944,10 @@ class _SniperScreenState extends State<SniperScreen> {
                 style: const TextStyle(fontSize: 13.5, height: 1.4, color: _text2)))
           else if (!kSniperTuningEnabled)
             _box(Column(children: [
-              for (final t in _plan.aimed)
+              for (final (i, t) in _plan.aimed.indexed)
                 _targetRow(t,
                     on: true,
+                    number: i + 1,
                     onTap: () => setState(() {
                           _excluded.add(t.key);
                           _added.remove(t.key);
@@ -937,6 +968,7 @@ class _SniperScreenState extends State<SniperScreen> {
                     index: i,
                     child: _targetRow(_plan.aimed[i],
                         on: true,
+                        number: i + 1,
                         onTap: () => setState(() {
                               _excluded.add(_plan.aimed[i].key);
                               _added.remove(_plan.aimed[i].key);
@@ -973,28 +1005,24 @@ class _SniperScreenState extends State<SniperScreen> {
         ]),
       ),
       const SizedBox(height: 12),
-      _primary(_plan.aimed.isEmpty ? 'Rien à viser' : 'Viser · ${_plan.aimed.length} cible${_plan.aimed.length > 1 ? 's' : ''} · ${fmtMin(total)}', _plan.aimed.isEmpty ? null : _start),
+      _primary(_plan.aimed.isEmpty ? 'Rien à viser' : 'Tirer · $n cible${n > 1 ? 's' : ''} · ${fmtMin(total)}', _plan.aimed.isEmpty ? null : _start),
     ]);
   }
 
-  Widget _track() => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        for (var i = 0; i < _aimed.length; i++)
-          Container(
-            width: 26,
-            height: 6,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(9),
-              color: _hit.contains(_aimed[i].key)
-                  ? _green
-                  : _skipped.contains(_aimed[i].key)
-                      ? _line
-                      : i == _index
-                          ? kSniperAccent
-                          : _card2,
-            ),
-          ),
-      ]);
+  /// Le chargeur : un tir par cartouche.
+  Widget _track() => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: SniperMagazine(rounds: [
+          for (var i = 0; i < _aimed.length; i++)
+            _hit.contains(_aimed[i].key)
+                ? MagRound.done
+                : _skipped.contains(_aimed[i].key)
+                    ? MagRound.skipped
+                    : i == _index && _phase == _Phase.shot
+                        ? MagRound.current
+                        : MagRound.todo,
+        ]),
+      );
 
   int get _shotNumber => _aimed.isEmpty ? 0 : _index + 1;
 
@@ -1032,44 +1060,37 @@ class _SniperScreenState extends State<SniperScreen> {
         child: ListView(children: [
           const SizedBox(height: 12),
           if (timed)
-            Center(
+            SniperShotScope(
+              key: const Key('sniper-shot-scope'),
+              size: 240,
+              progress: total <= 0 ? 1 : (1 - left / total).clamp(0, 1).toDouble(),
+              over: over > 0,
+              // Le point des secondes fait le tour chaque minute ; à l'arrêt en pause.
+              sweepDeg: _pausedLeft != null ? null : DateTime.now().second * 6.0,
+              label: over > 0 ? 'Temps écoulé, $mm minutes $ss en plus' : 'Reste $mm minutes $ss',
               child: SizedBox(
-                width: 210,
-                height: 210,
-                child: Stack(alignment: Alignment.center, children: [
-                  SizedBox.expand(
-                    child: CircularProgressIndicator(
-                      value: total <= 0 ? 1 : (1 - left / total).clamp(0, 1).toDouble(),
-                      strokeWidth: 11,
-                      backgroundColor: _card2,
-                      color: over > 0 ? _green : kSniperAccent,
-                    ),
-                  ),
-                  Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${over > 0 ? '+' : ''}$mm:$ss',
-                        style: TextStyle(fontSize: 46, fontWeight: FontWeight.w800, color: over > 0 ? _green : null, fontFeatures: const [FontFeature.tabularFigures()])),
-                    Text(
-                        _pausedLeft != null
-                            ? 'en pause'
-                            : over > 0
-                                ? 'en plus · le chrono continue'
-                                : left == 0
-                                ? 'temps écoulé'
-                                : 'sur ${t.minutes}:00${endAt == null ? '' : ' · fin à ${endAt.hour.toString().padLeft(2, '0')}:${endAt.minute.toString().padLeft(2, '0')}'}',
-                        style: const TextStyle(fontSize: 12, color: _text3)),
-                  ]),
+                width: 158,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('${over > 0 ? '+' : ''}$mm:$ss',
+                      style: TextStyle(fontSize: 46, height: 1.05, fontWeight: FontWeight.w800, color: over > 0 ? _green : null, fontFeatures: const [FontFeature.tabularFigures()])),
+                  Text(
+                      _pausedLeft != null
+                          ? 'en pause'
+                          : over > 0
+                              ? 'en plus · le chrono continue'
+                              : left == 0
+                                  ? 'temps écoulé'
+                                  : 'sur ${t.minutes}:00${endAt == null ? '' : ' · fin à ${endAt.hour.toString().padLeft(2, '0')}:${endAt.minute.toString().padLeft(2, '0')}'}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, height: 1.25, color: _text3)),
                 ]),
               ),
             )
           else
-            Center(
-              child: Container(
-                width: 150,
-                height: 150,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: kSniperAccent, width: 3)),
-                child: Text(t.durLabel, style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kSniperAccent)),
-              ),
+            SniperShotScope(
+              size: 200,
+              label: t.durLabel,
+              child: Text(t.durLabel, style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kSniperAccent)),
             ),
           const SizedBox(height: 14),
           Text(t.title, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w800)),
@@ -1087,7 +1108,7 @@ class _SniperScreenState extends State<SniperScreen> {
             style: const TextStyle(fontSize: 13.5, color: _text2),
           ),
           _label(t.isMini ? 'CE QUI TOMBERA AU BOUT' : 'CE TIR FAIT TOMBER'),
-          _box(Align(alignment: Alignment.centerLeft, child: Opacity(opacity: t.isMini ? .5 : 1, child: _chips(t.gains)))),
+          Align(alignment: Alignment.centerLeft, child: Opacity(opacity: t.isMini ? .5 : 1, child: _chips(t.gains, target: true))),
           _nextLine(),
         ]),
       ),
@@ -1130,61 +1151,90 @@ class _SniperScreenState extends State<SniperScreen> {
     Navigator.of(context).pop();
   }
 
-  Widget _hitView() {
+  /// L'impact : une seconde et demie après « Suivant », puis le tir suivant (ou le bilan).
+  Widget _impactView() {
     final t = _aimed.where((x) => x.key == _lastHit).firstOrNull ?? _aimed[_index];
     final fired = _fired[t.key] ?? t.cost;
+    final gap = fired - t.cost;
     final n = _nextIndex(_index);
     final next = n == null ? null : _aimed[n];
-    final gap = fired - t.cost;
-    final mm = (_breakSec ~/ 60).toString();
-    final ss = (_breakSec % 60).toString().padLeft(2, '0');
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _header(label: 'TIR $_shotNumber / ${_aimed.length}', trailing: TextButton(onPressed: _stop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
-      _track(),
-      Expanded(
-        child: ListView(children: [
-          const SizedBox(height: 16),
-          const Icon(Icons.gps_fixed, size: 52, color: _green),
-          const SizedBox(height: 8),
-          Text('Touché · ${t.title}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-          if (t.minutes > 0)
-            Text(gap == 0 ? '${fmtMin(fired)} pile · écart 0' : '${fmtMin(fired)} pour ${fmtMin(t.cost)} visées · ${gap > 0 ? '+' : '−'}${gap.abs()} min',
-                textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _text2)),
-          _label(t.isMini ? 'MINI-TIR' : 'CE QUI VIENT DE TOMBER'),
-          _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (t.isMini)
-              Text(
-                  '${t.kind == SniperKind.routine ? '+${t.amount} de fait' : '${fmtMin(t.amount)} de fait'} · ${t.kind == SniperKind.routine ? 'il en reste ${t.leftAfter}' : 'il reste ${fmtMin(t.leftAfter)}'} pour que ça tombe ce soir.',
-                  style: const TextStyle(fontSize: 14, height: 1.4, color: _text2))
-            else
-              for (final g in t.gains)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    const Icon(Icons.check, size: 16, color: _green),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(g.label, style: const TextStyle(fontSize: 14))),
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final detail = t.minutes > 0
+        ? (gap == 0 ? '${fmtMin(fired)} pile · écart 0' : '${fmtMin(fired)} pour ${fmtMin(t.cost)} visées · ${gap > 0 ? '+' : '−'}${gap.abs()} min')
+        : t.kind == SniperKind.reading
+            ? 'relevé noté'
+            : t.durLabel;
+    return GestureDetector(
+      key: const Key('sniper-impact'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _afterImpact,
+      child: AnimatedBuilder(
+        animation: _impact,
+        builder: (context, _) {
+          final v = still ? 1.0 : _impact.value;
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _header(label: 'TIR $_shotNumber / ${_aimed.length}', color: _green, info: false),
+            _track(),
+            Expanded(
+              child: ListView(children: [
+                const SizedBox(height: 8),
+                SniperImpactScope(t: v, size: 230),
+                const Text('TOUCHÉ', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 5, color: _green)),
+                Text.rich(
+                  TextSpan(style: const TextStyle(fontSize: 13.5, color: _text2), children: [
+                    TextSpan(text: t.title, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                    TextSpan(text: ' · $detail'),
                   ]),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-          ])),
-          if (next != null) ...[
-            _label('PROCHAIN TIR DANS'),
-            _box(Column(children: [
-              Text('$mm:$ss', style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
-              Text('${next.title} · ${next.durLabel}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _text2)),
-            ])),
-          ],
-        ]),
+                _label('VIENT DE TOMBER'),
+                _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (final (i, g) in t.gains.indexed)
+                    // Les enjeux se cochent l'un après l'autre.
+                    Opacity(
+                      opacity: ((v - .15 - i * .12) / .15).clamp(0, 1).toDouble(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(children: [
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: const BoxDecoration(shape: BoxShape.circle, color: _green),
+                            child: const Icon(Icons.check, size: 13, color: Color(0xFF04210F)),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(child: Text(g.label, style: const TextStyle(fontSize: 14))),
+                        ]),
+                      ),
+                    ),
+                ])),
+                _label(next == null ? 'ENSUITE' : 'TIR ${n! + 1} · TOUT DE SUITE'),
+                _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text.rich(TextSpan(style: const TextStyle(fontSize: 13.5, color: _text2), children: [
+                    if (next == null)
+                      const TextSpan(text: 'Le bilan de la session')
+                    else ...[
+                      TextSpan(text: '${next.title} · '),
+                      TextSpan(text: next.durLabel, style: const TextStyle(fontWeight: FontWeight.w800, color: kSniperAccent)),
+                    ],
+                  ])),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(value: v, minHeight: 4, backgroundColor: _card2, color: kSniperAccent),
+                  ),
+                ])),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            Text(next == null ? 'Toucher l’écran = voir le bilan' : 'Toucher l’écran = tirer tout de suite',
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _text2)),
+          ]);
+        },
       ),
-      const SizedBox(height: 10),
-      _primary('Tirer maintenant', _fireNext, height: 56),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: _outline('Souffler 5 min', () => setState(() => _breakSec = 300))),
-        const SizedBox(width: 8),
-        Expanded(child: _outline('Passer cette cible', _skipNext)),
-      ]),
-    ]);
+    );
   }
 
   Widget _end() {
@@ -1195,6 +1245,11 @@ class _SniperScreenState extends State<SniperScreen> {
     final nextTier = kSniperTiers.firstWhere((t) => t > counted, orElse: () => kSniperTiers.last);
     final aimedHitMin = hitTargets.fold<int>(0, (s, t) => s + t.cost);
     final precision = sniperPrecision(aimedHitMin, _firedTotal);
+    // Le carton : un impact par cible touchée, au centre = pile le temps visé.
+    final impacts = shotCard([
+      for (final t in _aimed) (hit: _hit.contains(t.key), gapMin: t.minutes > 0 ? (_fired[t.key] ?? t.cost) - t.cost : 0, mini: t.isMini),
+    ]);
+    final rank = {for (final (i, t) in _aimed.indexed) t.key: i + 1};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(
         child: ListView(children: [
@@ -1203,7 +1258,7 @@ class _SniperScreenState extends State<SniperScreen> {
           const SizedBox(height: 6),
           Text(hitN == 0 ? 'Aucune cible cette fois' : '$hitN / $_totalAimed cible${_totalAimed > 1 ? 's' : ''} touchée${hitN > 1 ? 's' : ''}',
               style: const TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w800)),
-          Text('${fmtMin(_firedTotal)} tirées pour ${fmtMin(aimedHitMin)} visées · ${sniperCountLine(hitN, _totalAimed, full: _fullHits)}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+          Text(sniperCountLine(hitN, _totalAimed, full: _fullHits), style: const TextStyle(fontSize: 13.5, color: _text2)),
           if (_focus case final q?) ...[
             const SizedBox(height: 10),
             _box(Row(children: [
@@ -1221,9 +1276,15 @@ class _SniperScreenState extends State<SniperScreen> {
               ),
             ])),
           ],
+          if (impacts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SniperShotCard(key: const Key('sniper-card'), impacts: impacts),
+            const SizedBox(height: 4),
+            const Text('au centre = pile le temps visé', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: _text3)),
+          ],
           if (kSniperTuningEnabled) const SizedBox(height: 14),
           if (kSniperTuningEnabled) Row(children: [
-            for (final (v, l) in [('$precision %', 'précision'), ('${hitTargets.where((t) => !t.isMini).fold<int>(0, (s, t) => s + t.gains.length)}', 'enjeux tombés'), ('0', 'décision')]) ...[
+            for (final (v, l) in [(fmtMin(_firedTotal), 'tirées'), (fmtMin(aimedHitMin), 'visées'), ('$precision %', 'précision')]) ...[
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1234,7 +1295,7 @@ class _SniperScreenState extends State<SniperScreen> {
                   ]),
                 ),
               ),
-              if (l != 'décision') const SizedBox(width: 8),
+              if (l != 'précision') const SizedBox(width: 8),
             ],
           ]),
           if (hitTargets.isNotEmpty) ...[
@@ -1244,7 +1305,15 @@ class _SniperScreenState extends State<SniperScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Icon(Icons.check, size: 16, color: _green),
+                    // Le numéro du tir, le même que sur le carton.
+                    Container(
+                      width: 18,
+                      height: 18,
+                      margin: const EdgeInsets.only(top: 1),
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: _green),
+                      child: Text('${rank[t.key] ?? ''}', style: const TextStyle(fontSize: 10.5, height: 1, fontWeight: FontWeight.w800, color: Color(0xFF04210F))),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
