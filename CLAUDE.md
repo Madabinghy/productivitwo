@@ -1986,6 +1986,16 @@ déjà en place ; une cible qui dérive de moins de 2° (une minute de plus) ne 
 (`disableAnimations`) = tout de suite en place. Lignes : « Demain à fond · ↗ 79 h · +11 h 33 » sous « Demain si rien », sur la carte et
 la feuille (`HoursTomorrowLine(full: true)`, `week-hours-full`, `week-hours-sheet-full`), toutes deux affichées sans chrono ET pendant
 un chrono actif (`hoursShowsTomorrow`) ; infobulle de la tuile et paragraphe de lecture mis à jour.
+**Une seule aiguille pour toutes les jauges** (2026-11-20, demande user : « fusionner l'animation du widget avec quand on clique
+dessus, et pareil dans l'onglet Organisation ») : avant, chaque jauge avait son propre trajet et se dessinait en place à son premier
+affichage — la feuille s'ouvrait aiguille déjà arrivée pendant que celle de la tuile glissait encore. `HoursNeedle`
+(`week_hours_card.dart`) porte l'aiguille pour TOUTES les jauges (tuile d'Aujourd'hui, feuille, carte d'Organisation) : départ, cible
+et début du trajet, daté sur l'heure des images (`currentSystemFrameTimeStamp`) ; `HoursNeedle.aim(cible, still:)` garde la règle
+d'avant (dérive < 2° = pas de nouveau trajet, animations coupées = en place) ; la première jauge affichée est en place, plus aucune
+jauge à l'écran = tout est oublié. Une jauge qui s'ouvre ou revient à l'écran en cours de route reprend donc l'aiguille là où elle en
+est. Le peintre lit `HoursNeedle.angle` au moment de peindre et se redessine par `repaint: HoursNeedle.moves` (plus d'`AnimatedBuilder`
+ni de `setState`) ; chaque jauge garde un battement à elle (`Ticker`, coupé quand son onglet est caché) qui ne sert qu'à redessiner
+pendant le trajet : rien ne tourne quand aucune jauge n'est visible. Tests : `test/week_hours_needle_test.dart`.
 **Aujourd'hui allégé** (2026-11-20, demande user : « tout ce qu'il y a au-dessous des tuiles, je ne l'utilise jamais — le projet en
 cours, Ta journée, Maintenant ») : flag `kTodayNowEnabled = false` (`lib/gamification_flags.dart`, code gardé, repasser à true pour
 tout remettre). Sur mobile, l'onglet Aujourd'hui s'arrête au tableau de bord : plus de tuile PROJETS (`DashboardTiles(projects:

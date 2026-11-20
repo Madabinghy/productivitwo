@@ -67,6 +67,77 @@ void main() {
     expect(needleOf(t), closeTo(gaugeLayout(hours(now: HoursKind.active, active: 482)).fullAt, 1e-9));
   });
 
+  testWidgets('une seconde jauge ouverte en cours de route reprend la MÊME aiguille (tuile puis feuille)', (t) async {
+    List<double> needles() => [
+          for (final p in t.widgetList<CustomPaint>(find.descendant(of: find.byType(WeekHoursGauge), matching: find.byType(CustomPaint))))
+            (p.painter as dynamic).needleAt as double,
+        ];
+    Future<void> both(WeekHours h, {required bool sheet}) => t.pumpWidget(MaterialApp(
+            home: Scaffold(
+                body: Column(children: [
+          WeekHoursGauge(key: const ValueKey('tile'), h: h, size: 90),
+          if (sheet) WeekHoursGauge(key: const ValueKey('sheet'), h: h, size: 300),
+        ]))));
+    final idle = hours();
+    final working = hours(now: HoursKind.active);
+    final low = gaugeLayout(idle).idleAt, high = gaugeLayout(working).fullAt;
+    await both(idle, sheet: false);
+    await both(working, sheet: false);
+    await t.pump(kNeedleTravel ~/ 2);
+    final mid = needleOf(t);
+    expect(mid, closeTo((low + high) / 2, (high - low) * .05));
+
+    // La feuille s'ouvre à mi-trajet : son aiguille n'est pas déjà arrivée, elle est là où en est celle de la tuile.
+    await both(working, sheet: true);
+    expect(needles(), [closeTo(mid, 1e-9), closeTo(mid, 1e-9)]);
+    await t.pump(kNeedleTravel ~/ 4);
+    final later = needles();
+    expect(later[0], greaterThan(mid));
+    expect(later[1], closeTo(later[0], 1e-9));
+    await t.pump(kNeedleTravel ~/ 4);
+    expect(needles(), [closeTo(high, 1e-9), closeTo(high, 1e-9)]);
+
+    // La feuille se ferme pendant un nouveau trajet : la tuile continue sans à-coup.
+    await both(idle, sheet: true);
+    await t.pump(kNeedleTravel ~/ 2);
+    final back = needles().first;
+    await both(idle, sheet: false);
+    expect(needleOf(t), closeTo(back, 1e-9));
+    await t.pump(kNeedleTravel ~/ 2);
+    expect(needleOf(t), closeTo(low, 1e-9));
+  });
+
+  testWidgets('plus aucune jauge à l\'écran : la suivante repart en place, sans glissement', (t) async {
+    await show(t, hours());
+    await show(t, hours(now: HoursKind.active));
+    await t.pump(kNeedleTravel ~/ 3);
+    await t.pumpWidget(const MaterialApp(home: SizedBox()));
+    final idle = hours();
+    await show(t, idle);
+    expect(needleOf(t), closeTo(gaugeLayout(idle).idleAt, 1e-9));
+    expect(t.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('onglet caché pendant le trajet : rien ne tourne, et au retour l\'aiguille est là où elle en serait', (t) async {
+    Future<void> tab(WeekHours h, {required bool shown}) => t.pumpWidget(MaterialApp(
+        home: Scaffold(body: TickerMode(enabled: shown, child: Center(child: WeekHoursGauge(h: h, size: 200))))));
+    final idle = hours();
+    final working = hours(now: HoursKind.active);
+    final low = gaugeLayout(idle).idleAt, high = gaugeLayout(working).fullAt;
+    await tab(idle, shown: true);
+    await tab(working, shown: false);
+    await t.pump();
+    expect(t.binding.hasScheduledFrame, isFalse);
+    await t.pump(kNeedleTravel ~/ 2);
+    await tab(working, shown: true);
+    expect(needleOf(t), closeTo((low + high) / 2, (high - low) * .05));
+    expect(t.binding.hasScheduledFrame, isTrue);
+    await t.pump(kNeedleTravel ~/ 2);
+    expect(needleOf(t), closeTo(high, 1e-9));
+    await t.pump();
+    expect(t.binding.hasScheduledFrame, isFalse);
+  });
+
   testWidgets('animations coupées : l\'aiguille est tout de suite en place', (t) async {
     Future<void> still(WeekHours h) => t.pumpWidget(MaterialApp(
         home: MediaQuery(data: const MediaQueryData(disableAnimations: true), child: Center(child: WeekHoursGauge(h: h, size: 200)))));
