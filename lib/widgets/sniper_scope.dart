@@ -110,19 +110,49 @@ class SniperAimScope extends StatelessWidget {
   final double size;
   final Widget? child;
   final String? label;
-  const SniperAimScope({super.key, required this.scope, required this.colors, this.size = 250, this.child, this.label});
+
+  /// Miniature (tuile du mode d'Aujourd'hui) : arcs épais, ni numéros ni traits de minute.
+  final bool mini;
+  const SniperAimScope({super.key, required this.scope, required this.colors, this.size = 250, this.child, this.label, this.mini = false});
 
   @override
-  Widget build(BuildContext context) => _Scope(size: size, painter: _AimPainter(scope, colors), label: label, child: child);
+  Widget build(BuildContext context) => _Scope(size: size, painter: _AimPainter(scope, colors, mini), label: label, child: child);
 }
 
 class _AimPainter extends CustomPainter {
   final AimScope scope;
   final List<Color> colors;
-  _AimPainter(this.scope, this.colors);
+  final bool mini;
+  _AimPainter(this.scope, this.colors, this.mini);
+
+  void _paintMini(Canvas canvas, Size size) {
+    final s = size.width / 280;
+    final c = size.center(Offset.zero);
+    _lens(canvas, c, 104 * s, kSniperAccent, .16);
+    _cross(canvas, c, 98 * s, scope.arcs.isEmpty ? 14 * s : 66 * s, Paint()
+      ..color = kSniperAccent.withValues(alpha: .45)
+      ..strokeWidth = 3 * s);
+    final r = 122 * s;
+    for (final a in scope.arcs) {
+      final trim = a.sweep > 14 ? 3.5 : 1.0;
+      _arc(canvas, c, r, a.start + trim, a.sweep - 2 * trim, Paint()
+        ..color = a.index < colors.length ? colors[a.index] : kSniperAccent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 24 * s);
+    }
+    if (scope.airSweep > 0) {
+      final dots = Paint()..color = _text3.withValues(alpha: .8);
+      for (var d = scope.airStart + 8; d < scope.airStart + scope.airSweep - 4; d += 12) {
+        canvas.drawCircle(_at(c, r, d), 3.6 * s, dots);
+      }
+    }
+    // Rien à viser : le réticule seul, avec son point au centre.
+    if (scope.arcs.isEmpty) canvas.drawCircle(c, 9 * s, Paint()..color = kSniperAccent);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (mini) return _paintMini(canvas, size);
     final s = size.width / 280;
     final c = size.center(Offset.zero);
     _lens(canvas, c, 96 * s, kSniperAccent, .10);
@@ -439,4 +469,77 @@ class SniperTargetDot extends StatelessWidget {
         decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 1.2)),
         child: Container(width: size * .36, height: size * .36, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
       );
+}
+
+// ── Tuile du mode ──────────────────────────────────────────────────────────
+
+/// La tuile Sniper d'Aujourd'hui (2026-11-20, demande user : la miniature du
+/// viseur à la place de l'icône, comme la jauge des 7 jours) : la lunette seule
+/// — le tour = le temps libre, un arc par cible — et les minutes visées au
+/// centre. Le détail reste en infobulle et pour la lecture d'écran.
+class SniperModeTile extends StatelessWidget {
+  final SniperPlan plan;
+
+  /// Temps libre (minutes) jusqu'au prochain bloc.
+  final int freeMin;
+  final String label;
+
+  /// Une session Sniper attend d'être reprise.
+  final bool pending;
+  final VoidCallback onTap;
+  const SniperModeTile({super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = plan.totalMin;
+    final scope = aimScope(costs: [for (final t in plan.aimed) t.cost], freeMin: freeMin, pauseMin: plan.pauseMin);
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          key: const Key('mode-tile'),
+          color: _bg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: kSniperAccent.withValues(alpha: .6), width: 1.5)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: Stack(children: [
+              Center(
+                child: ExcludeSemantics(
+                  child: SniperAimScope(
+                    key: const Key('mode-tile-scope'),
+                    mini: true,
+                    size: 88,
+                    scope: scope,
+                    colors: [for (final t in plan.aimed) sniperTargetColor(t)],
+                    child: plan.aimed.isEmpty
+                        ? null
+                        : Column(mainAxisSize: MainAxisSize.min, children: [
+                            Text(total < 100 ? '$total' : '${total ~/ 60}h${(total % 60).toString().padLeft(2, '0')}',
+                                style: TextStyle(
+                                    fontFamily: kAppFont,
+                                    fontSize: total < 100 ? 22 : 15,
+                                    height: 1,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    fontFeatures: const [FontFeature.tabularFigures()])),
+                            if (total < 100) Text('min', style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w700, color: _text2)),
+                          ]),
+                  ),
+                ),
+              ),
+              if (pending)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(width: 11, height: 11, decoration: BoxDecoration(color: kSniperAccent, shape: BoxShape.circle, border: Border.all(color: _bg, width: 2))),
+                ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -10,11 +10,11 @@ import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
+import 'package:productivitwo_v1/sniper_now.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleSniper;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
-import 'package:productivitwo_v1/utils/parole.dart' show kParoleMin, paroleIndex, paroleOfDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
@@ -22,7 +22,6 @@ import 'package:productivitwo_v1/widgets/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart' show rarityLabel;
 import 'package:productivitwo_v1/utils/stakes.dart';
-import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, spentByAction;
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
@@ -152,34 +151,13 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   }
 
   void _compute() {
-    final bc = widget.badges;
-    final st = logic.state;
-    StakeBoard board = StakeBoard.empty;
-    if (bc != null) {
-      try {
-        final facts = bc.todayFacts();
-        _routineLeft = {for (final r in facts.routines) r.activity.id: r.target - r.done};
-        final pd = paroleOfDay(logic.paroles, paroleIndex(logic.currentProjects, st.activeActivities), logic.livedTodayYmd, logic.dayStartMin);
-        board = buildStakeBoard(
-          deck: bc.deck,
-          facts: facts,
-          hunts: logic.badgeHunts,
-          projects: logic.currentProjects,
-          activities: st.activeActivities,
-          dayStartMin: logic.dayStartMin,
-          parole: pd == null || pd.ids.length < kParoleMin ? null : pd,
-          top: 1 << 20,
-          familyCap: 1 << 20,
-        );
-      } catch (_) {}
-    }
-    _stakes = widget.stakes ?? [...board.top, ...board.rest];
+    final now = sniperStakesNow(logic, widget.badges);
+    _routineLeft = now.routineLeft;
+    _stakes = widget.stakes ?? now.stakes;
     _focus = widget.focus ?? _resumedFocus();
     if (_focus case final q?) _stakes = focusStakes(_stakes, q);
-    _factor = estimateFactor(logic.currentProjects, spentByAction(st.sessions)) ?? 1;
-    final nowMin = logic.livedNowMinNow;
-    final end = nowMin >= _endMin - 15 ? nowMin + 90 : _endMin;
-    _budget = sniperBudget(blocks: logic.todayBlocks, nowMin: nowMin, endMin: end);
+    _factor = sniperFactorNow(logic);
+    _budget = sniperBudgetNow(logic, endMin: _endMin);
     _replan();
     if (_focus case final q? when widget.resume == null) _aimAt(q);
   }
