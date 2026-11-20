@@ -45,9 +45,43 @@ const _green = kSniperGreen;
 const _amber = Color(0xFFF5B041);
 
 /// [focus] = Sniper ciblé sur une carte (2026-11-03) : ses tirs en tête, le reste décoché.
+/// Le Sniper s'ouvre en FEUILLE (2026-11-20, demande user : une feuille normale, sans croix) :
+/// même mécanique que la page focus — `DraggableScrollableSheet` dont le contrôleur pilote la
+/// liste de l'écran ; tirer vers le bas, depuis la liste remontée en haut ou une zone fixe,
+/// la referme. Fermée pendant un tir, la session continue (voir `dispose`).
 Future<void> showSniperScreen(BuildContext context, AppLogic logic, {BadgeCenter? badges, PendingRun? resume, CardQuest? focus}) {
-  return Navigator.of(context)
-      .push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => SniperScreen(logic: logic, badges: badges, resume: resume, focus: focus)));
+  return Navigator.of(context).push(ModalBottomSheetRoute<void>(
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => DraggableScrollableSheet(
+      initialChildSize: .95,
+      minChildSize: .5,
+      maxChildSize: .95,
+      expand: false,
+      builder: (ctx, scroll) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: Stack(children: [
+          Positioned.fill(child: SniperScreen(logic: logic, badges: badges, resume: resume, focus: focus, sheetScroll: scroll)),
+          Positioned(
+            top: 6,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  key: const Key('sniper-sheet-handle'),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  ));
 }
 
 enum _Phase { aim, shot, hit, end }
@@ -61,7 +95,10 @@ class SniperScreen extends StatefulWidget {
   /// Enjeux fournis tels quels (tests d'écran : pas de deck de badges).
   @visibleForTesting
   final List<Stake>? stakes;
-  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus, this.stakes});
+
+  /// Le contrôleur de la feuille qui porte l'écran : il pilote la liste de chaque étape.
+  final ScrollController? sheetScroll;
+  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus, this.stakes, this.sheetScroll});
 
   @override
   State<SniperScreen> createState() => _SniperScreenState();
@@ -363,6 +400,17 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   void dispose() {
     _timer?.cancel();
     _impact.dispose();
+    // La feuille refermée pendant un tir (tirée vers le bas, touchée à côté, retour) ne
+    // l'arrête pas : minuteur, alarme et chrono continuent, la session attend avec ce tir en
+    // cours, comme « Faire ça dans l'app ». Seul « Je m'arrête » met fin au Sniper.
+    if (!_away && _phase == _Phase.shot && _startedAt != null && _index < _aimed.length) {
+      _away = true;
+      _persist(away: true);
+      final messenger = _messenger, text = _awayText;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (messenger != null && messenger.mounted) messenger.showClosingSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 4)));
+      });
+    }
     if (!_away) {
       if (_startedAt != null) CoupAlarm.cancel();
       _stopOwnChrono();
@@ -854,9 +902,9 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final scope = aimScope(costs: [for (final t in _plan.aimed) t.cost], freeMin: b.minutes, pauseMin: _plan.pauseMin);
     final excluded = _excludedTargets;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _header(trailing: IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop())),
+      _header(),
       Expanded(
-        child: ListView(children: [
+        child: ListView(controller: widget.sheetScroll, children: [
           SniperAimScope(
             key: const Key('sniper-aim-scope'),
             scope: scope,
@@ -1035,7 +1083,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       _header(label: 'TIR $_shotNumber / ${_aimed.length}', trailing: TextButton(onPressed: _stop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       _track(),
       Expanded(
-        child: ListView(children: [
+        child: ListView(controller: widget.sheetScroll, children: [
           const SizedBox(height: 12),
           if (timed)
             SniperShotScope(
@@ -1122,11 +1170,19 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   void _goAway() {
     _away = true;
     _persist(away: true);
-    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
-      content: Text(_endsAt == null ? 'Sniper en attente · reprends-le depuis Aujourd’hui' : 'Le minuteur continue · l’alarme sonnera à la fin'),
-      duration: const Duration(seconds: 4),
-    ));
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(content: Text(_awayText), duration: const Duration(seconds: 4)));
     Navigator.of(context).pop();
+  }
+
+  String get _awayText => _endsAt == null ? 'Sniper en attente · reprends-le depuis Aujourd’hui' : 'Le minuteur continue · l’alarme sonnera à la fin';
+
+  /// Gardé pour le message affiché quand la feuille se referme pendant un tir.
+  ScaffoldMessengerState? _messenger;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.maybeOf(context);
   }
 
   /// L'impact : une seconde et demie après « Suivant », puis le tir suivant (ou le bilan).
@@ -1154,7 +1210,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
             _header(label: 'TIR $_shotNumber / ${_aimed.length}', color: _green, info: false),
             _track(),
             Expanded(
-              child: ListView(children: [
+              child: ListView(controller: widget.sheetScroll, children: [
                 const SizedBox(height: 8),
                 SniperImpactScope(t: v, size: 230),
                 const Text('TOUCHÉ', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 5, color: _green)),
@@ -1230,7 +1286,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final rank = {for (final (i, t) in _aimed.indexed) t.key: i + 1};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(
-        child: ListView(children: [
+        child: ListView(controller: widget.sheetScroll, children: [
           const SizedBox(height: 12),
           const Text('SESSION SNIPER', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: _text3)),
           const SizedBox(height: 6),

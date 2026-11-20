@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/sniper_scope.dart';
@@ -116,5 +117,50 @@ void main() {
     expect(find.byKey(const Key('sniper-card')), findsOneWidget);
     expect(find.text('précision'), findsOneWidget);
     await close(tester);
+  });
+
+  testWidgets('le Sniper s’ouvre en feuille, sans croix', (tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [], activities: [], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (ctx) => Scaffold(body: Center(child: TextButton(onPressed: () => showSniperScreen(ctx, logic), child: const Text('ouvrir'))))),
+    ));
+    await tester.tap(find.text('ouvrir'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
+    expect(find.byKey(const Key('sniper-sheet-handle')), findsOneWidget);
+    expect(find.byKey(const Key('sniper-aim-scope')), findsOneWidget);
+    expect(find.byTooltip('Fermer'), findsNothing);
+    expect(find.byIcon(Icons.close), findsNothing);
+    // Toucher au-dessus de la feuille la referme.
+    await tester.tapAt(const Offset(200, 10));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('sniper-aim-scope')), findsNothing);
+    expect(find.text('ouvrir'), findsOneWidget);
+  });
+
+  testWidgets('refermée pendant un tir, la feuille n’arrête rien : le chrono continue, la session attend', (tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [lecture, pompes], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [stakes().first])));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.textContaining('Tirer · 1 cible'));
+    await tester.pump();
+    expect(find.byKey(const Key('sniper-shot-scope')), findsOneWidget);
+    expect(logic.runningActivity()?.id, 'lec');
+    await close(tester);
+    expect(logic.runningActivity()?.id, 'lec');
+    expect(RunSessionStore.current?.extra['cur'], 'activity:lec');
+    expect(RunSessionStore.current?.extra['endsAt'], isNotNull);
+    await tester.pump(const Duration(seconds: 5));
+    await RunSessionStore.clear();
+    logic.stopActive(notify: false);
   });
 }
