@@ -2534,6 +2534,19 @@ ITMS-90473 (« CFBundleShortVersionString Mismatch », vu sur la 1.0.6 build 510
 `ios/ci_scripts/ci_pre_xcodebuild.sh` réaligne toutes les `MARKETING_VERSION` sur le pubspec avant
 chaque build Xcode Cloud ; en montant la version, mettre quand même le pbxproj à jour (build locale).
 
+## Cycle de vie iOS « UIScene » (2026-11-20, bug user : l'app se fermait dès le lancement après la mise à jour de l'iPhone)
+
+À partir d'iOS 27, une app construite avec le SDK récent qui n'a pas adopté le cycle de vie UIScene ne se lance plus. L'outil
+Flutter ne migre tout seul qu'un `AppDelegate.swift` d'origine ; le nôtre est sur mesure, donc migré à la main :
+`ios/Runner/Info.plist` porte `UIApplicationSceneManifest` (délégué `FlutterSceneDelegate`, storyboard `Main`, une seule scène) et
+`AppDelegate` est `FlutterImplicitEngineDelegate` — les plugins (`GeneratedPluginRegistrant.register(with:
+engineBridge.pluginRegistry)`) et les deux canaux natifs (App Group des widgets, Live Activity) se branchent dans
+`didInitializeImplicitFlutterEngine`, sur `engineBridge.applicationRegistrar.messenger()`. **Ne plus lire `window` ni
+`window?.rootViewController` dans `didFinishLaunchingWithOptions`** (la fenêtre n'existe pas encore : plantage au lancement) ; il
+n'y reste que le délégué des notifications et `SwiftAlarmPlugin.registerBackgroundTasks()`. `applicationDidBecomeActive` n'est plus
+appelé : la pastille de l'icône est remise à zéro sur `UIApplication.didBecomeActiveNotification`. Demande Flutter ≥ 3.38 pour
+construire l'app iOS (la CI web reste sur 3.35.6, elle ne compile pas iOS).
+
 ## Mac (Apple Silicon, « Conçue pour iPhone »)
 
 Le widget iPhone relayé sur le Mac ne peut pas ouvrir l'app en UE (Recopie de l'iPhone indisponible,
