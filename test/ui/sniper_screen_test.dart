@@ -1,10 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/sniper_scope.dart';
+import 'package:productivitwo_v1/utils/stakes.dart';
+import 'package:productivitwo_v1/widgets/sniper_scope.dart';
 import 'package:productivitwo_v1/widgets/sniper_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    CoupAlarm.enabled = false;
+  });
+  tearDown(() => CoupAlarm.enabled = true);
+
+  final lecture = Activity(id: 'lec', domainId: 'd', name: 'Lecture', goalMin: 30);
+  final pompes = Activity(id: 'pom', domainId: 'd', name: 'Pompes', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1);
+
+  List<Stake> stakes() => [
+        Stake(
+          StakeGesture(key: 'activity:lec', kind: StakeGestureKind.activity, title: 'Lecture', costMin: 12, activity: lecture),
+          [const StakeGain(kind: StakeGainKind.halfDay, label: 'Montre suisse · 3 / 4', weight: 10)],
+        ),
+        Stake(
+          StakeGesture(key: 'routine:pom', kind: StakeGestureKind.routine, title: 'Pompes', costMin: 5, activity: pompes),
+          [const StakeGain(kind: StakeGainKind.seriesTonight, label: 'Série de 12 j', weight: 30, losesTonight: true)],
+        ),
+      ];
+
+  Future<AppLogic> open(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [lecture, pompes], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes())));
+    await tester.pump();
+    await tester.pump();
+    return logic;
+  }
+
+  /// Le minuteur d'un tir tourne chaque seconde : on démonte l'écran avant la fin du test.
+  Future<void> close(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  }
+
   testWidgets('Sniper : sans enjeu, le viseur le dit et rien ne se lance', (tester) async {
     tester.view.physicalSize = const Size(780, 1700);
     tester.view.devicePixelRatio = 2;
@@ -14,10 +57,64 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic)));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Chaque minute, pile où elle compte'), findsOneWidget);
+    // La lunette est là, vide : tout le tour est de l'air.
+    expect(find.byKey(const Key('sniper-aim-scope')), findsOneWidget);
+    expect(find.textContaining('Aucune cible', findRichText: true), findsOneWidget);
     expect(find.text('Rien à viser'), findsOneWidget);
     expect(find.textContaining('Rien en jeu pour l’instant'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(hours: 1));
+    await close(tester);
+  });
+
+  testWidgets('viseur : la lunette, les cibles numérotées dans l’ordre des tirs', (tester) async {
+    await open(tester);
+    expect(find.byKey(const Key('sniper-aim-scope')), findsOneWidget);
+    expect(find.textContaining('LIBRE JUSQU’À'), findsOneWidget);
+    expect(find.textContaining('2 cibles', findRichText: true), findsWidgets);
+    // Ce qui se perd ce soir d'abord : Pompes porte le 1, Lecture le 2.
+    final one = tester.getTopLeft(find.text('1')).dy, two = tester.getTopLeft(find.text('2')).dy;
+    expect(tester.getTopLeft(find.text('Pompes')).dy, closeTo(one, 12));
+    expect(tester.getTopLeft(find.text('Lecture')).dy, closeTo(two, 12));
+    expect(find.textContaining('Tirer · 2 cibles'), findsOneWidget);
+    // Toucher une cible l'écarte : son numéro part, l'autre devient la première.
+    await tester.tap(find.text('Pompes'));
+    await tester.pump();
+    expect(find.textContaining('Tirer · 1 cible ·'), findsOneWidget);
+    expect(find.text('2'), findsNothing);
+    await close(tester);
+  });
+
+  testWidgets('tir, impact d’une seconde et demie, tir suivant, puis le carton', (tester) async {
+    final logic = await open(tester);
+    await tester.tap(find.textContaining('Tirer · 2 cibles'));
+    await tester.pump();
+    expect(find.text('TIR 1 / 2'), findsOneWidget);
+    expect(find.byType(SniperMagazine), findsOneWidget);
+    // Premier tir : la routine, un geste sans minuteur.
+    await tester.tap(find.text('+1 · touché'));
+    await tester.pump();
+    expect(find.text('TOUCHÉ'), findsOneWidget);
+    expect(find.byType(SniperImpactScope), findsOneWidget);
+    expect(find.text('TIR 2 · TOUT DE SUITE'), findsOneWidget);
+    expect(logic.state.habitHits.where((h) => h.habitId == 'pom').length, 1);
+    // Rien à valider : au bout de l'impact, le tir suivant démarre.
+    await tester.pump(kSniperImpact ~/ 2);
+    expect(find.text('TOUCHÉ'), findsOneWidget);
+    await tester.pump(kSniperImpact);
+    await tester.pump();
+    expect(find.text('TOUCHÉ'), findsNothing);
+    expect(find.text('TIR 2 / 2'), findsOneWidget);
+    expect(find.byKey(const Key('sniper-shot-scope')), findsOneWidget);
+    expect(logic.runningActivity()?.id, 'lec');
+    // Dernier tir : toucher l'écran pendant l'impact ouvre le bilan tout de suite.
+    await tester.tap(find.text('Fait plus tôt · suivant'));
+    await tester.pump();
+    expect(find.text('TOUCHÉ'), findsOneWidget);
+    expect(find.text('Toucher l’écran = voir le bilan'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sniper-impact')));
+    await tester.pump();
+    expect(find.text('2 / 2 cibles touchées'), findsOneWidget);
+    expect(find.byKey(const Key('sniper-card')), findsOneWidget);
+    expect(find.text('précision'), findsOneWidget);
+    await close(tester);
   });
 }
