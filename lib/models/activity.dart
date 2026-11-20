@@ -7,6 +7,31 @@ enum ActivityRole {
   planning
 }
 
+/// Nombre d'anciennes cibles gardées par routine (une par semaine au plus : plus de deux ans).
+const int kTargetLogMax = 120;
+
+/// Une ancienne cible d'une routine : jusqu'au jour [until] (`YYYY-MM-DD`) compris, elle valait [target].
+class TargetStep {
+  final String until;
+  final int target;
+  const TargetStep(this.until, this.target);
+
+  Map<String, dynamic> toJson() => {'until': until, 'target': target};
+
+  static List<TargetStep> listFrom(dynamic raw) {
+    if (raw is! List) return <TargetStep>[];
+    final out = <TargetStep>[];
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final until = e['until'];
+      final target = (e['target'] as num?)?.toInt();
+      if (until is String && until.length == 10 && target != null && target > 0) out.add(TargetStep(until, target));
+    }
+    out.sort((a, b) => a.until.compareTo(b.until));
+    return out;
+  }
+}
+
 /// --- ACTIVITÉS ---
 /// type = "time" (timer) ou "habit" (compteur)
 
@@ -100,9 +125,22 @@ class Activity {
   /// ce qui est fait en plus couvre les jours suivants. Faux = chaque jour.
   bool rolling;
 
+  /// Routine quotidienne « rattrapable » (2026-11-19, maquette validée « Routines rattrapables ») : un jour raté se
+  /// rattrape dans les 7 jours en faisant plus un autre jour, sans avance. « Sur 7 jours » ([rolling]) rattrape aussi.
+  bool catchUp;
+
   /// « 1 coche = n min » (2026-11-19) : minutes de chrono sur l'activité liée
   /// (`linkedActivityId`) qui valent une coche de la routine. Null = le chrono ne coche pas.
   int? minPerHit;
+
+  /// Cible automatique (2026-11-20, `utils/auto_target.dart`) : la cible d'une routine quotidienne suit ce
+  /// qui est vraiment fait (un cran de plus à 120 % sur 7 jours, un cran de moins sous 50 %). Faux par défaut.
+  bool autoTarget;
+
+  /// Anciennes cibles, de la plus ancienne à la plus récente : jusqu'au jour `until` compris, la cible valait
+  /// `target`. Un jour passé est jugé avec la cible de ce jour-là ([targetOnYmd]) : une hausse automatique ne
+  /// casse jamais une série déjà tenue.
+  List<TargetStep> targetLog;
 
   /// Routine activée depuis le catalogue (2026-11-01, `catalog/routine_catalog.dart`) :
   /// sa carte porte le dessin du catalogue. Null = routine créée à la main.
@@ -143,11 +181,15 @@ class Activity {
     List<String>? contexts,
     this.catalogId,
     this.rolling = false,
+    this.catchUp = false,
+    this.autoTarget = false,
+    List<TargetStep>? targetLog,
     this.minPerHit,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
         ownActions = ownActions ?? <TaskAction>[],
         contexts = contexts ?? <String>[],
+        targetLog = targetLog ?? <TargetStep>[],
         createdAt = createdAt ?? DateTime.now();
 
   // -------- Helpers --------
@@ -158,6 +200,24 @@ class Activity {
 
   /// Cible « effective » (fallback 1 si rien n’est défini).
   int get effHabitTarget => (habitTarget ?? 1);
+
+  /// La cible en vigueur le jour [ymd] (`YYYY-MM-DD`) : celle de l'historique si elle a changé depuis,
+  /// sinon la cible d'aujourd'hui ; 1 au moins.
+  int targetOnYmd(String ymd) {
+    for (final s in targetLog) {
+      if (s.until.compareTo(ymd) >= 0) return s.target < 1 ? 1 : s.target;
+    }
+    final t = habitTarget ?? 1;
+    return t < 1 ? 1 : t;
+  }
+
+  /// Retient la cible actuelle comme celle en vigueur jusqu'à [untilYmd] compris, AVANT de la changer.
+  /// Deux changements le même jour ne laissent qu'une trace (la cible d'avant le premier).
+  void keepTargetUntil(String untilYmd) {
+    if (targetLog.isNotEmpty && targetLog.last.until.compareTo(untilYmd) >= 0) return;
+    targetLog.add(TargetStep(untilYmd, effHabitTarget));
+    if (targetLog.length > kTargetLogMax) targetLog.removeRange(0, targetLog.length - kTargetLogMax);
+  }
 
   // -------- Serialization --------
   Map<String, dynamic> toJson() => {
@@ -191,7 +251,10 @@ class Activity {
         'contexts': contexts,
         if (catalogId != null) 'catalogId': catalogId,
         'rolling': rolling,
+        'catchUp': catchUp,
         'minPerHit': minPerHit,
+        'autoTarget': autoTarget,
+        if (targetLog.isNotEmpty) 'targetLog': [for (final s in targetLog) s.toJson()],
       };
 
   /// Migration douce :
@@ -240,7 +303,9 @@ class Activity {
       routineOrder: (j['routineOrder'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
-      timerMin: (j['timerMin'] as num?)?.toInt(),
+      // Une seule durée par routine (2026-11-19) : quand « le chrono coche » est réglé, sa durée est aussi
+      // celle du minuteur (les deux réglages pouvaient différer avant la fusion ; celle du chrono gagne).
+      timerMin: _oneDuration(j),
       timeContext: j['timeContext'] as String?,
       splitMoments: (j['splitMoments'] as List?)?.map((e) => e.toString()).toList(),
       ownActions: (j['ownActions'] as List?)
@@ -249,9 +314,31 @@ class Activity {
       contexts: (j['contexts'] as List?)?.cast<String>(),
       catalogId: j['catalogId'] as String?,
       rolling: j['rolling'] as bool? ?? false,
+      catchUp: j['catchUp'] as bool? ?? false,
       minPerHit: (j['minPerHit'] as num?)?.toInt(),
+      autoTarget: j['autoTarget'] as bool? ?? false,
+      targetLog: TargetStep.listFrom(j['targetLog']),
     )..docKeys = {for (final k in j.keys) k.toString()};
   }
+
+  static int? _oneDuration(Map j) {
+    final per = (j['minPerHit'] as num?)?.toInt();
+    if ((j['type'] ?? 'time') == 'habit' && per != null && per > 0) return per;
+    return (j['timerMin'] as num?)?.toInt();
+  }
+
+  /// La durée d'une fois d'une routine : le temps du ⏱ et, si le chrono coche, le temps d'une coche.
+  int? get onceMin => (minPerHit ?? 0) > 0 ? minPerHit : ((timerMin ?? 0) > 0 ? timerMin : null);
+
+  /// Règle la durée d'une fois (null = aucune) : le minuteur, et la coche du chrono si elle est allumée.
+  void setOnceMin(int? minutes) {
+    final m = (minutes ?? 0) > 0 ? minutes : null;
+    timerMin = m;
+    if (minPerHit != null) minPerHit = m;
+  }
+
+  /// Allume ou éteint « le chrono coche » : il compte à la durée d'une fois.
+  void setChronoHits(bool on) => minPerHit = on ? onceMin : null;
 
   /// Fusion au lancement (2026-11-19, bug user : « Sur 7 jours » réglé puis
   /// perdu) : le serveur gagne, SAUF pour les champs que son document ne porte
@@ -305,7 +392,10 @@ class Activity {
       linkedActivityId: linkedActivityId ?? null,
       catalogId: catalogId,
       rolling: rolling,
+      catchUp: catchUp,
       minPerHit: minPerHit,
+      autoTarget: autoTarget,
+      targetLog: [...targetLog],
     );
   }
 

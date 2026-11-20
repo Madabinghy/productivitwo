@@ -931,6 +931,12 @@ pause exclues. **Focus · Tout** (2026-10-31, retour user) : bascule sous la rec
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+**Bouton flottant ▶ / ■** (2026-11-19, demande user) : le grand bouton flottant des activités (`ActivityFab`, `widgets/activity_fab.dart`,
+posé par `_buildFab` de main.dart) ouvre le lanceur tant qu'aucun chrono ne tourne (`fab-launch-activity`) ; dès qu'un chrono tourne il
+devient ■ rouge (`fab-stop-activity`) et l'arrête d'un tap (`_stopFromFab` : même arrêt que « Arrêter » de MAINTENANT — décompte annulé,
+`stopActive`, donc la feuille « c'était pour quoi ? » quand elle s'applique —, SnackBar « Chrono arrêté · Lecture · 42 min »), puis
+redevient ▶ pour en lancer une autre. Appui long sur ■ = le lanceur quand même (changer d'activité sans passer par l'arrêt).
+
 ## Suivi du sommeil (2026-11-01, maquette validée « Suivi du sommeil »)
 
 Tap sur les barres de sommeil de la barre du haut = une feuille « Sommeil » dédiée (plus la fiche d'activité générique). Rien à
@@ -1899,10 +1905,17 @@ heure si rien n'est fait — `WeekHours.tomorrowActiveMin` = heures actives − 
 `tomorrowShare` = sa part du vert ; LE VERT SEUL (choix user : le sommeil et les repas qui sortent ne la font pas reculer, on redormira).
 Le bout du vert qui dépasse l'aiguille est hachuré (`_GaugePainter`, rayures sur fond sombre) = ce qui sort d'ici là ; rien ne sort =
 aiguille au bout du vert, sans hachures. Elle descend quand l'heure qui approche de la sortie était active il y a 6 jours, reste à plat
-sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle garde le milieu des tirets pour « rien de tracé ». Ligne en plus, sans
+sinon. Un chrono qui tourne : inchangé (elle le suit). Le triangle parle pareil (retour user 2026-11-19 : au milieu des tirets, il donnait
+l'impression d'avoir travaillé il y a 7 jours) : « rien de tracé » se pose au même endroit que l'aiguille sans chrono (`mark[free]` =
+la position de demain si rien), donc aiguille et triangle sont alignés quand on ne fait rien aujourd'hui comme il y a 7 jours. Ligne en plus, sans
 chrono seulement, sur la carte et la feuille : « Demain si rien · ↘ 55 h · −12 h 27 » (`HoursTomorrowLine`, `hoursTomorrowLabel`,
 `spanExact` ; `week-hours-tomorrow`, `week-hours-sheet-tomorrow` ; ambre `kHoursLoss`, vert « rien ne sort ») ; infobulle de la tuile et
 paragraphe de lecture mis à jour ; les tirets du temps libre ne s'éclairent plus.
+**Tableau de bord tout en haut d'Aujourd'hui** (2026-11-19, essai demandé par l'user : « dès qu'on change de page, on voit tout de
+suite où on en est sur la jauge et le réalisé ») : sur mobile, « TON TABLEAU DE BORD » (`_parallelSection`, `today_view.dart`) est posé
+juste sous l'en-tête, AVANT les cartes passagères (Recharge, session en cours, envie, bilan de saison, revue, proposition de module),
+« Ta journée » / « Ce soir », MAINTENANT et la zone coach — il était sous MAINTENANT depuis le 2026-11-06. Revenir en arrière =
+remettre l'appel après `NowCoachZone`.
 **La jauge dans Aujourd'hui** (2026-11-19, demande user : « un mini widget avec juste la jauge ») : tuile carrée de 104 px à droite de
 PROGRAMME dans TON TABLEAU DE BORD (`DashboardTiles.hoursTile`, mobile ; `WeekHoursTile`, `week_hours_card.dart`, `hours-tile`) — la jauge
 seule, sans texte (le détail en infobulle et pour la lecture d'écran), tap = `showWeekHoursSheet`. Module Analyse, pas sur Demain.
@@ -2334,6 +2347,69 @@ qu'elle ne connaît pas. `Activity.from` retient les champs du document lu (`doc
 (`FirestoreSync.merge` → `Activity.keepLocalFields`) garde la valeur de l'appareil pour tout champ ABSENT du document distant ; un champ
 présent gagne toujours, même à faux. Le push qui suit le remet sur le serveur. Limites : seulement les activités (pas les domaines) ;
 un réglage posé par Claude pendant que l'app tourne n'arrive qu'au prochain lancement.
+
+**Routines rattrapables** (2026-11-19, maquette validée « Routines rattrapables », lot 1 : rythme + rattrapage + lanceur) : TROIS
+rythmes pour une routine quotidienne (fiche routine, section Rythme : `routine-rhythm-daily` · `routine-rhythm-catchup` ·
+`routine-rhythm-rolling`) — **Chaque jour** (raté = raté) · **Rattrapable** (`Activity.catchUp`, nouveau : un jour raté se rattrape dans
+les 7 jours, PAS d'avance — vaisselle, rangement) · **Sur 7 jours** (`rolling` : rattrapage ET avance). Logique pure
+`utils/routine_cover.dart` : `isCatchUpRoutine` (catchUp ou rolling), `catchUpOf(a, hits, now, frozen:)` → `CatchUp {repaired, open}` —
+on rejoue les jours : ce qu'un jour fait EN PLUS de ce qu'il demande comble les jours ratés des 6 jours d'avant, le plus récent d'abord
+(déficit partiel possible) ; un jour gelé n'est jamais un trou ; passé 7 jours, le trou ne se rattrape plus. **Un jour rattrapé recolle
+la SÉRIE seulement** (décision user) : il passe par le canal `bridged` (`AppLogic.bridgedOf` = anciens rallumages ∪ `repairedOf`,
+`computeBadges`, `habitStreakInfo` / `habitStreakEndingOn`, `lostSeriesYesterday`) — jamais par `routineReachedDays`, donc ni Journée
+parfaite ni Métronome après coup ; la fiche dit « Jours rattrapés ». `RoutineCover` vaut aussi pour « Rattrapable » (`advance: false`,
+part du jour = la cible, jamais d'avance) et porte `holes`, `holeThresholds`, `holesLeft`, `canCatchUp`, `toNextHole`, `nextHole` ;
+`AppLogic.routineCoverOf` la renvoie pour les deux rythmes. Jauge du jour (`coverSlots`, `CoverSlot.hole`) : ce soir, puis les jours à
+rattraper en AMBRE (3 au plus, étiquette datée « hier », « lun. 16 » pour ne pas se confondre avec un jour à venir), puis l'avance en
+vert (« Sur 7 jours » seulement). Lanceur de routines, Focus : section **À RATTRAPER** (`launcher-catching`, entre À faire et Prendre de
+l'avance : tenue ce soir, un jour raté attend ; « encore 1 = hier rattrapé », en minutes quand le chrono coche : « encore 10 min = hier
+rattrapé ») ; le rattrapage passe avant l'avance. **Côté Claude** (lot 3, 2026-11-19, déployé au merge) : logique pure `functions/src/routine_cover.ts` ↔ `lib/utils/routine_cover.dart`
+(**garder alignés** : `isCatchUpRoutine`, `catchUpOf`) + `catchUpNote`. `update_activity {catchUp}` et `create_routine {catchUp}`
+(`rhythmPatch` : quotidienne seulement, exclusif de `rolling` — demander les deux garde « sur 7 jours », qui rattrape déjà ; `minPerHit`
+pose aussi `timerMin`, une seule durée). `get_user_context` porte `catchUp`, `onceMin` (durée d'une fois d'une routine sans chrono qui
+coche) et `timerMinBefore` (ancienne durée du minuteur quand elle diffère encore de `minPerHit` en base). La liste des routines de
+`plan_day` dit « rattrapable (pas d'avance) » et « 2 jours ratés encore rattrapables (11-18, 11-17) : 20 min en plus de la part du jour
+recollent la série » (coches lues sur 28 jours).
+**Une seule durée par routine** (lot 2, 2026-11-19) : « la durée d'une fois » remplace les deux réglages qui faisaient doublon dans la
+fiche (« Minuteur » / « Minuteur par défaut » et « Le chrono coche »). `Activity.onceMin` = `minPerHit` s'il est réglé, sinon `timerMin` ;
+`setOnceMin(m)` règle le minuteur ET la coche du chrono si elle est allumée (0 = aucune durée, le chrono ne coche plus) ;
+`setChronoHits(on)` allume / éteint la coche du chrono à cette durée. Le stockage garde les deux champs (`timerMin`, `minPerHit`) : à la
+lecture d'une routine dont les deux diffèrent, celle du chrono gagne (`Activity.from` → `_oneDuration` ; décision user). Fiche routine :
+puce « Durée · 10 min » en tête (`routine-once-min`, `_pickOnceMin`) et, sous l'activité liée, UN interrupteur « Le chrono de « … »
+coche tout seul » (`routine-chrono-hits`, « 10 min = 1 fois · 20 min = 2 fois ») — gardé parce qu'une activité liée sert parfois à autre
+chose ; allumé sans durée, il la demande d'abord. `AppLogic.setActivityTimerMin` passe par `setOnceMin`.
+
+**Durée réglée = minuteur, pas ▶** (2026-11-19, retour user sur la feuille Journée parfaite) : sur la ligne d'une routine, le lanceur
+unique suit cet ordre — Planifier 🧭 · ■ si le chrono de l'activité liée tourne · **⏱ minuteur à la durée réglée (`timerMin`)**, même avec
+une activité liée (il démarre l'activité liée ET le décompte, `_startRoutineTimer`) · ▶ chrono de l'activité liée seulement sans durée
+réglée. Journée parfaite et fiche Routines (`_missingLine`, `routine-timer-<id>`), lanceur de routines (`_row`, `launcher-timer-<id>` /
+`launcher-go-<id>`, infobulle « Minuteur 25 min ») ; dans le lanceur, une routine à durée réglée et cible 1 dit « 25 min » au lieu de
+« 0 / 1 ». Le chrono sans fin reste dans les gestes rares du lanceur (appui long).
+
+## Cible automatique d'une routine (2026-11-20, demande user : « à 120 %, on augmente un petit peu le standard »)
+
+Par routine QUOTIDIENNE sans cap, interrupteur **« Cible automatique »** de la fiche routine (`routine-auto-target`, éteint par
+défaut ; caché quand un cap `finalTarget` existe : les paliers la pilotent déjà). `Activity.autoTarget`. Règle fixe, jamais d'IA,
+logique pure `utils/auto_target.dart` (`autoTargetDecision`, `canAutoTarget`, `autoStep`) : sur les 7 derniers jours CLOS (hier
+compris, pas aujourd'hui), fait ≥ 120 % du demandé (`kAutoRaiseRatio`) → un cran de plus, jamais au-dessus de la moyenne vraiment
+faite (cible 1 : il faut 2 par jour en moyenne pour passer à 2) ; fait < 50 % (`kAutoLowerRatio`) → un cran de moins (plancher 1) ;
+un cran = 10 % de la cible, 1 au moins (`kAutoStepPct`). Un jour gelé (veille, gel, Le minimum, journée difficile, `frozenOf`) ne
+compte ni dans le fait ni dans le demandé, au moins `kAutoMinDays` (5) jours comptés. Un seul changement par semaine : il faut une
+semaine pleine à la cible actuelle (`lastTuneAt` = dernier changement, automatique ou à la main via `AppLogic.setRoutineTarget`, que
+la fiche appelle ; routine créée depuis 7 jours). Passe faite une fois par lancement, APRÈS la première lecture du doc meta (gels et
+bascule de journée connus) : `_runAutoTargets` (main.dart) → `AppLogic.applyAutoTargets` → SnackBar « Cible ajustée — Pompes : cible
+20 → 22 par jour (120 % sur 7 jours) ». La fiche dit « Dernier changement : 20 → 22 depuis le 20 nov. » (`lastTargetChangeLabel`).
+**Un jour passé est jugé avec la cible de ce jour-là** : `Activity.targetLog` (`TargetStep {until, target}` : jusqu'à ce jour
+compris, la cible valait tant ; `keepTargetUntil(hier)` avant chaque changement automatique, `kTargetLogMax` 120) et
+`Activity.targetOnYmd(ymd)` — lus par `routineReachedDays`, `rollingHeldDays`, `catchUpOf`, les séries d'`AppLogic`
+(`habitStreakInfo`, `habitStreakEndingOn`, `habitBestStreak`) et `weekTargetFor(monday:)` des semaines tenues : une hausse ne casse
+jamais une série ni une semaine déjà tenue. Les paliers d'une routine à cap (`applyWeeklyProgression`) posent la même trace. Un
+changement À LA MAIN ne pose pas de trace (comme avant : le passé est relu avec la nouvelle cible). **Côté Claude** (déployé au
+merge) : `update_activity {autoTarget}` et `create_routine {autoTarget}` (`rhythmPatch`, `functions/src/routine_cover.ts` : routine
+quotidienne sans cap seulement, sinon refus expliqué ; seulement à la demande ou sur accord) ; `get_user_context` porte
+`autoTarget` ; une cible changée par `update_activity {habitTarget}` sur une routine à cible automatique pose `lastTuneAt` (l'app
+attend une semaine pleine). La règle reste appliquée par l'app. Pas fait : routines hebdomadaires, l'historique des cibles côté
+serveur (Claude et le coach jugent le passé avec la cible du jour).
 
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 

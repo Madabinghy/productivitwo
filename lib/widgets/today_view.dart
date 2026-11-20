@@ -782,6 +782,10 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 ...[
                 if (!_showTomorrow) ...[
+                  // Le tableau de bord tout en haut (essai, retour user 2026-11-19) : en arrivant sur la page,
+                  // on voit d'abord où on en est (jauge des 7 jours, programme, journée parfaite).
+                  const SizedBox(height: 12),
+                  ..._parallelSection(cs, stakes),
                   // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
                   if (_on(AppModule.sleep)) ...[
                     RechargeCard(logic: widget.logic),
@@ -825,7 +829,6 @@ class TodayViewState extends State<TodayView> {
                     if (mounted) setState(() {});
                   }),
                   if (_morningCard(cs, now, text3) case final card?) card,
-                  // MAINTENANT avant le tableau de bord (retour user 2026-11-06).
                   const SizedBox(height: 16),
                   NowCard(
                     onGoToBed: _goToBed,
@@ -909,8 +912,6 @@ class TodayViewState extends State<TodayView> {
                     tabOpens: _tabOpens,
                     onLaunch: widget.onNowLaunch ?? widget.onLaunch,
                   ),
-                  const SizedBox(height: 12),
-                  ..._parallelSection(cs, stakes),
                 ],
                 // Programme du jour : dans une feuille ouverte par la tuile
                 // PROGRAMME (retour user 2026-10-30) ; Demain reste sur la page.

@@ -68,6 +68,9 @@ Future<void> showRoutineLauncher(
   );
 }
 
+/// L'ambre des jours ratés qu'on rattrape.
+const _kCatchUp = Color(0xFFFFB866);
+
 class RoutineLauncher extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
@@ -168,7 +171,9 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     // Sur 7 jours (2026-11-19) : tenues ce soir mais demain demandera quelque chose (prendre de l'avance),
     // et celles que l'avance couvre encore (repliées sur une ligne).
     final live = done.where((s) => !day.dismissed.contains(s.id)).toList();
-    final ahead = live.where((s) => s.todo.cover?.canGetAhead ?? false).toList();
+    // Rattrapables (2026-11-19) : tenues ce soir, un jour raté attend encore. Le rattrapage passe avant l'avance.
+    final catching = live.where((s) => s.todo.cover?.canCatchUp ?? false).toList();
+    final ahead = live.where((s) => (s.todo.cover?.canGetAhead ?? false) && !(s.todo.cover?.canCatchUp ?? false)).toList();
     final covered = [
       for (final s in live)
         if (_aheadDaysOf(s) case final n?) (s, n),
@@ -286,6 +291,24 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           ]),
           for (final s in g.slots) _row(cs, day, s),
         ],
+        if (focusing && catching.isNotEmpty) ...[
+          Padding(
+            key: const ValueKey('launcher-catching'),
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 2),
+            child: Row(children: [
+              const Expanded(
+                child: Text('À RATTRAPER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.1, color: _kCatchUp)),
+              ),
+              Text('${catching.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _kCatchUp)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
+            child: Text('Tenues ce soir. Ce que tu fais en plus rattrape un jour raté : la série recolle.',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .5))),
+          ),
+          for (final s in catching) _row(cs, day, s, catching: true),
+        ],
         if (focusing && ahead.isNotEmpty) ...[
           Padding(
             key: const ValueKey('launcher-ahead'),
@@ -353,12 +376,13 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   /// Jauge du jour d'une routine « sur 7 jours » (2026-11-19, maquette validée « Jauge des routines
   /// 7 jours ») : une case par jour que les coches d'AUJOURD'HUI achètent — ce soir à la couleur du
   /// domaine, puis demain et les jours suivants en vert. La largeur d'une case = son prix en coches.
+  /// Les jours ratés à rattraper s'intercalent en ambre, avant l'avance (« Routines rattrapables »).
   Widget _dayGauge(ColorScheme cs, RoutineCover c, Color color) {
     const green = Color(0xFF3DDC84);
     const gap = 3.0;
     final slots = coverSlots(c);
     // Largeur minimale d'une case = la place de son nom (« ce soir », « dem. + sam. »).
-    final minOf = [for (final s in slots) s.to > s.from ? 66.0 : 38.0];
+    final minOf = [for (final s in slots) s.to > s.from ? 66.0 : (s.hole != null ? 46.0 : 38.0)];
     return LayoutBuilder(builder: (context, box) {
       // Cases déjà acquises : largeur fixe ; les autres se partagent le reste au prorata du prix.
       final fixed = [for (final s in slots) s.cost > 0 ? 0.0 : (s.to > s.from ? 84.0 : 46.0)];
@@ -384,7 +408,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
             final s = slots[i];
             final next = !s.full && !nextSeen;
             if (next) nextSeen = true;
-            final fillColor = s.from == 0 && s.cost > 0 ? color : green;
+            final fillColor = s.hole != null ? _kCatchUp : (s.from == 0 && s.cost > 0 ? color : green);
             return SizedBox(
               width: widths[i],
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -412,7 +436,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         height: 1.2,
-                        color: s.full ? green : cs.onSurface.withValues(alpha: next ? .95 : .45))),
+                        color: s.full ? (s.hole != null ? _kCatchUp : green) : cs.onSurface.withValues(alpha: next ? .95 : .45))),
               ]),
             );
           }(),
@@ -447,7 +471,9 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   /// Routines) : anneau à la couleur du domaine, nom, UNE ligne d'infos,
   /// lanceur seulement s'il lance quelque chose, puis − / + pour saisir
   /// directement. Tap = le compteur, appui long = les gestes rares.
-  Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s, {bool ahead = false}) {
+  Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s, {bool ahead = false, bool catching = false}) {
+    // Tenue ce soir, mais la ligne propose encore quelque chose (avance ou rattrapage).
+    final more = ahead || catching;
     final a = s.activity;
     final t = s.todo;
     final dismissed = day.dismissed.contains(a.id);
@@ -464,24 +490,28 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     // La ligne d'infos passe à la ligne ENTRE deux infos, jamais au milieu (retour user 2026-11-19 :
     // « ce matin », « cet après-midi » étaient coupés) : espaces insécables dans une info, coupure après « · ».
     String nb(String v) => v.replaceAll(' ', ' ');
+    // Avec « le chrono coche », on parle en minutes : 10 min la fois, encore 10 min.
+    String amount(int n) => hasTimeHits(a) ? '${n * a.minPerHit!} min' : '$n';
     const sep = ' · ';
     final infos = <InlineSpan>[
       if (dismissed) TextSpan(text: '${nb('pas aujourd\'hui')}$sep'),
       TextSpan(
-          text: nb(ahead && cover != null
-              ? 'encore ${cover.toFreeTomorrow} = demain libre'
-              : done
+          text: nb(catching && cover?.nextHole != null
+              ? 'encore ${amount(cover!.toNextHole)} = ${holeDayLabel(cover.today, cover.nextHole!.day)} rattrapé'
+              : ahead && cover != null
+                  ? 'encore ${amount(cover.toFreeTomorrow)} = demain libre'
+                  : done
                   ? (cover?.heldLabel == null ? '✓ $count / $target${t.dayTarget == null ? ' sur 7 j' : ''}' : '✓ ${cover!.heldLabel}')
                   : (s.share?.label ??
-                      (hasTimer && linked == null
+                      (hasTimer && (linked == null || target <= 1)
                           ? '${a.timerMin} min'
                           : '$count / $target${t.dayTarget == null ? ' sur 7 j' : (cover != null ? ' aujourd\'hui' : '')}'))),
           style: TextStyle(color: dc)),
       if (!done && s.share == null && s.moment != kMomentAllDay && s.moment != kMomentAny)
         TextSpan(text: '$sep${nb(momentOf(s.moment).thisOne)}'),
       // « Prendre de l'avance » : la ligne ne dit que ce que le geste rapporte.
-      if (!ahead && streak >= 2) TextSpan(text: '$sep${nb('🔥 $streak j')}', style: const TextStyle(color: Color(0xFFFF8A3D))),
-      if (!ahead && linked != null) TextSpan(text: '$sep${nb(linked.name)}'),
+      if (!more && streak >= 2) TextSpan(text: '$sep${nb('🔥 $streak j')}', style: const TextStyle(color: Color(0xFFFF8A3D))),
+      if (!more && linked != null) TextSpan(text: '$sep${nb(linked.name)}'),
     ];
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -500,7 +530,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800, height: 1.2, color: done && !ahead ? cs.onSurface.withValues(alpha: .6) : null)),
+                        fontSize: 15, fontWeight: FontWeight.w800, height: 1.2, color: done && !more ? cs.onSurface.withValues(alpha: .6) : null)),
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text.rich(TextSpan(children: infos),
@@ -524,10 +554,11 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               ]),
             ),
           ),
-          if ((!done || ahead) && !dismissed && (plan || linked != null || hasTimer)) ...[
+          if ((!done || more) && !dismissed && (plan || linked != null || hasTimer)) ...[
             const SizedBox(width: 6),
             Tooltip(
-              message: plan ? 'Planifier maintenant' : (linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min'),
+              // Une durée réglée passe devant le chrono sans fin : le minuteur à cette durée (2026-11-19).
+              message: plan ? 'Planifier maintenant' : (hasTimer ? 'Minuteur ${a.timerMin} min' : 'Chrono sur « ${linked!.name} »'),
               child: SizedBox(
                 width: 34,
                 height: 34,
@@ -536,8 +567,9 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   shape: const CircleBorder(),
                   child: InkWell(
                     customBorder: const CircleBorder(),
-                    onTap: () => plan ? widget.onPlan!() : (linked != null ? widget.onChrono(linked) : widget.onTimer(a)),
-                    child: Icon(plan ? Icons.explore_outlined : (linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined), size: 18, color: dc),
+                    key: ValueKey(hasTimer && !plan ? 'launcher-timer-${a.id}' : 'launcher-go-${a.id}'),
+                    onTap: () => plan ? widget.onPlan!() : (hasTimer ? widget.onTimer(a) : widget.onChrono(linked!)),
+                    child: Icon(plan ? Icons.explore_outlined : (hasTimer ? Icons.timer_outlined : Icons.play_arrow_rounded), size: 18, color: dc),
                   ),
                 ),
               ),
