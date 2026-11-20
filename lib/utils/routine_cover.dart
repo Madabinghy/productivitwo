@@ -64,7 +64,6 @@ class CatchUp {
 /// devenir une journée parfaite après coup. [frozen] = jours gelés, qui ne sont jamais des trous.
 CatchUp catchUpOf(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> frozen = const {}}) {
   if (!isCatchUpRoutine(a)) return CatchUp.none;
-  final t = routineDayTargetOf(a);
   final counts = routineDayCounts(a, hits, dayStartMin: dayStartMin);
   if (counts.isEmpty) return CatchUp.none;
   final first = DateTime.parse((counts.keys.toList()..sort()).first);
@@ -80,6 +79,7 @@ CatchUp catchUpOf(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMi
     if (d == today) openBefore = holes.reversed.toList();
     final k = ymdOf(d);
     final c = counts[k] ?? 0;
+    final t = a.targetOnYmd(k); // la cible de ce jour-là
     final need = a.rolling ? rollingDayTarget(t, past) : t;
     if (c > need) {
       var extra = c - need;
@@ -313,7 +313,6 @@ String coverSlotLabel(DateTime today, CoverSlot s) {
 /// Jours vécus TENUS par une routine « sur 7 jours », jusqu'à [now] compris :
 /// la part du jour est faite, ou l'avance des 6 jours d'avant la couvre.
 Set<String> rollingHeldDays(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
-  final t = routineDayTargetOf(a);
   final counts = routineDayCounts(a, hits, dayStartMin: dayStartMin);
   if (counts.isEmpty) return const {};
   final first = DateTime.parse((counts.keys.toList()..sort()).first);
@@ -324,7 +323,7 @@ Set<String> rollingHeldDays(Activity a, List<HabitHit> hits, DateTime now, {int 
   for (var d = first; !d.isAfter(today); d = DateTime(d.year, d.month, d.day + 1)) {
     final k = ymdOf(d);
     final c = counts[k] ?? 0;
-    if (c >= rollingDayTarget(t, past)) out.add(k);
+    if (c >= rollingDayTarget(a.targetOnYmd(k), past)) out.add(k);
     window.add(c);
     past += c;
     if (window.length > kRoutineWindowDays - 1) past -= window.removeAt(0);

@@ -311,14 +311,14 @@ class RoutineSeries {
 /// [now] (maintenant par défaut).
 Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin = kDefaultDayStartMin, DateTime? now}) {
   if (isRollingRoutine(a)) return rollingHeldDays(a, hits, now ?? DateTime.now(), dayStartMin: dayStartMin);
-  final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
   final counts = <String, int>{};
   for (final h in hits) {
     if (h.habitId != a.id) continue;
     final k = ymdOf(livedDate(h.ts, dayStartMin));
     counts[k] = (counts[k] ?? 0) + 1;
   }
-  return counts.entries.where((e) => e.value >= target).map((e) => e.key).toSet();
+  // Chaque jour est jugé avec la cible de ce jour-là (`Activity.targetOnYmd`).
+  return counts.entries.where((e) => e.value >= a.targetOnYmd(e.key)).map((e) => e.key).toSet();
 }
 
 /// [bridged] = jours comblés par une braise : ils tiennent la série, mais ne

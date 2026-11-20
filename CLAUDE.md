@@ -2386,6 +2386,27 @@ réglée. Journée parfaite et fiche Routines (`_missingLine`, `routine-timer-<i
 `launcher-go-<id>`, infobulle « Minuteur 25 min ») ; dans le lanceur, une routine à durée réglée et cible 1 dit « 25 min » au lieu de
 « 0 / 1 ». Le chrono sans fin reste dans les gestes rares du lanceur (appui long).
 
+## Cible automatique d'une routine (2026-11-20, demande user : « à 120 %, on augmente un petit peu le standard »)
+
+Par routine QUOTIDIENNE sans cap, interrupteur **« Cible automatique »** de la fiche routine (`routine-auto-target`, éteint par
+défaut ; caché quand un cap `finalTarget` existe : les paliers la pilotent déjà). `Activity.autoTarget`. Règle fixe, jamais d'IA,
+logique pure `utils/auto_target.dart` (`autoTargetDecision`, `canAutoTarget`, `autoStep`) : sur les 7 derniers jours CLOS (hier
+compris, pas aujourd'hui), fait ≥ 120 % du demandé (`kAutoRaiseRatio`) → un cran de plus, jamais au-dessus de la moyenne vraiment
+faite (cible 1 : il faut 2 par jour en moyenne pour passer à 2) ; fait < 50 % (`kAutoLowerRatio`) → un cran de moins (plancher 1) ;
+un cran = 10 % de la cible, 1 au moins (`kAutoStepPct`). Un jour gelé (veille, gel, Le minimum, journée difficile, `frozenOf`) ne
+compte ni dans le fait ni dans le demandé, au moins `kAutoMinDays` (5) jours comptés. Un seul changement par semaine : il faut une
+semaine pleine à la cible actuelle (`lastTuneAt` = dernier changement, automatique ou à la main via `AppLogic.setRoutineTarget`, que
+la fiche appelle ; routine créée depuis 7 jours). Passe faite une fois par lancement, APRÈS la première lecture du doc meta (gels et
+bascule de journée connus) : `_runAutoTargets` (main.dart) → `AppLogic.applyAutoTargets` → SnackBar « Cible ajustée — Pompes : cible
+20 → 22 par jour (120 % sur 7 jours) ». La fiche dit « Dernier changement : 20 → 22 depuis le 20 nov. » (`lastTargetChangeLabel`).
+**Un jour passé est jugé avec la cible de ce jour-là** : `Activity.targetLog` (`TargetStep {until, target}` : jusqu'à ce jour
+compris, la cible valait tant ; `keepTargetUntil(hier)` avant chaque changement automatique, `kTargetLogMax` 120) et
+`Activity.targetOnYmd(ymd)` — lus par `routineReachedDays`, `rollingHeldDays`, `catchUpOf`, les séries d'`AppLogic`
+(`habitStreakInfo`, `habitStreakEndingOn`, `habitBestStreak`) et `weekTargetFor(monday:)` des semaines tenues : une hausse ne casse
+jamais une série ni une semaine déjà tenue. Les paliers d'une routine à cap (`applyWeeklyProgression`) posent la même trace. Un
+changement À LA MAIN ne pose pas de trace (comme avant : le passé est relu avec la nouvelle cible). Pas fait : routines hebdomadaires,
+le serveur (Claude et le coach lisent la cible du jour), réglage par Claude.
+
 ## « Pas aujourd'hui » sur une routine (2026-11-02, décision user)
 
 Une routine écartée « pas aujourd'hui » (`nowDoneByYmd`, clé `YYYYMMDD`) n'est plus réclamée ce jour-là : hors journée parfaite /
