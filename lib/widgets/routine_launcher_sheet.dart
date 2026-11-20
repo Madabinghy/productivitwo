@@ -416,14 +416,17 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
             slots[i].cost <= 0 ? fixed[i] : (narrow[i] ? minOf[i] : (room - taken) * slots[i].cost / wideCost),
         ];
       }
-      var nextSeen = false;
+      // Les cases sont RANGÉES comme un calendrier (2026-11-20, demande user) : les jours ratés du plus ancien
+      // au plus récent, puis ce soir, puis les jours à venir. Elles se REMPLISSENT toujours dans l'ordre d'achat
+      // (ce soir, le jour raté le plus récent, …, puis l'avance) : la prochaine à remplir est mise en avant.
+      final nextIdx = slots.indexWhere((s) => !s.full);
+      final order = calendarOrder(slots);
       return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (var i = 0; i < slots.length; i++) ...[
-          if (i > 0) const SizedBox(width: gap),
+        for (final (n, i) in order.indexed) ...[
+          if (n > 0) const SizedBox(width: gap),
           () {
             final s = slots[i];
-            final next = !s.full && !nextSeen;
-            if (next) nextSeen = true;
+            final next = i == nextIdx;
             final fillColor = s.hole != null ? _kCatchUp : (s.from == 0 && s.cost > 0 ? color : green);
             return SizedBox(
               width: widths[i],

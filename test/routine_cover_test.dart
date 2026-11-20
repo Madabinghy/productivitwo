@@ -382,6 +382,10 @@ void main() {
       // 2 cases : puis le dernier jour raté.
       expect(names(fitCoverSlots(slots, w, 90)), 'ce soir | demain');
       expect(names(fitCoverSlots(slots, w, 10)), 'ce soir');
+      // À l'écran, les cases sont rangées comme un calendrier : le passé à gauche, ce soir, puis l'avenir.
+      expect([for (final i in calendarOrder(slots)) coverSlotLabel(DateTime(2026, 11, 20), slots[i])].join(' | '), 'mar. 17 | mer. 18 | hier | ce soir | demain | dim.');
+      expect(calendarOrder(slots.sublist(0, 1)), [0]);
+      expect(calendarOrder(const []), isEmpty);
       // Les dates d'un jour raté sont celles du passé : lundi 16 et samedi 14 vus du vendredi 20.
       expect(names([CoverSlot(from: 0, to: 0, lo: 1, hi: 2, done: 0, hole: lundi), CoverSlot(from: 0, to: 0, lo: 2, hi: 3, done: 0, hole: samedi)]), 'lun. 16 | sam. 14');
     });

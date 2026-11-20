@@ -2454,7 +2454,10 @@ d'abord, puis les jours à venir les plus lointains, « ce soir » reste) ; (2) 
 venir : sa case est ambrée même vide, son nom aussi ; (3) « demain » s'affichait VERT alors que rien n'était acquis, quand il se
 gagne au même seuil que le dernier jour raté (case sans prix) : `CoverSlot.fill` ne vaut 1 pour une case sans prix que si son seuil
 est atteint. À savoir : la 🔥 série d'une ligne compte avec le joker hebdomadaire (`computeStreak` : un jour raté par semaine
-glissante ne la casse pas), donc une série peut traverser un jour que la jauge propose encore de rattraper.
+glissante ne la casse pas), donc une série peut traverser un jour que la jauge propose encore de rattraper. **Rangée comme un
+calendrier** (même jour, demande user) : les cases s'AFFICHENT du passé vers l'avenir — jours ratés du plus ancien au plus récent,
+puis « ce soir », puis « demain » et la suite (`calendarOrder`, « mar. 17 · mer. 18 · hier · ce soir · demain ») — et se REMPLISSENT
+toujours dans l'ordre d'achat (ce soir, le jour raté le plus récent, …, puis l'avance) ; la prochaine à remplir garde son nom en clair.
 
 **Le chrono coche d'office** (2026-11-20, retour user : 25 min de chrono sur « Motivation » n'avaient rien coché — l'interrupteur
 était éteint, comme sur 21 de ses 22 routines liées) : une routine qui a une DURÉE d'une fois (`onceMin`) et qui est la SEULE routine

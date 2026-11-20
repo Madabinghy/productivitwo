@@ -314,6 +314,18 @@ List<CoverSlot> fitCoverSlots(List<CoverSlot> slots, List<double> widths, double
   return [for (final i in keep) slots[i]];
 }
 
+/// L'ordre d'AFFICHAGE des cases, comme un calendrier (2026-11-20, demande user : « hier » et « mer. 18 » entre
+/// « ce soir » et « demain » faisaient croire à des dates fausses) : les jours ratés du plus ancien au plus
+/// récent, puis ce soir, puis les jours à venir. Rend les rangs dans [slots], qui reste dans l'ordre d'achat
+/// (ce soir, le jour raté le plus récent, …, puis l'avance) : c'est lui qui dit quelle case se remplit ensuite.
+List<int> calendarOrder(List<CoverSlot> slots) => [
+      for (var i = slots.length - 1; i > 0; i--)
+        if (slots[i].hole != null) i,
+      if (slots.isNotEmpty) 0,
+      for (var i = 1; i < slots.length; i++)
+        if (slots[i].hole == null) i,
+    ];
+
 /// « mercredi », « hier » : le jour raté qu'on rattrape, en toutes lettres.
 String holeDayLabel(DateTime today, DateTime day) {
   const names = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];

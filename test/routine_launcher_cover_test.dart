@@ -148,10 +148,13 @@ void main() {
     final gauge = find.byKey(const ValueKey('launcher-cover-bar-vaisselle'));
     expect(find.descendant(of: gauge, matching: find.text('hier')), findsOneWidget);
     expect(find.descendant(of: gauge, matching: find.text('demain')), findsNothing);
-    // Pas encore faite : à faire, sa jauge montre déjà le jour à rattraper après « ce soir ».
+    // Pas encore faite : à faire, sa jauge montre déjà le jour à rattraper, rangé comme un calendrier :
+    // « hier » à gauche de « ce soir ».
     final todo = find.byKey(const ValueKey('launcher-cover-bar-lit'));
     expect(find.descendant(of: todo, matching: find.text('ce soir')), findsOneWidget);
     expect(find.descendant(of: todo, matching: find.text('hier')), findsOneWidget);
+    expect(t.getTopLeft(find.descendant(of: todo, matching: find.text('hier'))).dx,
+        lessThan(t.getTopLeft(find.descendant(of: todo, matching: find.text('ce soir'))).dx));
 
     // Une coche de plus rattrape hier : la série recolle.
     logic.state.habitHits.add(HabitHit(habitId: 'vaisselle', ts: DateTime(today.year, today.month, today.day, 5, 30)));
