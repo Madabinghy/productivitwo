@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/auto_target.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
+import 'package:productivitwo_v1/utils/routine_cover.dart' show chronoHitMin;
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -465,14 +466,9 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 key: const ValueKey('routine-chrono-hits'),
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                value: (act.minPerHit ?? 0) > 0,
+                value: chronoHitMin(act, logic.state.activities) != null,
                 title: Text('Le chrono de « ${linkedAct.name} » coche tout seul', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                subtitle: Text(
-                    (act.minPerHit ?? 0) > 0
-                        ? '${act.minPerHit} min = 1 fois · ${act.minPerHit! * 2} min = 2 fois, en plus de ce que tu coches à la main.'
-                        : act.onceMin != null
-                            ? 'Éteint : le ⏱ de ${act.onceMin} min coche la routine à la fin, le chrono seul ne coche rien.'
-                            : 'Règle d\'abord la durée d\'une fois.',
+                subtitle: Text(_chronoHitsHint(linkedAct),
                     key: const ValueKey('routine-chrono-hits-hint'),
                     style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
                 onChanged: _setChronoHits,
@@ -891,13 +887,30 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     );
   }
 
+  /// Ce que dit l'interrupteur « le chrono coche tout seul » : réglé à la main, allumé d'office (seule routine
+  /// de son activité), éteint, ou plusieurs routines sur la même activité (la question à l'arrêt du chrono).
+  String _chronoHitsHint(Activity linked) {
+    final per = chronoHitMin(act, logic.state.activities);
+    if (per != null) {
+      final auto = (act.minPerHit ?? 0) <= 0;
+      return '${auto ? 'Allumé d\'office : c\'est la seule routine liée à « ${linked.name} ». ' : ''}'
+          '$per min = 1 fois · ${per * 2} min = 2 fois, en plus de ce que tu coches à la main.';
+    }
+    if (act.onceMin == null) return 'Règle d\'abord la durée d\'une fois.';
+    final shared = logic.state.activities.where((x) => x.isHabit && !x.deleted && x.linkedActivityId == linked.id).length > 1;
+    if (shared && !act.chronoOff) {
+      return 'Plusieurs routines sont liées à « ${linked.name} » : à l\'arrêt du chrono, l\'app te demande pour laquelle c\'était.';
+    }
+    return 'Éteint : le ⏱ de ${act.onceMin} min coche la routine à la fin, le chrono seul ne coche rien.';
+  }
+
   /// La durée d'une fois : le ⏱ de la ligne et, si le chrono coche, le temps d'une coche.
   Future<void> _pickOnceMin() async {
     final v = await pickDurationMin(context, initial: act.onceMin ?? 0, title: 'Durée d\'une fois', allowZero: true);
     if (v == null || !mounted) return;
     act.setOnceMin(v);
     _applySetting();
-    if ((act.minPerHit ?? 0) > 0) logic.checkTimeHits();
+    if (chronoHitMin(act, logic.state.activities) != null) logic.checkTimeHits();
   }
 
   Future<void> _setChronoHits(bool on) async {

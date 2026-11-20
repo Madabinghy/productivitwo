@@ -669,6 +669,9 @@ async function executeGetUserContext(uid: string): Promise<string> {
       ...(v.catchUp === true && v.rolling !== true ? { catchUp: true } : {}),
       ...(v.type === "habit" && v.autoTarget === true ? { autoTarget: true } : {}),
       ...(typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {}),
+      // Éteint par choix : sans ce champ, l'app coche d'office (au chrono) une routine qui a une durée et qui
+      // est la seule liée à son activité.
+      ...(v.type === "habit" && v.chronoOff === true ? { chronoOff: true } : {}),
       // Durée d'une fois : celle du chrono qui coche, sinon celle du minuteur. `timerMin` n'est joint que s'il
       // diffère encore en base (routine d'avant la durée unique).
       ...(v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && !(typeof v.minPerHit === "number" && v.minPerHit > 0) ? { onceMin: v.timerMin } : {}),

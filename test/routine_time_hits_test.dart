@@ -71,6 +71,85 @@ void main() {
     });
   });
 
+  group('d\'office : une routine seule sur son activité', () {
+    Activity routine(String id, {int? timer, int? per, String? linked = 'act', bool off = false, bool deleted = false}) => Activity(
+          id: id,
+          domainId: 'd',
+          name: id,
+          type: 'habit',
+          habitFreq: HabitFreq.daily,
+          habitTarget: 1,
+          linkedActivityId: linked,
+          timerMin: timer,
+          minPerHit: per,
+          chronoOff: off,
+          createdAt: DateTime(2026, 1, 1),
+        )..deleted = deleted;
+
+    test('une durée, une activité liée, seule routine dessus : le chrono coche à la durée d\'une fois', () {
+      final r = routine('motivation', timer: 15);
+      expect(chronoHitMin(r, [r]), 15);
+      expect(hasTimeHits(r, [r]), isTrue);
+      // Sans la liste des activités, on ne sait pas si elle est seule : rien d'office.
+      expect(chronoHitMin(r), isNull);
+      // Sans durée, rien à compter.
+      final plain = routine('motivation');
+      expect(chronoHitMin(plain, [plain]), isNull);
+      // Sans activité liée non plus.
+      final loose = routine('motivation', timer: 15, linked: null);
+      expect(chronoHitMin(loose, [loose]), isNull);
+    });
+
+    test('éteinte à la main, elle ne se coche plus d\'office ; rallumée, si', () {
+      final r = routine('motivation', timer: 15);
+      r.setChronoHits(false);
+      expect(r.chronoOff, isTrue);
+      expect(r.onceMin, 15); // la durée du ⏱ reste
+      expect(chronoHitMin(r, [r]), isNull);
+      expect(Activity.from(r.toJson()).chronoOff, isTrue);
+      r.setChronoHits(true);
+      expect(r.chronoOff, isFalse);
+      expect(r.minPerHit, 15);
+      expect(chronoHitMin(r, [r]), 15);
+      // Éteindre un réglage posé à la main garde la durée d'une fois.
+      final set = routine('lecture', per: 20)..setChronoHits(false);
+      expect(set.minPerHit, isNull);
+      expect(set.onceMin, 20);
+    });
+
+    test('plusieurs routines sur la même activité : rien d\'office, sauf celle réglée à la main', () {
+      final lit = routine('Faire mon lit', timer: 5);
+      final ranger = routine('Ranger', timer: 10);
+      final all = [lit, ranger];
+      expect(chronoHitMin(lit, all), isNull);
+      expect(chronoHitMin(ranger, all), isNull);
+      final forced = routine('Ranger', per: 10);
+      expect(chronoHitMin(forced, [lit, forced]), 10);
+      // Une routine supprimée ne compte pas : l'autre redevient seule.
+      final gone = routine('Ranger', timer: 10, deleted: true);
+      expect(chronoHitMin(lit, [lit, gone]), 5);
+    });
+
+    test('à l\'arrêt du chrono : les routines à proposer, et ce que chacune prendrait', () {
+      final lit = routine('Faire mon lit', timer: 5);
+      final ranger = routine('Ranger', timer: 10);
+      final off = routine('Trier', timer: 5, off: true);
+      final reps = routine('Pompes'); // pas de durée : le temps ne se traduit pas en coches
+      final forced = routine('Balayer', per: 5); // se coche déjà toute seule
+      final other = routine('Lire', timer: 5, linked: 'autre');
+      final all = [ranger, lit, off, reps, forced, other];
+      expect(routinesToAsk('act', all, 25).map((r) => r.name), ['Faire mon lit', 'Ranger']);
+      // 7 minutes : seule la routine de 5 min y gagne une coche.
+      expect(routinesToAsk('act', all, 7).map((r) => r.name), ['Faire mon lit']);
+      expect(routinesToAsk('act', all, 3), isEmpty);
+      // Une seule routine sur l'activité : pas de question, elle se coche d'office.
+      expect(routinesToAsk('autre', all, 25), isEmpty);
+      expect(askedHits(ranger, 25), 2);
+      expect(askedHits(lit, 25), 5);
+      expect(askedHitId('r', 's1', 2), 'ask-r-s1-2');
+    });
+  });
+
   group('dans l\'app', () {
     AppLogic app(Activity r, int chronoMin) {
       final now = DateTime.now();
@@ -120,6 +199,31 @@ void main() {
       final logic = app(rangement(per: null), 30);
       logic.checkTimeHits();
       expect(count(logic), 0);
+    });
+
+    test('seule routine de son activité, avec une durée : le chrono la coche sans réglage (25 min à 15 min = 1 coche)', () {
+      final r = Activity(
+        id: 'rangement',
+        domainId: 'd',
+        name: 'Rangement',
+        type: 'habit',
+        habitFreq: HabitFreq.daily,
+        habitTarget: 1,
+        linkedActivityId: 'act',
+        timerMin: 15,
+        createdAt: DateTime(2026, 1, 1),
+      );
+      final logic = app(r, 25);
+      final said = <(int, int)>[];
+      logic.onTimeHits = (r, added, minutes) => said.add((added, minutes));
+      logic.checkTimeHits();
+      expect(count(logic), 1);
+      expect(said, [(1, 15)]);
+      // Une deuxième routine liée à la même activité : plus rien d'office.
+      final two = app(r, 25);
+      two.state.activities.add(Activity(id: 'lit', domainId: 'd', name: 'Faire mon lit', type: 'habit', linkedActivityId: 'act', timerMin: 5, createdAt: DateTime(2026, 1, 1)));
+      two.checkTimeHits();
+      expect(count(two), 0);
     });
 
     test('arrêter le chrono pose les coches tout de suite', () {

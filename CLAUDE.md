@@ -2446,6 +2446,26 @@ puce « Durée · 10 min » en tête (`routine-once-min`, `_pickOnceMin`) et, so
 coche tout seul » (`routine-chrono-hits`, « 10 min = 1 fois · 20 min = 2 fois ») — gardé parce qu'une activité liée sert parfois à autre
 chose ; allumé sans durée, il la demande d'abord. `AppLogic.setActivityTimerMin` passe par `setOnceMin`.
 
+**Le chrono coche d'office** (2026-11-20, retour user : 25 min de chrono sur « Motivation » n'avaient rien coché — l'interrupteur
+était éteint, comme sur 21 de ses 22 routines liées) : une routine qui a une DURÉE d'une fois (`onceMin`) et qui est la SEULE routine
+liée à son activité se coche toute seule par le chrono, sans réglage. Logique pure `chronoHitMin(a, all)` (`utils/routine_cover.dart`) :
+réglé à la main (`minPerHit`) → cette durée ; éteint à la main (`Activity.chronoOff`, nouveau champ, écrit par l'interrupteur de la
+fiche) → jamais ; sinon durée d'une fois si elle est seule sur l'activité parmi les routines non supprimées ; sinon null.
+`hasTimeHits(a, all)` et `timeHitsEarned(…, all:)` passent par elle (sans `all` : seulement le réglage à la main) ; branché dans
+`AppLogic.checkTimeHits`, `_checkSportRoutine`, la fin du minuteur d'une routine (main.dart) et le lanceur. `setChronoHits(on)` pose /
+lève `chronoOff` et garde la durée du ⏱. Fiche routine : l'interrupteur « Le chrono de « … » coche tout seul » montre l'état EFFECTIF
+(`_chronoHitsHint` : « Allumé d'office : c'est la seule routine liée à … », réglé, éteint, ou « Plusieurs routines sont liées… »).
+**Pas de plafond** (décision user) : une longue séance coche plusieurs fois ; c'est la Cible automatique qui régule (à 120 % la cible
+monte, donc les mêmes coches couvrent moins de jours) — un plafond l'aurait empêchée de monter. **Plusieurs routines sur la même
+activité** : rien d'office ; à l'arrêt du chrono par l'utilisateur (`onUserStopped`, après la feuille « c'était pour quoi ? »),
+`_askStopRoutine` (main.dart) demande « Ces 25 min, c'était pour quelle routine ? » — candidates `routinesToAsk(activityId, all,
+minutes)` : routines de l'activité avec une durée, ni réglées à la main (elles se cochent déjà) ni éteintes, à qui le chrono donne au
+moins une coche ; celle choisie prend `askedHits` = minutes ÷ sa durée, ids fixes `askedHitId` = `ask-<routine>-<session>-<k>` (une
+seule fois par session), SnackBar « … +2 · 25 min de chrono · Annuler » ; « Aucune » ne coche rien. Une routine sans durée (Pompes,
+en répétitions) n'est jamais proposée. Serveur : `update_activity {minPerHit: 0}` pose aussi `chronoOff: true` (`rhythmPatch`),
+`get_user_context` porte `chronoOff` ; la règle d'office reste appliquée par l'app. Le jour de la mise à jour, le chrono déjà fait
+dans la journée peut ajouter des coches à celles posées à la main.
+
 **Durée réglée = minuteur, pas ▶** (2026-11-19, retour user sur la feuille Journée parfaite) : sur la ligne d'une routine, le lanceur
 unique suit cet ordre — Planifier 🧭 · ■ si le chrono de l'activité liée tourne · **⏱ minuteur à la durée réglée (`timerMin`)**, même avec
 une activité liée (il démarre l'activité liée ET le décompte, `_startRoutineTimer`) · ▶ chrono de l'activité liée seulement sans durée

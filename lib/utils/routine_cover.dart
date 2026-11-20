@@ -361,8 +361,25 @@ int? weeklyAheadDays(Activity a, List<HabitHit> hits, DateTime now, {int dayStar
 
 // ── « 1 coche = n min » : le chrono de l'activité liée coche la routine ─────
 
-/// La routine se coche par le chrono : une durée par coche et une activité liée.
-bool hasTimeHits(Activity a) => a.isHabit && (a.minPerHit ?? 0) > 0 && (a.linkedActivityId ?? '').trim().isNotEmpty;
+/// Minutes de chrono qui valent UNE coche de la routine, ou null quand le chrono ne la coche pas.
+/// - réglé à la main (`minPerHit`) : cette durée ;
+/// - éteint à la main (`chronoOff`) : jamais ;
+/// - sinon D'OFFICE (2026-11-20, demande user : 25 min de chrono n'avaient rien coché) quand la routine a une
+///   durée d'une fois et qu'elle est la SEULE routine liée à son activité dans [all]. Plusieurs routines sur la
+///   même activité : rien d'office, la question est posée à l'arrêt du chrono (`routinesToAsk`).
+int? chronoHitMin(Activity a, [Iterable<Activity> all = const []]) {
+  final link = (a.linkedActivityId ?? '').trim();
+  if (!a.isHabit || link.isEmpty) return null;
+  if ((a.minPerHit ?? 0) > 0) return a.minPerHit;
+  if (a.chronoOff) return null;
+  final once = a.onceMin;
+  if (once == null) return null;
+  final same = all.where((x) => x.isHabit && !x.deleted && (x.linkedActivityId ?? '').trim() == link);
+  return same.length == 1 && same.first.id == a.id ? once : null;
+}
+
+/// La routine se coche par le chrono (réglé à la main, ou d'office avec [all]).
+bool hasTimeHits(Activity a, [Iterable<Activity> all = const []]) => chronoHitMin(a, all) != null;
 
 /// Minutes de chrono de la journée vécue sur l'activité [activityId] (chrono en cours compris).
 int livedMinutesOn(String activityId, List<Session> sessions, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
@@ -379,10 +396,32 @@ int livedMinutesOn(String activityId, List<Session> sessions, DateTime now, {int
 }
 
 /// Coches que le chrono du jour donne à la routine : minutes ÷ durée d'une coche.
-int timeHitsEarned(Activity routine, List<Session> sessions, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
-  if (!hasTimeHits(routine)) return 0;
-  return livedMinutesOn(routine.linkedActivityId!.trim(), sessions, now, dayStartMin: dayStartMin) ~/ routine.minPerHit!;
+int timeHitsEarned(Activity routine, List<Session> sessions, DateTime now, {int dayStartMin = kDefaultDayStartMin, Iterable<Activity> all = const []}) {
+  final per = chronoHitMin(routine, all);
+  if (per == null) return 0;
+  return livedMinutesOn(routine.linkedActivityId!.trim(), sessions, now, dayStartMin: dayStartMin) ~/ per;
 }
+
+/// Plusieurs routines sont liées à l'activité [activityId] : celles à proposer à l'arrêt du chrono (« ce temps,
+/// c'était pour quelle routine ? »). Seulement celles qui ont une durée d'une fois, qui ne sont ni réglées à la
+/// main (elles se cochent déjà toutes seules) ni éteintes, et à qui [minutes] de chrono donnent au moins une
+/// coche. Vide quand l'activité n'a qu'une routine (elle se coche d'office) ou aucune.
+List<Activity> routinesToAsk(String activityId, Iterable<Activity> all, int minutes) {
+  final same = [for (final x in all) if (x.isHabit && !x.deleted && (x.linkedActivityId ?? '').trim() == activityId) x];
+  if (same.length < 2) return const [];
+  final out = [
+    for (final r in same)
+      if ((r.minPerHit ?? 0) <= 0 && !r.chronoOff && r.onceMin != null && minutes >= r.onceMin!) r,
+  ];
+  out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return out;
+}
+
+/// Coches que [minutes] de chrono donnent à la routine choisie.
+int askedHits(Activity routine, int minutes) => routine.onceMin == null ? 0 : minutes ~/ routine.onceMin!;
+
+/// Id d'une coche donnée par la question de l'arrêt : une session ne coche une routine qu'une fois.
+String askedHitId(String habitId, String sessionId, int k) => 'ask-$habitId-$sessionId-$k';
 
 /// Id d'une coche du chrono : le même sur tous les appareils, donc jamais posée deux fois.
 String timeHitId(String habitId, String ymd, int k) => 'time-$habitId-$ymd-$k';

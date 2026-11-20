@@ -238,10 +238,13 @@ export function rhythmPatch(
       notes.push("⚠️ « Le chrono coche » concerne les routines, pas les activités de temps.");
     } else {
       patch.minPerHit = n;
+      // Éteint par choix (`chronoOff`) : sans lui, l'app cocherait d'office une routine qui a une durée et
+      // qui est seule liée à son activité.
+      patch.chronoOff = n === null;
       // Une seule durée par routine : celle du chrono qui coche est aussi celle du minuteur.
       if (n !== null) patch.timerMin = n;
       if (n === null) {
-        notes.push("Le chrono ne coche plus cette routine.");
+        notes.push("Le chrono ne coche plus cette routine (même seule sur son activité, l'app ne la cochera plus d'office).");
       } else {
         const linked = typeof current.linkedActivityId === "string" && current.linkedActivityId.trim() !== "";
         notes.push(`Le chrono coche : 1 coche = ${n} min sur l'activité liée (les coches sont posées par l'app, chrono en cours ou à l'arrêt).`);

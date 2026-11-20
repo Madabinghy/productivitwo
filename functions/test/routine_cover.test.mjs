@@ -94,13 +94,14 @@ test("rhythmPatch : la cible automatique, pour une quotidienne sans cap", () => 
 test("rhythmPatch : le chrono coche, avec ou sans activité liée", () => {
   // Une seule durée par routine : celle du chrono qui coche est aussi celle du minuteur.
   let r = rhythmPatch({ minPerHit: 5 }, { type: "habit", habitFreq: 0, linkedActivityId: "act" });
-  assert.deepEqual(r.patch, { minPerHit: 5, timerMin: 5 });
+  assert.deepEqual(r.patch, { minPerHit: 5, chronoOff: false, timerMin: 5 });
   assert.equal(r.notes.length, 1);
   r = rhythmPatch({ minPerHit: 5 }, { type: "habit", habitFreq: 1 });
-  assert.deepEqual(r.patch, { minPerHit: 5, timerMin: 5 });
+  assert.deepEqual(r.patch, { minPerHit: 5, chronoOff: false, timerMin: 5 });
   assert.match(r.notes[1], /Aucune activité liée/);
   r = rhythmPatch({ minPerHit: 0 }, { type: "habit", habitFreq: 0, linkedActivityId: "act" });
-  assert.deepEqual(r.patch, { minPerHit: null });
+  // Éteint par choix : l'app ne cochera plus d'office, même si la routine est seule sur son activité.
+  assert.deepEqual(r.patch, { minPerHit: null, chronoOff: true });
   r = rhythmPatch({}, { type: "habit", habitFreq: 0 });
   assert.deepEqual(r, { patch: {}, notes: [] });
 });
