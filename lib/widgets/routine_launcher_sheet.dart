@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
@@ -381,12 +382,26 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   Widget _dayGauge(ColorScheme cs, RoutineCover c, Color color) {
     const green = Color(0xFF3DDC84);
     const gap = 3.0;
-    final slots = coverSlots(c);
-    // Largeur minimale d'une case = la place de son nom (« ce soir », « dem. + sam. »).
-    final minOf = [for (final s in slots) s.to > s.from ? 66.0 : (s.hole != null ? 46.0 : 38.0)];
+    final all = coverSlots(c);
+    const labelStyle = TextStyle(fontSize: 10, fontWeight: FontWeight.w700, height: 1.2);
     return LayoutBuilder(builder: (context, box) {
+      // Largeur minimale d'une case = la place MESURÉE de son nom (« ce soir », « mer. 18 », « dem. + sam. ») ;
+      // ce qui ne tient pas dans la largeur est retiré : une étiquette n'est jamais coupée.
+      final scaler = MediaQuery.textScalerOf(context);
+      double nameWidth(CoverSlot s) {
+        final tp = TextPainter(
+          text: TextSpan(text: coverSlotLabel(c.today, s), style: labelStyle.copyWith(fontFamily: DefaultTextStyle.of(context).style.fontFamily)),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+          maxLines: 1,
+        )..layout();
+        return tp.width + 3;
+      }
+
+      final slots = fitCoverSlots(all, [for (final s in all) nameWidth(s)], box.maxWidth - .5, gap: gap);
+      final minOf = [for (final s in slots) nameWidth(s)];
       // Cases déjà acquises : largeur fixe ; les autres se partagent le reste au prorata du prix.
-      final fixed = [for (final s in slots) s.cost > 0 ? 0.0 : (s.to > s.from ? 84.0 : 46.0)];
+      final fixed = [for (var i = 0; i < slots.length; i++) slots[i].cost > 0 ? 0.0 : math.max(minOf[i], slots[i].to > slots[i].from ? 84.0 : 46.0)];
       // −0,5 px : jamais de débordement par arrondi.
       final room = (box.maxWidth - .5 - gap * (slots.length - 1) - fixed.fold<double>(0, (a, b) => a + b)).clamp(0.0, double.infinity).toDouble();
       final cost = slots.fold<int>(0, (a, s) => a + s.cost);
@@ -401,14 +416,17 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
             slots[i].cost <= 0 ? fixed[i] : (narrow[i] ? minOf[i] : (room - taken) * slots[i].cost / wideCost),
         ];
       }
-      var nextSeen = false;
+      // Les cases sont RANGÉES comme un calendrier (2026-11-20, demande user) : les jours ratés du plus ancien
+      // au plus récent, puis ce soir, puis les jours à venir. Elles se REMPLISSENT toujours dans l'ordre d'achat
+      // (ce soir, le jour raté le plus récent, …, puis l'avance) : la prochaine à remplir est mise en avant.
+      final nextIdx = slots.indexWhere((s) => !s.full);
+      final order = calendarOrder(slots);
       return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (var i = 0; i < slots.length; i++) ...[
-          if (i > 0) const SizedBox(width: gap),
+        for (final (n, i) in order.indexed) ...[
+          if (n > 0) const SizedBox(width: gap),
           () {
             final s = slots[i];
-            final next = !s.full && !nextSeen;
-            if (next) nextSeen = true;
+            final next = i == nextIdx;
             final fillColor = s.hole != null ? _kCatchUp : (s.from == 0 && s.cost > 0 ? color : green);
             return SizedBox(
               width: widths[i],
@@ -419,7 +437,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                     width: double.infinity,
                     height: 7,
                     child: Stack(alignment: Alignment.centerLeft, children: [
-                      Positioned.fill(child: ColoredBox(color: cs.onSurface.withValues(alpha: .16))),
+                      // Un jour à rattraper se reconnaît même vide : sa case est ambrée, pas grise.
+                      Positioned.fill(child: ColoredBox(color: s.hole != null ? _kCatchUp.withValues(alpha: .28) : cs.onSurface.withValues(alpha: .16))),
                       FractionallySizedBox(
                         widthFactor: s.fill,
                         heightFactor: 1,
@@ -433,11 +452,12 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.clip,
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                        color: s.full ? (s.hole != null ? _kCatchUp : green) : cs.onSurface.withValues(alpha: next ? .95 : .45))),
+                    style: labelStyle.copyWith(
+                        color: s.full
+                            ? (s.hole != null ? _kCatchUp : green)
+                            : s.hole != null
+                                ? _kCatchUp.withValues(alpha: next ? .95 : .7)
+                                : cs.onSurface.withValues(alpha: next ? .95 : .45))),
               ]),
             );
           }(),

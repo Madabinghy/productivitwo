@@ -1544,7 +1544,9 @@ reçoit `session:` = `sniperRounds(PendingRun.extra)` (`MagRound` par cible vis�
 sinon le prochain, à venir) et dessine un arc ÉGAL par cible — touchées en vert, en cours en bleu, à venir éteintes, passées en gris —
 avec « 2/4 touchées » au centre (`mode-tile-session`) ; infobulle « Reprendre le Sniper · 2 cibles touchées sur 4 · un tir en
 cours ». À la fermeture de la feuille, `SniperScreen.dispose` appelle `logic.onChange()` après la frame : Aujourd'hui se redessine
-avec la session gardée, close ou effacée. **Aiguille de la jauge des 7 jours** : `kNeedleTravel` passe d'une à DEUX minutes.
+avec la session gardée, close ou effacée. **Aiguille de la jauge des 7 jours** : `kNeedleTravel` passe d'une à DEUX minutes. Lignes
+de la jauge (carte et feuille, demande user du même jour) : « Maintenant » puis « Il y a 7 jours » juste dessous (les deux se
+comparent), puis « Demain si rien » et « Demain à fond ».
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
@@ -2445,6 +2447,19 @@ lecture d'une routine dont les deux diffèrent, celle du chrono gagne (`Activity
 puce « Durée · 10 min » en tête (`routine-once-min`, `_pickOnceMin`) et, sous l'activité liée, UN interrupteur « Le chrono de « … »
 coche tout seul » (`routine-chrono-hits`, « 10 min = 1 fois · 20 min = 2 fois ») — gardé parce qu'une activité liée sert parfois à autre
 chose ; allumé sans durée, il la demande d'abord. `AppLogic.setActivityTimerMin` passe par `setOnceMin`.
+
+**Jauge du jour : trois défauts corrigés** (2026-11-20, capture user « il n'y a pas un problème de dates ? ») : les dates étaient
+justes (« hier », « mer. 18 », « lun. 16 » = des jours RATÉS encore rattrapables, placés entre « ce soir » et « demain »), mais
+(1) les étiquettes étaient coupées (« ce soi », « mer. 1 ») : la largeur minimale d'une case est désormais celle, MESURÉE, de son
+nom, et les cases qui ne tiennent pas sont retirées (`fitCoverSlots`, `utils/routine_cover.dart` : les jours ratés les plus anciens
+d'abord, puis les jours à venir les plus lointains, « ce soir » reste) ; (2) un jour à rattraper vide était gris comme un jour à
+venir : sa case est ambrée même vide, son nom aussi ; (3) « demain » s'affichait VERT alors que rien n'était acquis, quand il se
+gagne au même seuil que le dernier jour raté (case sans prix) : `CoverSlot.fill` ne vaut 1 pour une case sans prix que si son seuil
+est atteint. À savoir : la 🔥 série d'une ligne compte avec le joker hebdomadaire (`computeStreak` : un jour raté par semaine
+glissante ne la casse pas), donc une série peut traverser un jour que la jauge propose encore de rattraper. **Rangée comme un
+calendrier** (même jour, demande user) : les cases s'AFFICHENT du passé vers l'avenir — jours ratés du plus ancien au plus récent,
+puis « ce soir », puis « demain » et la suite (`calendarOrder`, « mar. 17 · mer. 18 · hier · ce soir · demain ») — et se REMPLISSENT
+toujours dans l'ordre d'achat (ce soir, le jour raté le plus récent, …, puis l'avance) ; la prochaine à remplir garde son nom en clair.
 
 **Le chrono coche d'office** (2026-11-20, retour user : 25 min de chrono sur « Motivation » n'avaient rien coché — l'interrupteur
 était éteint, comme sur 21 de ses 22 routines liées) : une routine qui a une DURÉE d'une fois (`onceMin`) et qui est la SEULE routine

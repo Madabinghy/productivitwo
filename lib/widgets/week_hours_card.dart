@@ -329,15 +329,17 @@ class WeekHoursCard extends StatelessWidget {
               child: Divider(height: 1, thickness: 1, color: cs.onSurface.withValues(alpha: .1)),
             ),
             const SizedBox(height: 8),
+            // « Il y a 7 jours » juste sous « Maintenant » (demande user 2026-11-20) : les deux se comparent,
+            // les deux projections de demain viennent ensuite.
             HoursMomentLine(h: h, now: true, labelWidth: 96, key: const ValueKey('week-hours-now')),
             const SizedBox(height: 3),
+            HoursMomentLine(h: h, now: false, labelWidth: 96, key: const ValueKey('week-hours-past')),
             if (hoursShowsTomorrow(h)) ...[
+              const SizedBox(height: 3),
               HoursTomorrowLine(h: h, labelWidth: 96, key: const ValueKey('week-hours-tomorrow')),
               const SizedBox(height: 3),
               HoursTomorrowLine(h: h, full: true, labelWidth: 96, key: const ValueKey('week-hours-full')),
-              const SizedBox(height: 3),
             ],
-            HoursMomentLine(h: h, now: false, labelWidth: 96, key: const ValueKey('week-hours-past')),
           ]),
         ),
       ),
@@ -514,13 +516,13 @@ class _WeekHoursSheet extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           HoursMomentLine(h: h, now: true, labelWidth: 104, key: const ValueKey('week-hours-sheet-now')),
           const SizedBox(height: 4),
+          HoursMomentLine(h: h, now: false, labelWidth: 104, key: const ValueKey('week-hours-sheet-past')),
           if (hoursShowsTomorrow(h)) ...[
+            const SizedBox(height: 4),
             HoursTomorrowLine(h: h, labelWidth: 104, key: const ValueKey('week-hours-sheet-tomorrow')),
             const SizedBox(height: 4),
             HoursTomorrowLine(h: h, full: true, labelWidth: 104, key: const ValueKey('week-hours-sheet-full')),
-            const SizedBox(height: 4),
           ],
-          HoursMomentLine(h: h, now: false, labelWidth: 104, key: const ValueKey('week-hours-sheet-past')),
           const SizedBox(height: 8),
           Text(hoursMoveSentence(h.nowKind, h.pastKind), key: const ValueKey('week-hours-move'), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, height: 1.35)),
         ]),
@@ -531,7 +533,7 @@ class _WeekHoursSheet extends StatelessWidget {
         TextSpan(style: TextStyle(fontSize: 12.5, height: 1.45, color: mute), children: [
           TextSpan(text: 'L\'aiguille', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
           const TextSpan(
-              text: ' suit ce que tu fais, et met une minute à changer de place. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne '
+              text: ' suit ce que tu fais, et met deux minutes à changer de place. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne '
                   'fais rien : la partie hachurée est ce qui sort de ta fenêtre d\'ici là. Dès qu\'un chrono actif tourne, elle passe de l\'autre côté, au bout de '
                   'la bande claire : là où ton vert arrivera demain si tu y vas à fond, 24 h sans arrêt. C\'est un plafond. '),
           TextSpan(text: 'Le triangle blanc', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
