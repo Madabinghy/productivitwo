@@ -44,9 +44,10 @@ class _ContextPickerState extends State<ContextPicker> {
     super.initState();
     _mono = widget.value;
     _multi = List.of(widget.values ?? const []);
+    // Hors connexion (ou sans Firebase) : les contextes par défaut restent affichés.
     widget.sync.fetchAvailableContexts().then((list) {
       if (mounted) setState(() => _contexts = list);
-    });
+    }, onError: (_) {});
   }
 
   @override

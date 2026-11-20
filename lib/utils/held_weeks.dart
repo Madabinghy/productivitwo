@@ -73,8 +73,15 @@ Set<String>? engagedForWeek(Iterable<StrategicObjective> objectives, DateTime mo
 }
 
 /// Cible d'une routine sur une semaine dont [open] jours ne sont pas gelés.
-int weekTargetFor(Activity a, int open) {
-  final base = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
+/// [monday] = la semaine jugée : sa cible est celle en vigueur cette semaine-là (la plus basse entre son lundi
+/// et son dimanche : une hausse en cours de semaine ne lui coûte rien).
+int weekTargetFor(Activity a, int open, {DateTime? monday}) {
+  var base = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
+  if (monday != null) {
+    final first = a.targetOnYmd(ymdOf(monday));
+    final last = a.targetOnYmd(ymdOf(DateTime(monday.year, monday.month, monday.day + 6)));
+    base = first < last ? first : last;
+  }
   if (a.habitFreq == HabitFreq.daily) return base * open;
   return (base * open / 7).ceil();
 }
@@ -140,7 +147,7 @@ HeldWeeks heldWeeks({
       final frozen = frozenOf?.call(a) ?? const <String>{};
       final open = days.where((y) => !frozen.contains(y)).length;
       if (open < 7) anyRest = true;
-      final t = weekTargetFor(a, open);
+      final t = weekTargetFor(a, open, monday: m);
       if (t <= 0) continue;
       final c = count[a.id];
       final done = c == null ? 0 : days.fold<int>(0, (s, y) => s + (c[y] ?? 0));

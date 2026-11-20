@@ -35,6 +35,7 @@ import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
+import 'package:productivitwo_v1/utils/auto_target.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
@@ -966,7 +967,8 @@ class AppLogic implements HuntStore {
   void setActivityTimerMin(String activityId, int? minutes) {
     final idx = state.activities.indexWhere((a) => a.id == activityId);
     if (idx < 0) return;
-    state.activities[idx].timerMin = minutes;
+    // Une routine n'a qu'une durée : le chrono qui coche la suit.
+    state.activities[idx].setOnceMin(minutes);
     onChange();
   }
 
@@ -2724,7 +2726,18 @@ class AppLogic implements HuntStore {
   EmberLedger embers = EmberLedger.empty;
 
   /// Jours comblés d'une routine (séries des fiches, lignes, pages domaine).
-  Set<String> bridgedOf(String activityId) => embers.bridged[activityId] ?? const {};
+  /// Avec les jours RATTRAPÉS d'une routine rattrapable (2026-11-19) : ils recollent la série, rien d'autre.
+  Set<String> bridgedOf(String activityId) {
+    final ember = embers.bridged[activityId] ?? const <String>{};
+    final a = state.activities.firstWhereOrNull((x) => x.id == activityId);
+    if (a == null || !isCatchUpRoutine(a)) return ember;
+    final fixed = repairedOf(a);
+    return fixed.isEmpty ? ember : {...ember, ...fixed};
+  }
+
+  /// Jours ratés puis rattrapés d'une routine « rattrapable » ou « sur 7 jours ».
+  Set<String> repairedOf(Activity a) =>
+      catchUpOf(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin, frozen: frozenOf(a.id)).repaired;
 
   /// Registre recalculé maintenant : journées parfaites du dernier deck,
   /// rallumages et +1 de l'état local (un +1 rend effectif un rallumage en
@@ -2744,7 +2757,8 @@ class AppLogic implements HuntStore {
   List<LostSeries> lostSeriesYesterday() {
     final routines = state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily).toList();
     final ledger = emberLedgerNow();
-    final reached = {for (final a in routines) a.id: routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin)};
+    // Un jour rattrapé aujourd'hui n'est plus une série cassée.
+    final reached = {for (final a in routines) a.id: {...routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin), ...repairedOf(a)}};
     return lostYesterday(
       routines: [for (final a in routines) (a.id, a.name)],
       reached: reached,
@@ -3005,6 +3019,8 @@ class AppLogic implements HuntStore {
       touched = true;
       if (d.newTarget != a.effHabitTarget) {
         final old = a.effHabitTarget;
+        // Les jours déjà vécus restent jugés avec le palier d'avant.
+        a.keepTargetUntil(_yesterdayYmd(t));
         a.habitTarget = d.newTarget;
         notes.add(d.verdict == 'up'
             ? '${a.name} : palier $old → ${d.newTarget} (tenu ${d.daysMet} j/7)'
@@ -3013,6 +3029,38 @@ class AppLogic implements HuntStore {
     }
     if (touched) onChange();
     return notes;
+  }
+
+  String _yesterdayYmd(DateTime t) {
+    final d = livedDate(t, dayStartMin);
+    return ymdOf(DateTime(d.year, d.month, d.day - 1));
+  }
+
+  /// Cible automatique (2026-11-20, `utils/auto_target.dart`) : pour chaque routine quotidienne qui l'a
+  /// allumée, un cran de plus à 120 % sur 7 jours clos, un cran de moins sous 50 %, une fois par semaine au
+  /// plus. Les jours déjà vécus gardent la cible d'avant (`Activity.targetLog`) : une hausse ne casse aucune
+  /// série. Retourne les changements à annoncer.
+  List<String> applyAutoTargets({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final notes = <String>[];
+    for (final a in state.activeActivities) {
+      if (!a.autoTarget) continue;
+      final d = autoTargetDecision(a, state.habitHits, t, dayStartMin: dayStartMin, frozen: frozenOf(a.id));
+      if (d == null) continue;
+      a.keepTargetUntil(_yesterdayYmd(t));
+      a.habitTarget = d.to;
+      a.lastTuneAt = t;
+      notes.add(d.note(a.name));
+    }
+    if (notes.isNotEmpty) onChange();
+    return notes;
+  }
+
+  /// La cible d'une routine changée à la main : la cible automatique attend une semaine pleine à cette
+  /// nouvelle cible avant de la juger.
+  void setRoutineTarget(Activity a, int target) {
+    a.habitTarget = target.clamp(1, 999);
+    if (a.autoTarget) a.lastTuneAt = DateTime.now();
   }
 
   // Période active -> "fait" & "cible" (utile à l'UI)
@@ -4155,8 +4203,10 @@ class AppLogic implements HuntStore {
       isRollingRoutine(a) ? rollingHeldDays(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin) : null;
 
   /// Où en est une routine « sur 7 jours » aujourd'hui ; null = routine « chaque jour ».
-  RoutineCover? routineCoverOf(Activity a) =>
-      isRollingRoutine(a) ? routineCover(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin) : null;
+  /// Une routine « rattrapable » a aussi la sienne : sa cible du jour, sans avance, et ses jours à rattraper.
+  RoutineCover? routineCoverOf(Activity a) => isCatchUpRoutine(a)
+      ? routineCover(a, state.habitHits, DateTime.now(), dayStartMin: dayStartMin, frozen: frozenOf(a.id))
+      : null;
 
   /// Ce que la routine quotidienne demande AUJOURD'HUI : sa cible, ou ce que
   /// l'avance des 6 jours passés laisse à faire (0 = couverte).
@@ -4172,11 +4222,12 @@ class AppLogic implements HuntStore {
     final quota = dayQuotaFor(act);
     if (quota <= 0) return 0;
     final held = _rollingHeld(act);
+    final fixed = isCatchUpRoutine(act) ? repairedOf(act) : const <String>{};
     DateTime d = DateTime(anchor.year, anchor.month, anchor.day);
     int streak = 0;
     while (streak < 3650) {
       final ymd = yyyymmdd(d);
-      if (held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= quota) {
+      if (fixed.contains(ymdOf(d)) || (held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= act.targetOnYmd(ymdOf(d)))) {
         streak++;
         d = d.subtract(const Duration(days: 1));
       } else if (state.goldGelDays.contains('${habitId}_$ymd')) {
@@ -4199,9 +4250,10 @@ class AppLogic implements HuntStore {
     final quota = dayQuotaFor(act);
     if (quota <= 0) return none;
     final held = _rollingHeld(act);
+    final fixed = isCatchUpRoutine(act) ? repairedOf(act) : const <String>{};
     return computeStreak(
       today: today ?? DateTime.now(),
-      reached: (d) => held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= quota,
+      reached: (d) => fixed.contains(ymdOf(d)) || (held != null ? held.contains(ymdOf(d)) : habitValueOn(habitId, d) >= act.targetOnYmd(ymdOf(d))),
       frozen: (d) => state.goldGelDays.contains('${habitId}_${yyyymmdd(d)}'),
     );
   }
@@ -4234,7 +4286,7 @@ class AppLogic implements HuntStore {
         int.parse(ymd.substring(4, 6)),
         int.parse(ymd.substring(6, 8)),
       );
-      if (habitValueOn(habitId, day) >= quota) {
+      if (habitValueOn(habitId, day) >= act.targetOnYmd(ymdOf(day))) {
         if (prev != null && day.difference(prev).inDays == 1) {
           current++;
         } else {
