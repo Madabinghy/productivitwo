@@ -2446,6 +2446,16 @@ puce « Durée · 10 min » en tête (`routine-once-min`, `_pickOnceMin`) et, so
 coche tout seul » (`routine-chrono-hits`, « 10 min = 1 fois · 20 min = 2 fois ») — gardé parce qu'une activité liée sert parfois à autre
 chose ; allumé sans durée, il la demande d'abord. `AppLogic.setActivityTimerMin` passe par `setOnceMin`.
 
+**Jauge du jour : trois défauts corrigés** (2026-11-20, capture user « il n'y a pas un problème de dates ? ») : les dates étaient
+justes (« hier », « mer. 18 », « lun. 16 » = des jours RATÉS encore rattrapables, placés entre « ce soir » et « demain »), mais
+(1) les étiquettes étaient coupées (« ce soi », « mer. 1 ») : la largeur minimale d'une case est désormais celle, MESURÉE, de son
+nom, et les cases qui ne tiennent pas sont retirées (`fitCoverSlots`, `utils/routine_cover.dart` : les jours ratés les plus anciens
+d'abord, puis les jours à venir les plus lointains, « ce soir » reste) ; (2) un jour à rattraper vide était gris comme un jour à
+venir : sa case est ambrée même vide, son nom aussi ; (3) « demain » s'affichait VERT alors que rien n'était acquis, quand il se
+gagne au même seuil que le dernier jour raté (case sans prix) : `CoverSlot.fill` ne vaut 1 pour une case sans prix que si son seuil
+est atteint. À savoir : la 🔥 série d'une ligne compte avec le joker hebdomadaire (`computeStreak` : un jour raté par semaine
+glissante ne la casse pas), donc une série peut traverser un jour que la jauge propose encore de rattraper.
+
 **Le chrono coche d'office** (2026-11-20, retour user : 25 min de chrono sur « Motivation » n'avaient rien coché — l'interrupteur
 était éteint, comme sur 21 de ses 22 routines liées) : une routine qui a une DURÉE d'une fois (`onceMin`) et qui est la SEULE routine
 liée à son activité se coche toute seule par le chrono, sans réglage. Logique pure `chronoHitMin(a, all)` (`utils/routine_cover.dart`) :

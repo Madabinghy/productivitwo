@@ -250,10 +250,14 @@ class CoverSlot {
   final DateTime? hole;
   const CoverSlot({required this.from, required this.to, required this.lo, required this.hi, required this.done, this.hole});
 
-  /// Prix de la case ; 0 = déjà acquise par l'avance des jours passés.
+  /// Prix de la case ; 0 = elle ne coûte rien de plus que la précédente : déjà acquise par l'avance des jours
+  /// passés, ou gagnée en même temps que le jour raté qui la précède.
   int get cost => hi - lo;
   bool get full => done >= hi;
-  double get fill => cost <= 0 ? 1 : ((done - lo) / cost).clamp(0.0, 1.0).toDouble();
+
+  /// Une case sans prix n'est pleine que si son seuil est atteint (bug user 2026-11-20 : « demain » s'affichait
+  /// vert alors que les jours à rattraper avant lui étaient vides).
+  double get fill => cost <= 0 ? (full ? 1 : 0) : ((done - lo) / cost).clamp(0.0, 1.0).toDouble();
   /// Ce qu'il manque pour la remplir.
   int get left => full ? 0 : hi - (done > lo ? done : lo);
 }
@@ -284,6 +288,30 @@ List<CoverSlot> coverSlots(RoutineCover c, {int days = 4}) {
     at = hi;
   }
   return out;
+}
+
+/// Les cases qui tiennent dans [maxWidth], chacune à la largeur de son nom ([widths], dans l'ordre de [slots]) :
+/// jamais d'étiquette coupée (bug user 2026-11-20 : « ce soi », « mer. 1 »). On retire d'abord les jours ratés
+/// les plus anciens (il en reste un), puis les jours à venir les plus lointains (il en reste un), puis le
+/// dernier jour raté ; « ce soir » reste toujours.
+List<CoverSlot> fitCoverSlots(List<CoverSlot> slots, List<double> widths, double maxWidth, {double gap = 3}) {
+  final keep = [for (var i = 0; i < slots.length; i++) i];
+  double total() => keep.fold<double>(0, (a, i) => a + widths[i]) + gap * (keep.length - 1);
+  List<int> holes() => [for (final i in keep) if (slots[i].hole != null) i];
+  List<int> ahead() => [for (final i in keep) if (slots[i].hole == null && i > 0) i];
+  while (keep.length > 1 && total() > maxWidth) {
+    final h = holes(), f = ahead();
+    if (h.length > 1) {
+      keep.remove(h.last);
+    } else if (f.length > 1) {
+      keep.remove(f.last);
+    } else if (h.isNotEmpty) {
+      keep.remove(h.last);
+    } else {
+      keep.remove(f.last);
+    }
+  }
+  return [for (final i in keep) slots[i]];
 }
 
 /// « mercredi », « hier » : le jour raté qu'on rattrape, en toutes lettres.

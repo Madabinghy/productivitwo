@@ -345,4 +345,45 @@ void main() {
       expect(Activity.from({'id': 'x', 'name': 'X', 'type': 'habit'}).catchUp, isFalse);
     });
   });
+
+  group('jauge du jour : cases', () {
+    final lundi = DateTime(2026, 11, 16), samedi = DateTime(2026, 11, 14);
+
+    test('une case sans prix après des jours à rattraper n\'est pleine que si son seuil est atteint', () {
+      // « Motivation », vendredi 20 : ce soir fait (1), lundi et samedi à rattraper (seuils 2 et 3), demain gagné
+      // au même seuil que samedi. Avec 1 coche, demain n'est PAS acquis.
+      const demain = CoverSlot(from: 1, to: 1, lo: 3, hi: 3, done: 1);
+      expect(demain.cost, 0);
+      expect(demain.full, isFalse);
+      expect(demain.fill, 0);
+      // À 3 coches, les deux jours sont rattrapés et demain est acquis.
+      expect(const CoverSlot(from: 1, to: 1, lo: 3, hi: 3, done: 3).fill, 1);
+      // Une case déjà acquise par l'avance des jours passés reste pleine.
+      expect(const CoverSlot(from: 1, to: 1, lo: 0, hi: 0, done: 0).fill, 1);
+    });
+
+    test('les cases qui ne tiennent pas sont retirées : les jours ratés les plus anciens d\'abord, « ce soir » reste', () {
+      final slots = [
+        const CoverSlot(from: 0, to: 0, lo: 0, hi: 1, done: 0),
+        CoverSlot(from: 0, to: 0, lo: 1, hi: 2, done: 0, hole: DateTime(2026, 11, 19)),
+        CoverSlot(from: 0, to: 0, lo: 2, hi: 3, done: 0, hole: DateTime(2026, 11, 18)),
+        CoverSlot(from: 0, to: 0, lo: 3, hi: 4, done: 0, hole: DateTime(2026, 11, 17)),
+        const CoverSlot(from: 1, to: 1, lo: 4, hi: 5, done: 0),
+        const CoverSlot(from: 2, to: 2, lo: 5, hi: 6, done: 0),
+      ];
+      final w = List.filled(slots.length, 40.0);
+      String names(List<CoverSlot> l) => l.map((s) => coverSlotLabel(DateTime(2026, 11, 20), s)).join(' | ');
+      // Tout tient.
+      expect(fitCoverSlots(slots, w, 300).length, 6);
+      // 4 cases : les deux jours ratés les plus anciens partent.
+      expect(names(fitCoverSlots(slots, w, 175)), 'ce soir | hier | demain | dim.');
+      // 3 cases : puis le jour à venir le plus lointain.
+      expect(names(fitCoverSlots(slots, w, 130)), 'ce soir | hier | demain');
+      // 2 cases : puis le dernier jour raté.
+      expect(names(fitCoverSlots(slots, w, 90)), 'ce soir | demain');
+      expect(names(fitCoverSlots(slots, w, 10)), 'ce soir');
+      // Les dates d'un jour raté sont celles du passé : lundi 16 et samedi 14 vus du vendredi 20.
+      expect(names([CoverSlot(from: 0, to: 0, lo: 1, hi: 2, done: 0, hole: lundi), CoverSlot(from: 0, to: 0, lo: 2, hi: 3, done: 0, hole: samedi)]), 'lun. 16 | sam. 14');
+    });
+  });
 }
