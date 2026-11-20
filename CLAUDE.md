@@ -1544,7 +1544,9 @@ reçoit `session:` = `sniperRounds(PendingRun.extra)` (`MagRound` par cible vis�
 sinon le prochain, à venir) et dessine un arc ÉGAL par cible — touchées en vert, en cours en bleu, à venir éteintes, passées en gris —
 avec « 2/4 touchées » au centre (`mode-tile-session`) ; infobulle « Reprendre le Sniper · 2 cibles touchées sur 4 · un tir en
 cours ». À la fermeture de la feuille, `SniperScreen.dispose` appelle `logic.onChange()` après la frame : Aujourd'hui se redessine
-avec la session gardée, close ou effacée. **Aiguille de la jauge des 7 jours** : `kNeedleTravel` passe d'une à DEUX minutes.
+avec la session gardée, close ou effacée. **Aiguille de la jauge des 7 jours** : `kNeedleTravel` passe d'une à DEUX minutes. Lignes
+de la jauge (carte et feuille, demande user du même jour) : « Maintenant » puis « Il y a 7 jours » juste dessous (les deux se
+comparent), puis « Demain si rien » et « Demain à fond ».
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

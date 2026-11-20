@@ -217,6 +217,11 @@ void main() {
     expect(inLine('week-hours-tomorrow').data, '55 h · −12 h 27');
     expect(inLine('week-hours-tomorrow').style?.color, kHoursLoss);
     expect(tester.takeException(), isNull);
+    // L'ordre des lignes : maintenant, il y a 7 jours (les deux se comparent), puis demain si rien, demain à fond.
+    double top(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
+    expect(top('week-hours-now'), lessThan(top('week-hours-past')));
+    expect(top('week-hours-past'), lessThan(top('week-hours-tomorrow')));
+    expect(top('week-hours-tomorrow'), lessThan(top('week-hours-full')));
     // Rien ne sort : en vert.
     const keep = WeekHours(activeMin: 600, basicMin: 0, sleepMin: 0, prevActiveMin: 0, leavingMin: 0, dayActive: [], days: []);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: keep)))));

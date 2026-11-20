@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/utils/week_hours.dart';
 import 'package:productivitwo_v1/widgets/week_hours_card.dart';
 
-/// L'aiguille met une minute à changer de cible (demande user 2026-11-20).
+/// L'aiguille met [kNeedleTravel] (deux minutes) à changer de cible (demande user 2026-11-20).
 void main() {
   WeekHours hours({HoursKind now = HoursKind.free, int active = 480, int leaving = 180}) => WeekHours(
         activeMin: active,
@@ -24,7 +24,7 @@ void main() {
   Future<void> show(WidgetTester t, WeekHours h) =>
       t.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: WeekHoursGauge(h: h, size: 200)))));
 
-  testWidgets('sans chrono puis chrono actif : l\'aiguille glisse en une minute de « si rien » à « à fond »', (t) async {
+  testWidgets('sans chrono puis chrono actif : l\'aiguille glisse de « si rien » à « à fond »', (t) async {
     final idle = hours();
     await show(t, idle);
     final low = gaugeLayout(idle).idleAt;
