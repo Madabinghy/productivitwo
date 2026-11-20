@@ -182,6 +182,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('week-hours-card')));
     await tester.pumpAndSettle();
     expect(find.text('Détente'), findsOneWidget);
+    // La feuille est plus longue (la ligne « Demain à fond ») : le titre est plus bas, on y descend.
+    await tester.scrollUntilVisible(find.text('JOUR PAR JOUR · ACTIF ET DÉTENTE'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('JOUR PAR JOUR · ACTIF ET DÉTENTE'), findsOneWidget);
     expect(find.byKey(const ValueKey('week-hours-leisure-hint')), findsNothing);
     expect(find.text('Libre'), findsOneWidget);
@@ -220,10 +222,20 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: keep)))));
     expect(inLine('week-hours-tomorrow').data, '10 h · rien ne sort');
     expect(inLine('week-hours-tomorrow').style?.color, kHoursActive);
-    // Un chrono tourne : l'aiguille le suit, la ligne disparaît.
+    // Sans chrono, l'autre bout aussi : demain à fond (24 h entrent, rien ne sort).
+    expect(find.descendant(of: find.byKey(const ValueKey('week-hours-full')), matching: find.text('Demain à fond')), findsOneWidget);
+    expect(inLine('week-hours-full').data, '34 h · +24 h');
+    expect(inLine('week-hours-full').style?.color, kHoursActive);
+    // Un chrono actif tourne : l'aiguille montre demain à fond, les deux lignes restent.
     const running = WeekHours(activeMin: 600, basicMin: 0, sleepMin: 0, prevActiveMin: 0, leavingMin: 120, dayActive: [], days: [], nowKind: HoursKind.active, nowName: 'Coder');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: running)))));
+    expect(inLine('week-hours-tomorrow').data, '8 h · −2 h');
+    expect(inLine('week-hours-full').data, '32 h · +22 h');
+    // Un autre chrono (sommeil) : l'aiguille le suit, les lignes de demain disparaissent.
+    const asleep = WeekHours(activeMin: 600, basicMin: 0, sleepMin: 60, prevActiveMin: 0, leavingMin: 120, dayActive: [], days: [], nowKind: HoursKind.sleep, nowName: 'Sommeil');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(width: 360, child: WeekHoursCard(logic: logic, hours: asleep)))));
     expect(find.byKey(const ValueKey('week-hours-tomorrow')), findsNothing);
+    expect(find.byKey(const ValueKey('week-hours-full')), findsNothing);
   });
 
   testWidgets('carte des 7 jours : deux lignes disent l\'aiguille (maintenant) et le triangle (il y a 7 jours)', (tester) async {

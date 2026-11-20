@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName, isSleepName;
 
@@ -6,6 +8,9 @@ import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedName, isSl
 /// sommeil d'abord, puis besoins de base (repas, sieste), puis détente (2026-11-18 : les activités des
 /// domaines de nature Détente), puis actif ; ce qui n'est couvert par aucun chrono est « dans le flou ».
 const kWeekHoursMin = 168 * 60;
+
+/// « À fond » : 24 h actives d'ici demain à la même heure.
+const kFullDayMin = 24 * 60;
 
 class WeekHours {
   final int activeMin, basicMin, sleepMin;
@@ -49,6 +54,11 @@ class WeekHours {
   int get tomorrowActiveMin => (activeMin - leavingMin).clamp(0, activeMin);
   /// La part du vert qui reste demain (0 = tout sort, 1 = rien ne sort) : la position de l'aiguille dans le vert.
   double get tomorrowShare => activeMin <= 0 ? 1 : tomorrowActiveMin / activeMin;
+  /// Les heures actives demain à la même heure en y allant à fond (maquette validée 2026-11-20, choix user : 24 h
+  /// sans arrêt, un plafond) : les 24 premières heures de la fenêtre sont sorties, 24 h actives sont entrées.
+  int get fullTomorrowActiveMin => math.min(kWeekHoursMin, tomorrowActiveMin + kFullDayMin);
+  /// Ce que le vert gagne d'ici demain à fond (jamais négatif : il sort au plus 24 h).
+  int get fullGainMin => math.max(0, fullTomorrowActiveMin - activeMin);
   /// Moyenne d'heures actives par jour sur la fenêtre.
   double get perDayMin => activeMin / 7;
   /// Le jour le plus actif de la fenêtre (index dans [days]), -1 si rien.
@@ -76,6 +86,9 @@ String spanExact(int min) {
 String hoursTomorrowLabel(WeekHours h) =>
     h.leavingMin > 0 ? '${spanLabel(h.tomorrowActiveMin)} · −${spanExact(h.leavingMin)}' : '${spanLabel(h.activeMin)} · rien ne sort';
 
+/// « 79 h · +11 h 33 » : où sera le vert demain à la même heure en y allant à fond, et ce qu'il gagne d'ici là.
+String hoursFullLabel(WeekHours h) => '${spanLabel(h.fullTomorrowActiveMin)} · +${spanExact(h.fullGainMin)}';
+
 /// Les morceaux du compteur en part du cadran : actif · détente · besoins de
 /// base · sommeil · libre. Un morceau non nul n'est jamais dessiné plus petit
 /// que [minFrac] (3° sur 240) ; le temps libre absorbe la différence. Seul le
@@ -88,6 +101,72 @@ List<double> gaugeFractions(WeekHours h, {double minFrac = 3 / 240}) {
   final used = out.fold<double>(0, (a, b) => a + b);
   if (used >= 1) return [for (final f in out) f / used, 0.0];
   return [...out, 1 - used];
+}
+
+/// Le cadran : un arc de 240° qui part en bas à gauche (angles en radians, sens des aiguilles d'une montre).
+const kGaugeStart = 150 * math.pi / 180;
+const kGaugeSweep = 240 * math.pi / 180;
+const _gaugeGap = 1.3 * math.pi / 180;
+
+/// Un morceau plein du cadran : sa catégorie, son début, sa longueur dessinée ([len], joint retiré) et sa part ([sweep]).
+class GaugeArc {
+  final HoursKind kind;
+  final double start, len, sweep;
+  const GaugeArc(this.kind, this.start, this.len, this.sweep);
+}
+
+/// Où tout se pose sur le cadran. [marks] : la place d'un repère (aiguille, triangle) par catégorie —
+/// sommeil, détente, besoins : au bout de leur morceau ; rien de tracé : [idleAt], dans le vert, là où il
+/// s'arrêtera demain si rien n'est fait ; actif : [fullAt], dans le temps libre, là où il arrivera demain à fond.
+class GaugeLayout {
+  /// Dans l'ordre du cadran : besoins de base, sommeil, détente, actif (les morceaux vides sont absents).
+  final List<GaugeArc> arcs;
+  final double activeStart, activeLen, trackedEnd, idleAt, fullAt;
+  final Map<HoursKind, double> marks;
+  const GaugeLayout({
+    required this.arcs,
+    required this.activeStart,
+    required this.activeLen,
+    required this.trackedEnd,
+    required this.idleAt,
+    required this.fullAt,
+    required this.marks,
+  });
+  double get end => kGaugeStart + kGaugeSweep;
+  double get activeEnd => activeStart + activeLen;
+}
+
+GaugeLayout gaugeLayout(WeekHours h) {
+  final f = gaugeFractions(h);
+  const kinds = [HoursKind.active, HoursKind.leisure, HoursKind.basic, HoursKind.sleep];
+  final arcs = <GaugeArc>[];
+  final marks = <HoursKind, double>{};
+  var a = kGaugeStart;
+  var activeStart = kGaugeStart, activeLen = 0.0;
+  // Le socle d'abord : besoins de base, sommeil, détente, puis l'actif.
+  for (final i in const [2, 3, 1, 0]) {
+    final sweep = kGaugeSweep * f[i];
+    if (sweep <= 0) {
+      marks[kinds[i]] = a;
+      continue;
+    }
+    final len = sweep > _gaugeGap * 2.3 ? sweep - _gaugeGap : sweep;
+    marks[kinds[i]] = a + len;
+    arcs.add(GaugeArc(kinds[i], a, len, sweep));
+    if (i == 0) {
+      activeStart = a;
+      activeLen = len;
+    }
+    a += sweep;
+  }
+  final trackedEnd = a;
+  if (f[0] <= 0) activeStart = trackedEnd;
+  const end = kGaugeStart + kGaugeSweep;
+  final idleAt = activeStart + activeLen * h.tomorrowShare;
+  final fullAt = math.min(end, activeStart + activeLen + kGaugeSweep * h.fullGainMin / kWeekHoursMin);
+  marks[HoursKind.free] = idleAt;
+  marks[HoursKind.active] = fullAt;
+  return GaugeLayout(arcs: arcs, activeStart: activeStart, activeLen: activeLen, trackedEnd: trackedEnd, idleAt: idleAt, fullAt: fullAt, marks: marks);
 }
 
 /// Ce qu'une minute contient, du plus faible au plus fort : une minute couverte par deux chronos prend le plus fort.

@@ -1911,6 +1911,21 @@ la position de demain si rien), donc aiguille et triangle sont alignés quand on
 chrono seulement, sur la carte et la feuille : « Demain si rien · ↘ 55 h · −12 h 27 » (`HoursTomorrowLine`, `hoursTomorrowLabel`,
 `spanExact` ; `week-hours-tomorrow`, `week-hours-sheet-tomorrow` ; ambre `kHoursLoss`, vert « rien ne sort ») ; infobulle de la tuile et
 paragraphe de lecture mis à jour ; les tirets du temps libre ne s'éclairent plus.
+**L'aiguille suit ce que tu fais** (2026-11-20, maquette validée « Aiguille à fond », variante A, demande user : « où on en sera si on
+travaille non-stop pendant 24 heures ») : dès qu'un chrono ACTIF tourne, l'aiguille ne s'arrête plus au bout du vert, elle passe de
+l'autre côté, là où le vert arrivera demain à la même heure À FOND — `WeekHours.fullTomorrowActiveMin` = `tomorrowActiveMin` + 24 h
+(`kFullDayMin`, choix user : 24 h sans arrêt, un plafond théorique ; changer cette constante suffit pour une « journée pleine »),
+`fullGainMin`, `hoursFullLabel` (« 79 h · +11 h 33 »). Ce plafond est dessiné en permanence : une BANDE VERT CLAIR après le vert, fermée
+par un trait (`GaugeLayout.fullAt`), pâle sans chrono, allumée pendant un chrono actif ; les tirets du temps libre commencent après
+elle ; les hachures (ce qui sort si rien) restent aussi pendant un chrono actif. Sans chrono, sommeil, détente, besoins : comme avant.
+Le triangle parle pareil (actif il y a 7 jours = au bout de la bande claire). Géométrie pure `gaugeLayout(h)` → `GaugeLayout {arcs,
+activeStart, activeLen, trackedEnd, idleAt, fullAt, marks}` (`utils/week_hours.dart`, `kGaugeStart` / `kGaugeSweep`), lue par le
+peintre et par le widget. **Changer de cible prend une minute** (`kNeedleTravel`, demande user « pour avoir un effet ») :
+`WeekHoursGauge` est un `StatefulWidget` qui fait glisser l'aiguille vers sa nouvelle place (`easeInOutCubic`) ; le premier dessin est
+déjà en place ; une cible qui dérive de moins de 2° (une minute de plus) ne relance pas le trajet ; animations coupées
+(`disableAnimations`) = tout de suite en place. Lignes : « Demain à fond · ↗ 79 h · +11 h 33 » sous « Demain si rien », sur la carte et
+la feuille (`HoursTomorrowLine(full: true)`, `week-hours-full`, `week-hours-sheet-full`), toutes deux affichées sans chrono ET pendant
+un chrono actif (`hoursShowsTomorrow`) ; infobulle de la tuile et paragraphe de lecture mis à jour.
 **Tableau de bord tout en haut d'Aujourd'hui** (2026-11-19, essai demandé par l'user : « dès qu'on change de page, on voit tout de
 suite où on en est sur la jauge et le réalisé ») : sur mobile, « TON TABLEAU DE BORD » (`_parallelSection`, `today_view.dart`) est posé
 juste sous l'en-tête, AVANT les cartes passagères (Recharge, session en cours, envie, bilan de saison, revue, proposition de module),

@@ -142,4 +142,32 @@ void main() {
     expect((sleep.leavingMin, sleep.tomorrowActiveMin), (0, 60));
     expect([spanExact(0), spanExact(45), spanExact(60), spanExact(747)], ['0 min', '45 min', '1 h', '12 h 27']);
   });
+
+  test('à fond : 24 h actives entrent pendant que les 24 premières heures sortent', () {
+    // 3 h sortent d'ici demain, 5 h restent : si rien 5 h, à fond 5 h + 24 h.
+    final h = weekHours(now: now, activities: acts, sessions: [s('w', DateTime(2026, 11, 5, 1), 180), s('w', DateTime(2026, 11, 9, 9), 300)]);
+    expect((h.tomorrowActiveMin, h.fullTomorrowActiveMin, h.fullGainMin), (300, 300 + 1440, 1440 - 180));
+    expect(hoursFullLabel(h), '29 h · +21 h');
+    // Rien d'actif : à fond = 24 h de gagnées.
+    final none = weekHours(now: now, activities: acts, sessions: const []);
+    expect((none.fullTomorrowActiveMin, none.fullGainMin), (1440, 1440));
+  });
+
+  test('cadran : sans chrono le repère recule dans le vert, en actif il passe au bout de la bande claire', () {
+    final h = weekHours(now: now, activities: acts, sessions: [s('w', DateTime(2026, 11, 5, 1), 180), s('w', DateTime(2026, 11, 9, 9), 300)]);
+    final g = gaugeLayout(h);
+    expect(g.arcs.map((a) => a.kind), [HoursKind.active]);
+    // Rien de tracé : dans le vert, à la part qui reste demain.
+    expect(g.marks[HoursKind.free], closeTo(g.activeStart + g.activeLen * 300 / 480, 1e-9));
+    expect(g.idleAt, lessThan(g.activeEnd));
+    // Actif : après le vert, du gain de demain à fond.
+    expect(g.marks[HoursKind.active], closeTo(g.activeEnd + kGaugeSweep * (1440 - 180) / kWeekHoursMin, 1e-9));
+    expect(g.fullAt, greaterThan(g.activeEnd));
+    expect(g.fullAt, lessThanOrEqualTo(g.end));
+    // Un cadran presque plein : la bande claire s'arrête au bout du cadran.
+    final full = WeekHours(activeMin: kWeekHoursMin - 60, basicMin: 0, sleepMin: 0, prevActiveMin: 0, leavingMin: 0, dayActive: const [], days: const []);
+    final gf = gaugeLayout(full);
+    expect(gf.fullAt, lessThanOrEqualTo(gf.end));
+    expect(gf.end - gf.fullAt, lessThan(2 * 3.141592653589793 / 180));
+  });
 }
