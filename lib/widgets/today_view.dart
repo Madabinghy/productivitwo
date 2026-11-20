@@ -816,7 +816,11 @@ class TodayViewState extends State<TodayView> {
                   if (_moduleProposal() case final card?) card,
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
-                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow) && !_eveningLedger(board).isEmpty) ...[
+                  // Aujourd'hui allégé (`kTodayNowEnabled`) : sans le tableau, il ne reste que la ligne courte des séries
+                  // cassées hier (la porte de la journée difficile et du minimum).
+                  if (!kTodayNowEnabled) ...[
+                    if (lostYesterday > 0) ...[const SizedBox(height: 12), _lostYesterdayLink(lostYesterday)],
+                  ] else if (stakes case final board? when isEvening(widget.logic.livedNowMinNow) && !_eveningLedger(board).isEmpty) ...[
                     const SizedBox(height: 12),
                     EveningLedgerCard(ledger: _eveningLedger(board), compact: true, onTap: _openStakesSheet),
                     if (lostYesterday > 0) _lostYesterdayLink(lostYesterday),
@@ -835,6 +839,7 @@ class TodayViewState extends State<TodayView> {
                     widget.badges?.load(refresh: true);
                     if (mounted) setState(() {});
                   }),
+                  if (kTodayNowEnabled) ...[
                   if (_morningCard(cs, now, text3) case final card?) card,
                   const SizedBox(height: 16),
                   NowCard(
@@ -919,6 +924,7 @@ class TodayViewState extends State<TodayView> {
                     tabOpens: _tabOpens,
                     onLaunch: widget.onNowLaunch ?? widget.onLaunch,
                   ),
+                  ],
                 ],
                 // Programme du jour : dans une feuille ouverte par la tuile
                 // PROGRAMME (retour user 2026-10-30) ; Demain reste sur la page.
@@ -1336,7 +1342,7 @@ class TodayViewState extends State<TodayView> {
         badges: _on(AppModule.game) ? badgesTile(bc?.deck, board) : null,
         perfect: minimumTile(widget.logic) ?? perfectDayTile(bc?.todayFacts()),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today, parole: _paroleToday()),
-        projects: projectTile,
+        projects: kTodayNowEnabled ? projectTile : null,
         onProgram: _openProgramSheet,
         // La tuile Routines est retirée (2026-11-03) : Journée parfaite dit ce qui manque
         // aujourd'hui, le lanceur (FAB) montre toutes les routines.
