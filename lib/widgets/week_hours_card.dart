@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/leisure.dart' show leisureActivityIds;
 import 'package:productivitwo_v1/utils/week_hours.dart';
@@ -66,56 +67,135 @@ class WeekHoursGauge extends StatefulWidget {
   State<WeekHoursGauge> createState() => _WeekHoursGaugeState();
 }
 
-class _WeekHoursGaugeState extends State<WeekHoursGauge> with SingleTickerProviderStateMixin {
-  // À 1 : l'aiguille est en place. Le premier dessin ne glisse pas.
-  late final AnimationController _travel = AnimationController(vsync: this, duration: kNeedleTravel, value: 1);
-  late GaugeLayout _layout = gaugeLayout(widget.h);
-  late double _from = _target, _to = _target;
+/// L'aiguille est la MÊME partout (demande user 2026-11-20 : la tuile d'Aujourd'hui, la feuille qu'elle ouvre et la
+/// carte d'Organisation montraient chacune la leur — la feuille s'ouvrait aiguille déjà arrivée pendant que celle de
+/// la tuile glissait encore). Le trajet est daté sur l'horloge des images : une jauge qui s'ouvre ou revient à
+/// l'écran en cours de route reprend l'aiguille là où elle en est. La première jauge affichée est en place, sans
+/// glissement ; plus aucune jauge à l'écran = on oublie tout.
+class HoursNeedle {
+  HoursNeedle._();
 
-  /// En dessous, la cible a seulement dérivé (une minute de plus) : l'aiguille suit sans repartir pour une minute.
+  static int _gauges = 0;
+  static double _from = 0, _to = 0;
+
+  /// Début du trajet en cours, null = l'aiguille est en place.
+  static Duration? _start;
+  static final _moves = _Bell();
+
+  /// En dessous, la cible a seulement dérivé (une minute de plus) : l'aiguille suit sans repartir pour deux minutes.
   static const _drift = 2 * math.pi / 180;
 
+  // L'heure de la dernière image (elle reste lisible entre deux images, au contraire de `currentFrameTimeStamp`).
+  static Duration get _clock => SchedulerBinding.instance.currentSystemFrameTimeStamp;
+
+  static double get _t {
+    final s = _start;
+    if (s == null) return 1;
+    return ((_clock - s).inMicroseconds / kNeedleTravel.inMicroseconds).clamp(0.0, 1.0);
+  }
+
+  static bool get moving => _start != null && _t < 1;
+
+  /// Où est l'aiguille en ce moment.
+  static double get angle => _from + (_to - _from) * Curves.easeInOutCubic.transform(_t);
+
+  /// Redessine les jauges quand l'aiguille bouge.
+  static Listenable get moves => _moves;
+
+  static void _attach(double target, {required bool still}) {
+    _gauges++;
+    if (_gauges == 1) {
+      _from = _to = target;
+      _start = null;
+      return;
+    }
+    aim(target, still: still);
+  }
+
+  static void _detach() {
+    _gauges--;
+    if (_gauges > 0) return;
+    _gauges = 0;
+    _start = null;
+  }
+
+  /// Nouvelle cible. [still] = animations coupées : tout de suite en place.
+  static void aim(double target, {bool still = false}) {
+    if (target == _to) return;
+    if (still || (target - _to).abs() < _drift) {
+      if (moving && !still) {
+        _to = target;
+      } else {
+        _from = _to = target;
+        _start = null;
+      }
+    } else {
+      _from = angle;
+      _to = target;
+      _start = _clock;
+    }
+    _moves.ring();
+  }
+}
+
+class _Bell extends ChangeNotifier {
+  void ring() => notifyListeners();
+}
+
+class _WeekHoursGaugeState extends State<WeekHoursGauge> with SingleTickerProviderStateMixin {
+  // Le battement de CETTE jauge : coupé quand son onglet est caché, il ne sert qu'à redessiner pendant le trajet.
+  late final Ticker _beat;
+  late GaugeLayout _layout = gaugeLayout(widget.h);
+  bool _attached = false;
+
   double get _target => _layout.marks[widget.h.nowKind]!;
-  double get _angle => _from + (_to - _from) * Curves.easeInOutCubic.transform(_travel.value);
+  bool get _still => MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    _beat = createTicker((_) {
+      HoursNeedle._moves.ring();
+      if (!HoursNeedle.moving) _beat.stop();
+    });
+    HoursNeedle._moves.addListener(_follow);
+  }
+
+  void _follow() {
+    if (HoursNeedle.moving && !_beat.isActive) _beat.start();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_attached) return;
+    _attached = true;
+    HoursNeedle._attach(_target, still: _still);
+    _follow();
+  }
 
   @override
   void didUpdateWidget(covariant WeekHoursGauge old) {
     super.didUpdateWidget(old);
     _layout = gaugeLayout(widget.h);
-    final t = _target;
-    if (t == _to) return;
-    final still = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (still || (t - _to).abs() < _drift) {
-      if (_travel.isAnimating && !still) {
-        _to = t;
-      } else {
-        _travel.value = 1;
-        _from = _to = t;
-      }
-      return;
-    }
-    _from = _angle;
-    _to = t;
-    _travel.forward(from: 0);
+    HoursNeedle.aim(_target, still: _still);
   }
 
   @override
   void dispose() {
-    _travel.dispose();
+    HoursNeedle._moves.removeListener(_follow);
+    _beat.dispose();
+    if (_attached) HoursNeedle._detach();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final h = widget.h;
-    return AnimatedBuilder(
-      animation: _travel,
-      builder: (context, _) => CustomPaint(
-        size: Size(widget.size, widget.size * .76),
-        painter: _GaugePainter(h, _layout, _angle,
-            track: cs.onSurface.withValues(alpha: .09), needle: cs.onSurface, hole: cs.surface, showPrev: widget.showPrev),
-      ),
+    return CustomPaint(
+      size: Size(widget.size, widget.size * .76),
+      painter: _GaugePainter(widget.h, _layout,
+          track: cs.onSurface.withValues(alpha: .09), needle: cs.onSurface, hole: cs.surface, showPrev: widget.showPrev),
     );
   }
 }
@@ -123,11 +203,13 @@ class _WeekHoursGaugeState extends State<WeekHoursGauge> with SingleTickerProvid
 class _GaugePainter extends CustomPainter {
   final WeekHours h;
   final GaugeLayout g;
-  /// Où est l'aiguille en ce moment (elle glisse vers `g.marks[h.nowKind]`).
-  final double needleAt;
   final Color track, needle, hole;
   final bool showPrev;
-  _GaugePainter(this.h, this.g, this.needleAt, {required this.track, required this.needle, required this.hole, required this.showPrev});
+  _GaugePainter(this.h, this.g, {required this.track, required this.needle, required this.hole, required this.showPrev})
+      : super(repaint: HoursNeedle.moves);
+
+  /// Où est l'aiguille en ce moment (elle glisse vers `g.marks[h.nowKind]`) : la même pour toutes les jauges.
+  double get needleAt => HoursNeedle.angle;
 
   static const _start = kGaugeStart;
   static const _sweep = kGaugeSweep;
@@ -264,7 +346,6 @@ class _GaugePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GaugePainter o) =>
-      o.needleAt != needleAt ||
       o.h.activeMin != h.activeMin ||
       o.h.leisureMin != h.leisureMin ||
       o.h.basicMin != h.basicMin ||
