@@ -1980,6 +1980,16 @@ déjà en place ; une cible qui dérive de moins de 2° (une minute de plus) ne 
 (`disableAnimations`) = tout de suite en place. Lignes : « Demain à fond · ↗ 79 h · +11 h 33 » sous « Demain si rien », sur la carte et
 la feuille (`HoursTomorrowLine(full: true)`, `week-hours-full`, `week-hours-sheet-full`), toutes deux affichées sans chrono ET pendant
 un chrono actif (`hoursShowsTomorrow`) ; infobulle de la tuile et paragraphe de lecture mis à jour.
+**Aujourd'hui allégé** (2026-11-20, demande user : « tout ce qu'il y a au-dessous des tuiles, je ne l'utilise jamais — le projet en
+cours, Ta journée, Maintenant ») : flag `kTodayNowEnabled = false` (`lib/gamification_flags.dart`, code gardé, repasser à true pour
+tout remettre). Sur mobile, l'onglet Aujourd'hui s'arrête au tableau de bord : plus de tuile PROJETS (`DashboardTiles(projects:
+null)`), plus de « Ta journée » / « Ce soir » (`StakeScoreboard`, `EveningLedgerCard`), plus de « Le matin en trois choses »
+(`_morningCard`), plus de MAINTENANT (`NowCard`) ni de zone coach (`NowCoachZone`). RESTENT, parce qu'elles n'apparaissent que
+lorsqu'il y a quelque chose à faire : Recharge / « Je vais me coucher », session à reprendre (`PendingRunCard`), envie en cours,
+bilan de saison, revue du dimanche, proposition de module, routine acquise, et la ligne courte « n séries cassées hier · décider › »
+(seule porte de la journée difficile et du minimum). Ce qui passait par MAINTENANT se fait ailleurs : chrono par le bouton flottant,
+bloc en cours par la tuile PROGRAMME, Miracle Morning par le rond 🌅 de l'en-tête, modes par la tuile du mode et les ronds. Les
+sections de ce fichier qui décrivent MAINTENANT, Ta journée et la tuile Projets décrivent l'état d'avant ; le web n'est pas concerné.
 **Tableau de bord tout en haut d'Aujourd'hui** (2026-11-19, essai demandé par l'user : « dès qu'on change de page, on voit tout de
 suite où on en est sur la jauge et le réalisé ») : sur mobile, « TON TABLEAU DE BORD » (`_parallelSection`, `today_view.dart`) est posé
 juste sous l'en-tête, AVANT les cartes passagères (Recharge, session en cours, envie, bilan de saison, revue, proposition de module),

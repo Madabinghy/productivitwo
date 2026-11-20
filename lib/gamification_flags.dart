@@ -26,3 +26,11 @@ final bool kCollectionMetaEnabled = false;
 /// précision au bilan. Le calcul du temps exact et l'enchaînement des tirs
 /// restent. Même principe `final`.
 final bool kSniperTuningEnabled = true;
+
+/// Aujourd'hui allégé (2026-11-20, demande user : « tout ce qu'il y a au-dessous des tuiles, je ne l'utilise
+/// jamais ») : false = l'onglet Aujourd'hui mobile s'arrête au tableau de bord — plus de tuile PROJETS, plus de
+/// « Ta journée » / « Ce soir », plus de « Le matin en trois choses », plus de MAINTENANT ni de zone coach. Les
+/// cartes de passage (session à reprendre, envie en cours, coucher, bilan de saison, revue, série cassée hier…)
+/// restent : elles n'apparaissent que lorsqu'il y a quelque chose à faire. Le code reste, repasser à true pour
+/// tout remettre. Même principe `final` que ci-dessus : code mort conservé.
+final bool kTodayNowEnabled = false;
