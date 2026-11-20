@@ -1,6 +1,7 @@
 import 'dart:async' show Timer;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart' show showDayReviewSheet;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen;
@@ -449,7 +450,7 @@ class LifeViewState extends State<LifeView> {
                 // Discret (retour user 2026-11-05) : un bouton coloré se lisait comme une invitation à l'envie.
                 TextButton(
                   key: ValueKey('life-freedom-urge-$id'),
-                  style: TextButton.styleFrom(foregroundColor: mute, textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                  style: TextButton.styleFrom(foregroundColor: mute, textStyle: TextStyle(fontFamily: kAppFont, fontSize: 12.5, fontWeight: FontWeight.w600)),
                   onPressed: () => showUrgeScreen(context, logic: logic, id: id).then(refresh),
                   child: const Text("J'ai une envie"),
                 ),

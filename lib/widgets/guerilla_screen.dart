@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
@@ -327,7 +328,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: ThemeData.dark(useMaterial3: true).copyWith(scaffoldBackgroundColor: _bg),
+      data: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: kAppFont).copyWith(scaffoldBackgroundColor: _bg),
       child: Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
@@ -590,7 +591,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
         side: const BorderSide(color: Color(0x667CC4F0)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        textStyle: TextStyle(fontFamily: kAppFont, fontSize: 15, fontWeight: FontWeight.w700),
       ),
     );
   }

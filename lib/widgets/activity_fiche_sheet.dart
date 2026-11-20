@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/widgets/gains_section.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -355,7 +356,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       const SizedBox(width: 6),
       Flexible(child: Text(label, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
     ]);
-    const style = TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2);
+    final style = TextStyle(fontFamily: kAppFont, fontSize: 15, fontWeight: FontWeight.w800, height: 1.2);
     if (outlined) {
       return OutlinedButton(
         onPressed: onTap,
@@ -374,7 +375,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       minimumSize: Size.zero,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700));
+      textStyle: TextStyle(fontFamily: kAppFont, fontSize: 12, fontWeight: FontWeight.w700));
 
   Widget _foldButton(ColorScheme cs, bool open, VoidCallback onTap) => TextButton(
         onPressed: onTap,

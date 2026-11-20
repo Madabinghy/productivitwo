@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin, pickDurationMin;
@@ -128,7 +129,7 @@ class WatchBlockerCard extends StatelessWidget {
   }
 
   Widget _btn(String label, VoidCallback onTap, {bool filled = false, bool text = false}) {
-    final style = const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700);
+    final style = TextStyle(fontFamily: kAppFont, fontSize: 12.5, fontWeight: FontWeight.w700);
     const pad = EdgeInsets.symmetric(horizontal: 12);
     if (filled) {
       return SizedBox(

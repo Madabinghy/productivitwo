@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/utils/long_haul.dart' show isLongHaulId;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:productivitwo_v1/utils/image_share.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -1220,7 +1221,7 @@ Widget _todayBlock(BuildContext ctx, BadgeState b, BadgeToday t, BadgeTodayActio
           foregroundColor: primary ? kBBg : kBText,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           visualDensity: VisualDensity.compact,
-          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+          textStyle: TextStyle(fontFamily: kAppFont, fontSize: 12.5, fontWeight: FontWeight.w800),
         ),
         child: Text(label),
       ),

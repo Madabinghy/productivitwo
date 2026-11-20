@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -938,6 +939,7 @@ ThemeData _buildTheme(Brightness brightness, [DayMode mode = DayMode.normal]) {
     useMaterial3: true,
     colorSchemeSeed: modeSeed(mode),
     brightness: brightness,
+    fontFamily: kAppFont,
   );
   final cs = base.colorScheme;
   return base.copyWith(

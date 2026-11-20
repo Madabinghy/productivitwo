@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/game_rules.dart';
@@ -167,7 +168,7 @@ class _WatchPaceViewState extends State<WatchPaceView> {
                 foregroundColor: kBBg,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 visualDensity: VisualDensity.compact,
-                textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                textStyle: TextStyle(fontFamily: kAppFont, fontSize: 12.5, fontWeight: FontWeight.w800),
               ),
               child: const Text('Chrono'),
             ),

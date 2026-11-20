@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -979,7 +980,7 @@ class _FocusScreenState extends State<_FocusScreen> {
             style: TextButton.styleFrom(
                 foregroundColor: color ?? cs.onSurface.withValues(alpha: .75),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         );
@@ -1013,7 +1014,7 @@ class _FocusScreenState extends State<_FocusScreen> {
                   style: TextButton.styleFrom(
                       foregroundColor: kPalierAmber,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
                 ),
               ),
             link('Terminer · bilan', _finish, color: text3),
@@ -1231,7 +1232,7 @@ class _BlockEndScreenState extends State<_BlockEndScreen> {
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               TextButton(
                 onPressed: () => Navigator.of(context).maybePop(),
-                style: TextButton.styleFrom(foregroundColor: text3, textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                style: TextButton.styleFrom(foregroundColor: text3, textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
                 child: const Text('Fermer'),
               ),
             ]),

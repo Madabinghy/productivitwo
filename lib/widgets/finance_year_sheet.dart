@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/finance_charts.dart';
@@ -365,7 +366,7 @@ class _BarsPainter extends CustomPainter {
   _BarsPainter({required this.stacks, required this.colors, required this.mute, required this.grid, required this.current, this.selected, this.cap = 0, this.capColor});
 
   void _text(Canvas c, String t, Offset at, {TextAlign align = TextAlign.right, Color? color}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 9.5, color: color ?? mute)), textDirection: TextDirection.ltr)..layout();
+    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, color: color ?? mute)), textDirection: TextDirection.ltr)..layout();
     final dx = align == TextAlign.right ? at.dx - tp.width : at.dx - tp.width / 2;
     tp.paint(c, Offset(dx, at.dy - tp.height / 2));
   }

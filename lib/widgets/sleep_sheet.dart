@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -518,7 +519,7 @@ class _NightsPainter extends CustomPainter {
     for (var m = lo; m <= hi && !compact; m += step) {
       canvas.drawLine(Offset(left, y(m)), Offset(size.width, y(m)), grid);
       final tp = TextPainter(
-          text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontSize: 10, color: ink.withValues(alpha: .4))),
+          text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontFamily: kAppFont, fontSize: 10, color: ink.withValues(alpha: .4))),
           textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset(0, y(m) - 6));
@@ -527,7 +528,7 @@ class _NightsPainter extends CustomPainter {
       for (final m in [lo, hi]) {
         canvas.drawLine(Offset(left, y(m)), Offset(size.width, y(m)), grid);
         final tp = TextPainter(
-            text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontSize: 9, color: ink.withValues(alpha: .5))),
+            text: TextSpan(text: '${((m ~/ 60) + 18) % 24} h', style: TextStyle(fontFamily: kAppFont, fontSize: 9, color: ink.withValues(alpha: .5))),
             textDirection: TextDirection.ltr)
           ..layout();
         tp.paint(canvas, Offset(0, y(m) - tp.height / 2));
@@ -572,7 +573,7 @@ class _NightsPainter extends CustomPainter {
       if (compact) continue;
       // Une nuit porte le nom du jour du coucher (lundi = lundi → mardi).
       final label = _days[bedDays[i].weekday - 1].substring(0, 2);
-      final tp = TextPainter(text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
+      final tp = TextPainter(text: TextSpan(text: label, style: TextStyle(fontFamily: kAppFont, fontSize: 9, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset(cx - tp.width / 2, size.height - 12));
     }
@@ -610,7 +611,7 @@ class _BedPainter extends CustomPainter {
   _BedPainter(this.nights, this.avgBed, this.plannedBed, this.ink, {this.nowClock});
 
   void _text(Canvas c, String t, Offset o, Color color, {bool center = true}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)), textDirection: TextDirection.ltr)
+    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontFamily: kAppFont, fontSize: 10, color: color, fontWeight: FontWeight.w700)), textDirection: TextDirection.ltr)
       ..layout();
     tp.paint(c, Offset(center ? o.dx - tp.width / 2 : o.dx, o.dy));
   }
@@ -892,7 +893,7 @@ class _OneNightPainter extends CustomPainter {
     }
     final step = (hi - lo) > 10 * 60 ? 120 : 60;
     for (var v = lo; v <= hi; v += step) {
-      final tp = TextPainter(text: TextSpan(text: clockOf(v), style: TextStyle(fontSize: 10, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
+      final tp = TextPainter(text: TextSpan(text: clockOf(v), style: TextStyle(fontFamily: kAppFont, fontSize: 10, color: ink.withValues(alpha: .4))), textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset((x(v) - tp.width / 2).clamp(0.0, size.width - tp.width), 40));
     }

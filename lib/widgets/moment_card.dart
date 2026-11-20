@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierCoral;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
@@ -272,7 +273,7 @@ class MomentCard extends StatelessWidget {
                 side: BorderSide(color: (color ?? pal.text2).withValues(alpha: color == null ? .25 : .45)),
                 shape: const StadiumBorder(),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 if (icon != null) ...[Icon(icon, size: 17), const SizedBox(width: 5)],
@@ -351,7 +352,7 @@ class MomentCard extends StatelessWidget {
               side: BorderSide(color: accent.withValues(alpha: .5)),
               shape: const StadiumBorder(),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
+              textStyle: TextStyle(fontFamily: kAppFont, fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
           child: label,
         ),
       );
@@ -366,7 +367,7 @@ class MomentCard extends StatelessWidget {
             disabledBackgroundColor: pal.track,
             shape: const StadiumBorder(),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
         child: label,
       ),
     );

@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/offensive.dart' show openTargets;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
@@ -887,7 +888,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
             : 'Afficher les ${done > 1 ? '$done tâches faites' : 'tâche faite'}'),
         style: TextButton.styleFrom(
           foregroundColor: cs.onSurface.withOpacity(.55),
-          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          textStyle: TextStyle(fontFamily: kAppFont, fontSize: 12.5, fontWeight: FontWeight.w600),
           visualDensity: VisualDensity.compact,
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
@@ -529,7 +530,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       return const Scaffold(backgroundColor: _cBg, body: SizedBox.shrink());
     }
     return Theme(
-      data: ThemeData.dark(useMaterial3: true).copyWith(
+      data: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: kAppFont).copyWith(
         scaffoldBackgroundColor: _cBg,
         colorScheme: const ColorScheme.dark(primary: kChainAccent, onPrimary: kChainInk, surface: _cCard),
       ),
@@ -697,7 +698,7 @@ class _ChainScreenState extends State<_ChainScreen> {
             foregroundColor: _chainPal.text2,
             side: const BorderSide(color: _cLine),
             shape: const StadiumBorder(),
-            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700),
           ),
           child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),

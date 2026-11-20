@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -221,7 +222,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
       primary = FilledButton(
         style: FilledButton.styleFrom(
             backgroundColor: kRoutineAccent, foregroundColor: kBBg, shape: const StadiumBorder(), minimumSize: const Size.fromHeight(56),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 16, fontWeight: FontWeight.w800)),
         onPressed: () => _next(s),
         child: const Text('Cible atteinte — suivante'),
       );
@@ -232,7 +233,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
             side: BorderSide(color: kRoutineAccent.withOpacity(.6)),
             shape: const StadiumBorder(),
             minimumSize: const Size.fromHeight(56),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 16, fontWeight: FontWeight.w800)),
         onPressed: () => _next(s),
         child: Text('Garder $count / $target — suivante'),
       );
@@ -243,7 +244,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
             side: BorderSide(color: Colors.white.withOpacity(.08)),
             shape: const StadiumBorder(),
             minimumSize: const Size.fromHeight(56),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 16, fontWeight: FontWeight.w800)),
         onPressed: null,
         child: const Text('Suivante'),
       );
@@ -392,7 +393,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
               side: BorderSide(color: kRoutineAccent.withOpacity(.4)),
               shape: const StadiumBorder(),
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w700)),
           child: Text(label),
         ),
       );
@@ -440,7 +441,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
       FilledButton(
         style: FilledButton.styleFrom(
             backgroundColor: kRoutineAccent, foregroundColor: kBBg, shape: const StadiumBorder(), minimumSize: const Size.fromHeight(56),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 16, fontWeight: FontWeight.w800)),
         onPressed: () => Navigator.of(context).pop(),
         child: const Text('Revenir à Aujourd\'hui'),
       ),

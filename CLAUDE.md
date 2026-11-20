@@ -2623,6 +2623,20 @@ n'y reste que le délégué des notifications et `SwiftAlarmPlugin.registerBackg
 appelé : la pastille de l'icône est remise à zéro sur `UIApplication.didBecomeActiveNotification`. Demande Flutter ≥ 3.38 pour
 construire l'app iOS (la CI web reste sur 3.35.6, elle ne compile pas iOS).
 
+## Police Inter embarquée sur iPhone (2026-11-20, bug user : les textes paraissaient plus petits après iOS 27)
+
+Sous iOS 27, la police du système ne rend plus les graisses demandées par Flutter : w700 / w800 s'affichaient en trait moyen (même
+police, même taille, mesuré sur deux captures). L'app embarque donc **Inter** : six graisses statiques 400 → 900 dans `assets/fonts/`
+(allégées au latin, à la ponctuation, aux flèches et aux maths, ≈ 160 Ko chacune ; licence OFL à côté), déclarées dans `pubspec.yaml`.
+`kAppFont` (`lib/app_font.dart`) vaut `Inter` sur iPhone et `null` ailleurs : Android, le web et les tests gardent la police d'origine.
+Branchée dans `_buildTheme` (`fontFamily`), mais **le thème ne suffit pas** — trois cas perdent la police et doivent la porter à la main :
+un thème reconstruit (`ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: kAppFont)` des écrans Guérilla, Sniper,
+Offensive, Enchaîner, Miracle Morning — plus de `ThemeData.dark()`), un libellé de bouton qui pose son style (`styleFrom(textStyle:
+TextStyle(fontFamily: kAppFont, …))` : le style d'un bouton REMPLACE celui du thème), et un texte dessiné (`TextPainter` : axes des
+graphiques Finances et Sommeil, ruban des badges). Tout nouveau bouton à `textStyle`, thème local ou `TextPainter` : mettre
+`fontFamily: kAppFont`. Symboles et émojis (☀ ▶ ✓ 🔥) ne sont pas dans les fichiers : ils restent ceux du système. Pour un texte hors
+latin ou un nouveau signe qui s'afficherait dans une autre police, refaire l'allègement avec `pyftsubset` depuis Inter 4.1.
+
 ## Mac (Apple Silicon, « Conçue pour iPhone »)
 
 Le widget iPhone relayé sur le Mac ne peut pas ouvrir l'app en UE (Recopie de l'iPhone indisponible,

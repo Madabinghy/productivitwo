@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/utils/long_haul.dart' show kRoutineCountTiers;
 import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
 import 'package:productivitwo_v1/utils/badges_logic.dart' show fmtInt;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -354,7 +355,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   foregroundColor: pal.text2,
                   side: BorderSide(color: pal.track),
-                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w600)),
               child: const Text('Organiser'),
             ),
           ),
@@ -488,7 +489,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             style: TextButton.styleFrom(
               foregroundColor: kRoutineAccent,
               visualDensity: VisualDensity.compact,
-              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+              textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w800),
             ),
             icon: const Icon(Icons.playlist_play_rounded, size: 20),
             label: Text(day.queue.length == 1 ? 'Enchaîner la routine ${m.of}' : 'Enchaîner les ${day.queue.length} routines ${m.of}'),

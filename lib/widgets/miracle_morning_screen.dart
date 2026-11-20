@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
@@ -391,7 +392,7 @@ class _MiracleMorningScreenState extends State<MiracleMorningScreen> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: ThemeData.dark(useMaterial3: true).copyWith(scaffoldBackgroundColor: _bg),
+      data: ThemeData(brightness: Brightness.dark, useMaterial3: true, fontFamily: kAppFont).copyWith(scaffoldBackgroundColor: _bg),
       child: Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
