@@ -56,7 +56,9 @@ import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAcc
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
 import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
-import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
+import 'package:productivitwo_v1/utils/sniper.dart' show SniperPlan, kSniperKind;
+import 'package:productivitwo_v1/sniper_now.dart';
+import 'package:productivitwo_v1/widgets/sniper_scope.dart' show SniperModeTile;
 import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
@@ -185,6 +187,9 @@ class TodayViewState extends State<TodayView> {
   void initState() {
     super.initState();
     _loadBadgeSignals();
+    widget.sync?.fetchDayWindow().then((w) {
+      if (mounted && w.endMin != _dayEndMin) setState(() => _dayEndMin = w.endMin);
+    }).catchError((_) {});
     widget.sync?.fetchStrategicObjectives().then((all) {
       if (mounted) setState(() => _objectives = all);
     }).catchError((_) {});
@@ -1091,6 +1096,7 @@ class TodayViewState extends State<TodayView> {
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     final unit = kind == kSniperKind ? 'cible' : 'coup';
     final label = pending != null ? 'Reprendre · ${l.name} · ${pending.done} $unit${pending.done > 1 ? 's' : ''}' : '${l.name} · ${l.line}';
+    if (kind == kSniperKind) return _sniperTile(pending: pending != null, resumeLabel: pending == null ? null : label);
     return Tooltip(
       message: label,
       child: Semantics(
@@ -1117,6 +1123,35 @@ class TodayViewState extends State<TodayView> {
       ),
     );
   }
+
+  // Le viseur de la tuile n'est recalculé qu'une fois par minute, ou quand la journée bouge
+  // (chrono, coche, bloc, deck de badges).
+  String? _sniperKey;
+  ({SniperPlan plan, SniperBudget budget})? _sniperAim;
+
+  /// La tuile du Sniper = la miniature de son viseur (2026-11-20, demande user) : ce qu'il
+  /// viserait là, maintenant, dans le temps libre, à la place de l'icône.
+  Widget _sniperTile({required bool pending, String? resumeLabel}) {
+    final logic = widget.logic, st = logic.state, now = DateTime.now();
+    final open = [for (final s in st.sessions) if (s.endAt == null && !s.deleted) s.activityId].join(',');
+    final blocks = [for (final b in logic.todayBlocks) '${b.id}${b.status}'].join(',');
+    final key = '${now.day}-${now.hour}-${now.minute}|${st.sessions.length}|${st.habitHits.length}|$open|$blocks|${identityHashCode(widget.badges?.deck)}|$_dayEndMin';
+    if (key != _sniperKey || _sniperAim == null) {
+      _sniperKey = key;
+      _sniperAim = sniperPlanNow(logic, widget.badges, endMin: _dayEndMin);
+    }
+    final aim = _sniperAim!;
+    final n = aim.plan.aimed.length;
+    final until = '${(aim.budget.untilMin ~/ 60 % 24).toString().padLeft(2, '0')}:${(aim.budget.untilMin % 60).toString().padLeft(2, '0')}';
+    final label = resumeLabel ??
+        (n == 0
+            ? 'Sniper · rien à viser pour l’instant'
+            : 'Sniper · $n cible${n > 1 ? 's' : ''} · ${fmtMin(aim.plan.totalMin)} visées sur ${fmtMin(aim.budget.minutes)} libres jusqu’à $until');
+    return SniperModeTile(plan: aim.plan, freeMin: aim.budget.minutes, label: label, pending: pending, onTap: () => openRun(kSniperKind));
+  }
+
+  /// Fin de la journée active (réglage Capacité), lue une fois : le temps libre du viseur s'y arrête.
+  int _dayEndMin = 22 * 60;
 
   // Les 7 jours ne sont recomptés qu'une fois par minute, ou quand un chrono démarre ou s'arrête.
   String? _hoursKey;

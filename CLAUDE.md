@@ -1517,6 +1517,16 @@ d'impact (le mini-tir garde un message). L'ancien écran TOUCHÉ à compte à re
 **Bilan** : le carton de tir (`sniper-card`, « au centre = pile le temps visé »), trois chiffres tirées · visées · précision (à la
 place de précision · enjeux tombés · décision), TOMBÉ avec le numéro du tir. Fond de l'écran : halo radial, vert pendant l'impact.
 Tests : `test/sniper_scope_test.dart`, `test/ui/sniper_screen_test.dart` (`SniperScreen(stakes:)` = enjeux fournis, tests seulement).
+**La lunette dans la tuile du mode** (2026-11-20, demande user : « comme la jauge des 7 jours, la miniature du Sniper dans le
+widget ») : quand le mode du moment est le Sniper, la tuile carrée d'Aujourd'hui (`mode-tile`) n'affiche plus l'icône mais la miniature
+du viseur (`SniperModeTile`, `widgets/sniper_scope.dart` ; `SniperAimScope(mini: true)`, `mode-tile-scope` : arcs épais à la couleur
+de l'enjeu, pointillés = l'air, ni numéros ni traits de minute) et les minutes visées au centre (« 37 min », « 1h05 » au-delà de
+99) ; rien à viser = le réticule seul. Fond sombre du Sniper, comme la tuile de la jauge. Le détail est en infobulle et pour la
+lecture d'écran (« Sniper · 4 cibles · 37 min visées sur 52 min libres jusqu'à 14:00 ») ; le point d'une session à reprendre et le tap
+(`openRun`) ne changent pas. Le calcul est le MÊME que celui du viseur : `lib/sniper_now.dart` (`sniperStakesNow` = enjeux du jour
+sans coupe + coches restantes, `sniperFactorNow`, `sniperBudgetNow`, `sniperPlanNow`), utilisé par `_compute` de l'écran et par
+`_sniperTile` (`today_view.dart`), qui ne recalcule qu'une fois par minute ou quand la journée bouge (chrono, coche, bloc, deck ;
+`_sniperKey`). La fin de la journée active y est lue une fois (`_dayEndMin`, `fetchDayWindow`). Guérilla et Offensive gardent leur icône.
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
