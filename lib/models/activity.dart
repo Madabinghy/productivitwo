@@ -133,6 +133,11 @@ class Activity {
   /// (`linkedActivityId`) qui valent une coche de la routine. Null = le chrono ne coche pas.
   int? minPerHit;
 
+  /// Le chrono ne coche PAS cette routine, par choix (2026-11-20). Faux par défaut : une routine qui a une
+  /// durée et qui est seule liée à son activité se coche d'office par le chrono (`chronoHitMin`,
+  /// `utils/routine_cover.dart`) ; éteindre l'interrupteur de la fiche pose ce champ.
+  bool chronoOff;
+
   /// Cible automatique (2026-11-20, `utils/auto_target.dart`) : la cible d'une routine quotidienne suit ce
   /// qui est vraiment fait (un cran de plus à 120 % sur 7 jours, un cran de moins sous 50 %). Faux par défaut.
   bool autoTarget;
@@ -183,6 +188,7 @@ class Activity {
     this.rolling = false,
     this.catchUp = false,
     this.autoTarget = false,
+    this.chronoOff = false,
     List<TargetStep>? targetLog,
     this.minPerHit,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
@@ -254,6 +260,7 @@ class Activity {
         'catchUp': catchUp,
         'minPerHit': minPerHit,
         'autoTarget': autoTarget,
+        'chronoOff': chronoOff,
         if (targetLog.isNotEmpty) 'targetLog': [for (final s in targetLog) s.toJson()],
       };
 
@@ -317,6 +324,7 @@ class Activity {
       catchUp: j['catchUp'] as bool? ?? false,
       minPerHit: (j['minPerHit'] as num?)?.toInt(),
       autoTarget: j['autoTarget'] as bool? ?? false,
+      chronoOff: j['chronoOff'] as bool? ?? false,
       targetLog: TargetStep.listFrom(j['targetLog']),
     )..docKeys = {for (final k in j.keys) k.toString()};
   }
@@ -337,8 +345,15 @@ class Activity {
     if (minPerHit != null) minPerHit = m;
   }
 
-  /// Allume ou éteint « le chrono coche » : il compte à la durée d'une fois.
-  void setChronoHits(bool on) => minPerHit = on ? onceMin : null;
+  /// Allume ou éteint « le chrono coche » : il compte à la durée d'une fois. Éteint, c'est un choix
+  /// ([chronoOff]) : la routine ne se cochera pas d'office, même seule sur son activité.
+  void setChronoHits(bool on) {
+    final m = onceMin;
+    minPerHit = on ? m : null;
+    chronoOff = !on;
+    // Éteindre garde la durée d'une fois (le ⏱), qui vivait peut-être seulement dans la coche du chrono.
+    if (!on && m != null) timerMin = m;
+  }
 
   /// Fusion au lancement (2026-11-19, bug user : « Sur 7 jours » réglé puis
   /// perdu) : le serveur gagne, SAUF pour les champs que son document ne porte
@@ -395,6 +410,7 @@ class Activity {
       catchUp: catchUp,
       minPerHit: minPerHit,
       autoTarget: autoTarget,
+      chronoOff: chronoOff,
       targetLog: [...targetLog],
     );
   }

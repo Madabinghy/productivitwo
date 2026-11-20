@@ -492,7 +492,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     // « ce matin », « cet après-midi » étaient coupés) : espaces insécables dans une info, coupure après « · ».
     String nb(String v) => v.replaceAll(' ', ' ');
     // Avec « le chrono coche », on parle en minutes : 10 min la fois, encore 10 min.
-    String amount(int n) => hasTimeHits(a) ? '${n * a.minPerHit!} min' : '$n';
+    final perHit = chronoHitMin(a, widget.logic.state.activities);
+    String amount(int n) => perHit != null ? '${n * perHit} min' : '$n';
     const sep = ' · ';
     final infos = <InlineSpan>[
       if (dismissed) TextSpan(text: '${nb('pas aujourd\'hui')}$sep'),

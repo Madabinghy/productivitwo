@@ -1228,7 +1228,7 @@ class AppLogic implements HuntStore {
       _sportCounted.add(s.id);
       for (final r in pick.sessionRoutines) {
         if (r.linkedActivityId != s.activityId) continue;
-        if (hasTimeHits(r)) continue; // « 1 coche = n min » : c'est le chrono qui compte ses coches
+        if (hasTimeHits(r, state.activities)) continue; // « 1 coche = n min » : c'est le chrono qui compte ses coches
         if (state.habitHits.any((h) => h.habitId == r.id && !h.ts.isBefore(start))) continue;
         incHabit(r.id, 1, livedDate(now, dayStartMin));
         onSportRoutineCounted?.call(r);
@@ -1247,15 +1247,16 @@ class AppLogic implements HuntStore {
     final now = DateTime.now();
     final ymd = livedTodayYmd;
     for (final r in [...state.activeActivities]) {
-      if (!hasTimeHits(r)) continue;
-      final earned = timeHitsEarned(r, state.sessions, now, dayStartMin: dayStartMin);
+      final per = chronoHitMin(r, state.activities);
+      if (per == null) continue;
+      final earned = timeHitsEarned(r, state.sessions, now, dayStartMin: dayStartMin, all: state.activities);
       if (earned <= 0) continue;
       final key = '${r.id}|$ymd';
       final given = math.max(_timeHitsDone[key] ?? 0, timeHitsGiven(r.id, ymd, state.habitHits));
       if (earned <= given) continue;
       _timeHitsDone[key] = earned;
       incHabit(r.id, earned - given, livedDate(now, dayStartMin), hitIds: [for (var k = given + 1; k <= earned; k++) timeHitId(r.id, ymd, k)]);
-      onTimeHits?.call(r, earned - given, earned * r.minPerHit!);
+      onTimeHits?.call(r, earned - given, earned * per);
     }
   }
 

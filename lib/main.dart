@@ -40,7 +40,7 @@ import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWin
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
-import 'package:productivitwo_v1/utils/routine_cover.dart' show hasTimeHits;
+import 'package:productivitwo_v1/utils/routine_cover.dart' show askedHitId, askedHits, hasTimeHits, routinesToAsk;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
@@ -2973,7 +2973,7 @@ class _AppRootState extends State<AppRoot>
       final now = DateTime.now();
       // « 1 coche = n min » : c'est le chrono qui pose les coches, pas la fin du minuteur.
       final timed = logic.state.activities.where((a) => a.id == routineId).firstOrNull;
-      if (timed != null && hasTimeHits(timed)) {
+      if (timed != null && hasTimeHits(timed, logic.state.activities)) {
         logic.checkTimeHits();
       } else {
         logic.incHabit(routineId, 1, DateTime(now.year, now.month, now.day));
@@ -3477,7 +3477,75 @@ class _AppRootState extends State<AppRoot>
   /// visait aucune action (ni tâche) se rattache en un tap à l'une des actions
   /// probables de son activité — le temps réel alimente l'estimé vs réel sans
   /// saisie de plus. Rien de proposé (< 3 min, aucune candidate) = rien.
-  void _askStopTarget(Session s) {
+  /// Plusieurs routines sont liées à l'activité du chrono qu'on vient d'arrêter (2026-11-20, demande user) :
+  /// « Ces 25 min, c'était pour quelle routine ? » — celle choisie prend ses coches (durée du chrono ÷ sa durée
+  /// d'une fois), une seule fois par session. Une routine SEULE sur son activité se coche d'office, sans question.
+  Future<void> _askStopRoutine(Session s) async {
+    final min = s.duration.inMinutes;
+    final cands = routinesToAsk(s.activityId, logic.state.activities, min);
+    if (cands.isEmpty) return;
+    if (logic.state.habitHits.any((h) => h.id.startsWith('ask-') && h.id.contains('-${s.id}-'))) return;
+    final act = logic.state.activities.firstWhereOrNull((a) => a.id == s.activityId);
+    String fmt(int m) => m >= 60 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min';
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<Activity>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('Ces ${fmt(min)}, c\'était pour quelle routine ?', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text('Plusieurs routines sont liées à « ${act?.name ?? 'cette activité'} »', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+                const SizedBox(height: 10),
+                for (final r in cands)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: cs.surfaceContainerHighest.withOpacity(.4),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        key: ValueKey('stop-routine-${r.id}'),
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.pop(ctx, r),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          child: Row(children: [
+                            Icon(Icons.radio_button_unchecked, size: 18, color: cs.primary),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(r.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+                            Text('+${askedHits(r, min)} · ${r.onceMin} min la fois', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6))),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                TextButton(key: const ValueKey('stop-routine-none'), onPressed: () => Navigator.pop(ctx), child: const Text('Aucune')),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    final n = askedHits(picked, min);
+    if (n <= 0) return;
+    final day = logic.livedToday;
+    logic.incHabit(picked.id, n, day, hitIds: [for (var k = 1; k <= n; k++) askedHitId(picked.id, s.id, k)]);
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
+      content: Text('${picked.name} +$n · ${fmt(min)} de chrono'),
+      duration: const Duration(seconds: 5),
+      behavior: SnackBarBehavior.floating,
+      action: SnackBarAction(label: 'Annuler', onPressed: () => logic.incHabit(picked.id, -n, day)),
+    ));
+  }
+
+  Future<void> _askStopTarget(Session s) async {
     if (s.actionId != null || s.taskId != null) return;
     final min = s.duration.inMinutes;
     if (min < 3) return;
@@ -3489,7 +3557,7 @@ class _AppRootState extends State<AppRoot>
     final tasks = stopTaskCandidates(_dashboardProjects, s.activityId, today: DateTime.now());
     if (cands.isEmpty && tasks.isEmpty) return;
     String fmt(int m) => m >= 60 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min';
-    Future<void>.delayed(const Duration(milliseconds: 350), () async {
+    await Future<void>.delayed(const Duration(milliseconds: 350), () async {
       if (!mounted) return;
       final picked = await showModalBottomSheet<int>(
         context: context,
@@ -3903,7 +3971,12 @@ class _AppRootState extends State<AppRoot>
             expeditionBonus: expeditionBonus);
     logic.programBacklogHook ??= _programBacklogItem;
     logic.onSessionOffBlock ??= _askSessionVsBlock;
-    logic.onUserStopped ??= _askStopTarget;
+    // À l'arrêt d'un chrono : d'abord « c'était pour quelle action ? », puis « pour quelle routine ? »
+    // quand plusieurs routines partagent l'activité.
+    logic.onUserStopped ??= (s) async {
+      await _askStopTarget(s);
+      if (mounted) await _askStopRoutine(s);
+    };
     logic.onFlemmeVictory ??= (session, name) {
       if (!mounted) return;
       final wins = _badges.todayFacts().disciplineWinsToday;
