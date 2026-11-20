@@ -931,6 +931,12 @@ pause exclues. **Focus · Tout** (2026-10-31, retour user) : bascule sous la rec
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+**Bouton flottant : ▶ toujours là, petit ■ au-dessus** (2026-11-20, retour user : avec le ■ à la place du ▶, il fallait couper le
+chrono pour voir l'état de ses activités) : `ActivityFab` garde le ▶ (`fab-launch-activity`, infobulle « Voir mes activités » pendant
+un chrono) qui ouvre TOUJOURS le lanceur ; quand un chrono tourne, un petit ■ rouge (`fab-stop-activity`, mini, heroTag
+`fab_stop_activity`) se pose juste au-dessus et l'arrête (`_stopFromFab`, inchangé). La rangée des boutons (`_buildFab`) est alignée
+en bas, les trois petits boutons gardent 4 px de marge basse pour rester centrés sur le ▶. Le paragraphe suivant décrit l'état d'avant.
+
 **Bouton flottant ▶ / ■** (2026-11-19, demande user) : le grand bouton flottant des activités (`ActivityFab`, `widgets/activity_fab.dart`,
 posé par `_buildFab` de main.dart) ouvre le lanceur tant qu'aucun chrono ne tourne (`fab-launch-activity`) ; dès qu'un chrono tourne il
 devient ■ rouge (`fab-stop-activity`) et l'arrête d'un tap (`_stopFromFab` : même arrêt que « Arrêter » de MAINTENANT — décompte annulé,

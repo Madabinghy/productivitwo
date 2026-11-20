@@ -4710,7 +4710,13 @@ class _AppRootState extends State<AppRoot>
     // contenu. Capture (GTD), créer action/projet, routine, ▶ activité.
     return Row(
       mainAxisSize: MainAxisSize.min,
+      // Alignés en bas : le petit ■ posé au-dessus du ▶ pendant un chrono ne fait pas remonter les autres.
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        // Les trois petits boutons restent centrés sur le ▶ (56 px), comme avant.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
         FloatingActionButton(
           heroTag: 'fab_capture',
           mini: true,
@@ -4752,7 +4758,9 @@ class _AppRootState extends State<AppRoot>
           child: const Icon(Icons.repeat_rounded),
         ),
         const SizedBox(width: 10),
-        // ▶ lance, ■ arrête le chrono en cours (2026-11-19) : on reclique ensuite pour en lancer une autre.
+          ]),
+        ),
+        // ▶ ouvre toujours le lanceur ; pendant un chrono, un petit ■ au-dessus l'arrête (2026-11-20).
         ActivityFab(
           runningName: logic.runningActivity()?.name,
           onLaunch: () => _showLaunchActivitySheet(context),
@@ -4762,7 +4770,7 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  /// Le ■ du bouton flottant : arrête le chrono en cours, comme « Arrêter » de MAINTENANT, et dit ce qui s'arrête.
+  /// Le petit ■ au-dessus du bouton flottant : arrête le chrono en cours, et dit ce qui s'arrête.
   void _stopFromFab() {
     final name = logic.runningActivity()?.name;
     _cancelCountdown();

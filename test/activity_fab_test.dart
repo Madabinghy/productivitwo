@@ -11,7 +11,7 @@ void main() {
     return log;
   }
 
-  testWidgets('aucun chrono : ▶ ouvre le lanceur', (t) async {
+  testWidgets('aucun chrono : ▶ ouvre le lanceur, pas de ■', (t) async {
     final log = await pump(t, null);
     expect(find.byKey(const ValueKey('fab-stop-activity')), findsNothing);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
@@ -19,17 +19,24 @@ void main() {
     expect(log, ['launch']);
   });
 
-  testWidgets('un chrono tourne : ■ l\'arrête, appui long = le lanceur quand même', (t) async {
+  testWidgets('un chrono tourne : ▶ ouvre toujours le lanceur, un petit ■ au-dessus arrête', (t) async {
     final log = await pump(t, 'Lecture');
-    expect(find.byKey(const ValueKey('fab-launch-activity')), findsNothing);
-    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp('Arrêter Lecture')), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('fab-stop-activity')));
-    expect(log, ['stop']);
-    await t.longPress(find.byKey(const ValueKey('fab-stop-activity')));
-    expect(log, ['stop', 'launch']);
-    // Le chrono arrêté, le bouton redevient ▶.
+    final launch = find.byKey(const ValueKey('fab-launch-activity')), stop = find.byKey(const ValueKey('fab-stop-activity'));
+    expect(launch, findsOneWidget);
+    expect(stop, findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Arrêter Lecture')), findsWidgets);
+    // Le ■ est au-dessus du ▶, plus petit, centré sur lui.
+    expect(t.getBottomLeft(stop).dy, lessThan(t.getTopLeft(launch).dy));
+    expect(t.getSize(stop).width, lessThan(t.getSize(launch).width));
+    expect(t.getCenter(stop).dx, closeTo(t.getCenter(launch).dx, .5));
+    // Voir ses activités n'arrête rien.
+    await t.tap(launch);
+    expect(log, ['launch']);
+    await t.tap(stop);
+    expect(log, ['launch', 'stop']);
+    // Le chrono arrêté, le ■ disparaît.
     await pump(t, null);
-    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    expect(stop, findsNothing);
+    expect(launch, findsOneWidget);
   });
 }
