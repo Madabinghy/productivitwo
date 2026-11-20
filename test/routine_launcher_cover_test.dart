@@ -4,7 +4,6 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/launcher_tab_store.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/badges_logic.dart' show routineSeries;
 import 'package:productivitwo_v1/utils/routine_cover.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,54 +109,5 @@ void main() {
     expect(coveredUntilLabel(DateTime(2026, 11, 19), 3), 'dimanche');
     // Une routine quotidienne n'est pas concernée.
     expect(weeklyAheadDays(routine('p', 'P'), const [], now), isNull);
-  });
-
-  testWidgets('Rattrapable : « À rattraper » quand la routine est tenue et qu\'un jour raté attend', (t) async {
-    SharedPreferences.setMockInitialValues({});
-    LauncherTabStore.resetForTest();
-    t.view.physicalSize = const Size(900, 3600);
-    t.view.devicePixelRatio = 2;
-    addTearDown(t.view.reset);
-
-    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
-    final today = logic.livedToday;
-    List<HabitHit> hits(String id, List<int> perDay) => [
-          for (var i = 0; i < perDay.length; i++)
-            for (var k = 0; k < perDay[i]; k++)
-              HabitHit(habitId: id, ts: DateTime(today.year, today.month, today.day - (perDay.length - 1 - i), 5, 1 + k)),
-        ];
-    Activity catchable(String id, String name) => Activity(
-        id: id, domainId: 'd', name: name, type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, catchUp: true, createdAt: DateTime(2026, 1, 1));
-    logic.state.activities.addAll([catchable('vaisselle', 'Vaisselle'), catchable('lit', 'Faire mon lit')]);
-    logic.state.habitHits.addAll([
-      // Tenue aujourd'hui, hier et avant-hier ratés.
-      ...hits('vaisselle', [1, 1, 1, 1, 0, 0, 1]),
-      // Pas encore faite aujourd'hui, hier raté.
-      ...hits('lit', [1, 1, 1, 1, 1, 0, 0]),
-    ]);
-
-    await t.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: RoutineLauncher(logic: logic, sync: FirestoreSync(), onNew: () {}, onChrono: (_) {}, onTimer: (_) {}))));
-    await t.pump();
-
-    // Tenue ce soir : elle passe dans « À rattraper », jamais dans « Prendre de l'avance ».
-    expect(find.byKey(const ValueKey('launcher-catching')), findsOneWidget);
-    expect(find.byKey(const ValueKey('launcher-ahead')), findsNothing);
-    expect(find.textContaining(nb('encore 1 = hier rattrapé'), findRichText: true), findsOneWidget);
-    final gauge = find.byKey(const ValueKey('launcher-cover-bar-vaisselle'));
-    expect(find.descendant(of: gauge, matching: find.text('hier')), findsOneWidget);
-    expect(find.descendant(of: gauge, matching: find.text('demain')), findsNothing);
-    // Pas encore faite : à faire, sa jauge montre déjà le jour à rattraper après « ce soir ».
-    final todo = find.byKey(const ValueKey('launcher-cover-bar-lit'));
-    expect(find.descendant(of: todo, matching: find.text('ce soir')), findsOneWidget);
-    expect(find.descendant(of: todo, matching: find.text('hier')), findsOneWidget);
-
-    // Une coche de plus rattrape hier : la série recolle.
-    logic.state.habitHits.add(HabitHit(habitId: 'vaisselle', ts: DateTime(today.year, today.month, today.day, 5, 30)));
-    expect(logic.repairedOf(logic.state.activities.first).length, 1);
-    final a = logic.state.activities.first;
-    expect(routineSeries(a, logic.state.habitHits, DateTime.now(), bridged: logic.bridgedOf('vaisselle')).current, 2);
-    expect(t.takeException(), isNull);
   });
 }

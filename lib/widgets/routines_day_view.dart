@@ -611,16 +611,11 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           if (!done && widget.onPlan != null && isPlanRoutine(a)) ...[
             Tooltip(message: 'Planifier maintenant', child: btn(Icons.explore_outlined, widget.onPlan!)),
             const SizedBox(width: 6),
-          ] else if (linked != null && running) ...[
-            btn(Icons.stop_rounded, () => _toggleChrono(linked), color: kBAttention),
+          ] else if (linked != null) ...[
+            btn(running ? Icons.stop_rounded : Icons.play_arrow_rounded, () => _toggleChrono(linked), color: running ? kBAttention : null),
             const SizedBox(width: 6),
           ] else if (timed) ...[
-            // Une durée réglée : le bouton lance le minuteur à cette durée (et le chrono de l'activité liée),
-            // pas un chrono sans fin (retour user 2026-11-19).
-            Tooltip(message: 'Minuteur ${a.timerMin} min', child: KeyedSubtree(key: ValueKey('routine-timer-${a.id}'), child: btn(Icons.timer_outlined, () => _timer(a)))),
-            const SizedBox(width: 6),
-          ] else if (linked != null) ...[
-            btn(Icons.play_arrow_rounded, () => _toggleChrono(linked)),
+            btn(Icons.timer_outlined, () => _timer(a)),
             const SizedBox(width: 6),
           ],
           _round(pal, '−', count > 0 ? () => _minus(a) : null, size: 40),

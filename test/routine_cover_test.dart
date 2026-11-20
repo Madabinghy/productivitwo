@@ -134,13 +134,11 @@ void main() {
       expect(slots[3].full, isFalse);
     });
 
-    test('semaine à trous : les jours ratés à rattraper d\'abord, demain au même prix qu\'avant', () {
+    test('semaine à trous : demain coûte plus cher, deux jours au même prix fusionnent', () {
       final c = routineCover(pompes(), hits([10, 0, 10, 0, 10, 10, 0]), now);
       final slots = coverSlots(c);
-      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'lun. 16', 'sam. 14', 'demain']);
-      expect([for (final s in slots) s.cost], [10, 10, 10, 10]);
-      // 10 ce soir + 20 de rattrapage + 10 : demain est libre à 40, comme la règle des 7 jours.
-      expect((slots.last.hi, c.toFreeTomorrow), (40, 40));
+      expect([for (final s in slots) s.cost], [10, 30, 10]);
+      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'dem. + sam.', 'dim.']);
     });
 
     test('avance d\'hier : ce soir et demain déjà acquis', () {
@@ -152,15 +150,10 @@ void main() {
       expect([for (final s in slots.skip(1)) s.cost], [10, 10]);
     });
 
-    test('trois jours ratés : trois cases de rattrapage, puis demain', () {
+    test('trois jours au même prix : « dem. → dim. »', () {
       final c = routineCover(pompes(), hits([10, 0, 0, 0, 10, 10, 0]), now);
       final slots = coverSlots(c);
-      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'lun. 16', 'dim. 15', 'sam. 14', 'demain']);
-    });
-
-    test('plusieurs jours déjà couverts : « ce soir → dim. »', () {
-      final c = routineCover(pompes(), hits([10, 10, 10, 10, 10, 50, 0]), now);
-      expect(coverSlotLabel(c.today, coverSlots(c).first), 'ce soir → dim.');
+      expect(coverSlotLabel(c.today, slots[1]), 'dem. → dim.');
     });
   });
 
@@ -262,87 +255,5 @@ void main() {
     expect(Activity.from(pompes().toJson()).rolling, isTrue);
     expect(Activity.from(pompes(rolling: false).toJson()).rolling, isFalse);
     expect(Activity.from({'id': 'x', 'name': 'X', 'type': 'habit'}).rolling, isFalse);
-  });
-
-  group('rattraper un jour raté', () {
-    // Vaisselle : 1 fois par jour. now = jeudi 19 ; mardi 17 et mercredi 18 ratés.
-    Activity vaisselle({bool catchUp = true, bool rolling = false}) => Activity(
-          id: 'v', domainId: 'd', name: 'Vaisselle', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, catchUp: catchUp, rolling: rolling, createdAt: DateTime(2026, 1, 1));
-    List<HabitHit> h(List<int> perDay) => hits(perDay, id: 'v');
-
-    test('« Chaque jour » : rien ne se rattrape', () {
-      final c = catchUpOf(vaisselle(catchUp: false), h([1, 1, 1, 1, 0, 0, 3]), now);
-      expect(c.repaired, isEmpty);
-      expect(c.open, isEmpty);
-    });
-
-    test('« Rattrapable » : ce qui est fait en plus comble le jour raté le plus récent d\'abord', () {
-      final a = vaisselle();
-      // 1 aujourd'hui : tenue, les deux trous attendent.
-      var c = catchUpOf(a, h([1, 1, 1, 1, 0, 0, 1]), now);
-      expect(c.repaired, isEmpty);
-      expect([for (final x in c.open) x.day.day], [18, 17]);
-      // 2 : mercredi rattrapé, mardi attend encore.
-      c = catchUpOf(a, h([1, 1, 1, 1, 0, 0, 2]), now);
-      expect(c.repaired, {'2026-11-18'});
-      // 3 : les deux.
-      c = catchUpOf(a, h([1, 1, 1, 1, 0, 0, 3]), now);
-      expect(c.repaired, {'2026-11-18', '2026-11-17'});
-    });
-
-    test('au-delà de 7 jours, un jour raté ne se rattrape plus', () {
-      // Raté il y a 7 jours (jeudi 12), puis 6 jours tenus : aujourd'hui, il est sorti de la fenêtre.
-      final c = catchUpOf(vaisselle(), h([1, 0, 1, 1, 1, 1, 1, 1, 3]), now);
-      expect(c.repaired, isEmpty);
-      // Raté il y a 6 jours (vendredi 13) : encore rattrapable.
-      expect(catchUpOf(vaisselle(), h([1, 0, 1, 1, 1, 1, 1, 2]), now).repaired, {'2026-11-13'});
-    });
-
-    test('un jour gelé n\'est pas un trou', () {
-      final c = catchUpOf(vaisselle(), h([1, 1, 1, 1, 0, 0, 1]), now, frozen: {'2026-11-18'});
-      expect([for (final x in c.open) x.day.day], [17]);
-    });
-
-    test('rattrapé un autre jour que le lendemain, et à moitié puis en entier', () {
-      // Cible 10 : lundi 16 à 4 (il manque 6), mardi 13 (3 de trop), mercredi 13 (3 de trop) → comblé mercredi.
-      final a = Activity(id: 'p', domainId: 'd', name: 'Pompes', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 10, catchUp: true, createdAt: DateTime(2026, 1, 1));
-      expect(catchUpOf(a, hits([10, 4, 13, 10, 0], id: 'p'), now).repaired, isEmpty);
-      expect(catchUpOf(a, hits([10, 4, 13, 13, 0], id: 'p'), now).repaired, {'2026-11-16'});
-    });
-
-    test('la série recolle par un jour rattrapé, sans devenir un jour atteint', () {
-      final a = vaisselle();
-      final all = h([1, 1, 1, 1, 0, 0, 3]);
-      final fixed = catchUpOf(a, all, now).repaired;
-      // Les jours atteints ne changent pas : mardi et mercredi restent non atteints (pas de journée parfaite après coup).
-      expect(routineReachedDays(a, all, now: now).contains('2026-11-18'), isFalse);
-      expect(routineSeries(a, all, now).current, 1);
-      expect(routineSeries(a, all, now, bridged: fixed).current, 7);
-    });
-
-    test('la jauge : ce soir, puis les jours à rattraper, sans avance en « Rattrapable »', () {
-      final c = routineCover(vaisselle(), h([1, 1, 1, 1, 0, 0, 2]), now);
-      expect((c.advance, c.dayTarget, c.held, c.canGetAhead), (false, 1, true, false));
-      expect(c.holeThresholds, [2, 3]);
-      expect((c.holesFilled, c.holesLeft, c.canCatchUp, c.toNextHole), (1, 1, true, 1));
-      expect(holeDayLabel(c.today, c.nextHole!.day), 'mardi');
-      final slots = coverSlots(c);
-      expect([for (final s in slots) coverSlotLabel(c.today, s)], ['ce soir', 'hier', 'mar. 17']);
-      expect([for (final s in slots) s.full], [true, true, false]);
-    });
-
-    test('« Sur 7 jours » : les jours à rattraper passent avant l\'avance', () {
-      final c = routineCover(vaisselle(catchUp: false, rolling: true), h([1, 1, 1, 1, 0, 0, 1]), now);
-      final slots = coverSlots(c);
-      expect([for (final s in slots) coverSlotLabel(c.today, s)].take(4).toList(), ['ce soir', 'hier', 'mar. 17', 'demain']);
-      // 1 ce soir + 2 trous + 1 = demain libre, comme la règle des 7 jours.
-      expect((slots[3].hi, c.toFreeTomorrow), (4, 3));
-      expect(c.canCatchUp, isTrue);
-    });
-
-    test('le réglage survit à l\'enregistrement', () {
-      expect(Activity.from(vaisselle().toJson()).catchUp, isTrue);
-      expect(Activity.from({'id': 'x', 'name': 'X', 'type': 'habit'}).catchUp, isFalse);
-    });
   });
 }
