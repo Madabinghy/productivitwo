@@ -165,10 +165,11 @@ function normalizeMinPerHit(v) {
     return Math.min(240, n);
 }
 /**
- * Champs à écrire pour `rolling` / `minPerHit`, et ce qu'on en dit. `current` =
+ * Champs à écrire pour `rolling` / `catchUp` / `autoTarget` / `minPerHit`, et ce qu'on en dit. `current` =
  * la routine telle qu'elle sera après les autres modifications de l'appel.
  */
 function rhythmPatch(updates, current) {
+    var _a;
     const patch = {};
     const notes = [];
     const isHabit = current.type === "habit";
@@ -209,6 +210,26 @@ function rhythmPatch(updates, current) {
         }
         else {
             notes.push("⚠️ « Rattrapable » concerne les routines, pas les activités de temps.");
+        }
+    }
+    // Cible automatique (2026-11-20) : la règle est appliquée par l'app (`lib/utils/auto_target.dart`), au lancement.
+    if (updates.autoTarget !== undefined) {
+        const on = truthy(updates.autoTarget);
+        const capped = Number((_a = current.finalTarget) !== null && _a !== void 0 ? _a : 0) > 0;
+        if (!isHabit) {
+            notes.push("⚠️ La cible automatique concerne les routines, pas les activités de temps (leur minimum suit déjà le réel).");
+        }
+        else if (on && !daily) {
+            notes.push("⚠️ La cible automatique ne s'applique qu'aux routines quotidiennes : rien n'a été changé.");
+        }
+        else if (on && capped) {
+            notes.push("⚠️ Cette routine a un cap (progression par paliers) : c'est lui qui pilote la cible, la cible automatique n'a pas été allumée.");
+        }
+        else {
+            patch.autoTarget = on;
+            notes.push(on
+                ? "Cible automatique : à 120 % sur 7 jours clos elle monte d'un cran, sous 50 % elle descend d'un cran, une fois par semaine au plus (appliqué par l'app à son lancement ; une hausse ne casse pas la série)."
+                : "Cible automatique éteinte : la cible ne bouge plus toute seule.");
         }
     }
     if (updates.minPerHit !== undefined) {

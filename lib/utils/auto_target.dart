@@ -53,7 +53,7 @@ AutoTargetDecision? autoTargetDecision(Activity a, List<HabitHit> hits, DateTime
   DateTime back(int n) => DateTime(today.year, today.month, today.day - n);
   final first = back(kAutoWindowDays);
   DateTime dayOf(DateTime t) {
-    final d = livedDate(t, dayStartMin);
+    final d = livedDate(t.toLocal(), dayStartMin); // une date posée par le serveur arrive en UTC
     return DateTime(d.year, d.month, d.day);
   }
 
