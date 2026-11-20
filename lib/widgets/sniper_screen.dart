@@ -420,6 +420,10 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       RunSessionStore.clear();
     }
     WakelockPlus.disable().catchError((_) {});
+    // La session vient d'être gardée, close ou effacée : Aujourd'hui (tuile du mode, carte
+    // « Reprendre ») se redessine une fois la feuille partie.
+    final l = logic;
+    WidgetsBinding.instance.addPostFrameCallback((_) => l.onChange());
     super.dispose();
   }
 

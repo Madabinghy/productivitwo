@@ -52,8 +52,9 @@ String _deltaLabel(int min) {
 /// arrêt). La bande vert clair après le vert, fermée par un trait, est ce plafond. Le triangle blanc se pose de la
 /// même façon sur ce qui tournait il y a 7 jours : alignés = tu fais pareil.
 ///
-/// Changer de cible prend une minute ([kNeedleTravel], demande user) : l'aiguille glisse vers sa nouvelle place.
-const kNeedleTravel = Duration(seconds: 60);
+/// Changer de cible prend deux minutes ([kNeedleTravel], demande user : une minute d'abord, deux depuis le
+/// 2026-11-20) : l'aiguille glisse vers sa nouvelle place.
+const kNeedleTravel = Duration(seconds: 120);
 
 class WeekHoursGauge extends StatefulWidget {
   final WeekHours h;

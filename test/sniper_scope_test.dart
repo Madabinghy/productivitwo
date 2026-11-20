@@ -94,6 +94,70 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
+    testWidgets('les cibles changent : la lunette se recharge, les minutes glissent vers le nouveau total', (t) async {
+      final kingdom = Activity(id: 'k', domainId: 'd', name: 'Kingdom', goalMin: 20);
+      final before = planSniper(stakes: [timed(lecture, 12), timed(kingdom, 30)], budgetMin: 60);
+      final after = planSniper(stakes: [timed(lecture, 12)], budgetMin: 60);
+      await pump(t, before);
+      // Le premier dessin est en place, rien ne tourne.
+      expect(t.hasRunningAnimations, isFalse);
+      expect(find.text('${before.totalMin}'), findsOneWidget);
+      // Une minute passe (même plan) : rien ne se relance.
+      await pump(t, before);
+      expect(t.hasRunningAnimations, isFalse);
+      // Kingdom tombe (une routine validée, un chrono arrêté) : le balayage part.
+      await pump(t, after);
+      expect(t.hasRunningAnimations, isTrue);
+      await t.pump(kSniperReload ~/ 2);
+      final mid = int.parse(t.widget<Text>(find.descendant(of: find.byKey(const Key('mode-tile-scope')), matching: find.byType(Text)).first).data!);
+      expect(mid, lessThan(before.totalMin));
+      expect(mid, greaterThan(after.totalMin));
+      await t.pump(kSniperReload);
+      expect(t.hasRunningAnimations, isFalse);
+      expect(find.text('${after.totalMin}'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    test('session en cours : touchées, passée, tir laissé en route ou prochain tir, à venir', () {
+      final extra = {
+        'aimed': ['a', 'b', 'c', 'd'],
+        'hit': ['a'],
+        'skipped': ['b'],
+      };
+      expect(sniperRounds(extra), [MagRound.done, MagRound.skipped, MagRound.current, MagRound.todo]);
+      expect(sniperRounds({...extra, 'cur': 'd'}), [MagRound.done, MagRound.skipped, MagRound.todo, MagRound.current]);
+      expect(sniperRounds({'aimed': ['a'], 'hit': ['a']}), [MagRound.done]);
+      expect(sniperRounds(const {}), isEmpty);
+    });
+
+    testWidgets('session en cours : la tuile montre les cibles touchées, puis se recharge quand une autre tombe', (t) async {
+      final plan = planSniper(stakes: [timed(lecture, 12)], budgetMin: 60);
+      Future<void> show(List<MagRound> rounds) => t.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                    width: 104,
+                    height: 104,
+                    child: SniperModeTile(plan: plan, freeMin: 60, label: 'Reprendre le Sniper', pending: true, session: rounds, onTap: () {})),
+              ),
+            ),
+          ));
+      await show([MagRound.done, MagRound.done, MagRound.current, MagRound.todo]);
+      expect(find.byKey(const Key('mode-tile-session')), findsOneWidget);
+      expect(find.text('2/4'), findsOneWidget);
+      expect(find.text('touchées'), findsOneWidget);
+      // Les minutes du viseur ne sont pas affichées pendant une session.
+      expect(find.text('min'), findsNothing);
+      expect(t.hasRunningAnimations, isFalse);
+      await show([MagRound.done, MagRound.done, MagRound.done, MagRound.current]);
+      expect(t.hasRunningAnimations, isTrue);
+      expect(find.text('3/4'), findsOneWidget);
+      await t.pump();
+      await t.pump(kSniperReload + const Duration(milliseconds: 100));
+      expect(t.hasRunningAnimations, isFalse);
+      expect(t.takeException(), isNull);
+    });
+
     testWidgets('rien à viser : la lunette vide, sans chiffre', (t) async {
       await pump(t, const SniperPlan(budgetMin: 45), pending: true);
       expect(find.byKey(const Key('mode-tile-scope')), findsOneWidget);

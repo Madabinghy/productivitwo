@@ -110,3 +110,6 @@ List<CardImpact> shotCard(List<CardShot> shots) {
 
 /// Durée de l'impact entre deux tirs (toucher l'écran = tout de suite).
 const kSniperImpact = Duration(milliseconds: 1500);
+
+/// Durée du balayage qui redessine la miniature du viseur quand ses cibles changent.
+const kSniperReload = Duration(milliseconds: 1800);
