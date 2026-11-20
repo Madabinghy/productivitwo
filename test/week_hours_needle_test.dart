@@ -36,30 +36,30 @@ void main() {
     await show(t, working);
     await t.pump();
     expect(needleOf(t), closeTo(low, 1e-6));
-    await t.pump(const Duration(seconds: 30));
-    // À mi-chemin au bout de 30 s (la courbe est approchée : à 5 % près).
+    await t.pump(kNeedleTravel ~/ 2);
+    // À mi-chemin à la moitié du trajet (la courbe est approchée : à 5 % près).
     expect(needleOf(t), closeTo((low + high) / 2, (high - low) * .05));
-    await t.pump(const Duration(seconds: 30));
+    await t.pump(kNeedleTravel ~/ 2);
     expect(needleOf(t), closeTo(high, 1e-9));
 
-    // Le chrono s'arrête : elle redescend, en une minute aussi.
+    // Le chrono s'arrête : elle redescend, dans le même temps.
     await show(t, idle);
     await t.pump();
-    await t.pump(const Duration(seconds: 59));
+    await t.pump(kNeedleTravel - const Duration(seconds: 1));
     expect(needleOf(t), greaterThan(low));
     await t.pump(const Duration(seconds: 1));
     expect(needleOf(t), closeTo(low, 1e-9));
   });
 
-  testWidgets('une minute de plus pendant le trajet : l\'aiguille continue, elle ne repart pas pour une minute', (t) async {
+  testWidgets('une minute de plus pendant le trajet : l\'aiguille continue, elle ne repart pas de zéro', (t) async {
     await show(t, hours());
     await show(t, hours(now: HoursKind.active));
     await t.pump();
-    await t.pump(const Duration(seconds: 40));
+    await t.pump(kNeedleTravel * (2 / 3));
     // La minute tourne : le vert a gagné une minute, la cible a à peine bougé.
     final later = hours(now: HoursKind.active, active: 481);
     await show(t, later);
-    await t.pump(const Duration(seconds: 20));
+    await t.pump(kNeedleTravel * (1 / 3));
     expect(needleOf(t), closeTo(gaugeLayout(later).fullAt, 1e-9));
     // Arrivée : une dérive ne relance rien.
     await show(t, hours(now: HoursKind.active, active: 482));

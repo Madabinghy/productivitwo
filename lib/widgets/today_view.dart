@@ -58,7 +58,8 @@ import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent,
 import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
 import 'package:productivitwo_v1/utils/sniper.dart' show SniperPlan, kSniperKind;
 import 'package:productivitwo_v1/sniper_now.dart';
-import 'package:productivitwo_v1/widgets/sniper_scope.dart' show SniperModeTile;
+import 'package:productivitwo_v1/utils/run_session.dart' show PendingRun;
+import 'package:productivitwo_v1/widgets/sniper_scope.dart' show MagRound, SniperModeTile, sniperRounds;
 import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
 import 'package:productivitwo_v1/widgets/plan_screen.dart' show showPlanScreen, kPlanAccent;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
@@ -1096,7 +1097,7 @@ class TodayViewState extends State<TodayView> {
     final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
     final unit = kind == kSniperKind ? 'cible' : 'coup';
     final label = pending != null ? 'Reprendre · ${l.name} · ${pending.done} $unit${pending.done > 1 ? 's' : ''}' : '${l.name} · ${l.line}';
-    if (kind == kSniperKind) return _sniperTile(pending: pending != null, resumeLabel: pending == null ? null : label);
+    if (kind == kSniperKind) return _sniperTile(pending: pending);
     return Tooltip(
       message: label,
       child: Semantics(
@@ -1131,7 +1132,10 @@ class TodayViewState extends State<TodayView> {
 
   /// La tuile du Sniper = la miniature de son viseur (2026-11-20, demande user) : ce qu'il
   /// viserait là, maintenant, dans le temps libre, à la place de l'icône.
-  Widget _sniperTile({required bool pending, String? resumeLabel}) {
+  ///
+  /// Une session en cours (la feuille refermée après des tirs) : la tuile montre la session —
+  /// un arc par cible visée, les touchées en vert, celle en cours en bleu — et « 2/4 touchées ».
+  Widget _sniperTile({PendingRun? pending}) {
     final logic = widget.logic, st = logic.state, now = DateTime.now();
     final open = [for (final s in st.sessions) if (s.endAt == null && !s.deleted) s.activityId].join(',');
     final blocks = [for (final b in logic.todayBlocks) '${b.id}${b.status}'].join(',');
@@ -1143,11 +1147,25 @@ class TodayViewState extends State<TodayView> {
     final aim = _sniperAim!;
     final n = aim.plan.aimed.length;
     final until = '${(aim.budget.untilMin ~/ 60 % 24).toString().padLeft(2, '0')}:${(aim.budget.untilMin % 60).toString().padLeft(2, '0')}';
-    final label = resumeLabel ??
-        (n == 0
-            ? 'Sniper · rien à viser pour l’instant'
-            : 'Sniper · $n cible${n > 1 ? 's' : ''} · ${fmtMin(aim.plan.totalMin)} visées sur ${fmtMin(aim.budget.minutes)} libres jusqu’à $until');
-    return SniperModeTile(plan: aim.plan, freeMin: aim.budget.minutes, label: label, pending: pending, onTap: () => openRun(kSniperKind));
+    final rounds = pending == null ? null : sniperRounds(pending.extra);
+    final String label;
+    if (rounds != null && rounds.isNotEmpty) {
+      final done = rounds.where((r) => r == MagRound.done).length;
+      label = 'Reprendre le Sniper · $done cible${done > 1 ? 's' : ''} touchée${done > 1 ? 's' : ''} sur ${rounds.length}'
+          '${rounds.contains(MagRound.current) && pending!.extra['cur'] != null ? ' · un tir en cours' : ''}';
+    } else if (n == 0) {
+      label = 'Sniper · rien à viser pour l’instant';
+    } else {
+      label = 'Sniper · $n cible${n > 1 ? 's' : ''} · ${fmtMin(aim.plan.totalMin)} visées sur ${fmtMin(aim.budget.minutes)} libres jusqu’à $until';
+    }
+    return SniperModeTile(
+      plan: aim.plan,
+      freeMin: aim.budget.minutes,
+      label: label,
+      pending: pending != null,
+      session: rounds,
+      onTap: () => openRun(kSniperKind),
+    );
   }
 
   /// Fin de la journée active (réglage Capacité), lue une fois : le temps libre du viseur s'y arrête.

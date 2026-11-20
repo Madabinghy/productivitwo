@@ -113,41 +113,86 @@ class SniperAimScope extends StatelessWidget {
 
   /// Miniature (tuile du mode d'Aujourd'hui) : arcs épais, ni numéros ni traits de minute.
   final bool mini;
-  const SniperAimScope({super.key, required this.scope, required this.colors, this.size = 250, this.child, this.label, this.mini = false});
+
+  /// Miniature en train de se recharger : un balayage tourne de 0 à 1 ([reveal]) ; derrière
+  /// lui la lunette d'aujourd'hui, devant lui celle d'avant ([oldScope], [oldColors]).
+  final double reveal;
+  final AimScope? oldScope;
+  final List<Color> oldColors;
+  const SniperAimScope({
+    super.key,
+    required this.scope,
+    required this.colors,
+    this.size = 250,
+    this.child,
+    this.label,
+    this.mini = false,
+    this.reveal = 1,
+    this.oldScope,
+    this.oldColors = const [],
+  });
 
   @override
-  Widget build(BuildContext context) => _Scope(size: size, painter: _AimPainter(scope, colors, mini), label: label, child: child);
+  Widget build(BuildContext context) =>
+      _Scope(size: size, painter: _AimPainter(scope, colors, mini, reveal: reveal, oldScope: oldScope, oldColors: oldColors), label: label, child: child);
 }
 
 class _AimPainter extends CustomPainter {
   final AimScope scope;
   final List<Color> colors;
   final bool mini;
-  _AimPainter(this.scope, this.colors, this.mini);
+  final double reveal;
+  final AimScope? oldScope;
+  final List<Color> oldColors;
+  _AimPainter(this.scope, this.colors, this.mini, {this.reveal = 1, this.oldScope, this.oldColors = const []});
+
+  /// Les arcs et l'air d'une lunette, entre deux angles seulement.
+  void _miniRing(Canvas canvas, Offset c, double s, AimScope sc, List<Color> cols, double from, double to) {
+    final r = 122 * s;
+    for (final a in sc.arcs) {
+      final trim = a.sweep > 14 ? 3.5 : 1.0;
+      final lo = math.max(a.start + trim, from), hi = math.min(a.end - trim, to);
+      if (hi <= lo) continue;
+      _arc(canvas, c, r, lo, hi - lo, Paint()
+        ..color = a.index < cols.length ? cols[a.index] : kSniperAccent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 24 * s);
+    }
+    if (sc.airSweep > 0) {
+      final dots = Paint()..color = _text3.withValues(alpha: .8);
+      for (var d = sc.airStart + 8; d < sc.airStart + sc.airSweep - 4; d += 12) {
+        if (d >= from && d <= to) canvas.drawCircle(_at(c, r, d), 3.6 * s, dots);
+      }
+    }
+  }
 
   void _paintMini(Canvas canvas, Size size) {
     final s = size.width / 280;
     final c = size.center(Offset.zero);
+    final old = oldScope;
+    final loading = old != null && reveal < 1;
+    final front = loading ? 360 * reveal.clamp(0, 1).toDouble() : 360.0;
     _lens(canvas, c, 104 * s, kSniperAccent, .16);
-    _cross(canvas, c, 98 * s, scope.arcs.isEmpty ? 14 * s : 66 * s, Paint()
+    final empty = scope.arcs.isEmpty && !(loading && old.arcs.isNotEmpty);
+    _cross(canvas, c, 98 * s, empty ? 14 * s : 66 * s, Paint()
       ..color = kSniperAccent.withValues(alpha: .45)
       ..strokeWidth = 3 * s);
-    final r = 122 * s;
-    for (final a in scope.arcs) {
-      final trim = a.sweep > 14 ? 3.5 : 1.0;
-      _arc(canvas, c, r, a.start + trim, a.sweep - 2 * trim, Paint()
-        ..color = a.index < colors.length ? colors[a.index] : kSniperAccent
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 24 * s);
-    }
-    if (scope.airSweep > 0) {
-      final dots = Paint()..color = _text3.withValues(alpha: .8);
-      for (var d = scope.airStart + 8; d < scope.airStart + scope.airSweep - 4; d += 12) {
-        canvas.drawCircle(_at(c, r, d), 3.6 * s, dots);
+    _miniRing(canvas, c, s, scope, colors, 0, front);
+    if (loading) {
+      _miniRing(canvas, c, s, old, oldColors, front, 360);
+      // Le balayage : une traînée qui s'efface derrière un trait clair.
+      final rect = Rect.fromCircle(center: c, radius: 136 * s);
+      for (var i = 0; i < 5; i++) {
+        final back = math.min(front, (i + 1) * 9.0);
+        canvas.drawArc(rect, _rad(front - back - 90), _rad(back), true, Paint()..color = kSniperAccent.withValues(alpha: .07));
       }
+      canvas.drawLine(_at(c, 20 * s, front), _at(c, 136 * s, front), Paint()
+        ..color = Colors.white.withValues(alpha: .9)
+        ..strokeWidth = 4 * s
+        ..strokeCap = StrokeCap.round);
     }
     // Rien à viser : le réticule seul, avec son point au centre.
-    if (scope.arcs.isEmpty) canvas.drawCircle(c, 9 * s, Paint()..color = kSniperAccent);
+    if (empty) canvas.drawCircle(c, 9 * s, Paint()..color = kSniperAccent);
   }
 
   @override
@@ -425,6 +470,27 @@ class _CardPainter extends CustomPainter {
 
 enum MagRound { done, current, skipped, todo }
 
+/// Les tirs d'une session gardée sur l'appareil (`PendingRun.extra` : `aimed`, `hit`,
+/// `skipped`, `cur`), dans l'ordre : touché, passé, en cours (le tir laissé en route, sinon
+/// le prochain à tirer), à venir. Vide quand la session n'a pas encore de cibles.
+List<MagRound> sniperRounds(Map<String, dynamic> extra) {
+  List<String> strings(dynamic v) => v is List ? [for (final x in v) '$x'] : const [];
+  final aimed = strings(extra['aimed']);
+  final hit = strings(extra['hit']).toSet(), skipped = strings(extra['skipped']).toSet();
+  final cur = extra['cur'];
+  final next = cur is String && aimed.contains(cur) ? cur : aimed.where((k) => !hit.contains(k) && !skipped.contains(k)).firstOrNull;
+  return [
+    for (final k in aimed)
+      hit.contains(k)
+          ? MagRound.done
+          : skipped.contains(k)
+              ? MagRound.skipped
+              : k == next
+                  ? MagRound.current
+                  : MagRound.todo,
+  ];
+}
+
 /// Le chargeur : un tir par cartouche (faits en vert, en cours allumé).
 class SniperMagazine extends StatelessWidget {
   final List<MagRound> rounds;
@@ -476,8 +542,11 @@ class SniperTargetDot extends StatelessWidget {
 /// La tuile Sniper d'Aujourd'hui (2026-11-20, demande user : la miniature du
 /// viseur à la place de l'icône, comme la jauge des 7 jours) : la lunette seule
 /// — le tour = le temps libre, un arc par cible — et les minutes visées au
-/// centre. Le détail reste en infobulle et pour la lecture d'écran.
-class SniperModeTile extends StatelessWidget {
+/// centre. Le détail reste en infobulle et pour la lecture d'écran. Pendant une
+/// session ([session], la feuille refermée en cours de route) : un arc par cible
+/// visée — touchées en vert, celle en cours en bleu, les suivantes éteintes — et
+/// « touchées / visées » au centre.
+class SniperModeTile extends StatefulWidget {
   final SniperPlan plan;
 
   /// Temps libre (minutes) jusqu'au prochain bloc.
@@ -486,13 +555,112 @@ class SniperModeTile extends StatelessWidget {
 
   /// Une session Sniper attend d'être reprise.
   final bool pending;
+
+  /// Les tirs de la session en cours, dans l'ordre (null = pas de session : le viseur).
+  final List<MagRound>? session;
   final VoidCallback onTap;
-  const SniperModeTile({super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false});
+  const SniperModeTile({super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false, this.session});
+
+  @override
+  State<SniperModeTile> createState() => _SniperModeTileState();
+}
+
+/// Ce que la tuile montre à un instant : la lunette, ses couleurs, et le centre
+/// (des minutes qui peuvent glisser, ou un texte).
+class _TileFace {
+  final AimScope scope;
+  final List<Color> colors;
+  final String sig;
+  final int? total;
+  final String? text;
+  const _TileFace({required this.scope, required this.colors, required this.sig, this.total, this.text});
+
+  factory _TileFace.of(SniperModeTile w) {
+    final rounds = w.session;
+    if (rounds != null && rounds.isNotEmpty) {
+      final done = rounds.where((r) => r == MagRound.done).length;
+      return _TileFace(
+        scope: aimScope(costs: List.filled(rounds.length, 1), freeMin: rounds.length),
+        colors: [
+          for (final r in rounds)
+            switch (r) {
+              MagRound.done => kSniperGreen,
+              MagRound.current => kSniperAccent,
+              MagRound.skipped => _line,
+              MagRound.todo => kSniperAccent.withValues(alpha: .28),
+            },
+        ],
+        sig: 'session:${rounds.map((r) => r.index).join()}',
+        text: '$done/${rounds.length}',
+      );
+    }
+    final p = w.plan;
+    return _TileFace(
+      scope: aimScope(costs: [for (final t in p.aimed) t.cost], freeMin: w.freeMin, pauseMin: p.pauseMin),
+      colors: [for (final t in p.aimed) sniperTargetColor(t)],
+      sig: [for (final t in p.aimed) '${t.key}:${t.amount}'].join('|'),
+      total: p.aimed.isEmpty ? null : p.totalMin,
+    );
+  }
+}
+
+/// Quand les cibles changent (une routine validée, un chrono arrêté, un bloc fait, une cible
+/// touchée), la lunette se recharge sous les yeux (2026-11-20, demande user) : un balayage
+/// fait le tour en [kSniperReload], l'ancienne lunette devant lui, la nouvelle derrière, et
+/// les minutes du centre glissent de l'ancien total au nouveau. Le premier dessin est en
+/// place ; une minute qui passe (le temps libre qui rétrécit) ne relance rien.
+class _SniperModeTileState extends State<SniperModeTile> with SingleTickerProviderStateMixin {
+  late final AnimationController _reload;
+  _TileFace? _old;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload = AnimationController(vsync: this, duration: kSniperReload, value: 1);
+  }
+
+  @override
+  void didUpdateWidget(SniperModeTile old) {
+    super.didUpdateWidget(old);
+    final before = _TileFace.of(old);
+    if (before.sig == _TileFace.of(widget).sig) return;
+    _old = before;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _reload.value = 1;
+    } else {
+      _reload.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _reload.dispose();
+    super.dispose();
+  }
+
+  Widget _minutes(int total) => Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(total < 100 ? '$total' : '${total ~/ 60}h${(total % 60).toString().padLeft(2, '0')}',
+            style: TextStyle(
+                fontFamily: kAppFont,
+                fontSize: total < 100 ? 22 : 15,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+        if (total < 100) Text('min', style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w700, color: _text2)),
+      ]);
+
+  Widget _session(String text) => Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(text,
+            key: const Key('mode-tile-session'),
+            style: TextStyle(fontFamily: kAppFont, fontSize: 19, height: 1, fontWeight: FontWeight.w800, color: Colors.white, fontFeatures: const [FontFeature.tabularFigures()])),
+        Text('touchées', style: TextStyle(fontFamily: kAppFont, fontSize: 8.5, height: 1.3, fontWeight: FontWeight.w700, color: kSniperGreen)),
+      ]);
 
   @override
   Widget build(BuildContext context) {
-    final total = plan.totalMin;
-    final scope = aimScope(costs: [for (final t in plan.aimed) t.cost], freeMin: freeMin, pauseMin: plan.pauseMin);
+    final label = widget.label;
+    final face = _TileFace.of(widget);
     return Tooltip(
       message: label,
       child: Semantics(
@@ -504,33 +672,41 @@ class SniperModeTile extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: kSniperAccent.withValues(alpha: .6), width: 1.5)),
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            onTap: onTap,
+            onTap: widget.onTap,
             child: Stack(children: [
               Center(
                 child: ExcludeSemantics(
-                  child: SniperAimScope(
-                    key: const Key('mode-tile-scope'),
-                    mini: true,
-                    size: 88,
-                    scope: scope,
-                    colors: [for (final t in plan.aimed) sniperTargetColor(t)],
-                    child: plan.aimed.isEmpty
-                        ? null
-                        : Column(mainAxisSize: MainAxisSize.min, children: [
-                            Text(total < 100 ? '$total' : '${total ~/ 60}h${(total % 60).toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                    fontFamily: kAppFont,
-                                    fontSize: total < 100 ? 22 : 15,
-                                    height: 1,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    fontFeatures: const [FontFeature.tabularFigures()])),
-                            if (total < 100) Text('min', style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w700, color: _text2)),
-                          ]),
+                  child: AnimatedBuilder(
+                    animation: _reload,
+                    builder: (context, _) {
+                      final old = _old;
+                      final loading = _reload.value < 1 && old != null;
+                      final t = Curves.easeInOutCubic.transform(_reload.value);
+                      // Les minutes glissent d'un total à l'autre (vers zéro quand tout est tombé).
+                      final from = old?.total ?? 0, to = face.total ?? 0;
+                      final Widget? center = face.text != null
+                          ? _session(face.text!)
+                          : loading && (old.total != null || face.total != null) && old.text == null
+                              ? _minutes((from + (to - from) * t).round())
+                              : face.total == null
+                                  ? null
+                                  : _minutes(face.total!);
+                      return SniperAimScope(
+                        key: const Key('mode-tile-scope'),
+                        mini: true,
+                        size: 88,
+                        scope: face.scope,
+                        colors: face.colors,
+                        reveal: loading ? t : 1,
+                        oldScope: loading ? old.scope : null,
+                        oldColors: old?.colors ?? const [],
+                        child: center,
+                      );
+                    },
                   ),
                 ),
               ),
-              if (pending)
+              if (widget.pending)
                 Positioned(
                   right: 8,
                   top: 8,
