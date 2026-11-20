@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -886,7 +887,7 @@ class _PlanScreenState extends State<PlanScreen> {
           selectedBackgroundColor: kPlanAccent,
           selectedForegroundColor: _ink,
           foregroundColor: _text2,
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          textStyle: TextStyle(fontFamily: kAppFont, fontWeight: FontWeight.w800, fontSize: 13),
         ),
         onSelectionChanged: (v) {
           setState(() {

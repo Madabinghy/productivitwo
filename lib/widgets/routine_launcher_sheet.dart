@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/linked_routines.dart' show isPlanRoutine;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -454,7 +455,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           selected: {_focus},
           showSelectedIcon: false,
           style: SegmentedButton.styleFrom(
-              visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+              visualDensity: VisualDensity.compact, textStyle: TextStyle(fontFamily: kAppFont, fontWeight: FontWeight.w800, fontSize: 13)),
           onSelectionChanged: (v) => _setFocus(v.first),
         ),
         const SizedBox(width: 10),

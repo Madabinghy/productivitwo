@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/widgets/season_widgets.dart' show SeasonBilanCard, showSeasonBilanSheet;
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/widget_service.dart';
@@ -2263,7 +2264,7 @@ class TodayViewState extends State<TodayView> {
           icon: Icon(_timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined, size: 16),
           label: Text(_timeline ? 'Voir en liste' : 'Voir en frise'),
           style: TextButton.styleFrom(
-              foregroundColor: link, textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              foregroundColor: link, textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w600)),
           onPressed: () {
             _timeline = !_timeline;
             refresh();

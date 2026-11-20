@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -385,7 +386,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
                   side: BorderSide(color: kRoutineAccent.withOpacity(.4)),
                   shape: const StadiumBorder(),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                  textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w700)),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 150),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -411,7 +412,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
                               foregroundColor: kBBg,
                               shape: const StadiumBorder(),
                               padding: const EdgeInsets.symmetric(horizontal: 14),
-                              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                              textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w700)),
                           child: Text(m.label),
                         )
                       : FilledButton.tonal(
@@ -421,7 +422,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
                               foregroundColor: pal.text2,
                               shape: const StadiumBorder(),
                               padding: const EdgeInsets.symmetric(horizontal: 14),
-                              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                              textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w600)),
                           child: Text(m.label),
                         ),
                 ),

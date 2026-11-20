@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -619,7 +620,7 @@ class _NowCardState extends State<NowCard> {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                           minimumSize: const Size(0, 36),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                          textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
                       icon: const Icon(Icons.playlist_play_rounded, size: 18),
                       label: Text(chain.label, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
@@ -836,7 +837,7 @@ class _NowCardState extends State<NowCard> {
                   foregroundColor: pal.text3,
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                   minimumSize: const Size(0, 36),
-                  textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
               child: const Text('Pas maintenant'),
             ),
         ]),
@@ -864,7 +865,7 @@ class _NowCardState extends State<NowCard> {
             foregroundColor: pal.text2,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
             minimumSize: const Size(0, 36),
-            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+            textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
         child: const Text('Autre chose ›'),
       ),
     );

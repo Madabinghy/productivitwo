@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart' show StateChip;
 
 /// « Une carte, une fiche » (2026-10) : l'ossature commune des fiches —
@@ -227,7 +228,7 @@ class FicheActions extends StatelessWidget {
           height: 44,
           child: FilledButton.icon(
             onPressed: onPrimary,
-            style: FilledButton.styleFrom(shape: const StadiumBorder(), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+            style: FilledButton.styleFrom(shape: const StadiumBorder(), textStyle: TextStyle(fontFamily: kAppFont, fontSize: 14, fontWeight: FontWeight.w800)),
             icon: Icon(primaryIcon ?? Icons.play_arrow_rounded, size: 20),
             label: Text(primaryLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
@@ -245,7 +246,7 @@ class FicheActions extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       foregroundColor: cs.onSurface.withValues(alpha: .8),
                       side: BorderSide(color: cs.onSurface.withValues(alpha: .18)),
-                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      textStyle: TextStyle(fontFamily: kAppFont, fontSize: 13.5, fontWeight: FontWeight.w700)),
                   child: Text(s.label),
                 ),
               ),

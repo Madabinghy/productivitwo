@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/widgets/gains_section.dart' show GainRow, gains
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/focus_gauge_guide.dart';
@@ -422,7 +423,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         ],
         selected: {_focus},
         showSelectedIcon: false,
-        style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: TextStyle(fontFamily: kAppFont, fontWeight: FontWeight.w800, fontSize: 13)),
         onSelectionChanged: (s) => _setFocus(s.first),
       ),
       const SizedBox(width: 10),

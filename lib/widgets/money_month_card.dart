@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
@@ -93,7 +94,7 @@ class _MoneyMonthCardState extends State<MoneyMonthCard> {
           ],
           selected: {_by},
           showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+          style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: TextStyle(fontFamily: kAppFont, fontWeight: FontWeight.w700, fontSize: 12.5)),
           onSelectionChanged: (v) => setState(() => _by = v.first),
         ),
         if (cats.isNotEmpty) ...[

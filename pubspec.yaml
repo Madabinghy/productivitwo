@@ -57,3 +57,20 @@ flutter:
     - assets/icons/
     - assets/iso/assets_pixel_50x50/
     - assets/sprites/
+  # Police embarquée (iPhone) : sous iOS 27 la police du système ne rend plus
+  # les graisses demandées. Six graisses statiques, allégées (latin, flèches, maths).
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Inter-Black.ttf
+          weight: 900
