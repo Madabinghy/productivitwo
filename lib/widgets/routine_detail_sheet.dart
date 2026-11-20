@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/auto_target.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
@@ -273,7 +274,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 onPressed: () async {
                   final v = await _pickCount(context, act.habitTarget ?? 1);
                   if (v == null) return;
-                  act.habitTarget = v;
+                  logic.setRoutineTarget(act, v);
                   _applySetting();
                 },
               ),
@@ -675,7 +676,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     children: [
                       IconButton(
                         onPressed: () {
-                          act.habitTarget = (target - 1).clamp(1, 999);
+                          logic.setRoutineTarget(act, target - 1);
                           _applySetting();
                         },
                         icon: const Icon(Icons.remove_rounded, size: 18),
@@ -695,7 +696,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                       ),
                       IconButton(
                         onPressed: () {
-                          act.habitTarget = (target + 1).clamp(1, 999);
+                          logic.setRoutineTarget(act, target + 1);
                           _applySetting();
                         },
                         icon: const Icon(Icons.add_rounded, size: 18),
@@ -753,6 +754,34 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                         fontSize: 12, color: cs.onSurface.withOpacity(.55)),
                   ),
                 ),
+            ],
+
+            // Cible automatique (2026-11-20) : elle suit ce qui est vraiment fait. Pas avec un cap (les paliers
+            // la pilotent déjà).
+            if (freq == HabitFreq.daily && act.finalTarget == null) ...[
+              const SizedBox(height: 6),
+              SwitchListTile.adaptive(
+                key: const ValueKey('routine-auto-target'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: act.autoTarget,
+                activeColor: accentColor,
+                title: Text('Cible automatique',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.75))),
+                subtitle: Text(
+                  act.autoTarget
+                      ? 'Tu fais 120 % sur 7 jours : un cran de plus. Moins de 50 % : un cran de moins. '
+                          'Une fois par semaine au plus, et une hausse ne casse jamais ta série.'
+                          '${lastTargetChangeLabel(act) == null ? '' : '\nDernier changement : ${lastTargetChangeLabel(act)}'}'
+                      : 'La cible suit ce que tu fais vraiment : elle monte quand tu la dépasses, redescend si elle est trop haute.',
+                  key: const ValueKey('routine-auto-target-hint'),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55)),
+                ),
+                onChanged: (v) {
+                  act.autoTarget = v;
+                  _applySetting();
+                },
+              ),
             ],
 
             // Rythme (2026-11-19) : chaque jour · rattrapable (un jour raté se rattrape dans les 7 jours,

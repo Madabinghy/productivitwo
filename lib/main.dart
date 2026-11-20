@@ -1906,6 +1906,7 @@ class _AppRootState extends State<AppRoot>
       logic.metaLoaded = true;
       if (same && firstMeta) {
         logic.onChange();
+        _runAutoTargets();
         return;
       }
       logic.dayStartMin = start;
@@ -1958,6 +1959,20 @@ class _AppRootState extends State<AppRoot>
       logic.acquireAsked = asked;
       logic.budgetWindowDays = budget;
       logic.onChange();
+      if (firstMeta) _runAutoTargets();
+    });
+  }
+
+  /// Cible automatique des routines qui l'ont allumée (2026-11-20) : une fois par lancement, après la première
+  /// lecture du doc meta — gels, veilles, Le minimum et bascule de journée sont connus, un jour gelé ne compte pas.
+  void _runAutoTargets() {
+    final notes = logic.applyAutoTargets();
+    if (notes.isEmpty || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showClosingSnackBar(
+        SnackBar(content: Text('Cible ajustée — ${notes.join(' · ')}'), duration: const Duration(seconds: 6)),
+      );
     });
   }
   String? selectedDomainId;
