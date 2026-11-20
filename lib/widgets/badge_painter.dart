@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 
 /// Gabarit de badge (design « Badges Productivitwo », section Gabarit) porté
@@ -268,7 +269,8 @@ class BadgePainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
+            fontFamily: kAppFont,
             color: kBadgeRibbonInk,
             fontSize: 10.5,
             fontWeight: FontWeight.w800,

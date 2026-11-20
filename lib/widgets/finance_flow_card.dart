@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_font.dart';
 import 'package:productivitwo_v1/utils/finance_charts.dart';
 import 'package:productivitwo_v1/utils/finances.dart';
 
@@ -188,7 +189,7 @@ class _FlowPainter extends CustomPainter {
   _FlowPainter(this.s, this.sel, this.mute, this.grid, this.surface, {this.compact = false, this.target});
 
   void _text(Canvas c, String t, Offset at, {TextAlign align = TextAlign.right, Color? color, FontWeight? weight}) {
-    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontSize: 9.5, color: color ?? mute, fontWeight: weight)), textDirection: TextDirection.ltr)..layout();
+    final tp = TextPainter(text: TextSpan(text: t, style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, color: color ?? mute, fontWeight: weight)), textDirection: TextDirection.ltr)..layout();
     final dx = align == TextAlign.right ? at.dx - tp.width : (align == TextAlign.center ? at.dx - tp.width / 2 : at.dx);
     tp.paint(c, Offset(dx, at.dy - tp.height / 2));
   }
