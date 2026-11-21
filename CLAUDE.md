@@ -2038,6 +2038,13 @@ jauge à l'écran = tout est oublié. Une jauge qui s'ouvre ou revient à l'écr
 est. Le peintre lit `HoursNeedle.angle` au moment de peindre et se redessine par `repaint: HoursNeedle.moves` (plus d'`AnimatedBuilder`
 ni de `setState`) ; chaque jauge garde un battement à elle (`Ticker`, coupé quand son onglet est caché) qui ne sert qu'à redessiner
 pendant le trajet : rien ne tourne quand aucune jauge n'est visible. Tests : `test/week_hours_needle_test.dart`.
+**Aiguille : une minute dans le vert, un tour pour changer de mode** (2026-11-21, demande user) : `kNeedleTravel` revient à UNE minute
+et ne sert plus qu'au vert — un chrono ACTIF qui démarre ou s'arrête (sans chrono ↔ actif), l'aiguille monte ou redescend. Tout
+changement de MODE vers ou depuis la détente, le sommeil ou un besoin de base (`needleSpins(from, to)`) joue une autre animation,
+`kNeedleSpin` (1,8 s) : l'aiguille fait un tour entier dans le sens des aiguilles d'une montre (360° au moins), dépasse le morceau de
+7° puis revient s'y poser, pendant qu'un rond à la couleur du mode s'ouvre au centre (`HoursNeedle.ping`). `HoursNeedle.aim(cible,
+kind:)` retient le mode en cours (`_kind`) ; un angle en cours de tour est ramené sur le cadran avant un nouveau trajet (`_onDial`).
+Animations coupées = en place, comme avant. Tests : `test/week_hours_needle_test.dart`.
 **Aujourd'hui allégé** (2026-11-20, demande user : « tout ce qu'il y a au-dessous des tuiles, je ne l'utilise jamais — le projet en
 cours, Ta journée, Maintenant ») : flag `kTodayNowEnabled = false` (`lib/gamification_flags.dart`, code gardé, repasser à true pour
 tout remettre). Sur mobile, l'onglet Aujourd'hui s'arrête au tableau de bord : plus de tuile PROJETS (`DashboardTiles(projects:
