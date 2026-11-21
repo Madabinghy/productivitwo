@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession, traceUnlisted } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession, traceUnlisted, relinkMirrors, mirrorDirection } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -158,4 +158,46 @@ test("traceUnlisted (B12) : un pending écarté non relisté devient une trace s
   const incoming = [{ id: "n1", startTime: "21:15", durationMin: 60, status: "pending", title: "préparer la séance" }];
   const traces = traceUnlisted(prev, preserved, incoming);
   assert.deepEqual(traces.map((b) => [b.id, b.status, b.skipReason]), [["bpf", "skipped", "replanifie"]]);
+});
+
+test("relinkMirrors : un miroir sans lien le retrouve, ses doubles au même id partent", () => {
+  // Réécrit par l'app sans gcalEventId, puis dédoublé (constaté le 2026-11-21 sur « Sommeil »).
+  const lost = () => ({ id: "gcal-ev1", startTime: "23:00", durationMin: 420, title: "Sommeil", status: "pending", activityId: "a" });
+  const other = { id: "b1", startTime: "09:00", durationMin: 60, title: "Deep work", status: "pending" };
+  const r = relinkMirrors([other, lost(), lost()], ["ev1"]);
+  assert.equal(r.blocks.length, 2);
+  assert.equal(r.relinked, 1);
+  assert.equal(r.removed, 1);
+  assert.equal(r.blocks[1].gcalEventId, "ev1");
+  assert.equal(r.blocks[1].activityId, "a");
+  // Il avait perdu son lien parce que l'app l'a retouché : c'est elle qui fait foi.
+  assert.equal(r.blocks[1].gcalDirty, true);
+  // Un bloc relié et sa copie sans lien : le relié reste, à sa place.
+  const linked = { ...lost(), startTime: "22:00", gcalEventId: "ev1" };
+  const r2 = relinkMirrors([lost(), linked], ["ev1"]);
+  assert.deepEqual(r2.blocks.map((b) => b.startTime), ["22:00"]);
+  assert.equal(r2.relinked, 0);
+  assert.equal(r2.removed, 1);
+  // Rien à faire : un miroir sain, ou un événement qui n'est pas de ce jour.
+  const r3 = relinkMirrors([linked, other], ["ev1"]);
+  assert.equal(r3.relinked + r3.removed, 0);
+  assert.equal(relinkMirrors([lost()], ["autre"]).blocks[0].gcalEventId, undefined);
+  // Une copie effacée ne prend pas la place du bloc encore visible.
+  const r4 = relinkMirrors([{ ...lost(), status: "deleted" }, lost()], ["ev1"]);
+  assert.deepEqual(r4.blocks.map((b) => b.status), ["pending"]);
+});
+
+test("mirrorDirection : un rendez-vous retouché dans l'app l'emporte sur l'agenda", () => {
+  const ev = { title: "Sommeil", startTime: "22:00", durationMin: 420 };
+  const b = (over = {}) => ({ id: "gcal-ev1", gcalEventId: "ev1", title: "Sommeil", startTime: "22:00", durationMin: 420, ...over });
+  // Retouché ici : l'agenda suit.
+  assert.equal(mirrorDirection(b({ startTime: "23:00", gcalDirty: true }), ev), "push");
+  assert.equal(mirrorDirection(b({ title: "Dodo", gcalDirty: true }), ev), "push");
+  // Déjà pareil : on lève la marque.
+  assert.equal(mirrorDirection(b({ gcalDirty: true }), ev), "clear");
+  // Pas retouché ici : l'agenda fait foi, comme avant.
+  assert.equal(mirrorDirection(b({ startTime: "21:00" }), ev), "pull");
+  assert.equal(mirrorDirection(b(), ev), "none");
+  // Heure illisible : on ne pousse rien de faux.
+  assert.equal(mirrorDirection(b({ startTime: "soir", gcalDirty: true }), ev), "pull");
 });

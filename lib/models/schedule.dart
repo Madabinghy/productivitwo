@@ -128,6 +128,11 @@ class ScheduleBlock {
   // re-poussé), l'import le met à jour/le retire, un swipe le masque sans
   // toucher au vrai rendez-vous. Null = bloc Productivitwo normal.
   String? gcalEventId;
+  // Rendez-vous d'agenda retouché DANS l'app (heure, durée, titre) et pas encore
+  // confirmé par Google : l'app fait foi, la synchro pousse vers l'agenda au
+  // lieu de remettre l'heure de l'agenda (demande user 2026-11-21). Levé par le
+  // serveur une fois l'agenda à jour.
+  bool gcalDirty;
   // ── Séance programmée ──────────────────────────────────────────────────────
   // Déroulé réutilisable (session_templates) attaché au bloc : ▶ lance le
   // chrono sur l'activité ET ouvre le player sur ce déroulé.
@@ -160,6 +165,7 @@ class ScheduleBlock {
     this.carriedFromDate,
     this.movedTo,
     this.gcalEventId,
+    this.gcalDirty = false,
     this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [],
@@ -247,6 +253,7 @@ class ScheduleBlock {
         'carriedFromDate': carriedFromDate,
         'movedTo': movedTo,
         'gcalEventId': gcalEventId,
+        if (gcalDirty) 'gcalDirty': true,
         'sessionTemplateId': sessionTemplateId,
       };
 
@@ -279,6 +286,7 @@ class ScheduleBlock {
         carriedFromDate: j['carriedFromDate'],
         movedTo: j['movedTo'] is Map ? Map<String, dynamic>.from(j['movedTo'] as Map) : null,
         gcalEventId: j['gcalEventId'],
+        gcalDirty: j['gcalDirty'] == true,
         sessionTemplateId: j['sessionTemplateId'],
       );
 }
@@ -385,6 +393,25 @@ class RecoverySequence {
   }
 }
 
+/// Un seul bloc par id, à la place du premier : deux blocs au même id cassent les
+/// listes (une clé par id), et la ligne disparaît (bug user 2026-11-21 : un
+/// rendez-vous d'agenda modifié puis réimporté sous le même id). Entre deux, celui
+/// qui porte encore son lien avec l'agenda gagne.
+List<ScheduleBlock> uniqueBlocks(List<ScheduleBlock> blocks) {
+  final at = <String, int>{};
+  final out = <ScheduleBlock>[];
+  for (final b in blocks) {
+    final i = at[b.id];
+    if (i == null) {
+      at[b.id] = out.length;
+      out.add(b);
+    } else if (out[i].gcalEventId == null && b.gcalEventId != null) {
+      out[i] = b;
+    }
+  }
+  return out;
+}
+
 class DailySchedule {
   String date;        // YYYY-MM-DD
   String generatedBy; // claude | orion
@@ -463,10 +490,10 @@ class DailySchedule {
         date: j['date'] ?? '',
         generatedBy: j['generatedBy'] ?? 'claude',
         generatedAt: _parseDate(j['generatedAt']),
-        blocks: (j['blocks'] as List?)
+        blocks: uniqueBlocks((j['blocks'] as List?)
                 ?.map((b) => ScheduleBlock.from(b))
                 .toList() ??
-            [],
+            []),
         dayReason: j['dayReason'],
         plannedAt: _parseDateOrNull(j['plannedAt']),
         plannedSameDay: j['plannedSameDay'] == true,

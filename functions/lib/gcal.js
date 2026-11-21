@@ -151,8 +151,44 @@ function isNativeEvent(ev, date) {
 function isCopyOfBlock(slot, blocks) {
     return blocks.some((b) => b.gcalEventId == null && (0, schedule_dedupe_1.sameSlot)(b, slot));
 }
+/** Pose l'heure, la durée (et le titre) d'un bloc sur son événement Google. */
+async function patchEvent(base, token, eventId, date, startTime, durationMin, tzOff, title) {
+    const startMin = hmToMin(startTime);
+    const start = dateTimeOf(date, startMin);
+    const end = dateTimeOf(date, startMin + Math.round(durationMin));
+    const patch = {
+        start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
+        end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
+    };
+    if (typeof title === "string" && title.trim() !== "")
+        patch.summary = title.trim();
+    const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+    });
+    if (!r.ok)
+        console.error("gcal patchEvent failed:", r.status, await r.text());
+    return r.ok;
+}
+/** L'agenda a suivi : le bloc retouché dans l'app n'a plus à être repoussé. */
+async function clearMirrorDirty(uid, date, eventId) {
+    var _a, _b, _c;
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    const blocks = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.blocks) !== null && _b !== void 0 ? _b : []).slice();
+    let changed = false;
+    for (const b of blocks) {
+        if (String((_c = b.gcalEventId) !== null && _c !== void 0 ? _c : "") === eventId && b.gcalDirty === true) {
+            delete b.gcalDirty;
+            changed = true;
+        }
+    }
+    if (changed)
+        await ref.update({ blocks });
+}
 async function importGcalDay(uid, date) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const none = { imported: 0, updated: 0, removed: 0 };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return Object.assign(Object.assign({ ok: false }, none), { reason: "bad_date" });
@@ -222,6 +258,12 @@ async function importGcalDay(uid, date) {
         events.set(String(ev.id), slot);
     }
     let imported = 0, updated = 0, removed = 0;
+    // Un miroir qui a perdu son lien (réécrit par l'app) le retrouve, et ses
+    // doubles au même id partent : sinon il était recréé à chaque import.
+    const relink = (0, schedule_dedupe_1.relinkMirrors)(blocks, events.keys());
+    blocks.splice(0, blocks.length, ...relink.blocks);
+    updated += relink.relinked;
+    removed += relink.removed;
     for (let i = blocks.length - 1; i >= 0; i--) {
         const b = blocks[i];
         if (!b.gcalEventId)
@@ -236,7 +278,21 @@ async function importGcalDay(uid, date) {
         if (b.status === "deleted")
             continue; // swipé : masqué, on respecte
         const hm = `${String(Math.floor(ev.startMin / 60)).padStart(2, "0")}:${String(ev.startMin % 60).padStart(2, "0")}`;
-        if (b.startTime !== hm || b.durationMin !== ev.durationMin || b.title !== ev.title) {
+        const dir = (0, schedule_dedupe_1.mirrorDirection)(b, { title: ev.title, startTime: hm, durationMin: ev.durationMin });
+        if (dir === "push") {
+            // Retouché dans l'app : l'agenda suit. En cas d'échec, le bloc reste marqué et on réessaie à la prochaine synchro.
+            const ok = await patchEvent(base, token, String(b.gcalEventId), date, String(b.startTime), Number(b.durationMin), tzOff, String((_j = b.title) !== null && _j !== void 0 ? _j : ""));
+            if (ok) {
+                delete b.gcalDirty;
+                updated++;
+            }
+        }
+        else if (dir === "clear") {
+            delete b.gcalDirty;
+            updated++;
+        }
+        else if (dir === "pull") {
+            delete b.gcalDirty;
             b.startTime = hm;
             b.durationMin = ev.durationMin;
             b.title = ev.title;
@@ -560,24 +616,10 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
             }
             const base = calBase(await calendarIdFor(uid));
             const tzOff = (_h = (await userTzOffset(uid))) !== null && _h !== void 0 ? _h : parisOffsetMin(date);
-            const startMin = hmToMin(startTime);
-            const start = dateTimeOf(date, startMin);
-            const end = dateTimeOf(date, startMin + Math.round(durationMin));
-            const patch = {
-                start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
-                end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
-            };
-            if (typeof title === "string" && title.trim() !== "") {
-                patch.summary = title.trim();
-            }
-            const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
-                method: "PATCH",
-                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify(patch),
-            });
-            if (!r.ok)
-                console.error("gcal updateEvent failed:", r.status, await r.text());
-            res.status(200).json({ ok: r.ok, status: r.status });
+            const ok = await patchEvent(base, token, eventId, date, startTime, durationMin, tzOff, typeof title === "string" ? title : undefined);
+            if (ok)
+                await clearMirrorDirty(uid, date, eventId);
+            res.status(200).json({ ok });
             return;
         }
         if (action === "deleteEvent") {

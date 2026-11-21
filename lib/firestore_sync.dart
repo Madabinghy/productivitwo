@@ -3734,6 +3734,8 @@ class FirestoreSync {
       if (b['id'] == blockId) {
         if (startTime != null) b['startTime'] = startTime;
         if (durationMin != null) b['durationMin'] = durationMin;
+        // Rendez-vous d'agenda retouché ici : l'app fait foi jusqu'à ce que Google ait suivi.
+        if (b['gcalEventId'] != null) b['gcalDirty'] = true;
         break;
       }
     }
@@ -3776,6 +3778,7 @@ class FirestoreSync {
     for (final b in blocks) {
       if (b['id'] == blockId) {
         b['title'] = title;
+        if (b['gcalEventId'] != null) b['gcalDirty'] = true;
         break;
       }
     }

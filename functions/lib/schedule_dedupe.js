@@ -9,6 +9,8 @@ exports.isOccupying = exports.toMin = exports.isLiveMirror = void 0;
 exports.sameSlot = sameSlot;
 exports.splitAgainstMirrors = splitAgainstMirrors;
 exports.dropPlainDuplicates = dropPlainDuplicates;
+exports.relinkMirrors = relinkMirrors;
+exports.mirrorDirection = mirrorDirection;
 exports.fillAgainstExisting = fillAgainstExisting;
 exports.traceUnlisted = traceUnlisted;
 exports.blockHasSession = blockHasSession;
@@ -60,6 +62,71 @@ function dropPlainDuplicates(blocks) {
         out.push(b);
     }
     return { blocks: out, removed };
+}
+/**
+ * Un rendez-vous d'agenda garde UN bloc, relié à son événement (bug 2026-11-21 :
+ * l'app avait réécrit un miroir sans son `gcalEventId`, l'import le recréait
+ * sous le même id `gcal-<événement>` → deux blocs au même id, la ligne
+ * disparaissait du programme). Pour chaque événement de [eventIds] : le bloc
+ * `gcal-<id>` qui a perdu son lien le retrouve, et les autres blocs au même id
+ * sont retirés (celui qui porte encore le lien gagne, sinon un bloc non effacé, sinon le premier).
+ */
+function relinkMirrors(blocks, eventIds) {
+    var _a, _b;
+    const ids = new Set();
+    for (const id of eventIds)
+        ids.add(`gcal-${id}`);
+    const keep = new Map();
+    for (const b of blocks) {
+        const id = String((_a = b.id) !== null && _a !== void 0 ? _a : "");
+        if (!ids.has(id))
+            continue;
+        const cur = keep.get(id);
+        // Le relié d'abord, puis un bloc encore visible plutôt qu'un bloc effacé.
+        const rank = (x) => (x.gcalEventId != null ? 2 : 0) + (x.status !== "deleted" ? 1 : 0);
+        if (cur == null || rank(b) > rank(cur))
+            keep.set(id, b);
+    }
+    let relinked = 0, removed = 0;
+    const out = [];
+    for (const b of blocks) {
+        const id = String((_b = b.id) !== null && _b !== void 0 ? _b : "");
+        const kept = keep.get(id);
+        if (kept == null) {
+            out.push(b);
+            continue;
+        }
+        if (kept !== b) {
+            removed++;
+            continue;
+        }
+        if (b.gcalEventId == null) {
+            b.gcalEventId = id.slice("gcal-".length);
+            // Il avait perdu son lien parce que l'app l'a retouché : c'est elle qui fait foi.
+            b.gcalDirty = true;
+            relinked++;
+        }
+        out.push(b);
+    }
+    return { blocks: out, relinked, removed };
+}
+/**
+ * Qui fait foi entre un rendez-vous d'agenda [ev] et son bloc [b] (demande user
+ * 2026-11-21 : « si je modifie dans mon appli, c'est que le rendez-vous a été
+ * déplacé ») : un bloc retouché dans l'app (`gcalDirty`) l'emporte et l'agenda
+ * suit ("push") ; déjà pareil = on lève juste la marque ("clear") ; sinon
+ * l'agenda fait foi ("pull"), ou rien à faire ("none").
+ */
+function mirrorDirection(b, ev) {
+    var _a;
+    const same = String(b.startTime) === ev.startTime && Number(b.durationMin) === ev.durationMin && String((_a = b.title) !== null && _a !== void 0 ? _a : "") === ev.title;
+    if (b.gcalDirty === true) {
+        const valid = /^\d{2}:\d{2}$/.test(String(b.startTime)) && Number(b.durationMin) >= 1;
+        if (!valid)
+            return "pull";
+        return same ? "clear" : "push";
+    }
+    return same ? "none" : "pull";
 }
 /** "HH:mm" → minutes depuis minuit (format invalide → 0). */
 const toMin = (hm) => {
