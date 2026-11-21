@@ -111,6 +111,11 @@ class Activity {
   /// Vide = un seul moment (le `timeContext`).
   List<String> splitMoments;
 
+  /// Parts RÉGLÉES d'une routine répartie (2026-11-21) : moment → part de la cible du jour (« 1 au Miracle
+  /// Morning, 2 le matin »). Vide = parts égales. Lues au prorata (`momentParts`, utils/routine_moments.dart) :
+  /// la somme suit la cible du jour même quand elle change.
+  Map<String, int> momentShares;
+
   /// Actions « propres » de l'activité : des TaskAction qui appartiennent
   /// directement à l'activité (sans tâche/projet). Le chrono ciblé fonctionne
   /// via Session.actionId. Persisté dans la collection `activities`.
@@ -182,6 +187,7 @@ class Activity {
     this.timerMin,
     this.timeContext,
     List<String>? splitMoments,
+    Map<String, int>? momentShares,
     List<TaskAction>? ownActions,
     List<String>? contexts,
     this.catalogId,
@@ -193,6 +199,7 @@ class Activity {
     this.minPerHit,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         splitMoments = splitMoments ?? <String>[],
+        momentShares = momentShares ?? <String, int>{},
         ownActions = ownActions ?? <TaskAction>[],
         contexts = contexts ?? <String>[],
         targetLog = targetLog ?? <TargetStep>[],
@@ -253,6 +260,7 @@ class Activity {
         'timerMin': timerMin,
         'timeContext': timeContext,
         'splitMoments': splitMoments,
+        if (momentShares.isNotEmpty) 'momentShares': momentShares,
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
         'contexts': contexts,
         if (catalogId != null) 'catalogId': catalogId,
@@ -315,6 +323,12 @@ class Activity {
       timerMin: _oneDuration(j),
       timeContext: j['timeContext'] as String?,
       splitMoments: (j['splitMoments'] as List?)?.map((e) => e.toString()).toList(),
+      momentShares: j['momentShares'] is Map
+          ? {
+              for (final e in (j['momentShares'] as Map).entries)
+                if (e.value is num) e.key.toString(): (e.value as num).toInt(),
+            }
+          : null,
       ownActions: (j['ownActions'] as List?)
           ?.map((e) => TaskAction.from(e as Map))
           .toList(),

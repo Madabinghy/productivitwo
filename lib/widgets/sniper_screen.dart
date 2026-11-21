@@ -1039,7 +1039,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       if (!parts) return null;
       final t = _plan.aimed[i];
       if (i > 0 && _plan.aimed[i - 1].section == t.section) return null;
-      return '${sc.sectionLabel(t.section)} · ${_plan.aimed.where((x) => x.section == t.section).length}';
+      final own = sc.ritual && t.section == kSniperSecMoment ? ' · dans ton ordre' : '';
+      return '${sc.sectionLabel(t.section)} · ${_plan.aimed.where((x) => x.section == t.section).length}$own';
     }
 
     final byMoment = sc?.before != null && until == null && b.untilMin == sc!.moment.endMin;
@@ -1184,7 +1185,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: _line)),
                 child: Row(children: [
-                  Expanded(child: Text('Plus tard · ${sc.laterLine([for (final m in _plan.later) m.target.key])}', style: const TextStyle(fontSize: 13, height: 1.35, color: _text3))),
+                  Expanded(child: Text('Plus tard · ${sc.laterLine(_plan.later)}', style: const TextStyle(fontSize: 13, height: 1.35, color: _text3))),
                   const SizedBox(width: 8),
                   Text(_laterOpen ? 'replier' : 'ajouter', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kSniperAccent)),
                 ]),

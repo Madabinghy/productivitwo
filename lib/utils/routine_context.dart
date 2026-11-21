@@ -59,10 +59,16 @@ Map<String, TimeContextDef> timeContextsWith(Map<String, (int, int)> windows) {
     final w = windows[e.key];
     out[e.key] = w == null ? e.value : e.value.withWindow(w.$1, w.$2);
   }
+  // Sans moment Miracle Morning réglé, ses routines suivent le matin.
+  if (!windows.containsKey('miracle')) {
+    final m = out['morning']!;
+    out['miracle'] = TimeContextDef('miracle', 'Miracle Morning', m.windows, m.anchorMin);
+  }
   return out;
 }
 
 const kTimeContexts = <String, TimeContextDef>{
+  'miracle': TimeContextDef('miracle', 'Miracle Morning', [(5 * 60, 6 * 60)], 5 * 60 + 15),
   'morning': TimeContextDef('morning', 'Matin', [(5 * 60 + 30, 11 * 60)], 7 * 60 + 30),
   'midday': TimeContextDef('midday', 'Midi', [(11 * 60 + 30, 14 * 60)], 12 * 60 + 30),
   'afternoon':

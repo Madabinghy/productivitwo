@@ -45,7 +45,6 @@ void main() {
     expect(sc.section['routine:lou'], kSniperSecLeft);
     expect(sc.later, {'routine:mar': 'cet après-midi', 'routine:den': 'ce soir'});
     expect(sc.laterOrder, ['cet après-midi', 'ce soir']);
-    expect(sc.laterLine(['routine:mar', 'routine:den']), '1 cet après-midi · 1 ce soir');
     expect(sc.leftLabel, 'RESTE DU MATIN');
     expect(sc.momentLabel, 'CE MIDI');
     expect(sc.before, 'avant l’après-midi');
@@ -101,6 +100,8 @@ void main() {
     expect(plan.aimed.every((t) => t.section == kSniperSecOther), isTrue);
   });
 
+  miracleTests();
+
   test('à moins d’un quart d’heure de la fin d’un moment, le Sniper prend déjà le suivant', () {
     final ms = timedMomentsWith(const {});
     expect(sniperMomentShift(13 * 60 + 30, ms), 0);
@@ -109,5 +110,107 @@ void main() {
     expect(sniperMomentShift(11 * 60 + 10, ms), 0);
     // Le soir est le dernier moment : jamais décalé.
     expect(sniperMomentShift(28 * 60 + 55, ms), 0);
+  });
+}
+
+/// Lot 2 : Miracle Morning, un cinquième moment avant le matin, et les parts réglées d'une routine répartie.
+void miracleTests() {
+  // La journée commence à 3 h, le Miracle Morning va de 3 h à 6 h.
+  const start = 3 * 60;
+  final ms = timedMomentsWith({kMomentMiracle: (start, 6 * 60)}, dayStartMin: start);
+  Activity r(String id, String name, {String? ctx, int target = 1, int? order, List<String> split = const [], Map<String, int>? shares}) =>
+      Activity(id: id, domainId: 'd', name: name, type: 'habit', habitFreq: HabitFreq.daily, habitTarget: target, timeContext: ctx, splitMoments: split, momentShares: shares)
+        ..routineOrder = order;
+  const five = [kMomentMiracle, kMomentMorning, kMomentMidday, kMomentAfternoon, kMomentEvening];
+  final eau = r('eau', 'Verre d’eau', target: 8, split: five, shares: {kMomentMiracle: 1, kMomentMorning: 2, kMomentMidday: 2, kMomentAfternoon: 2, kMomentEvening: 1});
+  final lou = r('lou', 'Louanges', ctx: kMomentMiracle, order: 2);
+  final lec = r('lec', 'Lecture', ctx: kMomentMiracle, order: 1);
+  final lit = r('lit', 'Faire mon lit', ctx: kMomentMorning);
+  final all = [eau, lou, lec, lit];
+  Stake plain(Activity a) => Stake(
+        StakeGesture(key: 'routine:${a.id}', kind: StakeGestureKind.routine, title: a.name, costMin: 5, activity: a),
+        [const StakeGain(kind: StakeGainKind.routine, label: 'aujourd’hui', weight: 4)],
+      );
+  final kingdom = Stake(
+    StakeGesture(key: 'activity:k', kind: StakeGestureKind.activity, title: 'Kingdom', costMin: 25),
+    const [StakeGain(kind: StakeGainKind.halfDay, label: 'Montre suisse', weight: 12, losesTonight: true)],
+  );
+  RoutineDay dayAt(int h, int m, {List<HabitHit> hits = const [], List<Moment>? moments}) =>
+      buildRoutineDay(activities: all, hits: hits, now: DateTime(2026, 11, 21, h, m), dayStartMin: start, moments: moments ?? ms);
+
+  test('le moment Miracle Morning : avant le matin, de la bascule à sa fin ; le matin commence quand il finit', () {
+    expect([for (final m in ms) m.key], five);
+    expect((ms.first.startMin, ms.first.endMin), (start, 6 * 60));
+    expect(ms[1].startMin, 6 * 60);
+    expect(currentMoment(3 * 60 + 30, ms).key, kMomentMiracle);
+    expect(currentMoment(6 * 60 + 10, ms).key, kMomentMorning);
+    expect(validateMoments(ms), isNull);
+    // Pas réglé : quatre moments, comme avant.
+    expect([for (final m in timedMomentsWith(const {})) m.key], five.skip(1));
+    // Le réglage se lit et se réécrit.
+    final w = parseMomentWindows({'miracle': {'start': start, 'end': 360}});
+    expect(w[kMomentMiracle], (start, 360));
+    expect(momentOf(kMomentMiracle).label, 'Miracle Morning');
+  });
+
+  test('parts réglées : 1 · 2 · 2 · 2 · 1, et la somme suit la cible du jour', () {
+    expect(momentParts(8, five, eau.momentShares), [1, 2, 2, 2, 1]);
+    expect(momentParts(4, five, eau.momentShares), [1, 1, 1, 1, 0]);
+    expect(momentParts(11, five, eau.momentShares).fold<int>(0, (s, x) => s + x), 11);
+    // Sans réglage : parts égales, le surplus aux premiers.
+    expect(momentParts(3, const [kMomentMorning, kMomentEvening]), [2, 1]);
+    expect(momentParts(8, five), [2, 2, 2, 1, 1]);
+  });
+
+  test('l’eau : 1 au Miracle Morning, puis 2 de plus le matin — 3 si rien n’est bu', () {
+    final at = dayAt(3, 30).slots.firstWhere((s) => s.id == 'eau').share!;
+    expect((at.moment, at.done, at.target, at.carried), (kMomentMiracle, 0, 1, 0));
+    final none = dayAt(6, 10).slots.firstWhere((s) => s.id == 'eau').share!;
+    expect((none.moment, none.target, none.carried), (kMomentMorning, 3, 1));
+    final drunk = dayAt(6, 10, hits: [_hit('eau', DateTime(2026, 11, 21, 3, 40), 1)]).slots.firstWhere((s) => s.id == 'eau').share!;
+    expect((drunk.moment, drunk.done, drunk.target, drunk.carried), (kMomentMorning, 0, 2, 0));
+  });
+
+  test('moment Miracle Morning éteint : ses routines sont celles du matin, sa part aussi', () {
+    final four = timedMomentsWith(const {}, dayStartMin: start);
+    final d = dayAt(7, 0, moments: four);
+    expect(d.slots.firstWhere((s) => s.id == 'lou').moment, kMomentMorning);
+    final sh = d.slots.firstWhere((s) => s.id == 'eau').share!;
+    expect((sh.moment, sh.target), (kMomentMorning, 3));
+    expect(liveMomentParts(eau, 8, four), [(kMomentMorning, 3), (kMomentMidday, 2), (kMomentAfternoon, 2), (kMomentEvening, 1)]);
+  });
+
+  test('le Sniper pendant le Miracle Morning : un rituel, dans ton ordre, et rien d’autre', () {
+    final sc = sniperScopeOf(dayAt(3, 30));
+    expect(sc.ritual, isTrue);
+    expect(sc.momentLabel, 'MIRACLE MORNING');
+    expect(sc.before, 'avant le matin');
+    expect(sc.later, {'routine:lit': 'ce matin'});
+    final plan = planSniper(stakes: [kingdom, plain(lit), plain(lou), plain(eau), plain(lec)], budgetMin: 150, routineLeft: {'eau': 8}, scope: sc);
+    // L'ordre réglé : Lecture (1), Louanges (2), puis l'eau (sans rang, par nom).
+    expect([for (final t in plan.aimed) t.key], ['routine:lec', 'routine:lou', 'routine:eau']);
+    expect(plan.aimed.last.delta, 1);
+    expect(plan.aimed.last.gains.single.label, 'part du Miracle Morning · 1 sur 8 à faire');
+    expect([for (final m in plan.later) m.reason], ['plus tard · ensuite', 'plus tard · ce matin']);
+    expect(sc.laterLine(plan.later), '1 ce matin · 1 ensuite');
+  });
+
+  test('à 6 h passées : le reste du Miracle Morning d’abord, l’eau à +3, les autres enjeux reviennent', () {
+    final sc = sniperScopeOf(dayAt(6, 10));
+    expect(sc.ritual, isFalse);
+    expect(sc.leftLabel, 'RESTE DU MIRACLE MORNING');
+    final plan = planSniper(stakes: [kingdom, plain(lit), plain(lou), plain(eau), plain(lec)], budgetMin: 150, routineLeft: {'eau': 8}, scope: sc);
+    expect([for (final t in plan.aimed) t.section], [kSniperSecLeft, kSniperSecLeft, kSniperSecMoment, kSniperSecMoment, kSniperSecOther]);
+    final water = plan.aimed.firstWhere((t) => t.key == 'routine:eau');
+    expect(water.delta, 3);
+    expect(water.gains.single.label, '1 d’avant + 2 ce matin');
+    expect(plan.later, isEmpty);
+  });
+
+  test('« Plus tard » : au-delà de deux groupes, le premier puis « n ensuite »', () {
+    SniperMiss miss(String when) => SniperMiss(sniperTargetOf(kingdom)!, 'plus tard · $when');
+    const sc = SniperScope(moment: kMiracleMoment, laterOrder: ['ce matin', 'ce midi', 'ce soir']);
+    expect(sc.laterLine([miss('ce soir'), miss('ce matin'), miss('ce midi'), miss('ce soir'), miss('ensuite')]), '1 ce matin · 4 ensuite');
+    expect(sc.laterLine([miss('ce soir'), miss('ce matin')]), '1 ce matin · 1 ce soir');
   });
 }

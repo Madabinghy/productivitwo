@@ -27,6 +27,7 @@ enum SniperKind { routine, timed, action, reading }
 const kSniperSecLeft = 0;
 const kSniperSecMoment = 1;
 const kSniperSecOther = 2;
+const kSniperLaterPrefix = 'plus tard · ';
 
 /// À moins de [kSniperMomentLeadMin] de la fin d'un moment, le Sniper prend déjà le suivant.
 const kSniperMomentLeadMin = 15;
@@ -63,23 +64,37 @@ class SniperScope {
     this.leftLabel = 'RESTE D’AVANT',
     this.laterOrder = const [],
     this.before,
+    this.rank = const {},
   });
 
-  /// « 5 cet après-midi · 4 ce soir » pour les routines mises de côté [keys].
-  String laterLine(Iterable<String> keys) {
+  /// Pendant le Miracle Morning, le viseur est un rituel : ses routines dans TON ordre ([rank]), et rien d'autre
+  /// (les autres enjeux attendent derrière « Plus tard »).
+  bool get ritual => moment.key == kMomentMiracle;
+
+  /// `routine:<id>` → rang dans l'ordre réglé des routines du moment (rituel seulement).
+  final Map<String, int> rank;
+
+  /// « 5 cet après-midi · 4 ce soir » pour ce qui est mis de côté ; au-delà de deux groupes, le premier puis
+  /// « n ensuite ».
+  String laterLine(List<SniperMiss> misses) {
     final n = <String, int>{};
-    for (final k in keys) {
-      final w = later[k];
-      if (w != null) n[w] = (n[w] ?? 0) + 1;
+    for (final m in misses) {
+      final w = m.reason.startsWith(kSniperLaterPrefix) ? m.reason.substring(kSniperLaterPrefix.length) : m.reason;
+      n[w] = (n[w] ?? 0) + 1;
     }
-    return [
+    final labels = [
       for (final w in laterOrder)
-        if (n[w] case final c?) '$c $w',
-    ].join(' · ');
+        if (n.containsKey(w)) w,
+      for (final w in n.keys)
+        if (!laterOrder.contains(w)) w,
+    ];
+    if (labels.length <= 2) return [for (final w in labels) '${n[w]} $w'].join(' · ');
+    final rest = labels.skip(1).fold<int>(0, (s, w) => s + n[w]!);
+    return '${n[labels.first]} ${labels.first} · $rest ensuite';
   }
 
-  /// « CE MATIN ».
-  String get momentLabel => moment.thisOne.toUpperCase();
+  /// « CE MATIN », « MIRACLE MORNING ».
+  String get momentLabel => ritual ? 'MIRACLE MORNING' : moment.thisOne.toUpperCase();
 
   String sectionLabel(int section) => switch (section) {
         kSniperSecLeft => leftLabel,
@@ -93,6 +108,8 @@ SniperScope sniperScopeOf(RoutineDay day) {
   final cur = day.current;
   final section = <String, int>{}, later = <String, String>{}, shareLeft = <String, int>{}, shareLabel = <String, String>{};
   final from = <String>{};
+  final rank = <String, int>{};
+  final ritual = cur.key == kMomentMiracle;
   for (final s in day.slots) {
     if (s.reached || day.dismissed.contains(s.id)) continue;
     final m = day.timed.where((x) => x.key == s.moment).firstOrNull;
@@ -101,6 +118,8 @@ SniperScope sniperScopeOf(RoutineDay day) {
     final key = 'routine:${s.id}';
     if (m.key == cur.key) {
       section[key] = kSniperSecMoment;
+      // Les routines arrivent déjà dans l'ordre réglé (« Organiser »).
+      if (ritual) rank[key] = rank.length;
     } else if (m.endMin <= cur.startMin) {
       section[key] = kSniperSecLeft;
       from.add(m.key);
@@ -135,6 +154,7 @@ SniperScope sniperScopeOf(RoutineDay day) {
     leftLabel: left,
     laterOrder: [for (final m in day.timed) if (later.containsValue(m.thisOne)) m.thisOne],
     before: before,
+    rank: rank,
   );
 }
 
@@ -160,7 +180,10 @@ class SniperTarget {
 
   /// Partie du viseur ([kSniperSecLeft], [kSniperSecMoment], [kSniperSecOther]).
   final int section;
-  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need, this.section = kSniperSecOther}) : _need = need;
+
+  /// Rang dans un rituel (Miracle Morning) : l'ordre réglé passe avant l'ordre calculé. Null ailleurs.
+  final int? rank;
+  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need, this.section = kSniperSecOther, this.rank}) : _need = need;
 
   /// Routine à minuteur (Louanges 15 min) : on règle la durée, la coche
   /// tombe au bout quel que soit le temps choisi.
@@ -185,8 +208,8 @@ class SniperTarget {
   int get leftAfter => need > amount ? need - amount : 0;
 
   SniperTarget withAmount(int a) => _countsReps
-      ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need, section: section)
-      : SniperTarget(stake, kind, minutes: a, delta: delta, need: need, section: section);
+      ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need, section: section, rank: rank)
+      : SniperTarget(stake, kind, minutes: a, delta: delta, need: need, section: section, rank: rank);
 
   String get key => stake.gesture.key;
   String get title => stake.gesture.title;
@@ -249,7 +272,7 @@ SniperTarget? sniperTargetOf(Stake s, {Map<String, int> routineLeft = const {}, 
       final stake = share == null
           ? s
           : Stake(g, [StakeGain(kind: StakeGainKind.routine, label: scope!.shareLabel[g.key] ?? 'part du moment', weight: s.gains.fold(0, (w, x) => w + x.weight))]);
-      return SniperTarget(stake, SniperKind.routine, minutes: timer > 0 ? timer : 0, delta: left < 1 ? 1 : left, section: section);
+      return SniperTarget(stake, SniperKind.routine, minutes: timer > 0 ? timer : 0, delta: left < 1 ? 1 : left, section: section, rank: scope?.rank[g.key]);
     case StakeGestureKind.activity:
       return SniperTarget(s, SniperKind.timed, minutes: g.costMin < 1 ? 1 : g.costMin, section: section);
     case StakeGestureKind.action:
@@ -265,6 +288,7 @@ SniperTarget? sniperTargetOf(Stake s, {Map<String, int> routineLeft = const {}, 
 /// se perd ce soir → palier ce soir → gain par minute.
 int compareSniper(SniperTarget a, SniperTarget b) {
   if (a.section != b.section) return a.section.compareTo(b.section);
+  if (a.rank != null && b.rank != null && a.rank != b.rank) return a.rank!.compareTo(b.rank!);
   if (a.losesTonight != b.losesTonight) return a.losesTonight ? -1 : 1;
   if (a.tierTonight != b.tierTonight) return a.tierTonight ? -1 : 1;
   final ra = a.weight / (a.cost + 3), rb = b.weight / (b.cost + 3);
@@ -300,7 +324,10 @@ SniperPlan planSniper({
     final t = sniperTargetOf(s, routineLeft: routineLeft, factor: factor, scope: scope);
     if (t == null) continue;
     if (scope?.later[t.key] case final at?) {
-      later.add(SniperMiss(t, 'plus tard · $at'));
+      later.add(SniperMiss(t, '$kSniperLaterPrefix$at'));
+    } else if (scope != null && scope.ritual && t.section == kSniperSecOther) {
+      // Pendant le Miracle Morning, rien d'autre que le rituel.
+      later.add(SniperMiss(t, '${kSniperLaterPrefix}ensuite'));
     } else {
       targets.add(t);
     }

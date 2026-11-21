@@ -58,6 +58,7 @@ import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent,
 import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
 import 'package:productivitwo_v1/utils/sniper.dart' show SniperPlan, SniperScope, kSniperKind;
 import 'package:productivitwo_v1/sniper_now.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart' show currentMoment, kMomentMiracle;
 import 'package:productivitwo_v1/utils/run_session.dart' show PendingRun;
 import 'package:productivitwo_v1/widgets/sniper_scope.dart' show MagRound, SniperModeTile, sniperRounds;
 import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
@@ -1080,7 +1081,15 @@ class TodayViewState extends State<TodayView> {
 
   /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
   /// Sniper, En forme → Offensive ; rien en recharge.
+  bool get _inMiracle {
+    final l = widget.logic, now = l.livedNowMinNow;
+    final m = currentMoment(now, l.moments);
+    return m.key == kMomentMiracle && now >= m.startMin && now < m.endMin;
+  }
+
   String? get _modeKind {
+    // Pendant le moment Miracle Morning, c'est le Sniper qui porte le rituel : quel que soit l'élan, même au réveil.
+    if (_inMiracle) return kSniperKind;
     if (widget.logic.inRecharge) return null;
     return switch (widget.logic.mode) {
       DayMode.low => kGuerillaKind,

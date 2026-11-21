@@ -4,9 +4,11 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 
-/// Réglage des quatre moments de la journée (Matin · Midi · Après-midi ·
-/// Soir) : début et fin de chacun, le Soir pouvant finir après minuit (par
-/// défaut au début de la journée vécue). Ouvert depuis la pastille « Soir ·
+/// Réglage des moments de la journée (Matin · Midi · Après-midi · Soir) :
+/// début et fin de chacun, le Soir pouvant finir après minuit (par défaut au
+/// début de la journée vécue). Un cinquième moment, Miracle Morning, s'allume
+/// ici (2026-11-21) : il commence quand la journée commence, seule sa fin se
+/// règle, et le matin commence quand il finit. Ouvert depuis la pastille « Soir ·
 /// 19 h → 5 h » de la carte « Routine du moment » et depuis Paramètres.
 /// Écrit `data/meta.momentWindows` ; « Par défaut » efface le réglage.
 Future<void> showMomentsEditor(BuildContext context, {required AppLogic logic, required FirestoreSync sync}) async {
@@ -59,7 +61,39 @@ class _MomentsEditorState extends State<_MomentsEditor> {
     var v = t.hour * 60 + t.minute;
     // Une fin « plus tôt » que le début = le lendemain (Soir 19 h → 5 h).
     if (end && v <= m.startMin) v += 24 * 60;
-    setState(() => _w = {..._w, m.key: end ? (m.startMin, v) : (v, m.endMin < v ? v + 60 : m.endMin)});
+    setState(() {
+      final old = m.endMin;
+      _w = {..._w, m.key: end ? (m.startMin, v) : (v, m.endMin < v ? v + 60 : m.endMin)};
+      // Le matin suit la fin du Miracle Morning tant qu'il lui était collé.
+      if (end && m.key == kMomentMiracle) _stickMorning(old, v);
+    });
+  }
+
+  bool get _miracle => _w.containsKey(kMomentMiracle);
+
+  (int, int) get _morning => _w[kMomentMorning] ?? (kTimedMoments.first.startMin, kTimedMoments.first.endMin);
+
+  void _stickMorning(int oldEnd, int newEnd) {
+    final mo = _morning;
+    if ((mo.$1 == oldEnd || mo.$1 < newEnd) && newEnd < mo.$2) _w = {..._w, kMomentMorning: (newEnd, mo.$2)};
+  }
+
+  void _toggleMiracle(bool on) {
+    final start = widget.logic.dayStartMin;
+    setState(() {
+      if (on) {
+        final end = start + kMiracleDefaultMin;
+        _w = {..._w, kMomentMiracle: (start, end)};
+        _stickMorning(-1, end);
+      } else {
+        final end = _w[kMomentMiracle]!.$2;
+        final mo = _morning;
+        _w = {..._w}..remove(kMomentMiracle);
+        // Le matin reprend là où la journée commence, s'il était collé au Miracle Morning.
+        final back = start > kTimedMoments.first.startMin ? start : kTimedMoments.first.startMin;
+        if (mo.$1 == end && back < mo.$2) _w = {..._w, kMomentMorning: (back, mo.$2)};
+      }
+    });
   }
 
   @override
@@ -78,7 +112,18 @@ class _MomentsEditorState extends State<_MomentsEditor> {
               'Les routines se rangent par moment. La journée commence à ${dayStartLabel(widget.logic.dayStartMin)} '
               '(Paramètres) : sans réglage, le soir court jusque-là.',
               style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            key: const Key('moments-miracle'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Miracle Morning', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+            subtitle: Text('Un moment avant le matin, pour ton rituel du réveil. Il commence quand ta journée commence.',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+            value: _miracle,
+            onChanged: _toggleMiracle,
+          ),
+          const SizedBox(height: 8),
           for (final m in timed)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -89,7 +134,8 @@ class _MomentsEditorState extends State<_MomentsEditor> {
                 ),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _pick(m, end: false),
+                    // Le Miracle Morning commence avec la journée : son début ne se règle pas ici.
+                    onPressed: m.key == kMomentMiracle ? null : () => _pick(m, end: false),
                     style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                     child: Text(_hm(m.startMin), style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
                   ),

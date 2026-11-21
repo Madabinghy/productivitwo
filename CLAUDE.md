@@ -1624,6 +1624,25 @@ après-midi · 4 ce soir · ajouter » (`sniper-later`, s'ouvre, toucher une rou
 carte. Le montant d'une part est toujours gardé dans la session (`_keepsAmount`). ⓘ `kRuleSniper` carte « Par moment ». Tests :
 `test/sniper_moment_test.dart`, `test/ui/sniper_screen_test.dart` (`SniperScreen(scope:)`, tests seulement).
 
+**Sniper par moment, lot 2 : le moment Miracle Morning et les parts réglées** (2026-11-21). Un CINQUIÈME moment, avant le matin :
+`kMomentMiracle` (`kMiracleMoment`, `utils/routine_moments.dart`), qui n'existe que s'il est réglé (`data/meta.momentWindows.miracle`,
+interrupteur « Miracle Morning » du réglage des moments, `moments-miracle`) ; il commence TOUJOURS là où la journée commence
+(`dayStartMin`), seule sa fin se règle, et le matin commence quand il finit (`timedMomentsWith`). `kTimedMomentKeys` = l'ordre des cinq
+clés ; `kTimedMoments` reste les quatre moments de base. Une routine s'y place comme dans un autre moment (`timeContext: 'miracle'`,
+fiche routine, « Organiser ») ; moment éteint, ses routines et sa part sont celles du matin (`liveMomentKey`, `liveMomentParts`,
+contexte horaire `miracle` = fenêtre du matin dans `timeContextsWith`). **Parts réglées** : `Activity.momentShares` (moment → part,
+vide = parts égales) ; `momentParts(n, clés, parts)` répartit la cible du jour au prorata, au plus fort reste (la somme suit la cible
+quand elle change : cible automatique, routine sur 7 jours) ; fiche routine, sous les puces de moments d'une routine répartie : − n +
+par moment (`_sharesEditor`, `routine-share-<clé>`, une part qui monte prend sur la plus grosse des autres) et « Parts égales » ;
+changer les moments choisis remet les parts à égalité. **Le Sniper pendant le Miracle Morning** = un rituel (`SniperScope.ritual`) :
+ses routines dans TON ordre (`rank` = l'ordre réglé, `SniperTarget.rank`), rien d'autre (les autres enjeux passent derrière « Plus
+tard · … ensuite »), titre « MIRACLE MORNING · n · dans ton ordre » ; « Plus tard » au-delà de deux groupes = le premier puis « n
+ensuite » (`laterLine`). Pendant ce moment, la tuile du mode d'Aujourd'hui montre le Sniper quel que soit l'élan, même en recharge
+(`_inMiracle`). Serveur (déployé au merge) : `functions/src/routine_split.ts` ↔ `routine_moments.dart` (**garder alignés** :
+`momentParts`) — moment `miracle` (alias « miracle morning », « réveil »), `momentShares` sur `update_activity` et `create_routine`
+(`normalizeMomentShares` ; seulement quand l'utilisateur donne ses parts), repris dans `get_user_context` et la liste des routines de
+`plan_day` ; contexte horaire `miracle`. L'ancien Miracle Morning (écran, rond 🌅, bloc) vit encore à côté jusqu'au lot 3.
+
 ## MAINTENANT, la bonne chose (2026-11-07, maquette validée, 3 lots)
 
 UNE chose en grand, choisie dans un ordre fixe, avec la règle qui a gagné. **Lot 1 livré (l'ordre et le « parce que »)** : logique

@@ -14,6 +14,8 @@ export type TimeContextDef = {
 };
 
 export const TIME_CONTEXTS: Record<string, TimeContextDef> = {
+  // Miracle Morning (2026-11-21) : le moment d'avant le matin ; sa vraie fenêtre est réglée dans l'app.
+  miracle: { key: "miracle", label: "miracle morning", windows: [[300, 420]], anchorMin: 315 },
   morning: { key: "morning", label: "matin", windows: [[330, 660]], anchorMin: 450 },
   midday: { key: "midday", label: "midi", windows: [[690, 840]], anchorMin: 750 },
   afternoon: { key: "afternoon", label: "après-midi", windows: [[840, 1140]], anchorMin: 930 },

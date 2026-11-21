@@ -17,7 +17,7 @@ import 'package:productivitwo_v1/utils/auto_target.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_cover.dart' show chronoHitMin;
 import 'package:productivitwo_v1/utils/routine_context.dart';
-import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
+import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, momentParts, pickedMomentsOf, splitMomentsOf, toggleMoment;
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
@@ -862,6 +862,10 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 onSelected: (_) => _setMoments('any', const []),
               ),
             ]),
+            if (splitMomentsOf(act).isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _sharesEditor(cs),
+            ],
 
             // Contextes GTD (@maison…) : où la routine est réalisable —
             // filtre « je suis » de Maintenant + CTA d'enchaînement
@@ -934,8 +938,85 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
   void _setMoments(String? timeContext, List<String> split) {
     act.timeContext = timeContext;
     act.splitMoments = split;
+    // Les parts réglées ne valent que pour les moments choisis : un moment ajouté ou retiré les remet à égalité.
+    if (act.momentShares.isNotEmpty && (split.length != act.momentShares.length || split.any((k) => !act.momentShares.containsKey(k)))) {
+      act.momentShares = {};
+    }
     _applySetting();
   }
+
+  /// Les parts de la cible du jour, moment par moment : − n + sur chacun (2026-11-21). La somme reste la cible :
+  /// une part qui monte prend sur la plus grosse des autres, une part qui descend rend à la dernière.
+  Widget _sharesEditor(ColorScheme cs) {
+    final keys = splitMomentsOf(act);
+    final n = logic.activeHabitTarget(act);
+    final parts = momentParts(n, keys, act.momentShares);
+    void move(int i, int d) {
+      final next = [...parts];
+      if (d > 0) {
+        // Prend sur la plus grosse des autres parts (la dernière à égalité).
+        var from = -1;
+        for (var j = 0; j < next.length; j++) {
+          if (j != i && next[j] > 0 && (from < 0 || next[j] >= next[from])) from = j;
+        }
+        if (from < 0) return;
+        next[from]--;
+        next[i]++;
+      } else {
+        if (next[i] <= 0) return;
+        final to = i == next.length - 1 ? i - 1 : next.length - 1;
+        next[i]--;
+        next[to]++;
+      }
+      act.momentShares = {for (var j = 0; j < keys.length; j++) keys[j]: next[j]};
+      _applySetting();
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        for (var i = 0; i < keys.length; i++)
+          Expanded(
+            child: Container(
+              margin: EdgeInsets.only(right: i == keys.length - 1 ? 0 : 6),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(color: cs.onSurface.withOpacity(.06), borderRadius: BorderRadius.circular(10)),
+              child: Column(children: [
+                Text(keys[i] == 'miracle' ? 'Miracle' : momentOf(keys[i]).label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: cs.onSurface.withOpacity(.6))),
+                Text('${parts[i]}', key: Key('routine-share-${keys[i]}'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _shareBtn(Icons.remove, 'routine-share-minus-${keys[i]}', parts[i] > 0 ? () => move(i, -1) : null),
+                  _shareBtn(Icons.add, 'routine-share-plus-${keys[i]}', parts[i] < n ? () => move(i, 1) : null),
+                ]),
+              ]),
+            ),
+          ),
+      ]),
+      if (act.momentShares.isNotEmpty)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('routine-shares-equal'),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+            onPressed: () {
+              act.momentShares = {};
+              _applySetting();
+            },
+            child: const Text('Parts égales'),
+          ),
+        ),
+    ]);
+  }
+
+  Widget _shareBtn(IconData icon, String key, VoidCallback? onTap) => InkResponse(
+        key: Key(key),
+        onTap: onTap,
+        radius: 18,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+          child: Icon(icon, size: 16, color: onTap == null ? Theme.of(context).disabledColor : Theme.of(context).colorScheme.primary),
+        ),
+      );
 
   void _toggleMoment(String key) {
     final r = toggleMoment(act, key);
@@ -948,11 +1029,11 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     final keys = splitMomentsOf(act);
     if (keys.isNotEmpty) {
       final n = logic.activeHabitTarget(act);
-      final base = n ~/ keys.length, extra = n % keys.length;
+      final parts = momentParts(n, keys, act.momentShares);
       return 'Répartie : ${[
         for (var i = 0; i < keys.length; i++)
-          if (base + (i < extra ? 1 : 0) > 0) '${base + (i < extra ? 1 : 0)} ${momentOf(keys[i]).thisOne}',
-      ].join(' · ')}';
+          if (parts[i] > 0) '${parts[i]} ${momentOf(keys[i]).thisOne}',
+      ].join(' · ')} · règle les parts avec − / +';
     }
     final picked = pickedMomentsOf(act);
     final daily = act.habitFreq == HabitFreq.daily;
