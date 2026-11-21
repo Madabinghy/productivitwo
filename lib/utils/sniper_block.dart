@@ -118,9 +118,10 @@ List<Stake> blockSniperStakes({
   return out;
 }
 
-/// La cible « le temps qui reste » d'un bloc d'activité : un chrono sur l'activité jusqu'à la fin du bloc.
+/// La cible d'un bloc d'activité : un chrono sur l'activité jusqu'à la fin du bloc, qui contient ses
+/// actions (l'activité comme contenant).
 Stake blockFillStake(Activity a, int minutes, ScheduleBlock block) => Stake(
-      StakeGesture(key: 'activity:${a.id}', kind: StakeGestureKind.activity, title: '${a.name}, le temps qui reste', costMin: minutes, activity: a, block: block),
+      StakeGesture(key: 'activity:${a.id}', kind: StakeGestureKind.activity, title: a.name, costMin: minutes, activity: a, block: block),
       const [],
     );
 
@@ -165,8 +166,8 @@ String _hm(int min) {
 
 /// Le plan dans le bloc : les cibles dans l'ordre du bloc tant qu'elles tiennent dans [budgetMin]
 /// (pauses comprises) ; une première action plus longue que le bloc prend tout le temps qui reste ;
-/// le reste « hors de portée ». Avec [fill] (bloc d'activité), le temps qui reste devient une
-/// dernière cible sur l'activité, dès 5 minutes.
+/// le reste « hors de portée ». Avec [fill] (bloc d'activité), une seule cible : l'activité jusqu'à la
+/// fin du bloc, qui contient ses actions dans l'ordre (l'activité comme contenant).
 SniperPlan planBlockSniper({
   required List<Stake> stakes,
   required int budgetMin,
@@ -176,6 +177,26 @@ SniperPlan planBlockSniper({
   int pauseMin = kSniperPauseMin,
   int maxTargets = kSniperMaxTargets,
 }) {
+  // Bloc d'activité : UNE cible, l'activité, qui contient ses actions tant qu'elles tiennent.
+  if (fill != null && block != null) {
+    final total = budgetMin > kSniperMaxMin ? kSniperMaxMin : budgetMin;
+    if (total < kSniperBlockMinLeft) return SniperPlan(budgetMin: budgetMin, pauseMin: pauseMin);
+    final steps = <SniperStep>[];
+    var used = 0;
+    for (final s in stakes) {
+      if (s.gesture.kind != StakeGestureKind.action) continue;
+      final m = s.gesture.costMin;
+      if (steps.isNotEmpty && used + m > total) continue;
+      steps.add(SniperStep(s.gesture, minutes: m));
+      used += m;
+    }
+    final stake = blockFillStake(fill, total, block);
+    return SniperPlan(
+      aimed: [SniperTarget(stake, SniperKind.timed, minutes: total, steps: steps)],
+      budgetMin: budgetMin,
+      pauseMin: pauseMin,
+    );
+  }
   final aimed = <SniperTarget>[];
   final out = <SniperMiss>[];
   var used = 0;
@@ -199,10 +220,6 @@ SniperPlan planBlockSniper({
       continue;
     }
     out.add(SniperMiss(t, 'ne tient plus avant ${_hm(untilMin)}'));
-  }
-  if (fill != null && block != null && aimed.length < maxTargets) {
-    final room = budgetMin - used - (aimed.isEmpty ? 0 : pauseMin);
-    if (room >= 5) aimed.add(blockTargetOf(blockFillStake(fill, room > kSniperMaxMin ? kSniperMaxMin : room, block))!);
   }
   return SniperPlan(aimed: aimed, outOfReach: out, budgetMin: budgetMin, pauseMin: pauseMin);
 }

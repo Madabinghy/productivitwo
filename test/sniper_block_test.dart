@@ -85,14 +85,17 @@ void main() {
     expect(plan.aimed.single.minutes, 38);
   });
 
-  test('bloc d’activité : une action par projet lié, puis le temps qui reste sur l’activité', () {
+  test('bloc d’activité : UNE cible, l’activité, qui contient ses actions et le temps libre', () {
     final b = block(projectId: null, taskId: null, activityId: 'kin', title: 'Kingdom');
     final s = blockSniperStakes(block: b, projects: [project(linked: 'kin')], activities: [kingdom], today: d0);
     expect([for (final x in s) x.gesture.title], ['Relire le chapitre']);
     final plan = planBlockSniper(stakes: s, budgetMin: 38, untilMin: 15 * 60, fill: kingdom, block: b);
-    expect([for (final t in plan.aimed) t.title], ['Relire le chapitre', 'Kingdom, le temps qui reste']);
-    expect(plan.aimed.last.kind, SniperKind.timed);
-    expect(plan.aimed.last.minutes, 26);
-    expect(plan.totalMin, 38);
+    expect(plan.aimed, hasLength(1));
+    final t = plan.aimed.single;
+    expect(t.title, 'Kingdom');
+    expect(t.kind, SniperKind.timed);
+    expect(t.minutes, 38);
+    expect([for (final x in t.steps) x.title], ['Relire le chapitre']);
+    expect(t.freeMin, 28);
   });
 }

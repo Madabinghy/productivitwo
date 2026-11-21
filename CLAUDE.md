@@ -1636,6 +1636,25 @@ Logique pure `utils/sniper_block.dart` (`sniperBlockOf`, `blockSniperStakes`, `b
 état de l'app `sniperBlockNow` / `sniperBlockPlanNow` (`sniper_now.dart`), aussi lus par la tuile du mode (`sniperPlanNow`). La session
 garde le bloc (`extra.block`, retrouvé par son id à la reprise même fini) ; un Sniper préparé « Après » garde `extra.after`.
 
+**L'activité comme contenant** (2026-11-21, maquette validée « Sniper, l'activité comme contenant », retour user : le Sniper visait
+« Kingdom 37 min » ET les actions dont le chrono tourne sur Kingdom, le même temps demandé deux fois) : une action dont le chrono
+tourne sur une activité déjà visée en temps (`chronoActivityIdOf` : liée, sinon projet, sinon porteuse) n'est plus une cible à part —
+elle entre dans la cible de l'activité avec ses gains (`containTargets` / `containerOf`, `utils/sniper.dart`, appelé par `planSniper`),
+puis la file de l'activité complète tant que son temps n'est pas rempli (`planSniper(fill:)`, `containerFill` = `blockQueue` : visées
+aujourd'hui, en retard, prochaine action de chaque projet lié, actions propres ; `sniperFillNow`, `lib/sniper_now.dart`). Le tir dure ce
+qui manque à l'activité, ou plus si les actions absorbées le demandent ; le reste = « Temps libre sur Kingdom ». `SniperStep`
+(geste, minutes, raison « promise hier » · « visée aujourd'hui » · « en retard » · « prochaine action · projet »), `SniperTarget.steps` /
+`isContainer` / `stepsMin` / `freeMin` / `withSteps`. **Viseur** : sous la cible, ses actions (a, b, c…) et le temps libre, lien
+« Changer les actions › » (`sniper-steps-<clé>`, aussi « Choisir des actions de … » quand l'activité a des actions mais aucune n'est
+proposée) → feuille « Kingdom aujourd'hui » (CHOISIES PAR LE SNIPER · AUTRES ACTIONS DE LA FICHE, `activityStepPool` ; cases à cocher,
+« Valider · n min », refusé si le temps libre ne suffit pas) ; le choix est gardé par cible (`_picks`, session `extra.picks`). **Tir** :
+un seul minuteur pour l'activité ; « KINGDOM · ACTION k SUR n », l'action en grand, DANS CE TIR (faites barrées, en cours, à venir,
+temps libre), « Action faite · ensuite … » (`sniper-step-done` : l'action se coche, pas de confirmation, SnackBar « Annuler ») et
+« Passer cette action » ; le chrono reste sur l'activité et cible l'action en cours (`_retargetChrono`) ; une fois les actions faites,
+« Temps libre sur Kingdom » puis « Suivant › » comme une cible de temps. Faites / passées gardées dans la session (`extra.stepDone`,
+`extra.stepSkip`). **Bloc d'activité en cours** : une seule cible, l'activité jusqu'à la fin du bloc (60 min au plus), qui contient
+la file du bloc (`planBlockSniper(fill:)`). Pas encore : le Deep work qui reprend la même liste, le lien « Continuer en Deep work ».
+
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

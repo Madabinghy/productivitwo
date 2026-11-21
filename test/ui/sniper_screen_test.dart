@@ -447,4 +447,48 @@ void main() {
     await close(tester);
     await RunSessionStore.clear();
   });
+
+  testWidgets('l’activité comme contenant : ses actions dans la même cible, une après l’autre dans le tir', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final ecrire = TaskAction(id: 'e1', title: 'Écrire la page', estimatedMin: 10);
+    final kingdom = Activity(id: 'kin', domainId: 'd', name: 'Kingdom', goalMin: 30, ownActions: [ecrire]);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [kingdom], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final stakes = [
+      Stake(
+        StakeGesture(key: 'activity:kin', kind: StakeGestureKind.activity, title: 'Kingdom', costMin: 12, activity: kingdom),
+        [const StakeGain(kind: StakeGainKind.halfDay, label: 'Montre suisse · 3 / 4', weight: 10)],
+      ),
+      Stake(
+        StakeGesture(key: 'action:e1', kind: StakeGestureKind.action, title: 'Écrire la page', costMin: 10, action: ecrire, owner: kingdom),
+        [const StakeGain(kind: StakeGainKind.focus, label: 'Visée aujourd’hui', weight: 20)],
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes)));
+    await tester.pump();
+    await tester.pump();
+    // Une seule cible : Kingdom contient l'action, le reste est du temps libre.
+    expect(find.byKey(const Key('sniper-container-activity:kin')), findsOneWidget);
+    expect(find.text('visée aujourd’hui'), findsOneWidget);
+    expect(find.text('Temps libre sur Kingdom'), findsOneWidget);
+    expect(find.text('Changer les actions ›'), findsOneWidget);
+    expect(find.textContaining('Tirer · 1 cible ·'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Tirer · 1 cible ·'));
+    await tester.pump();
+    expect(find.text('KINGDOM · ACTION 1 SUR 1'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('sniper-shot-title'))).data, 'Écrire la page');
+    await tester.tap(find.byKey(const Key('sniper-step-done')));
+    await tester.pump();
+    expect(ecrire.done, isTrue);
+    expect(find.text('KINGDOM · TEMPS LIBRE'), findsOneWidget);
+    expect(RunSessionStore.current?.extra['stepDone'], {'activity:kin': ['action:e1']});
+    // La SnackBar « Annuler » se referme d'elle-même avant qu'on démonte l'écran.
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 1));
+    await close(tester);
+    await RunSessionStore.clear();
+  });
 }

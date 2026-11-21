@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/utils/parole.dart' show kParoleMin, paroleIndex
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
 import 'package:productivitwo_v1/utils/sniper_block.dart';
+import 'package:productivitwo_v1/utils/sniper_container.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, spentByAction;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin;
@@ -81,6 +82,21 @@ SniperBudget sniperBudgetNow(AppLogic logic, {int endMin = 22 * 60, SniperScope?
   return sniperBudget(blocks: logic.todayBlocks, nowMin: nowMin, endMin: end);
 }
 
+/// Ce que chaque activité visée en temps peut contenir (l'activité comme contenant) : sa file d'actions,
+/// par priorité.
+Map<String, List<SniperStep>> sniperFillNow(AppLogic logic, List<Stake> stakes, double factor) {
+  final out = <String, List<SniperStep>>{};
+  final now = DateTime.now();
+  for (final s in stakes) {
+    final a = s.gesture.activity;
+    if (s.gesture.kind != StakeGestureKind.activity || a == null || out.containsKey(a.id)) continue;
+    try {
+      out[a.id] = containerFill(a, logic.currentProjects, now, factor: factor);
+    } catch (_) {}
+  }
+  return out;
+}
+
 /// Le bloc en cours que le Sniper peut viser (bloc de tâche ou d'activité commencé), sinon null.
 ScheduleBlock? sniperBlockNow(AppLogic logic) {
   try {
@@ -112,6 +128,8 @@ ScheduleBlock? sniperBlockNow(AppLogic logic) {
   final s = sniperStakesNow(logic, bc);
   final scope = sniperScopeNow(logic);
   final budget = sniperBudgetNow(logic, endMin: endMin, scope: scope);
-  final plan = planSniper(stakes: s.stakes, budgetMin: budget.minutes, untilMin: budget.untilMin, routineLeft: s.routineLeft, factor: sniperFactorNow(logic), scope: scope);
+  final factor = sniperFactorNow(logic);
+  final plan = planSniper(
+      stakes: s.stakes, budgetMin: budget.minutes, untilMin: budget.untilMin, routineLeft: s.routineLeft, factor: factor, scope: scope, fill: sniperFillNow(logic, s.stakes, factor));
   return (plan: plan, budget: budget, scope: scope);
 }

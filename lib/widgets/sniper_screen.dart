@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
 import 'package:productivitwo_v1/utils/sniper_block.dart';
+import 'package:productivitwo_v1/utils/sniper_container.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin;
 import 'package:productivitwo_v1/widgets/sniper_scope.dart';
@@ -122,6 +123,15 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   /// Vrai = la lunette couvre ce qui reste du bloc et vise son contenu ; faux = après le bloc.
   bool _inBlock = false;
 
+  /// L'activité comme contenant : la file d'actions de chaque activité visée en temps, les actions
+  /// choisies à la main par cible (ids), la fiche de chaque activité (pour choisir), et dans le tir les
+  /// actions faites ou passées.
+  Map<String, List<SniperStep>> _fill = const {};
+  final _picks = <String, List<String>>{};
+  final _pools = <String, List<SniperStep>>{};
+  final _stepDone = <String, Set<String>>{};
+  final _stepSkip = <String, Set<String>>{};
+
   /// Sniper par moment : les routines du moment, ce qui reste d'avant, ce qui attend plus tard.
   /// Null pour un Sniper ciblé sur une carte.
   SniperScope? _scope;
@@ -219,6 +229,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     if (_focus case final q?) _dayStakes = focusStakes(_dayStakes, q);
     _stakes = _dayStakes;
     _factor = sniperFactorNow(logic);
+    _fill = sniperFillNow(logic, _dayStakes, _factor);
     _scope = _focus != null ? null : (widget.stakes != null ? widget.scope : sniperScopeNow(logic));
     _findBlock();
     _replan();
@@ -255,6 +266,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       _excluded.clear();
       _added.clear();
       _amounts.clear();
+      _picks.clear();
       _order = null;
       _replan();
     });
@@ -308,6 +320,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       routineLeft: _routineLeft,
       factor: _factor,
       scope: _scope,
+      fill: _fill,
     );
     _adjust();
   }
@@ -318,7 +331,52 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
   /// de portée ne rentre sans qu'on le choisisse.
   /// Dans un bloc, l'ordre conseillé est celui du bloc.
-  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts, order: _order ?? (_inBlock ? [for (final t in _base.aimed) t.key] : null));
+  void _adjust() =>
+      _plan = adjustPlan(_withPicks(_base), excluded: _excluded, added: _added, amounts: _amounts, order: _order ?? (_inBlock ? [for (final t in _base.aimed) t.key] : null));
+
+  /// Les actions d'une activité choisies à la main remplacent celles du Sniper.
+  SniperPlan _withPicks(SniperPlan p) {
+    if (_picks.isEmpty) return p;
+    SniperTarget pick(SniperTarget t) {
+      final ids = _picks[t.key];
+      if (ids == null) return t;
+      final pool = {for (final x in [...t.steps, ..._poolOf(t)]) x.key: x};
+      return t.withSteps([for (final id in ids) if (pool[id] case final x?) x]);
+    }
+
+    return SniperPlan(
+      aimed: [for (final t in p.aimed) pick(t)],
+      outOfReach: [for (final m in p.outOfReach) SniperMiss(pick(m.target), m.reason)],
+      later: p.later,
+      budgetMin: p.budgetMin,
+      pauseMin: p.pauseMin,
+    );
+  }
+
+  /// Toutes les actions ouvertes de la fiche de l'activité d'une cible de temps.
+  List<SniperStep> _poolOf(SniperTarget t) {
+    final a = t.stake.gesture.activity;
+    if (a == null) return const [];
+    return _pools[a.id] ??= activityStepPool(a, logic.currentProjects, DateTime.now(), factor: _factor);
+  }
+
+  void _readSteps(PendingRun r) {
+    Map<String, Set<String>> sets(Object? v) => v is Map ? {for (final e in v.entries) e.key.toString(): {for (final x in (e.value is List ? e.value as List : const [])) x.toString()}} : {};
+    final picks = r.extra['picks'];
+    if (picks is Map) {
+      for (final e in picks.entries) {
+        if (e.value is List) _picks[e.key.toString()] = [for (final x in e.value as List) x.toString()];
+      }
+    }
+    _stepDone.addAll(sets(r.extra['stepDone']));
+    _stepSkip.addAll(sets(r.extra['stepSkip']));
+  }
+
+  Map<String, List<String>> get _picksJson => {for (final e in _picks.entries) e.key: e.value};
+  Map<String, List<String>> _setsJson(Map<String, Set<String>> m) => {
+        for (final e in m.entries)
+          if (e.value.isNotEmpty) e.key: e.value.toList()
+      };
 
   void _reorder(int from, int to) {
     final keys = [for (final t in _plan.aimed) t.key];
@@ -375,6 +433,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   /// ordre. Une cible tombée depuis (faite ailleurs) n'y est plus ; s'il ne reste rien, le
   /// Sniper préparé est oublié.
   void _restorePrepared(PendingRun r) {
+    _readSteps(r);
     final keys = r.strings('aimed');
     final amounts = r.extra['amounts'] is Map ? r.extra['amounts'] as Map : const {};
     _excluded
@@ -401,6 +460,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _excluded.clear();
     _added.clear();
     _amounts.clear();
+    _picks.clear();
     _order = null;
     _touched = false;
     _prepared = false;
@@ -442,6 +502,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'ordered': _order != null,
         'aimedMin': _plan.totalMin,
         'total': _plan.aimed.length,
+        if (_picks.isNotEmpty) 'picks': _picksJson,
         if (_focus case final q?) 'focus': q.badge.def.id,
         if (_inBlock && _block != null) 'block': _block!.id,
         if (!_inBlock && _block != null) 'after': true,
@@ -451,11 +512,16 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   }
 
   void _restore(PendingRun r) {
+    _readSteps(r);
+    _adjust();
     final keys = r.strings('aimed');
     final amounts = r.extra['amounts'] is Map ? r.extra['amounts'] as Map : const {};
+    final planned = _withPicks(_base);
     final byKey = {
       for (final s in _stakes)
         if (_targetOf(s) case final t?) t.key: t,
+      for (final t in planned.aimed) t.key: t,
+      for (final m in [...planned.outOfReach, ...planned.later]) m.target.key: m.target,
     };
     _startedAt = r.startedAt;
     _hit.addAll(r.strings('hit'));
@@ -558,6 +624,9 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'aimedMin': _aimedMin,
         if (_focus case final q?) 'focus': q.badge.def.id,
         if (_inBlock && _block != null) 'block': _block!.id,
+        if (_picks.isNotEmpty) 'picks': _picksJson,
+        if (_stepDone.isNotEmpty) 'stepDone': _setsJson(_stepDone),
+        if (_stepSkip.isNotEmpty) 'stepSkip': _setsJson(_stepSkip),
         'full': _fullHits,
         'total': _totalAimed,
         if (away && cur != null) ...{
@@ -698,9 +767,70 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     if (logic.state.sessions.any((s) => s.endAt == null)) return;
     final act = _chronoActivity(t);
     if (act == null) return;
-    final g = t.stake.gesture;
+    // Un contenant suit son action en cours : le temps passé par action reste juste.
+    final g = _curStep(t)?.gesture ?? t.stake.gesture;
     logic.start(act, taskId: g.task?.id, actionId: g.action?.id);
     _ownChrono = true;
+  }
+
+  // ── L'activité comme contenant : une action après l'autre dans le même tir ──
+
+  /// L'action en cours d'un contenant (null = toutes faites ou passées : le temps libre).
+  SniperStep? _curStep(SniperTarget t) {
+    if (!t.isContainer) return null;
+    final done = _stepDone[t.key] ?? const {}, skip = _stepSkip[t.key] ?? const {};
+    return t.steps.where((x) => !done.contains(x.key) && !skip.contains(x.key)).firstOrNull;
+  }
+
+  /// Le chrono passe sur l'action suivante (même activité, autre action ciblée).
+  void _retargetChrono(SniperTarget t) {
+    if (!_ownChrono || _pausedLeft != null) return;
+    _ownChrono = false;
+    dropShortSession(logic, logic.stopActive(notify: false));
+    _startChrono(t);
+  }
+
+  void _writeAction(StakeGesture g, bool done) {
+    final a = g.action;
+    if (a == null) return;
+    setActionDone(a, done);
+    if (g.project != null) {
+      logic.sync?.patchActionOf(g.project!, a);
+    } else if (g.owner != null) {
+      logic.sync?.updateOwnActions(g.owner!.id, g.owner!.ownActions);
+    }
+    logic.onChange();
+  }
+
+  /// « Action faite » dans un contenant : l'action se coche, le tir continue sur la suivante.
+  void _markStep(SniperTarget t, SniperStep step) {
+    _writeAction(step.gesture, true);
+    (_stepDone[t.key] ??= {}).add(step.key);
+    _retargetChrono(t);
+    _persist();
+    setState(() {});
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
+      content: Text('${step.title} · faite'),
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          if (!mounted) return;
+          _writeAction(step.gesture, false);
+          _stepDone[t.key]?.remove(step.key);
+          _retargetChrono(t);
+          _persist();
+          setState(() {});
+        },
+      ),
+    ));
+  }
+
+  void _skipStep(SniperTarget t, SniperStep step) {
+    (_stepSkip[t.key] ??= {}).add(step.key);
+    _retargetChrono(t);
+    _persist();
+    setState(() {});
   }
 
   /// Tir de routine sans minuteur, routine liée à une activité : le chrono se lance d'ici, sans quitter le
@@ -1059,6 +1189,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
               if (reason != null) Text(reason, style: const TextStyle(fontSize: 12.5, color: _text3)) else if (sub != null) Text(sub, style: const TextStyle(fontSize: 12.5, color: _text3)),
               if (on && t.isMini) Text(_miniLine(t), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kSniperAccent)),
               if (reason == null) ...[const SizedBox(height: 5), Opacity(opacity: on && t.isMini ? .4 : 1, child: _chips(t.gains))],
+              if (on && reason == null && t.kind == SniperKind.timed && t.stake.gesture.activity != null && (t.isContainer || _poolOf(t).isNotEmpty))
+                _containerLines(t),
             ]),
           ),
           const SizedBox(width: 8),
@@ -1069,6 +1201,127 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         ]),
       ),
     );
+  }
+
+  /// Les actions d'un contenant sous sa cible, le temps libre, et « Changer les actions ».
+  Widget _containerLines(SniperTarget t) {
+    final name = t.stake.gesture.activity!.name;
+    return Padding(
+      key: Key('sniper-container-${t.key}'),
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final (i, x) in t.steps.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 16, child: Text(String.fromCharCode(97 + i % 26), style: TextStyle(fontSize: 12, color: sniperTargetColor(t)))),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(x.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  if (x.reason != null) Text(x.reason!, style: const TextStyle(fontSize: 11.5, color: _text3)),
+                ]),
+              ),
+              Text(fmtMin(x.minutes), style: const TextStyle(fontSize: 12.5, color: _text3)),
+            ]),
+          ),
+        if (t.isContainer && t.freeMin > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(children: [
+              SizedBox(width: 16, child: Text(String.fromCharCode(97 + t.steps.length % 26), style: TextStyle(fontSize: 12, color: sniperTargetColor(t)))),
+              Expanded(child: Text('Temps libre sur $name', style: const TextStyle(fontSize: 13.5, color: _text3))),
+              Text(fmtMin(t.freeMin), style: const TextStyle(fontSize: 12.5, color: _text3)),
+            ]),
+          ),
+        TextButton(
+          key: Key('sniper-steps-${t.key}'),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 36), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          onPressed: () => _editSteps(t),
+          child: Text(t.isContainer ? 'Changer les actions ›' : 'Choisir des actions de $name ›',
+              style: TextStyle(fontFamily: kAppFont, fontSize: 13, fontWeight: FontWeight.w600, color: kSniperAccent)),
+        ),
+      ]),
+    );
+  }
+
+  /// « Changer les actions » : celles du Sniper cochées, puis le reste de la fiche de l'activité.
+  Future<void> _editSteps(SniperTarget t) async {
+    final a = t.stake.gesture.activity!;
+    final chosen = [...t.steps];
+    final pool = [
+      ...chosen,
+      for (final x in _poolOf(t))
+        if (!chosen.any((c) => c.key == x.key)) x,
+    ];
+    final picked = {for (final x in chosen) x.key};
+    var showAll = false;
+    final result = await showModalBottomSheet<List<SniperStep>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: _bg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final sel = [for (final x in pool) if (picked.contains(x.key)) x];
+        final sum = sel.fold(0, (s, x) => s + x.minutes);
+        final base = t.stake.gesture.costMin;
+        final total = sum > base ? sum : base;
+        final others = [for (final x in pool) if (!chosen.any((c) => c.key == x.key)) x];
+        final shown = showAll ? others : others.take(3).toList();
+        Widget line(SniperStep x) => CheckboxListTile(
+              key: Key('sniper-step-pick-${x.key}'),
+              value: picked.contains(x.key),
+              onChanged: (v) => set(() => v == true ? picked.add(x.key) : picked.remove(x.key)),
+              activeColor: sniperTargetColor(t),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(x.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+              subtitle: x.reason == null ? null : Text(x.reason!, style: const TextStyle(fontSize: 12, color: _text3)),
+              secondary: Text(fmtMin(x.minutes), style: const TextStyle(fontSize: 12.5, color: _text2)),
+            );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('${a.name} aujourd’hui', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+            Text('${fmtMin(total)} de tir · ${fmtMin(sum)} d’actions${total > sum ? ' · ${fmtMin(total - sum)} de temps libre' : ''}',
+                style: const TextStyle(fontSize: 13, color: _text2)),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                if (chosen.isNotEmpty) ...[_label('CHOISIES PAR LE SNIPER'), for (final x in chosen) line(x)],
+                if (others.isNotEmpty) ...[
+                  _label('AUTRES ACTIONS DE LA FICHE · ${others.length}'),
+                  for (final x in shown) line(x),
+                  if (!showAll && others.length > shown.length)
+                    TextButton(
+                      onPressed: () => set(() => showAll = true),
+                      child: Text('Voir les ${others.length - shown.length} autres', style: const TextStyle(color: kSniperAccent)),
+                    ),
+                ],
+                if (pool.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Aucune action ouverte dans cette activité.', style: TextStyle(color: _text2))),
+                const SizedBox(height: 8),
+                const Text('Le Sniper choisit dans cet ordre : promises la veille, visées aujourd’hui, en retard, puis la prochaine action de chaque projet. Il s’arrête quand le temps de l’activité est rempli.',
+                    style: TextStyle(fontSize: 12, height: 1.4, color: _text3)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            _primary('Valider · ${fmtMin(total)}', () => Navigator.of(ctx).pop(sel)),
+          ]),
+        );
+      }),
+    );
+    if (result == null || !mounted) return;
+    final next = t.withSteps(result);
+    if (!fitsPlan(_plan, next)) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(content: Text('Plus de temps libre pour ${fmtMin(next.minutes)} de ${a.name} : retire une action ou écarte une autre cible.')));
+      return;
+    }
+    setState(() {
+      _picks[t.key] = [for (final x in result) x.key];
+      _amounts.remove(t.key);
+      _touched = true;
+      _adjust();
+    });
   }
 
   /// « mini-tir · il en restera 10 », « mini-tir · il restera 20 min ».
@@ -1444,6 +1697,10 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final action = t.kind == SniperKind.action;
     final linkedId = t.kind == SniperKind.routine ? _chronoActivity(t) : null;
     final linked = linkedId == null ? null : logic.state.activities.where((a) => a.id == linkedId && !a.deleted).firstOrNull;
+    final step = _curStep(t);
+    final actName = t.stake.gesture.activity?.name ?? t.title;
+    final stepNo = step == null ? 0 : t.steps.indexOf(step) + 1;
+    final nextStep = step == null ? null : t.steps.skip(stepNo).where((x) => !(_stepDone[t.key]?.contains(x.key) ?? false) && !(_stepSkip[t.key]?.contains(x.key) ?? false)).firstOrNull;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(label: 'TIR $_shotNumber / ${_aimed.length}', trailing: TextButton(onPressed: _stop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       _track(),
@@ -1484,10 +1741,21 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
               child: Text(t.durLabel, style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kSniperAccent)),
             ),
           const SizedBox(height: 14),
-          Text(t.title, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w800)),
+          if (t.isContainer) ...[
+            Text(
+                step == null ? '${actName.toUpperCase()} · TEMPS LIBRE' : '${actName.toUpperCase()} · ACTION $stepNo SUR ${t.steps.length}',
+                key: const Key('sniper-step-label'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: sniperTargetColor(t))),
+            const SizedBox(height: 4),
+          ],
+          Text(t.isContainer ? (step?.title ?? 'Temps libre sur $actName') : t.title,
+              key: const Key('sniper-shot-title'),
+              textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, height: 1.2, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(
             switch (t.kind) {
+              SniperKind.timed when step != null => '≈ ${fmtMin(step.minutes)}${chrono != null ? ' · chrono sur $chrono' : ''}',
               SniperKind.timed when t.isMini => '${chrono != null ? 'chrono sur $chrono · ' : ''}${_miniLine(t)}',
               SniperKind.timed => chrono != null ? 'chrono sur $chrono · alarme à la fin' : 'alarme à la fin',
               SniperKind.routine when t.isMini => '${chrono != null ? 'chrono sur $chrono · ' : ''}${_miniLine(t)}',
@@ -1498,6 +1766,22 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13.5, color: _text2),
           ),
+          if (t.isContainer) ...[
+            _label('DANS CE TIR'),
+            _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final x in t.steps) _stepLine(t, x, current: x == step),
+              if (t.freeMin > 0 || step == null) _freeLine(t, actName, current: step == null),
+            ])),
+            if (step != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const Key('sniper-step-skip'),
+                  onPressed: () => _skipStep(t, step),
+                  child: const Text('Passer cette action', style: TextStyle(color: _text2, fontSize: 13.5)),
+                ),
+              ),
+          ],
           _label(t.isMini ? 'CE QUI TOMBERA AU BOUT' : 'CE TIR FAIT TOMBER'),
           Align(alignment: Alignment.centerLeft, child: Opacity(opacity: t.isMini ? .5 : 1, child: _chips(t.gains, target: true))),
           _nextLine(),
@@ -1505,6 +1789,12 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       ),
       const SizedBox(height: 10),
       switch (t.kind) {
+        SniperKind.timed when step != null => KeyedSubtree(
+            key: const Key('sniper-step-done'),
+            child: _primary(
+                'Action faite · ensuite ${nextStep?.title ?? (t.freeMin > 0 ? 'temps libre' : 'la fin du tir')}', () => _markStep(t, step),
+                height: 56),
+          ),
         SniperKind.timed => _primary(left == 0 ? 'Suivant ›' : 'Fait plus tôt · suivant', _touch, height: 56),
         SniperKind.action => _primary('Action faite', () => _touch(), height: 56),
         SniperKind.routine => _primary(timed && left > 0 ? 'Fait · +${t.delta}' : '+${t.delta} · touché', () => _touch(), height: 56),
@@ -1539,6 +1829,48 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       ),
     ]);
   }
+
+  Widget _stepLine(SniperTarget t, SniperStep x, {required bool current}) {
+    final done = _stepDone[t.key]?.contains(x.key) ?? false;
+    final skip = _stepSkip[t.key]?.contains(x.key) ?? false;
+    final c = sniperTargetColor(t);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(children: [
+        Container(
+          width: 20,
+          height: 20,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: done ? c : null, border: done ? null : Border.all(color: current ? c : _line, width: 2)),
+          child: done ? const Icon(Icons.check, size: 13, color: kSniperInk) : null,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(x.title,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+                  color: done || skip ? _text3 : Colors.white,
+                  decoration: done ? TextDecoration.lineThrough : null)),
+        ),
+        Text(current ? 'en cours' : (skip ? 'passée' : fmtMin(x.minutes)), style: TextStyle(fontSize: 12, color: current ? c : _text3)),
+      ]),
+    );
+  }
+
+  Widget _freeLine(SniperTarget t, String name, {required bool current}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: current ? sniperTargetColor(t) : _line, width: 2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Temps libre sur $name', style: TextStyle(fontSize: 13.5, color: current ? Colors.white : _text3))),
+          Text(current ? 'en cours' : fmtMin(t.freeMin), style: TextStyle(fontSize: 12, color: current ? sniperTargetColor(t) : _text3)),
+        ]),
+      );
 
   /// Sortir du Sniper sans l'arrêter : la session attend (carte « Reprendre » d'Aujourd'hui).
   void _goAway() {

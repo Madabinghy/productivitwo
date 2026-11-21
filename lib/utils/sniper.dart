@@ -217,6 +217,19 @@ int sniperMomentShift(int nowMin, List<Moment> timed) {
   return nextMomentAfter(cur, timed) == null ? 0 : left;
 }
 
+/// Une action DANS une cible de temps (l'activité comme contenant, maquette validée 2026-11-21) : son geste
+/// (projet, tâche, action, porteuse), sa durée estimée et pourquoi elle est là.
+class SniperStep {
+  final StakeGesture gesture;
+  final int minutes;
+  final String? reason;
+  const SniperStep(this.gesture, {required this.minutes, this.reason});
+
+  String get key => gesture.key;
+  String get title => gesture.title;
+  TaskAction? get action => gesture.action;
+}
+
 class SniperTarget {
   final Stake stake;
   final SniperKind kind;
@@ -233,7 +246,31 @@ class SniperTarget {
 
   /// Rang dans un rituel (Miracle Morning) : l'ordre réglé passe avant l'ordre calculé. Null ailleurs.
   final int? rank;
-  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need, this.section = kSniperSecOther, this.rank}) : _need = need;
+
+  /// Cible de temps d'une activité qui CONTIENT ses actions (promises, visées, en retard, prochaine
+  /// action d'un projet lié) : on les fait l'une après l'autre dans le même tir, le reste du temps est
+  /// libre sur l'activité. Vide = une cible de temps simple.
+  final List<SniperStep> steps;
+  const SniperTarget(this.stake, this.kind,
+      {required this.minutes, this.delta = 1, int? need, this.section = kSniperSecOther, this.rank, this.steps = const []})
+      : _need = need;
+
+  bool get isContainer => steps.isNotEmpty;
+
+  /// Minutes des actions du contenant.
+  int get stepsMin => steps.fold(0, (s, x) => s + x.minutes);
+
+  /// Temps libre sur l'activité une fois ses actions faites.
+  int get freeMin => minutes > stepsMin ? minutes - stepsMin : 0;
+
+  /// Les actions choisies à la main : le tir dure ce qui manque à l'activité, ou plus si les actions
+  /// le demandent.
+  SniperTarget withSteps(List<SniperStep> list) {
+    final sum = list.fold(0, (s, x) => s + x.minutes);
+    final base = stake.gesture.costMin;
+    final m = sum > base ? sum : base;
+    return SniperTarget(stake, kind, minutes: m, delta: delta, need: m, section: section, rank: rank, steps: list);
+  }
 
   /// Routine à minuteur (Louanges 15 min) : on règle la durée, la coche
   /// tombe au bout quel que soit le temps choisi.
@@ -258,8 +295,8 @@ class SniperTarget {
   int get leftAfter => need > amount ? need - amount : 0;
 
   SniperTarget withAmount(int a) => _countsReps
-      ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need, section: section, rank: rank)
-      : SniperTarget(stake, kind, minutes: a, delta: delta, need: need, section: section, rank: rank);
+      ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need, section: section, rank: rank, steps: steps)
+      : SniperTarget(stake, kind, minutes: a, delta: delta, need: need, section: section, rank: rank, steps: steps);
 
   String get key => stake.gesture.key;
   String get title => stake.gesture.title;
@@ -351,6 +388,73 @@ class SniperPlan {
 
 int _round5(num m) => ((m / 5).ceil() * 5).toInt();
 
+/// L'activité sur laquelle tourne le chrono d'une action : la sienne, sinon celle du projet, sinon la porteuse.
+String? chronoActivityIdOf(StakeGesture g) => g.action?.linkedActivityId ?? g.project?.linkedActivityId ?? g.owner?.id;
+
+/// Pourquoi une action est dans le tir, d'après ses gains.
+String? _stepReason(List<StakeGain> gains) {
+  if (gains.any((g) => g.label.startsWith('Parole'))) return 'promise hier';
+  if (gains.any((g) => g.kind == StakeGainKind.focus)) return 'visée aujourd’hui';
+  if (gains.any((g) => g.kind == StakeGainKind.session)) return 'prépa de séance';
+  return gains.isEmpty ? null : gains.first.label;
+}
+
+/// L'activité comme contenant : une action dont le chrono tourne sur une activité déjà visée en temps
+/// n'est plus une cible à part (son temps compte déjà pour l'activité, il était demandé deux fois). Elle
+/// entre dans la cible de l'activité, avec ses gains ; puis [fill] (par activité, dans l'ordre de
+/// priorité) complète tant que le temps de l'activité n'est pas rempli. Le tir dure ce qui manque à
+/// l'activité, ou plus si les actions absorbées le demandent.
+List<SniperTarget> containTargets(List<SniperTarget> targets, {Map<String, List<SniperStep>> fill = const {}}) {
+  final acts = <String>{
+    for (final t in targets)
+      if (t.kind == SniperKind.timed && t.stake.gesture.kind == StakeGestureKind.activity && t.stake.gesture.activity != null) t.stake.gesture.activity!.id,
+  };
+  if (acts.isEmpty) return targets;
+  final absorbed = <String, List<SniperTarget>>{};
+  final rest = <SniperTarget>[];
+  for (final t in targets) {
+    final id = t.kind == SniperKind.action ? chronoActivityIdOf(t.stake.gesture) : null;
+    if (id != null && acts.contains(id)) {
+      (absorbed[id] ??= []).add(t);
+    } else {
+      rest.add(t);
+    }
+  }
+  return [
+    for (final t in rest)
+      if (t.kind == SniperKind.timed && t.stake.gesture.activity != null && acts.contains(t.stake.gesture.activity!.id))
+        containerOf(t, absorbed[t.stake.gesture.activity!.id] ?? const [], fill[t.stake.gesture.activity!.id] ?? const [])
+      else
+        t,
+  ];
+}
+
+/// La cible de temps [t] avec ses actions : celles qu'elle absorbe d'abord (ce qui se perd ce soir
+/// devant), puis celles de [fill] qui tiennent encore dans son temps.
+SniperTarget containerOf(SniperTarget t, List<SniperTarget> absorbed, List<SniperStep> fill) {
+  final abs = [...absorbed]..sort(compareSniper);
+  final steps = [for (final a in abs) SniperStep(a.stake.gesture, minutes: a.minutes, reason: _stepReason(a.gains))];
+  final absMin = steps.fold(0, (s, x) => s + x.minutes);
+  final base = t.minutes;
+  final seen = {for (final x in steps) x.key};
+  var used = absMin;
+  for (final f in fill) {
+    if (seen.contains(f.key) || used + f.minutes > base) continue;
+    steps.add(f);
+    seen.add(f.key);
+    used += f.minutes;
+  }
+  final m = absMin > base ? absMin : base;
+  final labels = {for (final g in t.gains) g.label};
+  final gains = [
+    ...t.gains,
+    for (final a in abs)
+      for (final g in a.gains)
+        if (labels.add(g.label)) g,
+  ];
+  return SniperTarget(Stake(t.stake.gesture, gains), SniperKind.timed, minutes: m, need: m > base ? m : t.need, section: t.section, rank: t.rank, steps: steps);
+}
+
 /// La cible d'un enjeu, ou null quand le Sniper ne s'en charge pas (bloc à
 /// heure fixe, enjeu sans badge ni objectif). [routineLeft] = coches restantes
 /// des routines du jour ; [factor] = réel / estimé des actions. Avec un
@@ -415,8 +519,9 @@ SniperPlan planSniper({
   int maxMin = kSniperMaxMin,
   Set<String> excluded = const {},
   SniperScope? scope,
+  Map<String, List<SniperStep>> fill = const {},
 }) {
-  final targets = <SniperTarget>[];
+  var targets = <SniperTarget>[];
   final later = <SniperMiss>[];
   for (final s in stakes) {
     if (excluded.contains(s.gesture.key)) continue;
@@ -431,7 +536,7 @@ SniperPlan planSniper({
       targets.add(t);
     }
   }
-  targets.sort(compareSniper);
+  targets = containTargets(targets, fill: fill)..sort(compareSniper);
   final aimed = <SniperTarget>[];
   final out = <SniperMiss>[];
   var used = 0;
