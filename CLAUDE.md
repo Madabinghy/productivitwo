@@ -1603,6 +1603,11 @@ puis le rouvrir pour le +1) : sur un tir de routine SANS minuteur dont la routin
 bas porte « ▶ Chrono · Pause café » à côté de « Passer » (`sniper-routine-chrono`, `_toggleRoutineChrono`) : il arrête un chrono lancé
 ailleurs et part sur l'activité liée (chrono du Sniper, « chrono sur … » sous le titre), puis devient « ■ Arrêter le chrono » ; le +1 qui
 fait tomber la cible l'arrête, comme un tir minuté. Un tir minuté lance déjà son chrono tout seul.
+**Le tir suivant attend ton signal** (2026-11-21, retour user : après « Touché », le tir suivant partait tout seul et il fallait
+mettre pause) : l'impact joue son animation (`kSniperImpact`) puis RESTE affiché — « TIR 3 · QUAND TU VEUX » et un bouton plein
+« Tirer · Lecture » (`sniper-next`), « Voir le bilan » après le dernier, « Je m'arrête » en haut ; toucher l'écran finit seulement
+l'animation. Rouvert entre deux tirs (feuille refermée, carte « Reprendre »), le Sniper revient sur ce même écran d'attente au lieu de
+lancer le tir suivant (`_restore`). Cela remplace « au bout de `kSniperImpact` le tir suivant démarre » de « Sniper en lunette ».
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

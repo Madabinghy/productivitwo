@@ -132,7 +132,7 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('tir, impact d’une seconde et demie, tir suivant, puis le carton', (tester) async {
+  testWidgets('tir, impact, le tir suivant attend « Tirer », puis le carton', (tester) async {
     final logic = await open(tester);
     await tester.tap(find.textContaining('Tirer · 2 cibles'));
     await tester.pump();
@@ -143,23 +143,28 @@ void main() {
     await tester.pump();
     expect(find.text('TOUCHÉ'), findsOneWidget);
     expect(find.byType(SniperImpactScope), findsOneWidget);
-    expect(find.text('TIR 2 · TOUT DE SUITE'), findsOneWidget);
+    expect(find.text('TIR 2 · QUAND TU VEUX'), findsOneWidget);
     expect(logic.state.habitHits.where((h) => h.habitId == 'pom').length, 1);
-    // Rien à valider : au bout de l'impact, le tir suivant démarre.
-    await tester.pump(kSniperImpact ~/ 2);
+    // Au bout de l'impact, rien ne s'enchaîne : le tir suivant attend « Tirer ».
+    await tester.pump(kSniperImpact * 2);
+    await tester.pump();
     expect(find.text('TOUCHÉ'), findsOneWidget);
-    await tester.pump(kSniperImpact);
+    expect(logic.runningActivity(), isNull);
+    // Toucher l'écran ne lance rien non plus.
+    await tester.tap(find.byKey(const Key('sniper-impact')));
+    await tester.pump();
+    expect(find.text('TOUCHÉ'), findsOneWidget);
+    await tester.tap(find.text('Tirer · Lecture'));
     await tester.pump();
     expect(find.text('TOUCHÉ'), findsNothing);
     expect(find.text('TIR 2 / 2'), findsOneWidget);
     expect(find.byKey(const Key('sniper-shot-scope')), findsOneWidget);
     expect(logic.runningActivity()?.id, 'lec');
-    // Dernier tir : toucher l'écran pendant l'impact ouvre le bilan tout de suite.
+    // Dernier tir : l'impact propose le bilan.
     await tester.tap(find.text('Fait plus tôt · suivant'));
     await tester.pump();
     expect(find.text('TOUCHÉ'), findsOneWidget);
-    expect(find.text('Toucher l’écran = voir le bilan'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('sniper-impact')));
+    await tester.tap(find.text('Voir le bilan'));
     await tester.pump();
     expect(find.text('2 / 2 cibles touchées'), findsOneWidget);
     expect(find.byKey(const Key('sniper-card')), findsOneWidget);
@@ -197,7 +202,7 @@ void main() {
     await tester.pump();
     expect(logic.state.habitHits.where((h) => h.habitId == 'caf').length, 1);
     expect(logic.runningActivity(), isNull);
-    await tester.tap(find.byKey(const Key('sniper-impact')));
+    await tester.tap(find.byKey(const Key('sniper-next')));
     await tester.pump();
     // Un tir minuté a déjà son chrono : pas de bouton en plus.
     expect(find.text('TIR 2 / 2'), findsOneWidget);
