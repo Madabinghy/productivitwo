@@ -30,7 +30,11 @@ class PendingRun {
   /// [livedYmd] accepté avec ou sans tirets (`2026-10-30` / `20261030`) : la
   /// comparaison des deux formats rendait toute session « expirée » (bug du 2026-10-30).
   bool isLive(DateTime now, String livedYmd) =>
-      date.replaceAll('-', '') == livedYmd.replaceAll('-', '') && now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin;
+      date.replaceAll('-', '') == livedYmd.replaceAll('-', '') && (prepared || now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin);
+
+  /// Sniper PRÉPARÉ, pas encore lancé (demande user 2026-11-21) : la sélection du viseur est
+  /// gardée, rien n'a commencé. Il attend toute la journée vécue, sans fenêtre de reprise.
+  bool get prepared => extra['prepared'] == true;
 
   Map<String, dynamic> toJson() => {
         'kind': kind,

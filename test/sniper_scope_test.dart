@@ -191,6 +191,32 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
+    testWidgets('Sniper prêt : la tuile dit combien de cibles attendent', (t) async {
+      final plan = planSniper(stakes: [timed(lecture, 12)], budgetMin: 60);
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+                width: 104,
+                height: 104,
+                child: SniperModeTile(
+                    plan: plan,
+                    freeMin: 60,
+                    label: 'Sniper prêt · 3 cibles',
+                    pending: true,
+                    ready: true,
+                    session: const [MagRound.current, MagRound.todo, MagRound.todo],
+                    onTap: () {})),
+          ),
+        ),
+      ));
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('prêtes'), findsOneWidget);
+      expect(find.text('touchées'), findsNothing);
+      expect(find.byTooltip('Sniper prêt · 3 cibles'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
     test('session en cours : touchées, passée, tir laissé en route ou prochain tir, à venir', () {
       final extra = {
         'aimed': ['a', 'b', 'c', 'd'],

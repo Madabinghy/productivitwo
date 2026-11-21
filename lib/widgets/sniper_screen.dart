@@ -151,6 +151,13 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   bool _buzzed = false;
   bool _ownChrono = false;
   bool _saved = false;
+  /// Le viseur a été retouché (écarter, remettre, régler, ordonner) : la sélection est gardée à la fermeture.
+  bool _touched = false;
+
+  /// Sniper PRÊT (demande user 2026-11-21) : préparé sans être lancé. Rouvert, il garde sa
+  /// sélection ; « Tirer » le lance, « Je m'arrête » l'abandonne et remet l'ordre conseillé.
+  bool _prepared = false;
+
   /// Sorti du Sniper pendant un tir (« Faire ça dans l'app », bug user 2026-11-03 : une cible
   /// Planification se fait dans l'app, l'écran plein la bloquait) : minuteur, alarme et chrono continuent.
   bool _away = false;
@@ -183,7 +190,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     if (!mounted) return;
     _compute();
     final r = widget.resume;
-    if (r != null) _restore(r);
+    if (r != null) r.prepared ? _restorePrepared(r) : _restore(r);
     setState(() => _loading = false);
   }
 
@@ -249,6 +256,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     keys.insert(to, k);
     setState(() {
       _order = keys;
+      _touched = true;
       _adjust();
     });
   }
@@ -267,6 +275,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       } else {
         _amounts[t.key] = a;
       }
+      _touched = true;
       _adjust();
     });
   }
@@ -280,6 +289,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       _excluded.remove(t.key);
       if (fromOut) _added.add(t.key);
       if (_order case final o?) _order = [...o.where((k) => k != t.key), t.key];
+      _touched = true;
       _adjust();
     });
   }
@@ -289,6 +299,83 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         for (final s in _stakes)
           if (_excluded.contains(s.gesture.key)) sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor),
       ].whereType<SniperTarget>().toList();
+
+  /// Remet le viseur comme il a été préparé : les mêmes cibles, à leurs montants, dans leur
+  /// ordre. Une cible tombée depuis (faite ailleurs) n'y est plus ; s'il ne reste rien, le
+  /// Sniper préparé est oublié.
+  void _restorePrepared(PendingRun r) {
+    final keys = r.strings('aimed');
+    final amounts = r.extra['amounts'] is Map ? r.extra['amounts'] as Map : const {};
+    _excluded
+      ..clear()
+      ..addAll([for (final t in _base.aimed) if (!keys.contains(t.key)) t.key]);
+    _added
+      ..clear()
+      ..addAll(keys);
+    _amounts.clear();
+    amounts.forEach((k, v) {
+      if (v is num && v > 0) _amounts[k.toString()] = v.toInt();
+    });
+    _order = r.extra['ordered'] == true ? keys : null;
+    _adjust();
+    if (_plan.aimed.isEmpty) {
+      RunSessionStore.clear();
+      _resetSelection();
+      return;
+    }
+    _prepared = true;
+  }
+
+  void _resetSelection() {
+    _excluded.clear();
+    _added.clear();
+    _amounts.clear();
+    _order = null;
+    _touched = false;
+    _prepared = false;
+    if (_focus case final q?) {
+      _aimAt(q);
+    } else {
+      _adjust();
+    }
+  }
+
+  /// « Je m'arrête » au viseur : le Sniper préparé est abandonné, l'ordre conseillé revient.
+  void _drop() {
+    final cur = RunSessionStore.current;
+    if (cur != null && cur.kind == kSniperKind && cur.prepared) RunSessionStore.clear();
+    setState(_resetSelection);
+    ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(const SnackBar(content: Text('Sniper abandonné · l’ordre conseillé est revenu'), duration: Duration(seconds: 3)));
+  }
+
+  /// Garde le viseur tel quel, sans rien lancer. Faux quand une autre session en attente
+  /// (Guérilla, Offensive…) tient déjà la place.
+  bool _persistPrepared() {
+    final cur = RunSessionStore.current;
+    if (cur != null && cur.kind != kSniperKind && cur.isLive(DateTime.now(), logic.livedTodayYmd)) return false;
+    final now = DateTime.now();
+    RunSessionStore.save(PendingRun(
+      kind: kSniperKind,
+      runId: _runId,
+      date: ymdOf(livedDate(now, logic.dayStartMin)),
+      startedAt: now,
+      lastActiveAt: now,
+      done: 0,
+      extra: {
+        'prepared': true,
+        'aimed': [for (final t in _plan.aimed) t.key],
+        'amounts': {
+          for (final t in _plan.aimed)
+            if (t.amount != t.need) t.key: t.amount
+        },
+        'ordered': _order != null,
+        'aimedMin': _plan.totalMin,
+        'total': _plan.aimed.length,
+        if (_focus case final q?) 'focus': q.badge.def.id,
+      },
+    ));
+    return true;
+  }
 
   void _restore(PendingRun r) {
     final keys = r.strings('aimed');
@@ -419,6 +506,19 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       if (_hit.isNotEmpty) _save();
       RunSessionStore.clear();
     }
+    // Refermé au viseur : une sélection retouchée (ou « Garder prêt ») attend, rien n'est lancé.
+    if (_phase == _Phase.aim && !_loading && (_touched || _prepared)) {
+      if (_plan.aimed.isEmpty) {
+        if (RunSessionStore.current?.prepared ?? false) RunSessionStore.clear();
+      } else if (_persistPrepared()) {
+        final messenger = _messenger, n = _plan.aimed.length;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (messenger != null && messenger.mounted) {
+            messenger.showClosingSnackBar(SnackBar(content: Text('Sniper prêt · $n cible${n > 1 ? 's' : ''} · il t’attend sur Aujourd’hui'), duration: const Duration(seconds: 3)));
+          }
+        });
+      }
+    }
     WakelockPlus.disable().catchError((_) {});
     // La session vient d'être gardée, close ou effacée : Aujourd'hui (tuile du mode, carte
     // « Reprendre ») se redessine une fois la feuille partie.
@@ -436,6 +536,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _totalAimed = _aimed.length;
     _aimedMin = _plan.totalMin;
     _startedAt = DateTime.now();
+    _prepared = false;
     _enter(0);
   }
 
@@ -906,7 +1007,12 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final scope = aimScope(costs: [for (final t in _plan.aimed) t.cost], freeMin: b.minutes, pauseMin: _plan.pauseMin);
     final excluded = _excludedTargets;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _header(),
+      _header(
+        label: _prepared ? 'SNIPER PRÊT' : 'SNIPER',
+        trailing: _prepared || _touched
+            ? TextButton(key: const Key('sniper-drop'), onPressed: _drop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))
+            : null,
+      ),
       Expanded(
         child: ListView(controller: widget.sheetScroll, children: [
           SniperAimScope(
@@ -960,6 +1066,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                 child: TextButton(
                   onPressed: () => setState(() {
                     _order = null;
+                    _touched = true;
                     _adjust();
                   }),
                   child: const Text('Ordre conseillé', style: TextStyle(fontSize: 13, color: kSniperAccent)),
@@ -981,6 +1088,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                     onTap: () => setState(() {
                           _excluded.add(t.key);
                           _added.remove(t.key);
+                          _touched = true;
                           _adjust();
                         })),
             ]))
@@ -1002,6 +1110,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                         onTap: () => setState(() {
                               _excluded.add(_plan.aimed[i].key);
                               _added.remove(_plan.aimed[i].key);
+                              _touched = true;
                               _adjust();
                             })),
                   ),
@@ -1036,6 +1145,17 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       ),
       const SizedBox(height: 12),
       _primary(_plan.aimed.isEmpty ? 'Rien à viser' : 'Tirer · $n cible${n > 1 ? 's' : ''} · ${fmtMin(total)}', _plan.aimed.isEmpty ? null : _start),
+      if (_plan.aimed.isNotEmpty)
+        Center(
+          child: TextButton(
+            key: const Key('sniper-keep'),
+            onPressed: () {
+              _prepared = true;
+              Navigator.of(context).maybePop();
+            },
+            child: const Text('Garder prêt · je tire plus tard', style: TextStyle(color: _text2, fontSize: 14)),
+          ),
+        ),
     ]);
   }
 

@@ -1583,6 +1583,18 @@ dans la signature de la tuile, donc le balayage de rechargement part quand la bo
 suivant qui commence), jamais pour une minute qui passe. Un changement arrivé pendant qu'une feuille cache la tuile (le Programme où
 l'on déplace le bloc, le Sniper lui-même) attend le retour (`_waiting`, `ModalRoute.isCurrent`) : la tuile est déjà à jour dessous, et
 le balayage part quand on la revoit. Le viseur, lui, recalcule à chaque ouverture (`_compute`).
+**Sniper préparé** (2026-11-21, demande user : « une étape entre préparer un Sniper et le faire », la sélection se perdait en
+refermant) : au viseur, dès qu'on retouche la sélection (écarter, remettre, régler, ordonner — `_touched`) ou qu'on touche « Garder
+prêt · je tire plus tard » (`sniper-keep`), refermer la feuille GARDE le viseur sans rien lancer : `PendingRun` `kind:"sniper"` avec
+`extra.prepared` (`PendingRun.prepared` ; `aimed`, `amounts`, `ordered`, `aimedMin`, `total`, `done: 0` ; `_persistPrepared`, jamais
+par-dessus une autre session vivante). Il attend toute la journée vécue (`isLive` sans fenêtre de 45 min), ne compte pour rien et ne
+laisse aucune `ChainRun` (`closeAsIs` l'efface sans toucher au chrono). Rouvert (`_restorePrepared`) : en-tête « SNIPER PRÊT », les mêmes
+cibles à leurs montants dans leur ordre — une cible tombée entre-temps n'y est plus, plus rien = oublié. « Tirer » le lance (même
+`runId`, la marque part au premier `_persist`). « Je m'arrête » en haut à droite du viseur (`sniper-drop`, visible dès qu'il est
+retouché ou prêt, `_drop`) l'abandonne et remet l'ordre conseillé (`_resetSelection`). Tuile du mode : `SniperModeTile(ready: true)`
+= un arc par cible et « n prêtes » au centre, infobulle « Sniper prêt · n cibles · … · touche pour tirer » ; le rond Sniper de
+l'en-tête porte son point. Pas de carte « session à reprendre » (`PendingRunCard`) ni de réouverture d'office pour un Sniper seulement
+préparé. Un viseur ouvert puis refermé sans rien toucher ne garde rien. ⓘ `kRuleSniper` carte « Préparer sans tirer ».
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
