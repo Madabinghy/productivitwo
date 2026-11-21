@@ -36,7 +36,7 @@ class _PendingRunCardState extends State<PendingRunCard> {
     RunSessionStore.live(widget.logic).then((p) {
       if (!mounted) return;
       setState(() {});
-      if (p != null && !_autoResumed) {
+      if (p != null && !p.prepared && !_autoResumed) {
         _autoResumed = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _resume(p);
@@ -92,7 +92,9 @@ class _PendingRunCardState extends State<PendingRunCard> {
   @override
   Widget build(BuildContext context) {
     final p = RunSessionStore.current;
+    // Un Sniper préparé n'est pas « en cours » : la tuile du mode le montre, pas cette carte.
     if (p == null ||
+        p.prepared ||
         !(p.isLive(DateTime.now(), widget.logic.livedTodayYmd) || chronoKeepsAlive(p, widget.logic.state.sessions, widget.logic.livedTodayYmd))) {
       return const SizedBox.shrink();
     }

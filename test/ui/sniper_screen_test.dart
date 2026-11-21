@@ -119,6 +119,69 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('viseur retouché puis refermé : le Sniper est prêt, rien n’est lancé, la sélection revient à la réouverture', (tester) async {
+    final logic = await open(tester);
+    // Rien de retouché : pas de « Je m'arrête », et refermer ne garde rien.
+    expect(find.byKey(const Key('sniper-drop')), findsNothing);
+    await close(tester);
+    expect(RunSessionStore.current, isNull);
+
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes())));
+    await tester.pump();
+    await tester.pump();
+    // Lecture est écartée : il ne reste que Pompes.
+    await tester.tap(find.text('Lecture'));
+    await tester.pump();
+    expect(find.textContaining('1 cible', findRichText: true), findsWidgets);
+    expect(find.byKey(const Key('sniper-drop')), findsOneWidget);
+    await close(tester);
+    final p = RunSessionStore.current!;
+    expect(p.prepared, isTrue);
+    expect(p.strings('aimed'), ['routine:pom']);
+    expect(p.done, 0);
+    expect(logic.state.sessions, isEmpty);
+    // Il attend toute la journée vécue, pas seulement 45 minutes.
+    expect(p.isLive(DateTime.now().add(const Duration(hours: 3)), p.date), isTrue);
+
+    // Rouvert : « SNIPER PRÊT », la même sélection, toujours rien de lancé.
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes(), resume: p)));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('SNIPER PRÊT'), findsOneWidget);
+    expect(find.byKey(const Key('sniper-aim-scope')), findsOneWidget);
+    expect(find.textContaining('1 cible', findRichText: true), findsWidgets);
+    expect(logic.state.sessions, isEmpty);
+
+    // « Je m'arrête » : le Sniper préparé est abandonné, l'ordre conseillé revient.
+    await tester.tap(find.byKey(const Key('sniper-drop')));
+    await tester.pump();
+    expect(RunSessionStore.current, isNull);
+    expect(find.text('SNIPER PRÊT'), findsNothing);
+    expect(find.textContaining('2 cibles', findRichText: true), findsWidgets);
+    // Le message « Sniper abandonné » se referme tout seul.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 1));
+    await close(tester);
+    expect(RunSessionStore.current, isNull);
+  });
+
+  testWidgets('Sniper prêt puis « Tirer » : la session démarre et n’est plus seulement préparée', (tester) async {
+    final logic = await open(tester);
+    await tester.tap(find.text('Lecture'));
+    await tester.pump();
+    await close(tester);
+    final p = RunSessionStore.current!;
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes(), resume: p)));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.textContaining('Tirer · 1 cible'));
+    await tester.pump();
+    expect(RunSessionStore.current?.prepared, isFalse);
+    expect(RunSessionStore.current?.runId, p.runId);
+    await RunSessionStore.clear();
+    await close(tester);
+  });
+
   testWidgets('le Sniper s’ouvre en feuille, sans croix', (tester) async {
     tester.view.physicalSize = const Size(800, 1800);
     tester.view.devicePixelRatio = 2;

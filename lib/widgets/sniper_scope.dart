@@ -562,9 +562,12 @@ class SniperModeTile extends StatefulWidget {
   /// La minute où le temps libre s'arrête (le prochain bloc, la fin de la journée) ; null = pas de borne
   /// fixe. Quand elle bouge (un bloc déplacé, retiré, ajouté), la lunette se recharge.
   final int? until;
+
+  /// Sniper préparé, pas encore lancé : [session] porte ses cibles, la tuile dit « n prêtes ».
+  final bool ready;
   final VoidCallback onTap;
   const SniperModeTile(
-      {super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false, this.session, this.until});
+      {super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false, this.session, this.until, this.ready = false});
 
   @override
   State<SniperModeTile> createState() => _SniperModeTileState();
@@ -578,10 +581,25 @@ class _TileFace {
   final String sig;
   final int? total;
   final String? text;
-  const _TileFace({required this.scope, required this.colors, required this.sig, this.total, this.text});
+
+  /// Le mot sous [text] : « touchées » pendant une session, « prêtes » pour un Sniper préparé.
+  final String sub;
+  final Color subColor;
+  const _TileFace({required this.scope, required this.colors, required this.sig, this.total, this.text, this.sub = 'touchées', this.subColor = kSniperGreen});
 
   factory _TileFace.of(SniperModeTile w) {
     final rounds = w.session;
+    if (w.ready && rounds != null && rounds.isNotEmpty) {
+      final n = rounds.length;
+      return _TileFace(
+        scope: aimScope(costs: List.filled(n, 1), freeMin: n),
+        colors: List.filled(n, kSniperAccent),
+        sig: 'ready:$n',
+        text: '$n',
+        sub: n > 1 ? 'prêtes' : 'prête',
+        subColor: kSniperAccent,
+      );
+    }
     if (rounds != null && rounds.isNotEmpty) {
       final done = rounds.where((r) => r == MagRound.done).length;
       return _TileFace(
@@ -682,11 +700,11 @@ class _SniperModeTileState extends State<SniperModeTile> with SingleTickerProvid
         if (total < 100) Text('min', style: TextStyle(fontFamily: kAppFont, fontSize: 9.5, height: 1.2, fontWeight: FontWeight.w700, color: _text2)),
       ]);
 
-  Widget _session(String text) => Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget _session(String text, {String sub = 'touchées', Color subColor = kSniperGreen}) => Column(mainAxisSize: MainAxisSize.min, children: [
         Text(text,
             key: const Key('mode-tile-session'),
             style: TextStyle(fontFamily: kAppFont, fontSize: 19, height: 1, fontWeight: FontWeight.w800, color: Colors.white, fontFeatures: const [FontFeature.tabularFigures()])),
-        Text('touchées', style: TextStyle(fontFamily: kAppFont, fontSize: 8.5, height: 1.3, fontWeight: FontWeight.w700, color: kSniperGreen)),
+        Text(sub, style: TextStyle(fontFamily: kAppFont, fontSize: 8.5, height: 1.3, fontWeight: FontWeight.w700, color: subColor)),
       ]);
 
   @override
@@ -717,7 +735,7 @@ class _SniperModeTileState extends State<SniperModeTile> with SingleTickerProvid
                       // Les minutes glissent d'un total à l'autre (vers zéro quand tout est tombé).
                       final from = old?.total ?? 0, to = face.total ?? 0;
                       final Widget? center = face.text != null
-                          ? _session(face.text!)
+                          ? _session(face.text!, sub: face.sub, subColor: face.subColor)
                           : loading && (old.total != null || face.total != null) && old.text == null
                               ? _minutes((from + (to - from) * t).round())
                               : face.total == null

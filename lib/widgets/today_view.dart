@@ -1155,8 +1155,12 @@ class TodayViewState extends State<TodayView> {
     final n = aim.plan.aimed.length;
     final until = '${(aim.budget.untilMin ~/ 60 % 24).toString().padLeft(2, '0')}:${(aim.budget.untilMin % 60).toString().padLeft(2, '0')}';
     final rounds = pending == null ? null : sniperRounds(pending.extra);
+    final ready = pending?.prepared ?? false;
     final String label;
-    if (rounds != null && rounds.isNotEmpty) {
+    if (ready && rounds != null && rounds.isNotEmpty) {
+      final min = pending!.intOf('aimedMin') ?? 0;
+      label = 'Sniper prêt · ${rounds.length} cible${rounds.length > 1 ? 's' : ''}${min > 0 ? ' · ${fmtMin(min)}' : ''} · touche pour tirer';
+    } else if (rounds != null && rounds.isNotEmpty) {
       final done = rounds.where((r) => r == MagRound.done).length;
       label = 'Reprendre le Sniper · $done cible${done > 1 ? 's' : ''} touchée${done > 1 ? 's' : ''} sur ${rounds.length}'
           '${rounds.contains(MagRound.current) && pending!.extra['cur'] != null ? ' · un tir en cours' : ''}';
@@ -1171,6 +1175,7 @@ class TodayViewState extends State<TodayView> {
       label: label,
       pending: pending != null,
       session: rounds,
+      ready: ready,
       // Sans bloc à venir en fin de journée, la borne glisse avec l'heure : rien à recharger.
       until: aim.budget.until == null && aim.budget.untilMin != _dayEndMin ? null : aim.budget.untilMin,
       onTap: () => openRun(kSniperKind),
@@ -1226,7 +1231,7 @@ class TodayViewState extends State<TodayView> {
           child: InkWell(
             onTap: open,
             customBorder: const CircleBorder(),
-            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} ${kind == kSniperKind ? 'cible' : 'coup'}${pending.done > 1 ? 's' : ''}' : tooltip, child: Center(child: ModeGlyph(kind: kind, size: 22, color: c, semanticLabel: tooltip))),
+            child: Tooltip(message: pending != null && pending.prepared ? 'Sniper prêt · touche pour tirer' : pending != null ? 'Reprendre · ${pending.done} ${kind == kSniperKind ? 'cible' : 'coup'}${pending.done > 1 ? 's' : ''}' : tooltip, child: Center(child: ModeGlyph(kind: kind, size: 22, color: c, semanticLabel: tooltip))),
           ),
         ),
       ),

@@ -56,6 +56,11 @@ class RunSessionStore {
   /// Termine la session telle quelle : ses coups comptent ; le chrono d'un
   /// coup resté ouvert (app tuée en plein coup) s'arrête.
   static Future<void> closeAsIs(AppLogic logic, PendingRun p) async {
+    // Un Sniper seulement préparé n'a rien lancé : ni chrono à arrêter, ni session à garder.
+    if (p.prepared) {
+      await clear();
+      return;
+    }
     if (logic.state.sessions.any((s) => s.endAt == null && !s.startAt.isBefore(p.startedAt))) logic.stopActive(notify: false);
     final run = expiredRunOf(p);
     if (run != null) {
