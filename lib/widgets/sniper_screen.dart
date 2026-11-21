@@ -406,15 +406,19 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     // Une cible qui a disparu des enjeux est tombée ailleurs : elle compte
     // touchée (seulement si les enjeux ont pu être recalculés).
     final known = widget.badges?.deck != null;
+    final snaps = r.extra['snap'] is Map ? r.extra['snap'] as Map : const {};
     final aimed = <SniperTarget>[];
     for (final k in keys) {
       final t = byKey[k];
       final a = amounts[k];
       if (t != null) {
         aimed.add(a is num && a > 0 && t.adjustable ? t.withAmount(a.toInt()) : t);
-      } else if (known && !_hit.contains(k) && !_skipped.contains(k)) {
-        _hit.add(k);
+        continue;
       }
+      // Plus dans les enjeux : déjà touchée, passée, ou tombée ailleurs. Elle garde sa place grâce à sa trace.
+      if (known && !_hit.contains(k) && !_skipped.contains(k)) _hit.add(k);
+      if (!_hit.contains(k) && !_skipped.contains(k)) continue;
+      if (sniperFromSnapshot(k, snaps[k]) case final gone?) aimed.add(gone);
     }
     _aimed = aimed;
     _totalAimed = keys.length;
@@ -483,6 +487,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       done: _hit.length,
       extra: {
         'aimed': [for (final t in _aimed) t.key],
+        'snap': {for (final t in _aimed) t.key: sniperSnapshot(t)},
         'amounts': {
           for (final t in _aimed)
             if (_keepsAmount(t)) t.key: t.amount
