@@ -1666,6 +1666,14 @@ dit. **Le bloc « Miracle morning »** (`timeBlock:"morning"`) n'est plus propos
 Sniper (« Lancer le Sniper »). Une session en attente de l'ancien écran est oubliée (`PendingRunCard`). Les sections « Miracle Morning
 (2026-11-16) » et « Miracle morning, 3ᵉ bloc de temps » plus haut décrivent l'état d'avant.
 
+**« Toute la journée » répartie par le Sniper** (2026-11-21, retour user : « Boire de l'eau », cible 8, en « Toute la journée »
+d'après son nom, et le Sniper proposait les 8 dès le matin) : une routine « Toute la journée » à 2 fois par jour ou plus est partagée à
+parts égales entre les moments du matin au soir (`_spreadAllDay`, `utils/sniper.dart` ; `momentParts`, le Miracle Morning reste au
+rituel) — elle entre dans la partie du moment avec sa part et ce qui n'a pas été fait avant (« 2 d'avant + 2 ce midi ») ; part du moment
+déjà faite = « Plus tard · ce midi » ; pendant le Miracle Morning = « Plus tard · ce matin ». À une fois par jour, elle reste avec le
+reste de ce qui est en jeu. Concerne aussi Pompes et Tractions (« Journée » d'après leur nom). Fiche routine : l'aide de « Toute la
+journée » le dit. Les autres écrans (lanceur, Journée parfaite) ne la découpent pas.
+
 ## MAINTENANT, la bonne chose (2026-11-07, maquette validée, 3 lots)
 
 UNE chose en grand, choisie dans un ordre fixe, avec la règle qui a gagné. **Lot 1 livré (l'ordre et le « parce que »)** : logique

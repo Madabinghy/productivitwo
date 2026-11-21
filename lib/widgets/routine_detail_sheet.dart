@@ -1041,7 +1041,9 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
       return 'À faire ${momentOf(picked.first).thisOne}${daily ? ' · touche un autre moment pour la répartir' : ''}';
     }
     return switch (act.timeContext) {
-      'allday' || 'day' => 'Disponible toute la journée, sans découpage.',
+      'allday' || 'day' => (logic.activeHabitTarget(act)) >= 2
+          ? 'Toute la journée : le Sniper la répartit à parts égales du matin au soir.'
+          : 'Disponible toute la journée, sans découpage.',
       'any' => 'Sans moment : à faire quand tu veux.',
       _ => daily ? 'Touche un moment pour la placer, plusieurs pour la répartir.' : 'Touche un moment pour la placer.',
     };

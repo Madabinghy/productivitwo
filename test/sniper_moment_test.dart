@@ -102,6 +102,43 @@ void main() {
 
   miracleTests();
 
+  test('« Toute la journée » à 8 : répartie du matin au soir, pas les 8 dès le matin', () {
+    final water = _r('w', 'Boire de l’eau', ctx: 'allday', target: 8);
+    final one = _r('o', 'Vaisselle', ctx: 'allday');
+    SniperScope at(int h, int m, {int drunk = 0, bool miracle = false}) => sniperScopeOf(buildRoutineDay(
+          activities: [water, one],
+          hits: [for (var k = 0; k < drunk; k++) _hit('w', DateTime(2026, 11, 21, 7, k), k)],
+          now: DateTime(2026, 11, 21, h, m),
+          moments: miracle ? timedMomentsWith({kMomentMiracle: (300, 360)}) : null,
+        ));
+    // 8 sur matin · midi · après-midi · soir = 2 · 2 · 2 · 2.
+    final morning = at(8, 0);
+    expect(morning.section['routine:w'], kSniperSecMoment);
+    expect(morning.shareLeft['routine:w'], 2);
+    expect(morning.shareLabel['routine:w'], 'part du matin · 2 sur 8 à faire');
+    // Une fois par jour : pas de partage, elle reste avec le reste.
+    expect(morning.section.containsKey('routine:o'), isFalse);
+    // À midi sans rien bu : 2 d'avant + 2 ce midi.
+    final noon = at(12, 0);
+    expect(noon.shareLeft['routine:w'], 4);
+    expect(noon.shareLabel['routine:w'], '2 d’avant + 2 ce midi');
+    // La part du matin bue : rien à faire avant midi.
+    final done = at(9, 0, drunk: 2);
+    expect(done.section.containsKey('routine:w'), isFalse);
+    expect(done.later['routine:w'], 'ce midi');
+    // Le soir : ce qui reste de la journée, la cible entière.
+    expect(at(20, 0).shareLeft.containsKey('routine:w'), isFalse);
+    expect(at(20, 0).section['routine:w'], kSniperSecMoment);
+    // Pendant le Miracle Morning : elle attend le matin.
+    final ritual = at(5, 15, miracle: true);
+    expect(ritual.later['routine:w'], 'ce matin');
+    final plan = planSniper(stakes: [
+      Stake(StakeGesture(key: 'routine:w', kind: StakeGestureKind.routine, title: 'Eau', costMin: 5, activity: water),
+          const [StakeGain(kind: StakeGainKind.routine, label: '0 / 8', weight: 4)]),
+    ], budgetMin: 60, routineLeft: {'w': 8}, scope: morning);
+    expect(plan.aimed.single.delta, 2);
+  });
+
   test('à moins d’un quart d’heure de la fin d’un moment, le Sniper prend déjà le suivant', () {
     final ms = timedMomentsWith(const {});
     expect(sniperMomentShift(13 * 60 + 30, ms), 0);
