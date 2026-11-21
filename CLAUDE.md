@@ -1598,6 +1598,11 @@ retouché ou prêt, `_drop`) l'abandonne et remet l'ordre conseillé (`_resetSel
 = un arc par cible et « n prêtes » au centre, infobulle « Sniper prêt · n cibles · … · touche pour tirer » ; le rond Sniper de
 l'en-tête porte son point. Pas de carte « session à reprendre » (`PendingRunCard`) ni de réouverture d'office pour un Sniper seulement
 préparé. Un viseur ouvert puis refermé sans rien toucher ne garde rien. ⓘ `kRuleSniper` carte « Préparer sans tirer ».
+**Chrono d'une routine liée, depuis le tir** (2026-11-21, retour user : Café, il fallait fermer le Sniper pour lancer l'activité
+puis le rouvrir pour le +1) : sur un tir de routine SANS minuteur dont la routine a une activité liée (`linkedActivityId`), la rangée du
+bas porte « ▶ Chrono · Pause café » à côté de « Passer » (`sniper-routine-chrono`, `_toggleRoutineChrono`) : il arrête un chrono lancé
+ailleurs et part sur l'activité liée (chrono du Sniper, « chrono sur … » sous le titre), puis devient « ■ Arrêter le chrono » ; le +1 qui
+fait tomber la cible l'arrête, comme un tir minuté. Un tir minuté lance déjà son chrono tout seul.
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

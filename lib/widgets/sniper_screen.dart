@@ -628,6 +628,19 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _ownChrono = true;
   }
 
+  /// Tir de routine sans minuteur, routine liée à une activité : le chrono se lance d'ici, sans quitter le
+  /// Sniper (retour user 2026-11-21 : Café). Un chrono lancé ailleurs est arrêté ; le tir qui tombe l'arrête.
+  void _toggleRoutineChrono() {
+    if (_ownChrono) {
+      _stopOwnChrono();
+    } else {
+      if (_runningBefore != null) logic.stopActive(notify: false);
+      _startChrono(_aimed[_index]);
+    }
+    _persist();
+    setState(() {});
+  }
+
   void _stopOwnChrono() {
     if (!_ownChrono) return;
     _ownChrono = false;
@@ -1269,6 +1282,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final endAt = _endsAt == null ? null : TimeOfDay.fromDateTime(_endsAt!);
     final chrono = _ownChrono ? logic.runningActivity()?.name : null;
     final action = t.kind == SniperKind.action;
+    final linkedId = t.kind == SniperKind.routine ? _chronoActivity(t) : null;
+    final linked = linkedId == null ? null : logic.state.activities.where((a) => a.id == linkedId && !a.deleted).firstOrNull;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(label: 'TIR $_shotNumber / ${_aimed.length}', trailing: TextButton(onPressed: _stop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       _track(),
@@ -1315,9 +1330,9 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
             switch (t.kind) {
               SniperKind.timed when t.isMini => '${chrono != null ? 'chrono sur $chrono · ' : ''}${_miniLine(t)}',
               SniperKind.timed => chrono != null ? 'chrono sur $chrono · alarme à la fin' : 'alarme à la fin',
-              SniperKind.routine when t.isMini => _miniLine(t),
+              SniperKind.routine when t.isMini => '${chrono != null ? 'chrono sur $chrono · ' : ''}${_miniLine(t)}',
               SniperKind.action => chrono != null ? 'chrono sur $chrono · l’action tombe quand elle est faite' : 'l’action tombe quand elle est faite',
-              SniperKind.routine => t.delta > 1 ? '${t.delta} coches pour l’atteindre' : 'une coche pour l’atteindre',
+              SniperKind.routine => '${chrono != null ? 'chrono sur $chrono · ' : ''}${t.delta > 1 ? '${t.delta} coches pour l’atteindre' : 'une coche pour l’atteindre'}',
               SniperKind.reading => 'note la valeur du jour',
             },
             textAlign: TextAlign.center,
@@ -1344,6 +1359,15 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
             Expanded(child: _outline('+5 min', _more)),
             const SizedBox(width: 8),
           ],
+        ],
+        if (!timed && t.kind == SniperKind.routine && linked != null) ...[
+          Expanded(
+            child: KeyedSubtree(
+              key: const Key('sniper-routine-chrono'),
+              child: _outline(_ownChrono ? '■ Arrêter le chrono' : '▶ Chrono · ${linked.name}', _toggleRoutineChrono),
+            ),
+          ),
+          const SizedBox(width: 8),
         ],
         Expanded(child: _outline(action ? 'Pas finie · suivante' : 'Passer', _skip)),
       ]),

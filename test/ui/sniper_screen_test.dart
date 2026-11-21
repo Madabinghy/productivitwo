@@ -167,6 +167,45 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('tir de routine liée à une activité : le chrono se lance d’ici, le tir qui tombe l’arrête', (tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final cafeAct = Activity(id: 'cafa', domainId: 'd', name: 'Pause café');
+    final cafe = Activity(id: 'caf', domainId: 'd', name: 'Café', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1, linkedActivityId: 'cafa');
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [cafeAct, cafe, lecture], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final s = [
+      Stake(StakeGesture(key: 'routine:caf', kind: StakeGestureKind.routine, title: 'Café', costMin: 5, activity: cafe),
+          [const StakeGain(kind: StakeGainKind.seriesTonight, label: 'Série de 4 j', weight: 30, losesTonight: true)]),
+      Stake(StakeGesture(key: 'activity:lec', kind: StakeGestureKind.activity, title: 'Lecture', costMin: 12, activity: lecture),
+          [const StakeGain(kind: StakeGainKind.halfDay, label: 'Montre suisse · 3 / 4', weight: 10)]),
+    ];
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: s)));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.textContaining('Tirer · 2 cibles'));
+    await tester.pump();
+    expect(find.text('TIR 1 / 2'), findsOneWidget);
+    expect(find.text('▶ Chrono · Pause café'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sniper-routine-chrono')));
+    await tester.pump();
+    expect(logic.runningActivity()?.id, 'cafa');
+    expect(find.text('■ Arrêter le chrono'), findsOneWidget);
+    expect(find.textContaining('chrono sur Pause café'), findsOneWidget);
+    await tester.tap(find.text('+1 · touché'));
+    await tester.pump();
+    expect(logic.state.habitHits.where((h) => h.habitId == 'caf').length, 1);
+    expect(logic.runningActivity(), isNull);
+    await tester.tap(find.byKey(const Key('sniper-impact')));
+    await tester.pump();
+    // Un tir minuté a déjà son chrono : pas de bouton en plus.
+    expect(find.text('TIR 2 / 2'), findsOneWidget);
+    expect(find.byKey(const Key('sniper-routine-chrono')), findsNothing);
+    await close(tester);
+    await RunSessionStore.clear();
+  });
+
   testWidgets('viseur retouché puis refermé : le Sniper est prêt, rien n’est lancé, la sélection revient à la réouverture', (tester) async {
     final logic = await open(tester);
     // Rien de retouché : pas de « Je m'arrête », et refermer ne garde rien.
