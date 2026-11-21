@@ -558,8 +558,13 @@ class SniperModeTile extends StatefulWidget {
 
   /// Les tirs de la session en cours, dans l'ordre (null = pas de session : le viseur).
   final List<MagRound>? session;
+
+  /// La minute où le temps libre s'arrête (le prochain bloc, la fin de la journée) ; null = pas de borne
+  /// fixe. Quand elle bouge (un bloc déplacé, retiré, ajouté), la lunette se recharge.
+  final int? until;
   final VoidCallback onTap;
-  const SniperModeTile({super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false, this.session});
+  const SniperModeTile(
+      {super.key, required this.plan, required this.freeMin, required this.label, required this.onTap, this.pending = false, this.session, this.until});
 
   @override
   State<SniperModeTile> createState() => _SniperModeTileState();
@@ -598,7 +603,7 @@ class _TileFace {
     return _TileFace(
       scope: aimScope(costs: [for (final t in p.aimed) t.cost], freeMin: w.freeMin, pauseMin: p.pauseMin),
       colors: [for (final t in p.aimed) sniperTargetColor(t)],
-      sig: [for (final t in p.aimed) '${t.key}:${t.amount}'].join('|'),
+      sig: '${[for (final t in p.aimed) '${t.key}:${t.amount}'].join('|')}@${w.until ?? ''}',
       total: p.aimed.isEmpty ? null : p.totalMin,
     );
   }
@@ -609,9 +614,19 @@ class _TileFace {
 /// fait le tour en [kSniperReload], l'ancienne lunette devant lui, la nouvelle derrière, et
 /// les minutes du centre glissent de l'ancien total au nouveau. Le premier dessin est en
 /// place ; une minute qui passe (le temps libre qui rétrécit) ne relance rien.
+///
+/// Elle se recharge aussi quand la borne du temps libre bouge ([SniperModeTile.until] : un bloc
+/// déplacé pour se donner de l'air, demande user 2026-11-21). Un changement arrivé pendant que la
+/// tuile est cachée par une feuille (le Programme où l'on déplace le bloc) attend le retour : le
+/// balayage part quand on la revoit.
 class _SniperModeTileState extends State<SniperModeTile> with SingleTickerProviderStateMixin {
   late final AnimationController _reload;
   _TileFace? _old;
+
+  /// Ce que la tuile montrait avant un changement arrivé sous une feuille.
+  _TileFace? _waiting;
+
+  bool get _covered => !(ModalRoute.of(context)?.isCurrent ?? true);
 
   @override
   void initState() {
@@ -620,10 +635,27 @@ class _SniperModeTileState extends State<SniperModeTile> with SingleTickerProvid
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final before = _waiting;
+    if (before == null || _covered) return;
+    _waiting = null;
+    if (before.sig != _TileFace.of(widget).sig) _play(before);
+  }
+
+  @override
   void didUpdateWidget(SniperModeTile old) {
     super.didUpdateWidget(old);
     final before = _TileFace.of(old);
     if (before.sig == _TileFace.of(widget).sig) return;
+    if (_covered) {
+      _waiting ??= before;
+      return;
+    }
+    _play(before);
+  }
+
+  void _play(_TileFace before) {
     _old = before;
     if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
       _reload.value = 1;

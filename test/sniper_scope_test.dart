@@ -118,6 +118,79 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
+    testWidgets('un bloc déplacé : mêmes cibles, la borne du temps libre bouge, la lunette se recharge', (t) async {
+      final plan = planSniper(stakes: [timed(lecture, 12)], budgetMin: 40);
+      final wider = planSniper(stakes: [timed(lecture, 12)], budgetMin: 100);
+      Future<void> show(SniperPlan p, int? until) => t.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                    width: 104, height: 104, child: SniperModeTile(plan: p, freeMin: p.budgetMin, until: until, label: 'Sniper', onTap: () {})),
+              ),
+            ),
+          ));
+      await show(plan, 14 * 60);
+      expect(t.hasRunningAnimations, isFalse);
+      // Une minute passe : le temps libre rétrécit, la borne ne bouge pas.
+      await show(planSniper(stakes: [timed(lecture, 12)], budgetMin: 39), 14 * 60);
+      expect(t.hasRunningAnimations, isFalse);
+      // Le bloc de 14:00 part à 15:00 : une heure d'air en plus.
+      await show(wider, 15 * 60);
+      expect(t.hasRunningAnimations, isTrue);
+      await t.pump();
+      await t.pump(kSniperReload + const Duration(milliseconds: 100));
+      expect(t.hasRunningAnimations, isFalse);
+      // Sans borne fixe (fin de journée qui glisse) : rien ne se relance d'une minute à l'autre.
+      await show(wider, null);
+      await t.pump();
+      await t.pump(kSniperReload + const Duration(milliseconds: 100));
+      await show(planSniper(stakes: [timed(lecture, 12)], budgetMin: 99), null);
+      expect(t.hasRunningAnimations, isFalse);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('changement arrivé sous une feuille (le Programme) : le balayage attend le retour', (t) async {
+      final kingdom = Activity(id: 'k', domainId: 'd', name: 'Kingdom', goalMin: 20);
+      final before = planSniper(stakes: [timed(lecture, 12)], budgetMin: 20);
+      final after = planSniper(stakes: [timed(lecture, 12), timed(kingdom, 30)], budgetMin: 80);
+      final shown = ValueNotifier<(SniperPlan, int)>((before, 14 * 60));
+      addTearDown(shown.dispose);
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 104,
+              height: 104,
+              child: ValueListenableBuilder(
+                valueListenable: shown,
+                builder: (_, v, __) => SniperModeTile(plan: v.$1, freeMin: v.$1.budgetMin, until: v.$2, label: 'Sniper', onTap: () {}),
+              ),
+            ),
+          ),
+        ),
+      ));
+      int centre() =>
+          int.parse(t.widget<Text>(find.descendant(of: find.byKey(const Key('mode-tile-scope')), matching: find.byType(Text)).first).data!);
+      expect(centre(), before.totalMin);
+      final nav = t.state<NavigatorState>(find.byType(Navigator));
+      nav.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('Programme'))));
+      await t.pumpAndSettle();
+      // Le bloc est déplacé pendant que la feuille cache la tuile : elle est à jour, sans balayage.
+      shown.value = (after, 15 * 60);
+      await t.pump();
+      expect(t.hasRunningAnimations, isFalse);
+      // Retour sur Aujourd'hui : le balayage part, les minutes glissent de l'ancien total au nouveau.
+      nav.pop();
+      await t.pump();
+      await t.pump(kSniperReload ~/ 2);
+      expect(centre(), greaterThan(before.totalMin));
+      expect(centre(), lessThan(after.totalMin));
+      await t.pump(kSniperReload);
+      expect(centre(), after.totalMin);
+      expect(t.hasRunningAnimations, isFalse);
+      expect(t.takeException(), isNull);
+    });
+
     test('session en cours : touchées, passée, tir laissé en route ou prochain tir, à venir', () {
       final extra = {
         'aimed': ['a', 'b', 'c', 'd'],
