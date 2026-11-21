@@ -532,7 +532,21 @@ class WeekHoursTile extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: () => showWeekHoursSheet(context, logic),
-            child: Center(child: ExcludeSemantics(child: WeekHoursGauge(h: h, size: 90))),
+            // Le chiffre des heures actives dans l'ouverture du cadran, sous l'aiguille, comme dans la feuille
+            // (demande user 2026-11-21) : l'arc s'arrête à 30° sous l'horizontale, l'aiguille n'y descend jamais.
+            child: ExcludeSemantics(
+              child: Stack(alignment: Alignment.center, children: [
+                WeekHoursGauge(h: h, size: 90),
+                Positioned(
+                  bottom: 11,
+                  child: Text(spanLabel(h.activeMin),
+                      key: const Key('hours-tile-active'),
+                      maxLines: 1,
+                      textScaler: TextScaler.noScaling,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: kHoursActive, height: 1)),
+                ),
+              ]),
+            ),
           ),
         ),
       ),
