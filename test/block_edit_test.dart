@@ -26,6 +26,15 @@ void main() {
     expect(sleep.startTime, '22:00');
   });
 
+  test('un rendez-vous retouché dans l\'app est marqué : l\'app fait foi jusqu\'à ce que l\'agenda ait suivi', () {
+    final sleep = ScheduleBlock(id: 'gcal-ev1', startTime: '23:00', durationMin: 420, title: 'Sommeil', gcalEventId: 'ev1');
+    expect(sleep.toJson().containsKey('gcalDirty'), isFalse);
+    sleep.gcalDirty = true;
+    expect(sleep.toJson()['gcalDirty'], isTrue);
+    expect(ScheduleBlock.from(sleep.toJson()).gcalDirty, isTrue);
+    expect(edit(sleep, start: '23:30').gcalDirty, isTrue);
+  });
+
   test('un bloc de la nuit garde son doc, un bloc retouché ses autres réglages', () {
     final night = ScheduleBlock(id: 'n', startTime: '00:30', durationMin: 60, title: 'Lecture', noAutoWin: true, reminders: ['00:20'])
       ..docDate = '2026-11-22'

@@ -578,13 +578,16 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {
+    // Rendez-vous d'agenda : l'app fait foi tant que Google n'a pas suivi.
+    if (updated.gcalEventId != null) updated.gcalDirty = true;
     await _writeBlock(updated);
     await _pushMirror(updated);
   }
 
   /// Un rendez-vous d'agenda retouché ici (heure, durée, titre) suit dans Google
-  /// Agenda, comme dans la frise : sinon la prochaine synchro le remettait à
-  /// l'heure de l'agenda.
+  /// Agenda, comme dans la frise. Si l'envoi échoue, le bloc reste marqué
+  /// (`gcalDirty`) et la prochaine synchro pousse vers l'agenda au lieu de
+  /// remettre son heure.
   Future<void> _pushMirror(ScheduleBlock b) async {
     final eventId = b.gcalEventId;
     if (eventId == null) return;
@@ -592,7 +595,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         eventId: eventId, date: _docOf(b), startTime: b.startTime, durationMin: b.durationMin, title: b.title);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
-          content: Text('Modifié ici — Google Agenda n\'a pas suivi (la prochaine synchro remettra son heure).')));
+          content: Text('Modifié ici — Google Agenda suivra à la prochaine synchro.')));
     }
   }
 

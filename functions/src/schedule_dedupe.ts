@@ -89,11 +89,34 @@ export function relinkMirrors(
     if (kept !== b) { removed++; continue; }
     if (b.gcalEventId == null) {
       b.gcalEventId = id.slice("gcal-".length);
+      // Il avait perdu son lien parce que l'app l'a retouché : c'est elle qui fait foi.
+      b.gcalDirty = true;
       relinked++;
     }
     out.push(b);
   }
   return { blocks: out, relinked, removed };
+}
+
+/**
+ * Qui fait foi entre un rendez-vous d'agenda [ev] et son bloc [b] (demande user
+ * 2026-11-21 : « si je modifie dans mon appli, c'est que le rendez-vous a été
+ * déplacé ») : un bloc retouché dans l'app (`gcalDirty`) l'emporte et l'agenda
+ * suit ("push") ; déjà pareil = on lève juste la marque ("clear") ; sinon
+ * l'agenda fait foi ("pull"), ou rien à faire ("none").
+ */
+export function mirrorDirection(
+  b: AnyBlock,
+  ev: { title: string; startTime: string; durationMin: number }
+): "push" | "clear" | "pull" | "none" {
+  const same =
+    String(b.startTime) === ev.startTime && Number(b.durationMin) === ev.durationMin && String(b.title ?? "") === ev.title;
+  if (b.gcalDirty === true) {
+    const valid = /^\d{2}:\d{2}$/.test(String(b.startTime)) && Number(b.durationMin) >= 1;
+    if (!valid) return "pull";
+    return same ? "clear" : "push";
+  }
+  return same ? "none" : "pull";
 }
 
 /** "HH:mm" → minutes depuis minuit (format invalide → 0). */

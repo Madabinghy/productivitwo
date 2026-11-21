@@ -128,6 +128,11 @@ class ScheduleBlock {
   // re-poussé), l'import le met à jour/le retire, un swipe le masque sans
   // toucher au vrai rendez-vous. Null = bloc Productivitwo normal.
   String? gcalEventId;
+  // Rendez-vous d'agenda retouché DANS l'app (heure, durée, titre) et pas encore
+  // confirmé par Google : l'app fait foi, la synchro pousse vers l'agenda au
+  // lieu de remettre l'heure de l'agenda (demande user 2026-11-21). Levé par le
+  // serveur une fois l'agenda à jour.
+  bool gcalDirty;
   // ── Séance programmée ──────────────────────────────────────────────────────
   // Déroulé réutilisable (session_templates) attaché au bloc : ▶ lance le
   // chrono sur l'activité ET ouvre le player sur ce déroulé.
@@ -160,6 +165,7 @@ class ScheduleBlock {
     this.carriedFromDate,
     this.movedTo,
     this.gcalEventId,
+    this.gcalDirty = false,
     this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [],
@@ -247,6 +253,7 @@ class ScheduleBlock {
         'carriedFromDate': carriedFromDate,
         'movedTo': movedTo,
         'gcalEventId': gcalEventId,
+        if (gcalDirty) 'gcalDirty': true,
         'sessionTemplateId': sessionTemplateId,
       };
 
@@ -279,6 +286,7 @@ class ScheduleBlock {
         carriedFromDate: j['carriedFromDate'],
         movedTo: j['movedTo'] is Map ? Map<String, dynamic>.from(j['movedTo'] as Map) : null,
         gcalEventId: j['gcalEventId'],
+        gcalDirty: j['gcalDirty'] == true,
         sessionTemplateId: j['sessionTemplateId'],
       );
 }

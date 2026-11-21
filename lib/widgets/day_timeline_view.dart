@@ -152,8 +152,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   bool _editable(ScheduleBlock b) => b.status != 'done' && !b.isPrep;
 
   /// Pousse l'état courant d'un miroir modifié vers son événement Google.
-  /// Best-effort : l'app garde la modif, l'agenda est prévenu — en cas
-  /// d'échec réseau, la prochaine sync réalignera (agenda → app).
+  /// L'app fait foi : en cas d'échec réseau, le bloc reste marqué (`gcalDirty`)
+  /// et la prochaine synchro pousse vers l'agenda (app → agenda).
   Future<void> _pushMirror(ScheduleBlock b, {String? title}) async {
     if (b.gcalEventId == null) return;
     final ok = await gcalUpdateEvent(
@@ -167,7 +167,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
           content: Text(
-              'Modifié ici — Google Agenda n\'a pas suivi (la prochaine sync réalignera).')));
+              'Modifié ici — Google Agenda suivra à la prochaine synchro.')));
     }
   }
 

@@ -427,6 +427,16 @@ un seul bloc par id à la lecture, le relié d'abord. En plus, un rendez-vous d'
 poussé vers Google Agenda (`_pushMirror` de `daily_schedule_view.dart`, comme la frise) : sans ça la synchro suivante le remettait à
 l'heure de l'agenda. Tout nouveau code qui réécrit un bloc part du bloc existant (`editedBlock` ou `{...ancien, ...nouveau}`), jamais
 d'un `ScheduleBlock(...)` neuf.
+**L'app fait foi sur un rendez-vous qu'on y retouche** (2026-11-21, demande user : « si je prends la peine de modifier dans mon
+appli, c'est que le rendez-vous a été déplacé ») : un rendez-vous d'agenda dont l'heure, la durée ou le titre change dans l'app
+mobile (liste : « Modifier le bloc », durée ; frise : glisser, tirer, renommer) est marqué `ScheduleBlock.gcalDirty` (écrit seulement
+à vrai ; posé par `_saveBlock`, `updateScheduleBlockTime` et `updateBlockTitle`) puis poussé vers Google (`gcalUpdateEvent` →
+`patchEvent`, qui lève la marque par `clearMirrorDirty`). Si l'envoi échoue, la marque reste et c'est l'import qui pousse :
+`mirrorDirection(bloc, événement)` (`schedule_dedupe.ts`) = `push` (bloc marqué et différent : l'agenda suit) · `clear` (déjà
+pareil) · `pull` (pas retouché ici : l'agenda fait foi, comme avant) · `none`. Un bloc que `relinkMirrors` vient de relier est marqué
+aussi : il avait perdu son lien parce que l'app l'avait retouché. Un rendez-vous modifié dans Google sans retouche dans l'app arrive
+toujours dans l'app. Pas concernés : le web (un rendez-vous n'y change pas d'heure) et `update_block` côté Claude (toujours refusé
+sur un rendez-vous d'agenda).
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour

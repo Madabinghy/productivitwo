@@ -1,4 +1,4 @@
-import { dropPlainDuplicates, relinkMirrors, sameSlot } from "./schedule_dedupe";
+import { dropPlainDuplicates, mirrorDirection, relinkMirrors, sameSlot } from "./schedule_dedupe";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue } from "firebase-admin/firestore";
@@ -193,6 +193,49 @@ export function isCopyOfBlock(slot: { startTime: string; durationMin: number; ti
   return blocks.some((b) => b.gcalEventId == null && sameSlot(b, slot));
 }
 
+/** Pose l'heure, la durée (et le titre) d'un bloc sur son événement Google. */
+async function patchEvent(
+  base: string,
+  token: string,
+  eventId: string,
+  date: string,
+  startTime: string,
+  durationMin: number,
+  tzOff: number,
+  title?: string
+): Promise<boolean> {
+  const startMin = hmToMin(startTime);
+  const start = dateTimeOf(date, startMin);
+  const end = dateTimeOf(date, startMin + Math.round(durationMin));
+  const patch: Json = {
+    start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
+    end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
+  };
+  if (typeof title === "string" && title.trim() !== "") patch.summary = title.trim();
+  const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) console.error("gcal patchEvent failed:", r.status, await r.text());
+  return r.ok;
+}
+
+/** L'agenda a suivi : le bloc retouché dans l'app n'a plus à être repoussé. */
+async function clearMirrorDirty(uid: string, date: string, eventId: string): Promise<void> {
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  const blocks = ((snap.data()?.blocks as Json[]) ?? []).slice();
+  let changed = false;
+  for (const b of blocks) {
+    if (String(b.gcalEventId ?? "") === eventId && b.gcalDirty === true) {
+      delete b.gcalDirty;
+      changed = true;
+    }
+  }
+  if (changed) await ref.update({ blocks });
+}
+
 export async function importGcalDay(
   uid: string,
   date: string
@@ -284,7 +327,19 @@ export async function importGcalDay(
     events.delete(String(b.gcalEventId)); // déjà représenté
     if (b.status === "deleted") continue; // swipé : masqué, on respecte
     const hm = `${String(Math.floor(ev.startMin / 60)).padStart(2, "0")}:${String(ev.startMin % 60).padStart(2, "0")}`;
-    if (b.startTime !== hm || b.durationMin !== ev.durationMin || b.title !== ev.title) {
+    const dir = mirrorDirection(b, { title: ev.title, startTime: hm, durationMin: ev.durationMin });
+    if (dir === "push") {
+      // Retouché dans l'app : l'agenda suit. En cas d'échec, le bloc reste marqué et on réessaie à la prochaine synchro.
+      const ok = await patchEvent(base, token, String(b.gcalEventId), date, String(b.startTime), Number(b.durationMin), tzOff, String(b.title ?? ""));
+      if (ok) {
+        delete b.gcalDirty;
+        updated++;
+      }
+    } else if (dir === "clear") {
+      delete b.gcalDirty;
+      updated++;
+    } else if (dir === "pull") {
+      delete b.gcalDirty;
       b.startTime = hm;
       b.durationMin = ev.durationMin;
       b.title = ev.title;
@@ -600,23 +655,9 @@ export const gcalApi = onRequest(
         if (!token) { res.status(200).json({ ok: false, reason: "not_connected" }); return; }
         const base = calBase(await calendarIdFor(uid));
         const tzOff = (await userTzOffset(uid)) ?? parisOffsetMin(date);
-        const startMin = hmToMin(startTime);
-        const start = dateTimeOf(date, startMin);
-        const end = dateTimeOf(date, startMin + Math.round(durationMin));
-        const patch: Json = {
-          start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
-          end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
-        };
-        if (typeof title === "string" && title.trim() !== "") {
-          patch.summary = title.trim();
-        }
-        const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
-        });
-        if (!r.ok) console.error("gcal updateEvent failed:", r.status, await r.text());
-        res.status(200).json({ ok: r.ok, status: r.status });
+        const ok = await patchEvent(base, token, eventId, date, startTime, durationMin, tzOff, typeof title === "string" ? title : undefined);
+        if (ok) await clearMirrorDirty(uid, date, eventId);
+        res.status(200).json({ ok });
         return;
       }
       if (action === "deleteEvent") {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession, traceUnlisted, relinkMirrors } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession, traceUnlisted, relinkMirrors, mirrorDirection } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -170,6 +170,8 @@ test("relinkMirrors : un miroir sans lien le retrouve, ses doubles au même id p
   assert.equal(r.removed, 1);
   assert.equal(r.blocks[1].gcalEventId, "ev1");
   assert.equal(r.blocks[1].activityId, "a");
+  // Il avait perdu son lien parce que l'app l'a retouché : c'est elle qui fait foi.
+  assert.equal(r.blocks[1].gcalDirty, true);
   // Un bloc relié et sa copie sans lien : le relié reste, à sa place.
   const linked = { ...lost(), startTime: "22:00", gcalEventId: "ev1" };
   const r2 = relinkMirrors([lost(), linked], ["ev1"]);
@@ -183,4 +185,19 @@ test("relinkMirrors : un miroir sans lien le retrouve, ses doubles au même id p
   // Une copie effacée ne prend pas la place du bloc encore visible.
   const r4 = relinkMirrors([{ ...lost(), status: "deleted" }, lost()], ["ev1"]);
   assert.deepEqual(r4.blocks.map((b) => b.status), ["pending"]);
+});
+
+test("mirrorDirection : un rendez-vous retouché dans l'app l'emporte sur l'agenda", () => {
+  const ev = { title: "Sommeil", startTime: "22:00", durationMin: 420 };
+  const b = (over = {}) => ({ id: "gcal-ev1", gcalEventId: "ev1", title: "Sommeil", startTime: "22:00", durationMin: 420, ...over });
+  // Retouché ici : l'agenda suit.
+  assert.equal(mirrorDirection(b({ startTime: "23:00", gcalDirty: true }), ev), "push");
+  assert.equal(mirrorDirection(b({ title: "Dodo", gcalDirty: true }), ev), "push");
+  // Déjà pareil : on lève la marque.
+  assert.equal(mirrorDirection(b({ gcalDirty: true }), ev), "clear");
+  // Pas retouché ici : l'agenda fait foi, comme avant.
+  assert.equal(mirrorDirection(b({ startTime: "21:00" }), ev), "pull");
+  assert.equal(mirrorDirection(b(), ev), "none");
+  // Heure illisible : on ne pousse rien de faux.
+  assert.equal(mirrorDirection(b({ startTime: "soir", gcalDirty: true }), ev), "pull");
 });
