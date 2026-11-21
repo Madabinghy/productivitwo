@@ -113,9 +113,13 @@ SniperScope sniperScopeOf(RoutineDay day) {
   for (final s in day.slots) {
     if (s.reached || day.dismissed.contains(s.id)) continue;
     final m = day.timed.where((x) => x.key == s.moment).firstOrNull;
-    // Toute la journée et Libre : pas de moment, elles restent avec le reste de ce qui est en jeu.
-    if (m == null) continue;
     final key = 'routine:${s.id}';
+    if (m == null) {
+      // « Toute la journée » à plusieurs fois par jour : répartie sur la journée (du matin au soir). Libre et
+      // « Toute la journée » à une fois restent avec le reste de ce qui est en jeu.
+      if (s.moment == kMomentAllDay) _spreadAllDay(day, s, key, section: section, later: later, shareLeft: shareLeft, shareLabel: shareLabel);
+      continue;
+    }
     if (m.key == cur.key) {
       section[key] = kSniperSecMoment;
       // Les routines arrivent déjà dans l'ordre réglé (« Organiser »).
@@ -156,6 +160,52 @@ SniperScope sniperScopeOf(RoutineDay day) {
     before: before,
     rank: rank,
   );
+}
+
+/// Une routine « Toute la journée » à plusieurs fois par jour (8 verres d'eau, 2026-11-21, retour user : le Sniper
+/// proposait les 8 dès le matin) : sa cible se partage à parts égales entre les moments du matin au soir (le Miracle
+/// Morning reste au rituel), ce qui n'a pas été fait avant s'ajoute ; une part déjà faite la met de côté jusqu'au
+/// moment suivant.
+void _spreadAllDay(
+  RoutineDay day,
+  RoutineSlot s,
+  String key, {
+  required Map<String, int> section,
+  required Map<String, String> later,
+  required Map<String, int> shareLeft,
+  required Map<String, String> shareLabel,
+}) {
+  final n = s.todo.dayTarget ?? 0;
+  if (n < 2) return;
+  final moments = [for (final m in day.timed) if (m.key != kMomentMiracle) m];
+  if (moments.isEmpty) return;
+  final cur = day.current;
+  if (cur.key == kMomentMiracle) {
+    later[key] = moments.first.thisOne;
+    return;
+  }
+  final i = moments.indexWhere((m) => m.key == cur.key);
+  if (i < 0) return;
+  final parts = momentParts(n, [for (final m in moments) m.key]);
+  final before = parts.take(i).fold<int>(0, (a, b) => a + b);
+  final upTo = before + parts[i];
+  final done = s.todo.dayDone;
+  final left = upTo - done;
+  if (left <= 0) {
+    for (var j = i + 1; j < moments.length; j++) {
+      if (parts[j] > 0) {
+        later[key] = moments[j].thisOne;
+        return;
+      }
+    }
+    return;
+  }
+  section[key] = kSniperSecMoment;
+  final dayLeft = n - done;
+  if (left >= dayLeft) return;
+  shareLeft[key] = left;
+  final carried = before - done;
+  shareLabel[key] = carried > 0 ? '$carried d’avant + ${parts[i]} ${cur.thisOne}' : 'part ${cur.of} · $left sur $dayLeft à faire';
 }
 
 /// L'instant à regarder pour choisir le moment : à moins d'un quart d'heure de la fin du moment en cours, c'est
