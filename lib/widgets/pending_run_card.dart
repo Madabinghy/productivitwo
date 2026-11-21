@@ -10,7 +10,6 @@ import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent,
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show kMiracleKind;
-import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMiracleAccent, showMiracleMorning;
 
 /// Une Guérilla / Offensive quittée en route (app fermée, écran quitté) :
 /// rouverte d'elle-même au premier affichage après un lancement de l'app ;
@@ -35,6 +34,12 @@ class _PendingRunCardState extends State<PendingRunCard> {
     super.initState();
     RunSessionStore.live(widget.logic).then((p) {
       if (!mounted) return;
+      // Une session de l'ancien écran Miracle Morning (retiré le 2026-11-21) n'a plus où reprendre : oubliée.
+      if (p != null && p.kind == kMiracleKind) {
+        RunSessionStore.clear();
+        setState(() {});
+        return;
+      }
       setState(() {});
       if (p != null && !p.prepared && !_autoResumed) {
         _autoResumed = true;
@@ -46,9 +51,7 @@ class _PendingRunCardState extends State<PendingRunCard> {
   }
 
   Future<void> _resume(PendingRun p) async {
-    if (p.kind == kMiracleKind) {
-      await showMiracleMorning(context, logic: widget.logic, resume: p);
-    } else if (p.kind == kGuerillaKind) {
+    if (p.kind == kGuerillaKind) {
       await showGuerillaScreen(context, widget.logic, resume: p);
     } else if (p.kind == kSniperKind) {
       await showSniperScreen(context, widget.logic, badges: widget.badges, resume: p);
@@ -94,14 +97,14 @@ class _PendingRunCardState extends State<PendingRunCard> {
     final p = RunSessionStore.current;
     // Un Sniper préparé n'est pas « en cours » : la tuile du mode le montre, pas cette carte.
     if (p == null ||
+        p.kind == kMiracleKind ||
         p.prepared ||
         !(p.isLive(DateTime.now(), widget.logic.livedTodayYmd) || chronoKeepsAlive(p, widget.logic.state.sessions, widget.logic.livedTodayYmd))) {
       return const SizedBox.shrink();
     }
     final guerilla = p.kind == kGuerillaKind;
     final sniper = p.kind == kSniperKind;
-    final miracle = p.kind == kMiracleKind;
-    final accent = miracle ? kMiracleAccent : guerilla ? kGuerillaAccent : (sniper ? kSniperAccent : kOffensiveAccent);
+    final accent = guerilla ? kGuerillaAccent : (sniper ? kSniperAccent : kOffensiveAccent);
     final cs = Theme.of(context).colorScheme;
     final at = '${p.lastActiveAt.hour.toString().padLeft(2, '0')}:${p.lastActiveAt.minute.toString().padLeft(2, '0')}';
     return Container(
@@ -114,15 +117,15 @@ class _PendingRunCardState extends State<PendingRunCard> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(miracle ? Icons.wb_twilight_rounded : guerilla ? Icons.bolt : (sniper ? Icons.gps_fixed : Icons.north_east), size: 18, color: cs.brightness == Brightness.dark ? accent : cs.primary),
+          Icon(guerilla ? Icons.bolt : (sniper ? Icons.gps_fixed : Icons.north_east), size: 18, color: cs.brightness == Brightness.dark ? accent : cs.primary),
           const SizedBox(width: 6),
           Expanded(
-            child: Text((miracle ? 'Miracle Morning en cours · ${p.done} étape${p.done > 1 ? 's' : ''} faite${p.done > 1 ? 's' : ''}' : sniper ? 'Sniper en cours · ${p.done} cible${p.done > 1 ? 's' : ''}' : pendingRunLabel(p, name: guerilla ? 'Guérilla' : 'Offensive')).toUpperCase(),
+            child: Text((sniper ? 'Sniper en cours · ${p.done} cible${p.done > 1 ? 's' : ''}' : pendingRunLabel(p, name: guerilla ? 'Guérilla' : 'Offensive')).toUpperCase(),
                 style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .7))),
           ),
         ]),
         const SizedBox(height: 4),
-        Text(miracle ? 'Quitté à $at. Il reprend à l’étape où tu en étais.' : _line(p, sniper, at), style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
+        Text(_line(p, sniper, at), style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(

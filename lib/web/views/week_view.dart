@@ -1450,20 +1450,6 @@ class _WeekViewState extends State<WeekView> {
           category: 'personal',
           timeBlock: 'small'),
     ),
-    // Miracle morning (2026-11-16) : au ▶ (mobile), les routines du moment s'enchaînent.
-    _PlaceItem(
-      key: 'time:morning',
-      group: 'Poser du temps',
-      title: 'Miracle morning',
-      defaultMin: 60,
-      color: const Color(0xFFF2C14E),
-      make: (s, dur) => ScheduleBlock(
-          startTime: '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}',
-          durationMin: dur,
-          title: 'Miracle morning',
-          category: 'routine',
-          timeBlock: 'morning'),
-    ),
     // Détente (2026-11-18) : du temps pour souffler ; au ▶ (mobile), on choisit de quoi.
     _PlaceItem(
       key: 'time:leisure',

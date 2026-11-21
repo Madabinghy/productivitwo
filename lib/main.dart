@@ -141,9 +141,9 @@ import 'package:productivitwo_v1/catalog/catalog_art.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 import 'package:productivitwo_v1/utils/modules.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart' show MiracleMorning;
+import 'package:productivitwo_v1/widgets/sniper_screen.dart' show showSniperScreen;
 import 'package:productivitwo_v1/life_nature_store.dart';
 import 'package:productivitwo_v1/utils/leisure.dart' show isLeisureId;
-import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show showMiracleMorning, showMiracleSetup;
 import 'package:productivitwo_v1/utils/module_journey.dart';
 import 'package:productivitwo_v1/widgets/modules_sheet.dart';
 
@@ -1874,7 +1874,7 @@ class _AppRootState extends State<AppRoot>
       final freedomJson = jsonEncode(m['freedoms'] ?? const {});
       final sameFreedom = freedomJson == _freedomJson;
       final miracle = MiracleMorning.from(m['miracleMorning']);
-      final sameMiracle = jsonEncode(miracle?.toJson()) == jsonEncode(logic.miracleMorning?.toJson());
+      final sameMiracle = jsonEncode(miracle?.toJson()) == jsonEncode(logic.miracleMorning?.toJson()) && (m['miracleMigrated'] == true) == logic.miracleMigrated;
       final sameReviews = reviews.map((k, v) => MapEntry(k, v.toJson())).toString() ==
           logic.weekReviews.map((k, v) => MapEntry(k, v.toJson())).toString();
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
@@ -1954,6 +1954,7 @@ class _AppRootState extends State<AppRoot>
       logic.modules = modules;
       logic.journey = journey;
       logic.miracleMorning = miracle;
+      logic.miracleMigrated = m['miracleMigrated'] == true;
       logic.minimumPeriods = minimum;
       logic.freedomCardsHidden = m['freedomCardsHidden'] == true;
       logic.seasons = seasons;
@@ -3163,23 +3164,12 @@ class _AppRootState extends State<AppRoot>
     if (st == null) return;
     // Un bloc de temps réserve un MODE (retour user 2026-10-31) : Deep work =
     // Offensive, Petites choses = Guérilla ; leur chrono compte pour le bloc.
-    // Miracle morning (2026-11-16) : le bloc ouvre « Mon Miracle Morning »
-    // (tes étapes, dans ton ordre ; reprise d'une session en route). Il est
-    // fait quand le Miracle Morning du jour l'est, sinon il attend.
+    // Un ancien bloc « Miracle morning » (plus proposé depuis le 2026-11-21 : le
+    // Miracle Morning est un moment de la journée) ouvre le Sniper, qui déroule
+    // les routines du moment. Comme tout bloc de temps, il se règle au chrono.
     if (block.timeBlock == 'morning') {
-      if (logic.miracleToday != null) {
-        ScaffoldMessenger.of(context).showClosingSnackBar(
-            const SnackBar(content: Text('Ton Miracle Morning est déjà fait aujourd’hui.')));
-      } else if (logic.miracleNow.isEmpty) {
-        await showMiracleSetup(context, logic: logic);
-      } else {
-        await showMiracleMorning(context, logic: logic);
-      }
-      if (!mounted) return;
-      if (logic.miracleToday != null && block.status == 'pending') {
-        await _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done');
-      }
-      setState(() {});
+      await showSniperScreen(context, logic, badges: _badges);
+      if (mounted) setState(() {});
       return;
     }
     // Détente (2026-11-18) : on choisit de quoi souffler, le chrono part

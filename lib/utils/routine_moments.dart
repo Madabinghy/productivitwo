@@ -97,6 +97,21 @@ List<Moment> timedMomentsWith(Map<String, (int, int)> windows, {int dayStartMin 
   ];
 }
 
+/// Allume (ou règle) le moment Miracle Morning jusqu'à [endMin] : le matin commence quand il finit, s'il
+/// commençait avant.
+Map<String, (int, int)> withMiracleWindow(Map<String, (int, int)> windows, {required int dayStartMin, required int endMin}) {
+  final base = kTimedMoments.first;
+  final mo = windows[kMomentMorning] ?? (base.startMin, base.endMin);
+  // Jamais au-delà du matin : il lui reste au moins une demi-heure.
+  final end = endMin >= mo.$2 ? mo.$2 - 30 : endMin;
+  if (end <= dayStartMin) return windows;
+  return {
+    ...windows,
+    kMomentMiracle: (dayStartMin, end),
+    if (windows.containsKey(kMomentMorning) && mo.$1 < end) kMomentMorning: (end, mo.$2),
+  };
+}
+
 /// Les six moments (horaires réglés + toute la journée + libre), pour les vues.
 List<Moment> momentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) => [
       ...timedMomentsWith(windows, dayStartMin: dayStartMin),

@@ -1444,6 +1444,9 @@ Logique pure `utils/offensive.dart`. **Illimité** (2026-11-04, retour user : tr
 
 ## Miracle Morning (2026-11-16, maquette validée « Mon Miracle Morning »)
 
+⚠️ **Retiré le 2026-11-21** (Sniper par moment, lot 3) : le Miracle Morning est devenu un moment de la journée déroulé par le Sniper ;
+cette section décrit l'état d'avant.
+
 Ta matinée, tes étapes dans ton ordre ; l'heure ne compte pas (on le fait quand on se lève). Module Modes d'action. Remplace
 « Enchaîner le matin » dans MAINTENANT tant qu'il n'est pas fait. Logique pure `utils/miracle_morning.dart` — `MiracleStep {id, name,
 routineId?, minutes, note?}`, `MiracleMorning {steps}` dans `data/meta.miracleMorning` (null = jamais réglé : `defaultMiracle` = les
@@ -1641,7 +1644,27 @@ ensuite » (`laterLine`). Pendant ce moment, la tuile du mode d'Aujourd'hui mont
 (`_inMiracle`). Serveur (déployé au merge) : `functions/src/routine_split.ts` ↔ `routine_moments.dart` (**garder alignés** :
 `momentParts`) — moment `miracle` (alias « miracle morning », « réveil »), `momentShares` sur `update_activity` et `create_routine`
 (`normalizeMomentShares` ; seulement quand l'utilisateur donne ses parts), repris dans `get_user_context` et la liste des routines de
-`plan_day` ; contexte horaire `miracle`. L'ancien Miracle Morning (écran, rond 🌅, bloc) vit encore à côté jusqu'au lot 3.
+`plan_day` ; contexte horaire `miracle`. L'ancien Miracle Morning (écran, rond 🌅, bloc) est retiré au lot 3.
+
+**Sniper par moment, lot 3 : le passage, et l'ancien Miracle Morning retiré** (2026-11-21). L'écran « Mon Miracle Morning »
+(`widgets/miracle_morning_screen.dart`, SUPPRIMÉ), ses étapes, le rond 🌅 de l'en-tête d'Aujourd'hui, sa session reprenable et sa place
+dans MAINTENANT (`pickNow(miracleAvailable:)`, `NowCard.miracle`) n'existent plus : le Miracle Morning est le moment de la journée du
+lot 2, déroulé par le Sniper. **Le passage** (une fois, `AppLogic.miraclePassageDue` : des étapes réglées dans
+`data/meta.miracleMorning` et pas encore `data/meta.miracleMigrated`) : carte « Ton Miracle Morning devient un moment de la journée »
+en tête d'Aujourd'hui (`MiraclePassageCard`, `widgets/miracle_passage.dart`, « Plus tard » = jusqu'au prochain lancement) → feuille
+`showMiraclePassage` (une ligne par étape, interrupteur « garder » sur les étapes libres, la fenêtre du moment, « Faire le passage »).
+Logique pure `utils/miracle_morning.dart` : `miraclePassage(étapes, activités)` → `PassageLine` (`moved` = la routine passe au moment
+`miracle` ; `shared` = routine répartie, elle garde ses moments et prend une part de 1 au Miracle Morning, prise sur la plus grosse ;
+`created` = étape libre, ou dont la routine n'existe plus, qui devient une routine quotidienne du moment avec sa durée en minuteur),
+`applyMiraclePassage` (l'ordre des étapes devient `routineOrder` ; une routine à faire une fois sans durée prend celle de l'étape),
+`miracleEndFor` (fin proposée = temps des étapes + 15 min, à la demi-heure, une heure au moins), `withMiracleWindow`
+(`routine_moments.dart`). `AppLogic.runMiraclePassage(dropped:)` allume le moment s'il ne l'est pas, range les routines, pose
+`miracleMigrated` (dans `kBackupMetaKeys`). Rien n'est effacé : les étapes restent dans le doc meta, les matinées déjà faites restent
+des `ChainRun` `kind:"miracle"`. Une étape libre gardée compte désormais dans la journée (Métronome, Journée parfaite) : la feuille le
+dit. **Le bloc « Miracle morning »** (`timeBlock:"morning"`) n'est plus proposé (Nouveau bloc, Planifier, POSER DU TEMPS, Mode de
+« Modifier le bloc », `schedule_day` côté Claude : « ne plus le poser ») ; un bloc déjà posé garde son nom et son mode, son ▶ ouvre le
+Sniper (« Lancer le Sniper »). Une session en attente de l'ancien écran est oubliée (`PendingRunCard`). Les sections « Miracle Morning
+(2026-11-16) » et « Miracle morning, 3ᵉ bloc de temps » plus haut décrivent l'état d'avant.
 
 ## MAINTENANT, la bonne chose (2026-11-07, maquette validée, 3 lots)
 

@@ -78,8 +78,7 @@ import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActi
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/now_pick.dart' show kNowPostponeWarn, kNowSnoozeMin, postponesCleared;
 import 'package:productivitwo_v1/utils/week_review.dart';
-import 'package:productivitwo_v1/utils/miracle_morning.dart' show miracleNames;
-import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart' show kMiracleAccent, pendingMiracle, showMiracleMorning, showMiracleSetup;
+import 'package:productivitwo_v1/widgets/miracle_passage.dart' show MiraclePassageCard;
 import 'package:productivitwo_v1/widgets/week_review_screen.dart' show showWeekReviewScreen, WeekReviewCard, WeekIntentionCard;
 import 'package:productivitwo_v1/widgets/freedom_screens.dart' show PendingUrgeCard;
 import 'package:productivitwo_v1/utils/modules.dart';
@@ -815,6 +814,8 @@ class TodayViewState extends State<TodayView> {
                     ),
                   if (_on(AppModule.planning)) ..._weekReviewCards(),
                   if (_moduleProposal() case final card?) card,
+                  // L'ancien Miracle Morning passe en moment de la journée (2026-11-21) : une fois.
+                  MiraclePassageCard(logic: widget.logic),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
                   // Aujourd'hui allégé (`kTodayNowEnabled`) : sans le tableau, il ne reste que la ligne courte des séries
@@ -845,8 +846,6 @@ class TodayViewState extends State<TodayView> {
                   const SizedBox(height: 16),
                   NowCard(
                     onGoToBed: _goToBed,
-                    miracle: _miracleDue,
-                    onMiracle: _openMiracle,
                     stakes: stakes,
                     onStake: _runStake,
                     modeOfMoment: _modeKind == null || !_on(AppModule.modes)
@@ -1002,11 +1001,6 @@ class TodayViewState extends State<TodayView> {
           const SizedBox(height: 8),
         ],
         FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // Miracle Morning (2026-11-16) : tant qu'il n'est pas fait aujourd'hui ; appui long = les étapes.
-          if (!_showTomorrow && _on(AppModule.modes) && widget.logic.miracleToday == null) ...[
-            _miracleBtn(cs),
-            const SizedBox(width: 8),
-          ],
           // Le mode du moment a son gros bouton sous l'en-tête (2026-11-01) : ici, les autres.
           for (final l in _launchers)
             if (_on(AppModule.modes) && (_showTomorrow || l.kind != _modeKind)) ...[
@@ -1019,74 +1013,20 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
-  /// Le Miracle Morning à proposer dans MAINTENANT : module Modes d'action, des étapes, pas encore fait aujourd'hui.
-  ({String names, int steps, int minutes})? get _miracleDue {
-    final logic = widget.logic;
-    if (_showTomorrow || !_on(AppModule.modes) || logic.miracleToday != null) return null;
-    final m = logic.miracleNow;
-    if (m.isEmpty) return null;
-    return (names: miracleNames(m), steps: m.steps.length, minutes: m.totalMin);
-  }
-
-  Future<void> _openMiracle() async {
-    final logic = widget.logic;
-    if (logic.miracleNow.isEmpty) {
-      await showMiracleSetup(context, logic: logic);
-    } else {
-      await showMiracleMorning(context, logic: logic);
-    }
-    if (mounted) setState(() {});
-  }
-
-  Widget _miracleBtn(ColorScheme cs) {
-    final dark = cs.brightness == Brightness.dark;
-    final c = dark ? kMiracleAccent : const Color(0xFF9A5A16);
-    final m = widget.logic.miracleNow;
-    final pending = pendingMiracle(widget.logic);
-    final tip = pending != null
-        ? 'Reprendre le Miracle Morning · ${pending.done} faite${pending.done > 1 ? 's' : ''}'
-        : m.isEmpty ? 'Miracle Morning · choisir mes étapes' : 'Miracle Morning · ${m.steps.length} étapes · ${fmtMin(m.totalMin)}';
-    return Stack(clipBehavior: Clip.none, children: [SizedBox(
-      width: 44,
-      height: 44,
-      child: Material(
-        key: const ValueKey('miracle-launcher'),
-        color: c.withValues(alpha: .12),
-        shape: CircleBorder(side: BorderSide(color: c.withValues(alpha: .55))),
-        child: InkWell(
-          onTap: _openMiracle,
-          onLongPress: () async {
-            await showMiracleSetup(context, logic: widget.logic);
-            if (mounted) setState(() {});
-          },
-          customBorder: const CircleBorder(),
-          child: Tooltip(message: tip, child: Center(child: Icon(Icons.wb_twilight_rounded, size: 22, color: c, semanticLabel: tip))),
-        ),
-      ),
-    ),
-      if (pending != null)
-        Positioned(
-          right: -1,
-          top: -1,
-          child: Container(width: 12, height: 12, decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: Border.all(color: cs.surface, width: 2))),
-        ),
-    ]);
-  }
-
   static const _launchers = [
     (kind: kGuerillaKind, tooltip: 'Guérilla · la flemme ou moi', accent: kGuerillaAccent, light: Color(0xFF5E6B2A), name: 'Guérilla', line: 'la flemme ou moi'),
     (kind: kSniperKind, tooltip: 'Sniper · chaque minute, pile où elle compte', accent: kSniperAccent, light: Color(0xFFB4532A), name: 'Sniper', line: 'chaque minute, pile où elle compte'),
     (kind: kOffensiveKind, tooltip: 'Offensive · en forme, à fond', accent: kOffensiveAccent, light: Color(0xFF2A6F94), name: 'Offensive', line: 'en forme, à fond'),
   ];
 
-  /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
-  /// Sniper, En forme → Offensive ; rien en recharge.
   bool get _inMiracle {
     final l = widget.logic, now = l.livedNowMinNow;
     final m = currentMoment(now, l.moments);
     return m.key == kMomentMiracle && now >= m.startMin && now < m.endMin;
   }
 
+  /// Le mode qui va avec l'élan du moment : Flemme → Guérilla, Normal →
+  /// Sniper, En forme → Offensive ; rien en recharge.
   String? get _modeKind {
     // Pendant le moment Miracle Morning, c'est le Sniper qui porte le rituel : quel que soit l'élan, même au réveil.
     if (_inMiracle) return kSniperKind;
@@ -1579,7 +1519,7 @@ class TodayViewState extends State<TodayView> {
             final b = blocks[i];
             final c = colorOf(b);
             final hasSource = b.activityId != null || b.projectId != null || b.taskId != null || b.timeBlock != null;
-            final mode = switch (b.timeBlock) { 'deep' => ' · offensive', 'small' => ' · guérilla', 'morning' => ' · miracle morning', 'leisure' => ' · détente', _ => '' };
+            final mode = switch (b.timeBlock) { 'deep' => ' · offensive', 'small' => ' · guérilla', 'morning' => ' · sniper', 'leisure' => ' · détente', _ => '' };
             return InkWell(
               onTap: hasSource && widget.onOpenSource != null
                   ? () {

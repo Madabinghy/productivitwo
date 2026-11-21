@@ -1,11 +1,11 @@
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/routine_moments.dart' show kMomentMorning, momentKeyOf;
+import 'package:productivitwo_v1/utils/routine_moments.dart';
 
-/// Miracle Morning (2026-11-16, maquette validée « Mon Miracle Morning ») : la matinée de la
-/// personne, ses étapes dans son ordre. L'heure ne compte pas : on le fait quand on se lève.
-/// Une étape peut porter une routine (elle prend son +1 quand l'étape est faite) et lancer le
-/// chrono de l'activité liée de la routine. Stockage `data/meta.miracleMorning {steps: [...]}`.
-/// Une matinée faite = une `ChainRun` `kind: "miracle"` du jour vécu.
+/// L'ANCIEN Miracle Morning (2026-11-16) : des étapes dans un ordre, déroulées sur un écran à part. Depuis le
+/// 2026-11-21 il est un MOMENT de la journée (`kMomentMiracle`) et c'est le Sniper qui le déroule. Il ne reste ici
+/// que la lecture des étapes déjà réglées (`data/meta.miracleMorning {steps: [...]}`) et leur PASSAGE en routines
+/// du moment ([miraclePassage], [applyMiraclePassage]). Les matinées déjà faites restent des `ChainRun`
+/// `kind: "miracle"`.
 const kMiracleKind = 'miracle';
 
 class MiracleStep {
@@ -59,34 +59,114 @@ class MiracleMorning {
   }
 }
 
-/// Au départ : les routines du matin de la personne, rien d'imposé. Durée = le minuteur de la
-/// routine, sinon 5 min.
-MiracleMorning defaultMiracle(List<Activity> activities) {
-  final morning = activities
-      .where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily && momentKeyOf(a) == kMomentMorning)
-      .toList()
-    ..sort((a, b) => (a.routineOrder ?? 999).compareTo(b.routineOrder ?? 999));
-  return MiracleMorning([
-    for (final a in morning) MiracleStep(id: 'r-${a.id}', name: a.name, routineId: a.id, minutes: (a.timerMin ?? 5).clamp(1, 120)),
-  ]);
+/// Ce que devient une étape au passage.
+enum PassageKind {
+  /// Sa routine passe au moment Miracle Morning.
+  moved,
+
+  /// Sa routine est répartie : elle garde ses moments et prend une part au Miracle Morning.
+  shared,
+
+  /// Étape libre (sans routine) : elle devient une routine quotidienne du moment.
+  created,
 }
 
-/// Les idées du classique S.A.V.E.R.S., proposées sans rien imposer.
-const kMiracleIdeas = <(String, int, String)>[
-  ('Silence', 5, 'méditer, respirer, prier'),
-  ('Affirmations', 3, 'ce que tu veux être aujourd’hui'),
-  ('Visualisation', 3, 'vois ta journée réussie'),
-  ('Exercice', 10, 'bouger, même un peu'),
-  ('Lecture', 10, 'quelques pages'),
-  ('Écriture', 5, 'journal, gratitude'),
-];
+class PassageLine {
+  final MiracleStep step;
+  final PassageKind kind;
+  final Activity? routine;
+  const PassageLine(this.step, this.kind, [this.routine]);
 
-/// La matinée de ce jour vécu, si elle a été faite.
-ChainRun? miracleDoneOn(List<ChainRun> runs, String ymd) =>
-    runs.where((r) => r.kind == kMiracleKind && r.date == ymd).firstOrNull;
+  /// « routine · matin », « routine répartie », « étape libre · 5 min ».
+  String get before => switch (kind) {
+        PassageKind.created => 'étape libre · ${step.minutes} min',
+        PassageKind.shared => 'routine répartie',
+        PassageKind.moved => () {
+            final m = momentOf(momentKeyOf(routine!));
+            return m.timed && m.key != kMomentMiracle ? 'routine · ${m.label.toLowerCase()}' : 'routine';
+          }(),
+      };
 
-/// « Silence · Prière · Visualisation · +2 »
-String miracleNames(MiracleMorning m, {int max = 3}) {
-  final names = m.steps.map((s) => s.name).toList();
-  return [...names.take(max), if (names.length > max) '+${names.length - max}'].join(' · ');
+  /// Ce qui lui arrive, en une ligne.
+  String get after => switch (kind) {
+        PassageKind.created => 'devient une routine de ${step.minutes} min, chaque jour',
+        PassageKind.shared => 'garde ses moments, + une part au Miracle Morning',
+        PassageKind.moved => 'passe au moment Miracle Morning',
+      };
+}
+
+/// Le passage, étape par étape, dans l'ordre réglé. Une routine citée deux fois ne compte qu'une fois ; une
+/// étape dont la routine n'existe plus est une étape libre.
+List<PassageLine> miraclePassage(MiracleMorning mm, List<Activity> activities) {
+  final byId = {for (final a in activities) if (!a.deleted && a.isHabit) a.id: a};
+  final seen = <String>{};
+  final out = <PassageLine>[];
+  for (final s in mm.steps) {
+    final a = s.routineId == null ? null : byId[s.routineId];
+    if (a == null) {
+      out.add(PassageLine(s, PassageKind.created));
+    } else if (seen.add(a.id)) {
+      final keys = splitMomentsOf(a);
+      out.add(PassageLine(s, keys.isNotEmpty && !keys.contains(kMomentMiracle) && (a.habitTarget ?? 1) >= 2 ? PassageKind.shared : PassageKind.moved, a));
+    }
+  }
+  return out;
+}
+
+/// Fin du moment Miracle Morning proposée au passage : le temps de toutes les étapes plus un quart d'heure,
+/// arrondi à la demi-heure, une heure au moins.
+int miracleEndFor(MiracleMorning mm, int dayStartMin) {
+  final need = mm.totalMin + 15;
+  final span = need <= 60 ? 60 : ((need + 29) ~/ 30) * 30;
+  return dayStartMin + span;
+}
+
+/// Applique le passage : les routines changent sur place, les étapes libres gardées deviennent des routines
+/// (renvoyées dans `created`, à ajouter). [dropped] = ids des étapes libres à ne pas garder ; [domainId] = le
+/// domaine des routines créées. L'ordre des étapes devient l'ordre des routines du moment.
+({List<Activity> changed, List<Activity> created}) applyMiraclePassage(List<PassageLine> lines, {Set<String> dropped = const {}, required String domainId}) {
+  final changed = <Activity>[], created = <Activity>[];
+  var order = 0;
+  for (final l in lines) {
+    switch (l.kind) {
+      case PassageKind.created:
+        if (dropped.contains(l.step.id)) continue;
+        created.add(Activity(
+          domainId: domainId,
+          name: l.step.name,
+          type: 'habit',
+          habitFreq: HabitFreq.daily,
+          habitTarget: 1,
+          timeContext: kMomentMiracle,
+          timerMin: l.step.minutes,
+        )..routineOrder = order++);
+      case PassageKind.moved:
+        final a = l.routine!;
+        if (splitMomentsOf(a).isEmpty) {
+          a.timeContext = kMomentMiracle;
+          a.splitMoments = [];
+          a.momentShares = {};
+        }
+        // Une routine à faire une fois, sans durée : elle prend celle de l'étape.
+        if ((a.habitTarget ?? 1) <= 1 && a.onceMin == null && l.step.minutes > 0) a.timerMin = l.step.minutes;
+        a.routineOrder = order++;
+        changed.add(a);
+      case PassageKind.shared:
+        final a = l.routine!;
+        final old = splitMomentsOf(a);
+        final parts = momentParts(a.habitTarget ?? 1, old, a.momentShares);
+        // Une part au Miracle Morning, prise sur la plus grosse des autres.
+        var from = 0;
+        for (var i = 1; i < parts.length; i++) {
+          if (parts[i] > parts[from]) from = i;
+        }
+        parts[from]--;
+        a.splitMoments = [kMomentMiracle, ...old];
+        a.momentShares = {kMomentMiracle: 1, for (var i = 0; i < old.length; i++) old[i]: parts[i]};
+        a.timeContext = kMomentMiracle;
+        a.routineOrder = order++;
+        changed.add(a);
+    }
+  }
+  return (changed: changed, created: created);
 }

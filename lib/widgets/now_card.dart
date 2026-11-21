@@ -77,9 +77,6 @@ class NowCard extends StatefulWidget {
   final void Function(Stake stake)? onPostpone;
   /// Enjeux repoussés « plus tard » : ni montrés ni proposés.
   final Set<String> snoozed;
-  /// Miracle Morning à faire (2026-11-16) : le matin, il remplace « Enchaîner le matin ».
-  final ({String names, int steps, int minutes})? miracle;
-  final VoidCallback? onMiracle;
   /// Bloc Sommeil : « Je vais me coucher » lance le chrono Sommeil (jamais « Marquer fait » : la nuit finit le lendemain).
   final void Function(ScheduleBlock block)? onGoToBed;
 
@@ -111,8 +108,6 @@ class NowCard extends StatefulWidget {
     this.onPostpone,
     this.snoozed = const {},
     this.onGoToBed,
-    this.miracle,
-    this.onMiracle,
   });
 
   @override
@@ -329,7 +324,6 @@ class _NowCardState extends State<NowCard> {
       board: widget.onStake == null ? null : widget.stakes,
       modeAvailable: widget.modeOfMoment != null && widget.onMode != null,
       chainAvailable: widget.onChain != null,
-      miracleAvailable: widget.miracle != null && widget.onMiracle != null,
       skip: widget.snoozed,
     );
     if (pick.kind == NowPickKind.fixedSoon) focus = (block: pick.block!, current: false);
@@ -488,7 +482,7 @@ class _NowCardState extends State<NowCard> {
             ? 'Lancer l’offensive'
             : (b.timeBlock == 'small'
                 ? 'Lancer la guérilla'
-                : (b.timeBlock == 'morning' ? 'Lancer mon Miracle Morning' : b.isLeisureBlock ? 'Me détendre' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'))));
+                : (b.timeBlock == 'morning' ? 'Lancer le Sniper' : b.isLeisureBlock ? 'Me détendre' : (tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'))));
         buttons.add(Expanded(
             child: _btn(pal, label, primary: true, onTap: () {
           HapticFeedback.lightImpact();
@@ -760,12 +754,9 @@ class _NowCardState extends State<NowCard> {
     final mode = widget.modeOfMoment;
     final moment = pick.kind == NowPickKind.morning || pick.kind == NowPickKind.evening;
     final n = pick.items.length;
-    final mm = pick.kind == NowPickKind.morning && pick.items.isEmpty ? widget.miracle : null;
-    final names = mm != null ? mm.names : (moment ? [...pick.items.take(3), if (n > 3) '+${n - 3}'].join(' · ') : null);
+    final names = moment ? [...pick.items.take(3), if (n > 3) '+${n - 3}'].join(' · ') : null;
     final title = names ?? st?.gesture.title ?? mode?.label ?? '';
-    final sub = mm != null
-        ? '${mm.steps} étape${mm.steps > 1 ? 's' : ''} · ${_fmtMin(mm.minutes)} · l’heure ne compte pas'
-        : moment
+    final sub = moment
         ? '$n routine${n > 1 ? 's' : ''} à tenir'
         : st == null
         ? 'le mode qui va avec ton élan'
@@ -773,9 +764,7 @@ class _NowCardState extends State<NowCard> {
             if (st.gesture.progress != null) st.gesture.progress!,
             if (st.gesture.costMin > 0 && !(st.gesture.progress ?? '').contains('≈')) '≈ ${_fmtMin(st.gesture.costMin)}',
           ].join(' · ');
-    final label = mm != null
-        ? 'Lancer mon Miracle Morning · ${_fmtMin(mm.minutes)}'
-        : pick.kind == NowPickKind.morning
+    final label = pick.kind == NowPickKind.morning
         ? 'Enchaîner le matin · $n'
         : pick.kind == NowPickKind.evening
             ? 'Finir la journée · $n'
@@ -783,7 +772,7 @@ class _NowCardState extends State<NowCard> {
                 ? stakeButtonLabel(st)
                 : 'Lancer ${mode?.label ?? ''}'.trim();
     final right = switch (pick.kind) {
-      NowPickKind.morning => mm != null ? 'miracle morning' : 'pour démarrer',
+      NowPickKind.morning => 'pour démarrer',
       NowPickKind.evening => 'ce soir il reste',
       NowPickKind.losing => 'se perd ce soir',
       NowPickKind.parole => 'ta parole',
@@ -814,9 +803,7 @@ class _NowCardState extends State<NowCard> {
           Expanded(
             child: _btn(pal, label, primary: true, onTap: () {
               HapticFeedback.lightImpact();
-              if (mm != null) {
-                widget.onMiracle?.call();
-              } else if (moment) {
+              if (moment) {
                 widget.onChain?.call();
               } else if (st != null) {
                 widget.onStake?.call(st);
