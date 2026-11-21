@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
+import 'package:productivitwo_v1/utils/sniper.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/sniper_scope.dart';
@@ -64,6 +66,52 @@ void main() {
     expect(find.text('Rien à viser'), findsOneWidget);
     expect(find.textContaining('Rien en jeu pour l’instant'), findsOneWidget);
     await close(tester);
+  });
+
+  testWidgets('Sniper par moment : ce qui reste d’avant, le moment, le reste, et « Plus tard » à ajouter', (tester) async {
+    tester.view.physicalSize = const Size(800, 2200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final dents = Activity(id: 'den', domainId: 'd', name: 'Dents', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1);
+    final marche = Activity(id: 'mar', domainId: 'd', name: 'Marche', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1);
+    Stake plain(Activity a) => Stake(
+          StakeGesture(key: 'routine:${a.id}', kind: StakeGestureKind.routine, title: a.name, costMin: 5, activity: a),
+          [const StakeGain(kind: StakeGainKind.routine, label: '0 / 1 aujourd’hui', weight: 4)],
+        );
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [lecture, pompes, dents, marche], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    // Le dernier moment de la journée : sa fin ne raccourcit pas la lunette, quelle que soit l'heure du test.
+    final scope = SniperScope(
+      moment: kMoments.firstWhere((m) => m.key == kMomentEvening),
+      section: const {'routine:pom': kSniperSecLeft, 'routine:den': kSniperSecMoment},
+      later: const {'routine:mar': 'demain matin'},
+      laterOrder: const ['demain matin'],
+      leftLabel: 'RESTE DE L’APRÈS-MIDI',
+    );
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [...stakes(), plain(dents), plain(marche)], scope: scope)));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('SNIPER · CE SOIR'), findsOneWidget);
+    expect(find.text('RESTE DE L’APRÈS-MIDI · 1'), findsOneWidget);
+    expect(find.text('CE SOIR · 1'), findsOneWidget);
+    expect(find.text('AUSSI EN JEU · 1'), findsOneWidget);
+    // L'ordre : Pompes (restée), Dents (ce soir, même sans autre enjeu), Lecture (le reste).
+    double y(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(y('Pompes'), lessThan(y('Dents')));
+    expect(y('Dents'), lessThan(y('Lecture')));
+    expect(find.text('Marche'), findsNothing);
+    expect(find.textContaining('3 cibles', findRichText: true), findsWidgets);
+    // « Plus tard » : une ligne, qui s'ouvre ; toucher la routine l'ajoute au viseur.
+    expect(find.text('Plus tard · 1 demain matin'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sniper-later')));
+    await tester.pump();
+    expect(find.text('plus tard · demain matin'), findsOneWidget);
+    await tester.tap(find.text('Marche'));
+    await tester.pump();
+    expect(find.textContaining('4 cibles', findRichText: true), findsWidgets);
+    expect(find.byKey(const Key('sniper-later')), findsNothing);
+    await close(tester);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('viseur : la lunette, les cibles numérotées dans l’ordre des tirs', (tester) async {

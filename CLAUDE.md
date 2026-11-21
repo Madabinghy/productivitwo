@@ -1605,6 +1605,25 @@ vers le haut à droite, trois traînées ; Offensive = l'infini du Deep work (de
 Branché : ronds et tuile d'Aujourd'hui, MES MODES de Ma vie, écrans Guérilla / Offensive, boutons « Offensive sur ce projet » (fiche
 projet, projet déplié, page focus). Le widget iOS Lanceurs garde ses SF Symbols (⚡ / ↗).
 
+**Sniper par moment, lot 1** (2026-11-21, maquette validée « Sniper par moment », 3 lots — lot 2 = le moment Miracle Morning et les
+parts réglables, lot 3 = le passage des étapes en routines et le retrait de l'ancien Miracle Morning) : le viseur ne propose plus
+toutes les routines de la journée, il suit le MOMENT (matin · midi · après-midi · soir, `AppLogic.moments`). Logique pure
+`utils/sniper.dart` : `SniperScope` (`sniperScopeOf(RoutineDay)` : `section` par clé de geste `routine:<id>` — `kSniperSecLeft` restée
+d'un moment d'avant, `kSniperSecMoment` du moment, absente = `kSniperSecOther` ; `later` = routines des moments plus tard, mises de
+côté ; `shareLeft` / `shareLabel` = la part du moment d'une routine RÉPARTIE, ce qui n'a pas été fait avant compris — « 2 d'avant + 2
+ce midi », `MomentShare.carried` ; `leftLabel` « RESTE DU MATIN », `before` « avant midi »). `sniperTargetOf(scope:)` : avec un moment,
+toute routine du jour est une cible (même sans autre enjeu) ; une part ne montre que la part (elle ne fait pas tomber la série) ;
+`SniperTarget.section`, et `compareSniper` range d'abord par partie (reste d'avant → moment → le reste : activités, actions, relevés,
+routines « toute la journée » et « libre »), puis l'ordre habituel. `planSniper(scope:)` → `SniperPlan.later` ; `adjustPlan` sait
+ajouter une cible de `later`. `sniperMomentShift` : à moins de `kSniperMomentLeadMin` (15) min de la fin d'un moment, le Sniper prend
+déjà le suivant. État de l'app (`lib/sniper_now.dart`) : `sniperScopeNow`, `sniperBudgetNow(scope:)` — la lunette s'arrête au prochain
+bloc OU à la fin du moment, le premier des deux —, `sniperPlanNow` renvoie aussi `scope` (tuile du mode : « Sniper · ce matin · … »).
+Viseur (`sniper_screen.dart`) : en-tête « SNIPER · CE MATIN », un titre par partie sur sa première cible (« RESTE DU MATIN · 2 »,
+« CE MIDI · 4 », « AUSSI EN JEU · 2 » ; plus de titres dès qu'on range à la main), « n cibles avant midi », ligne « Plus tard · 3 cet
+après-midi · 4 ce soir · ajouter » (`sniper-later`, s'ouvre, toucher une routine l'avance). Pas de moment pour un Sniper ciblé sur une
+carte. Le montant d'une part est toujours gardé dans la session (`_keepsAmount`). ⓘ `kRuleSniper` carte « Par moment ». Tests :
+`test/sniper_moment_test.dart`, `test/ui/sniper_screen_test.dart` (`SniperScreen(scope:)`, tests seulement).
+
 ## MAINTENANT, la bonne chose (2026-11-07, maquette validée, 3 lots)
 
 UNE chose en grand, choisie dans un ordre fixe, avec la règle qui a gagné. **Lot 1 livré (l'ordre et le « parce que »)** : logique

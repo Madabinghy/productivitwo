@@ -96,9 +96,12 @@ class SniperScreen extends StatefulWidget {
   @visibleForTesting
   final List<Stake>? stakes;
 
+  /// Le moment à suivre quand [stakes] est fourni (tests) ; sinon il est lu sur la journée.
+  final SniperScope? scope;
+
   /// Le contrôleur de la feuille qui porte l'écran : il pilote la liste de chaque étape.
   final ScrollController? sheetScroll;
-  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus, this.stakes, this.sheetScroll});
+  const SniperScreen({super.key, required this.logic, this.badges, this.resume, this.focus, this.stakes, this.scope, this.sheetScroll});
 
   @override
   State<SniperScreen> createState() => _SniperScreenState();
@@ -107,6 +110,11 @@ class SniperScreen extends StatefulWidget {
 class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderStateMixin {
   List<Stake> _stakes = const [];
   CardQuest? _focus;
+
+  /// Sniper par moment : les routines du moment, ce qui reste d'avant, ce qui attend plus tard.
+  /// Null pour un Sniper ciblé sur une carte.
+  SniperScope? _scope;
+  bool _laterOpen = false;
   Map<String, int> _routineLeft = const {};
   double _factor = 1;
   int _endMin = 22 * 60;
@@ -201,7 +209,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _focus = widget.focus ?? _resumedFocus();
     if (_focus case final q?) _stakes = focusStakes(_stakes, q);
     _factor = sniperFactorNow(logic);
-    _budget = sniperBudgetNow(logic, endMin: _endMin);
+    _scope = _focus != null ? null : (widget.stakes != null ? widget.scope : sniperScopeNow(logic));
+    _budget = sniperBudgetNow(logic, endMin: _endMin, scope: _scope);
     _replan();
     if (_focus case final q? when widget.resume == null) _aimAt(q);
   }
@@ -224,7 +233,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _excluded.addAll([for (final t in _base.aimed) if (!keys.contains(t.key)) t.key]);
     final byKey = {
       for (final s in _stakes)
-        if (sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor) case final t?) t.key: t,
+        if (_targetOf(s) case final t?) t.key: t,
     };
     for (final st in q.steps) {
       final t = byKey[st.key];
@@ -234,6 +243,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _adjust();
   }
 
+  SniperTarget? _targetOf(Stake s) => sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor, scope: _scope);
+
   void _replan() {
     _base = planSniper(
       stakes: _stakes,
@@ -241,9 +252,13 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       untilMin: _budget.untilMin,
       routineLeft: _routineLeft,
       factor: _factor,
+      scope: _scope,
     );
     _adjust();
   }
+
+  /// La part d'une routine répartie change avec le moment : son montant est toujours gardé.
+  bool _keepsAmount(SniperTarget t) => t.amount != t.need || (_scope?.shareLeft.containsKey(t.key) ?? false);
 
   /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
   /// de portée ne rentre sans qu'on le choisisse.
@@ -297,7 +312,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   /// Les cibles écartées à la main (pour les remettre).
   List<SniperTarget> get _excludedTargets => [
         for (final s in _stakes)
-          if (_excluded.contains(s.gesture.key)) sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor),
+          if (_excluded.contains(s.gesture.key)) _targetOf(s),
       ].whereType<SniperTarget>().toList();
 
   /// Remet le viseur comme il a été préparé : les mêmes cibles, à leurs montants, dans leur
@@ -366,7 +381,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'aimed': [for (final t in _plan.aimed) t.key],
         'amounts': {
           for (final t in _plan.aimed)
-            if (t.amount != t.need) t.key: t.amount
+            if (_keepsAmount(t)) t.key: t.amount
         },
         'ordered': _order != null,
         'aimedMin': _plan.totalMin,
@@ -382,7 +397,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final amounts = r.extra['amounts'] is Map ? r.extra['amounts'] as Map : const {};
     final byKey = {
       for (final s in _stakes)
-        if (sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor) case final t?) t.key: t,
+        if (_targetOf(s) case final t?) t.key: t,
     };
     _startedAt = r.startedAt;
     _hit.addAll(r.strings('hit'));
@@ -463,7 +478,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'aimed': [for (final t in _aimed) t.key],
         'amounts': {
           for (final t in _aimed)
-            if (t.amount != t.need) t.key: t.amount
+            if (_keepsAmount(t)) t.key: t.amount
         },
         'hit': _hit,
         'skipped': _skipped.toList(),
@@ -916,7 +931,18 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   }
 
   /// [number] = le rang du tir, à la couleur de son arc dans la lunette (il remplace la case à cocher).
-  Widget _targetRow(SniperTarget t, {required bool on, VoidCallback? onTap, String? reason, int? number}) {
+  /// [head] = le titre de sa partie du viseur, sur la première cible de la partie.
+  Widget _targetRow(SniperTarget t, {required bool on, VoidCallback? onTap, String? reason, int? number, String? head}) {
+    if (head != null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: EdgeInsets.only(top: number == 1 ? 6 : 14, bottom: 2),
+          child: Text(head,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: t.section == kSniperSecLeft ? const Color(0xFFFFB870) : _text3)),
+        ),
+        _targetRow(t, on: on, onTap: onTap, reason: reason, number: number),
+      ]);
+    }
     final mark = sniperTargetColor(t);
     final sub = switch (t.kind) {
       SniperKind.action => t.stake.gesture.action?.estimatedMin == null
@@ -1006,9 +1032,20 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     // Le tour de la lunette = le temps libre ; chaque cible y prend un arc à sa durée.
     final scope = aimScope(costs: [for (final t in _plan.aimed) t.cost], freeMin: b.minutes, pauseMin: _plan.pauseMin);
     final excluded = _excludedTargets;
+    final sc = _scope;
+    // Les parties du viseur (reste d'avant, moment, le reste) tant que l'ordre est celui du Sniper.
+    final parts = sc != null && _order == null && _plan.aimed.any((t) => t.section != kSniperSecOther);
+    String? headOf(int i) {
+      if (!parts) return null;
+      final t = _plan.aimed[i];
+      if (i > 0 && _plan.aimed[i - 1].section == t.section) return null;
+      return '${sc.sectionLabel(t.section)} · ${_plan.aimed.where((x) => x.section == t.section).length}';
+    }
+
+    final byMoment = sc?.before != null && until == null && b.untilMin == sc!.moment.endMin;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(
-        label: _prepared ? 'SNIPER PRÊT' : 'SNIPER',
+        label: _prepared ? 'SNIPER PRÊT' : (sc == null ? 'SNIPER' : 'SNIPER · ${sc.momentLabel}'),
         trailing: _prepared || _touched
             ? TextButton(key: const Key('sniper-drop'), onPressed: _drop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))
             : null,
@@ -1038,7 +1075,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
           Text.rich(
             TextSpan(style: const TextStyle(fontSize: 13, height: 1.35, color: _text2), children: [
               TextSpan(text: n == 0 ? 'Aucune cible' : '$n cible${n > 1 ? 's' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
-              if (until != null) TextSpan(text: ' avant « ${until.title} »'),
+              if (until != null) TextSpan(text: ' avant « ${until.title} »') else if (byMoment) TextSpan(text: ' ${sc.before}'),
               TextSpan(text: air > 0 ? ' · il reste ${fmtMin(air)} d’air' : ' · tout ton temps libre est visé'),
             ]),
             key: const Key('sniper-aim-line'),
@@ -1058,7 +1095,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
               ])),
             ),
           ],
-          Row(children: [
+          if (parts) const SizedBox(height: 10),
+          if (!parts) Row(children: [
             Expanded(child: _label(_order == null || !kSniperTuningEnabled ? 'CE QUI TOMBE · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
             if (_order != null && kSniperTuningEnabled)
               Padding(
@@ -1085,6 +1123,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                 _targetRow(t,
                     on: true,
                     number: i + 1,
+                    head: headOf(i),
                     onTap: () => setState(() {
                           _excluded.add(t.key);
                           _added.remove(t.key);
@@ -1107,6 +1146,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                     child: _targetRow(_plan.aimed[i],
                         on: true,
                         number: i + 1,
+                        head: headOf(i),
                         onTap: () => setState(() {
                               _excluded.add(_plan.aimed[i].key);
                               _added.remove(_plan.aimed[i].key);
@@ -1133,6 +1173,31 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
               opacity: .7,
               child: _box(Column(children: [for (final m in _plan.outOfReach) _targetRow(m.target, on: false, reason: m.reason, onTap: () => _include(m.target, fromOut: true))])),
             ),
+          ],
+          if (sc != null && _plan.later.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            InkWell(
+              key: const Key('sniper-later'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _laterOpen = !_laterOpen),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: _line)),
+                child: Row(children: [
+                  Expanded(child: Text('Plus tard · ${sc.laterLine([for (final m in _plan.later) m.target.key])}', style: const TextStyle(fontSize: 13, height: 1.35, color: _text3))),
+                  const SizedBox(width: 8),
+                  Text(_laterOpen ? 'replier' : 'ajouter', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kSniperAccent)),
+                ]),
+              ),
+            ),
+            if (_laterOpen)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Opacity(
+                  opacity: .7,
+                  child: _box(Column(children: [for (final m in _plan.later) _targetRow(m.target, on: false, reason: m.reason, onTap: () => _include(m.target, fromOut: true))])),
+                ),
+              ),
           ],
           if (_runningBefore case final r?) ...[
             const SizedBox(height: 14),
