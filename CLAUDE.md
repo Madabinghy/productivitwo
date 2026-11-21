@@ -1608,6 +1608,12 @@ mettre pause) : l'impact joue son animation (`kSniperImpact`) puis RESTE affich�
 « Tirer · Lecture » (`sniper-next`), « Voir le bilan » après le dernier, « Je m'arrête » en haut ; toucher l'écran finit seulement
 l'animation. Rouvert entre deux tirs (feuille refermée, carte « Reprendre »), le Sniper revient sur ce même écran d'attente au lieu de
 lancer le tir suivant (`_restore`). Cela remplace « au bout de `kSniperImpact` le tir suivant démarre » de « Sniper en lunette ».
+**Une cible touchée garde sa place à la reprise** (2026-11-21, bug user : la feuille refermée puis rouverte passait de « TIR 2 / 8 » à
+« TIR 1 / 7 », et ainsi de suite) : une cible déjà touchée n'est plus dans les enjeux du jour, et la reprise (`_restore`) la retirait des
+tirs, puis la session réenregistrée l'oubliait pour de bon. La session garde maintenant la trace de chaque cible visée (`extra.snap`,
+`sniperSnapshot` : titre, nature, montants, partie, gains) et la reprise reconstitue une cible touchée ou passée absente des enjeux à sa
+place (`sniperFromSnapshot`, `utils/sniper.dart`) : compteur, piste, bilan et TOMBÉ restent justes. Une session d'avant sans trace garde
+l'ancien comportement.
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

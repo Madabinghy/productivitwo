@@ -211,6 +211,36 @@ void main() {
     await RunSessionStore.clear();
   });
 
+  testWidgets('refermé puis rouvert : une cible déjà touchée garde sa place, le compteur ne rétrécit pas', (tester) async {
+    final logic = await open(tester);
+    await tester.tap(find.textContaining('Tirer · 2 cibles'));
+    await tester.pump();
+    await tester.tap(find.text('+1 · touché'));
+    await tester.pump();
+    expect(find.text('TOUCHÉ'), findsOneWidget);
+    await close(tester);
+    final p = RunSessionStore.current!;
+    expect(p.strings('hit'), ['routine:pom']);
+
+    // Pompes est atteinte : elle n'est plus dans les enjeux du jour.
+    for (var i = 0; i < 2; i++) {
+      await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [stakes().first], resume: RunSessionStore.current)));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('TIR 1 / 2'), findsOneWidget);
+      expect(find.text('Tirer · Lecture'), findsOneWidget);
+      await close(tester);
+    }
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [stakes().first], resume: RunSessionStore.current)));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Tirer · Lecture'));
+    await tester.pump();
+    expect(find.text('TIR 2 / 2'), findsOneWidget);
+    await close(tester);
+    await RunSessionStore.clear();
+  });
+
   testWidgets('viseur retouché puis refermé : le Sniper est prêt, rien n’est lancé, la sélection revient à la réouverture', (tester) async {
     final logic = await open(tester);
     // Rien de retouché : pas de « Je m'arrête », et refermer ne garde rien.

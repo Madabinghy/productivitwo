@@ -279,6 +279,55 @@ class SniperTarget {
   int get cost => minutes == 0 ? 1 : minutes;
 }
 
+/// Trace d'une cible visée, gardée dans la session : une cible déjà touchée n'est plus dans les enjeux du jour, la
+/// reprise la retrouve quand même à sa place (sinon la session perd ses tirs à chaque réouverture, bug user 2026-11-21).
+Map<String, dynamic> sniperSnapshot(SniperTarget t) => {
+      't': t.title,
+      'k': t.kind.name,
+      'm': t.minutes,
+      'd': t.delta,
+      'n': t.need,
+      's': t.section,
+      'g': [
+        for (final g in t.gains) {'k': g.kind.name, 'l': g.label, 'w': g.weight, if (g.losesTonight) 'x': true},
+      ],
+    };
+
+/// La cible reconstituée d'après sa trace (null si la trace est illisible). Elle ne porte plus d'objet de l'app :
+/// elle ne sert qu'à garder sa place, son titre et ses gains (piste, bilan).
+SniperTarget? sniperFromSnapshot(String key, Object? snap) {
+  if (snap is! Map) return null;
+  final kind = SniperKind.values.where((k) => k.name == snap['k']).firstOrNull;
+  final title = snap['t'];
+  if (kind == null || title is! String) return null;
+  int n(Object? v, int d) => v is num ? v.toInt() : d;
+  final minutes = n(snap['m'], 0);
+  final gains = <StakeGain>[
+    if (snap['g'] case final List gl)
+      for (final g in gl)
+        if (g is Map && g['l'] is String)
+          StakeGain(
+            kind: StakeGainKind.values.where((k) => k.name == g['k']).firstOrNull ?? StakeGainKind.routine,
+            label: g['l'] as String,
+            weight: n(g['w'], 0),
+            losesTonight: g['x'] == true,
+          ),
+  ];
+  final gesture = StakeGesture(
+    key: key,
+    kind: switch (kind) {
+      SniperKind.routine => StakeGestureKind.routine,
+      SniperKind.timed => StakeGestureKind.activity,
+      SniperKind.action => StakeGestureKind.action,
+      SniperKind.reading => StakeGestureKind.reading,
+    },
+    title: title,
+    costMin: minutes == 0 ? 1 : minutes,
+  );
+  return SniperTarget(Stake(gesture, gains), kind,
+      minutes: minutes, delta: n(snap['d'], 1), need: n(snap['n'], kind == SniperKind.routine && minutes == 0 ? n(snap['d'], 1) : minutes), section: n(snap['s'], kSniperSecOther));
+}
+
 class SniperMiss {
   final SniperTarget target;
   final String reason;
