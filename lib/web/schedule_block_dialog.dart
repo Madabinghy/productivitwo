@@ -196,7 +196,8 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
       const SizedBox(height: 8),
       Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         const Text('Mode', style: TextStyle(fontSize: 12, color: kBText3)),
-        for (final kind in const ['deep', 'small', 'morning', 'leisure'])
+        // « Miracle morning » n'est plus proposé (2026-11-21) ; un bloc qui l'est déjà le garde.
+        for (final kind in ['deep', 'small', if (_layers.timeBlock == 'morning') 'morning', 'leisure'])
           ChoiceChip(
             key: ValueKey('block-mode-$kind'),
             label: Text(kTimeBlockLabels[kind]!),

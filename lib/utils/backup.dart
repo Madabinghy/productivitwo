@@ -65,6 +65,7 @@ const List<String> kBackupMetaKeys = [
   'freedoms',
   'modules',
   'miracleMorning',
+  'miracleMigrated',
   'mirrorActivities',
   'interventionTemplates',
   'ganttVisible',

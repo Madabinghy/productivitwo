@@ -1,119 +1,140 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/miracle_morning.dart';
-import 'package:productivitwo_v1/widgets/miracle_morning_screen.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
+import 'package:productivitwo_v1/widgets/miracle_passage.dart';
 
+/// Le passage (2026-11-21) : les étapes de l'ancien Miracle Morning deviennent des routines du moment Miracle
+/// Morning, dans leur ordre ; l'écran d'avant n'existe plus.
 void main() {
-  Activity routine(String id, String name, {String? ctx, int? timer}) => Activity(
+  Activity routine(String id, String name, {String? ctx, int? timer, int target = 1, List<String> split = const [], String domain = 'd'}) => Activity(
         id: id,
-        domainId: 'd',
+        domainId: domain,
         name: name,
-        role: ActivityRole.generic,
         type: 'habit',
         habitFreq: HabitFreq.daily,
-        habitTarget: 1,
+        habitTarget: target,
         timeContext: ctx,
         timerMin: timer,
+        splitMoments: split,
         createdAt: DateTime(2026),
       );
 
-  test('au départ : les routines du matin, avec leur minuteur', () {
-    final m = defaultMiracle([routine('a', 'Méditer', ctx: 'morning', timer: 10), routine('b', 'Lire', ctx: 'evening'), routine('c', 'Prier', ctx: 'morning')]);
-    expect(m.steps.map((s) => s.name), ['Méditer', 'Prier']);
-    expect(m.steps.first.minutes, 10);
-    expect(m.steps.last.minutes, 5);
-    expect(m.totalMin, 15);
-  });
+  MiracleMorning steps() => const MiracleMorning([
+        MiracleStep(id: 's1', name: 'Verre d’eau', routineId: 'eau', minutes: 1),
+        MiracleStep(id: 's2', name: 'Louanges', routineId: 'lou', minutes: 15),
+        MiracleStep(id: 's3', name: 'Silence', minutes: 5),
+        MiracleStep(id: 's4', name: 'Pompes', routineId: 'pom', minutes: 3),
+        MiracleStep(id: 's5', name: 'Visualisation', minutes: 5),
+        MiracleStep(id: 's6', name: 'Partie', routineId: 'gone', minutes: 4),
+        MiracleStep(id: 's7', name: 'Louanges encore', routineId: 'lou', minutes: 2),
+      ]);
 
-  test('relecture et écriture', () {
-    const m = MiracleMorning([MiracleStep(id: '1', name: 'Silence', minutes: 5), MiracleStep(id: '2', name: 'Pompes', routineId: 'p', minutes: 7, note: '20')]);
-    final back = MiracleMorning.from(m.toJson())!;
-    expect(back.steps.length, 2);
-    expect(back.steps[1].routineId, 'p');
-    expect(back.steps[1].note, '20');
+  List<Activity> acts() => [
+        routine('eau', 'Verre d’eau', target: 8, split: const [kMomentMorning, kMomentMidday, kMomentAfternoon, kMomentEvening]),
+        routine('lou', 'Louanges', ctx: kMomentMorning),
+        routine('pom', 'Pompes', ctx: kMomentMorning, target: 10),
+      ];
+
+  test('les étapes se lisent encore, et une étape sans nom est ignorée', () {
+    final m = MiracleMorning.from({
+      'steps': [
+        {'id': 'a', 'name': 'Silence', 'minutes': 5},
+        {'id': 'b', 'name': '  '},
+        {'id': 'c', 'name': 'Lire', 'routineId': 'r', 'minutes': 500},
+      ]
+    })!;
+    expect(m.steps.map((s) => s.name), ['Silence', 'Lire']);
+    expect(m.steps.last.minutes, 120);
+    expect(m.totalMin, 125);
     expect(MiracleMorning.from(null), isNull);
-    expect(MiracleMorning.from({'steps': [{'id': 'x'}, 3]})!.steps, isEmpty);
-    expect(miracleNames(const MiracleMorning([MiracleStep(id: '1', name: 'A'), MiracleStep(id: '2', name: 'B'), MiracleStep(id: '3', name: 'C'), MiracleStep(id: '4', name: 'D')])), 'A · B · C · +1');
   });
 
-  test('fait aujourd’hui = une ChainRun miracle du jour vécu', () {
-    final run = ChainRun(date: '2026-11-16', startedAt: DateTime(2026, 11, 16, 7), endedAt: DateTime(2026, 11, 16, 7, 40), doneCount: 4, total: 5, completed: true, kind: kMiracleKind);
-    expect(miracleDoneOn([run], '2026-11-16'), isNotNull);
-    expect(miracleDoneOn([run], '2026-11-17'), isNull);
+  test('le passage, étape par étape : routine déplacée, routine répartie, étape libre', () {
+    final lines = miraclePassage(steps(), acts());
+    expect([for (final l in lines) (l.step.id, l.kind)], [
+      ('s1', PassageKind.shared),
+      ('s2', PassageKind.moved),
+      ('s3', PassageKind.created),
+      ('s4', PassageKind.moved),
+      ('s5', PassageKind.created),
+      // Sa routine n'existe plus : une étape libre. La seconde « Louanges » ne compte pas deux fois.
+      ('s6', PassageKind.created),
+    ]);
+    expect(lines[0].before, 'routine répartie');
+    expect(lines[1].before, 'routine · matin');
+    expect(lines[1].after, 'passe au moment Miracle Morning');
+    expect(lines[2].before, 'étape libre · 5 min');
+    expect(lines[2].after, 'devient une routine de 5 min, chaque jour');
   });
 
-  testWidgets('une étape à la fois : fait = +1 de la routine, passer = rien, puis le bilan', (t) async {
-    t.view.physicalSize = const Size(1400, 2400);
-    t.view.devicePixelRatio = 2;
-    addTearDown(t.view.reset);
-    CoupAlarm.enabled = false;
-    addTearDown(() => CoupAlarm.enabled = true);
-    final p = routine('p', 'Prier', ctx: 'morning');
-    final st = AppState(domains: [Domain(id: 'd', name: 'Foi')], activities: [p], sessions: [], habitProgress: []);
+  test('appliquer : moments, parts, ordre, durées ; une étape libre écartée ne crée rien', () {
+    final all = acts();
+    final r = applyMiraclePassage(miraclePassage(steps(), all), dropped: {'s5', 's6'}, domainId: 'd');
+    final eau = all[0], lou = all[1], pom = all[2];
+    // L'eau garde ses moments et prend une part au Miracle Morning, prise sur la plus grosse.
+    expect(eau.splitMoments, [kMomentMiracle, kMomentMorning, kMomentMidday, kMomentAfternoon, kMomentEvening]);
+    expect(eau.momentShares, {kMomentMiracle: 1, kMomentMorning: 1, kMomentMidday: 2, kMomentAfternoon: 2, kMomentEvening: 2});
+    expect(eau.momentShares.values.fold<int>(0, (s, x) => s + x), 8);
+    // Une routine à faire une fois, sans durée, prend celle de l'étape ; une routine à répétitions non.
+    expect((lou.timeContext, lou.timerMin, lou.routineOrder), (kMomentMiracle, 15, 1));
+    expect((pom.timeContext, pom.timerMin, pom.routineOrder), (kMomentMiracle, null, 3));
+    expect(eau.routineOrder, 0);
+    // « Silence » gardée devient une routine quotidienne du moment, à sa place dans l'ordre.
+    expect(r.created.length, 1);
+    final sil = r.created.single;
+    expect((sil.name, sil.isHabit, sil.habitFreq, sil.habitTarget, sil.timeContext, sil.timerMin, sil.routineOrder, sil.domainId),
+        ('Silence', true, HabitFreq.daily, 1, kMomentMiracle, 5, 2, 'd'));
+    expect(r.changed.map((a) => a.id), ['eau', 'lou', 'pom']);
+  });
+
+  test('la fin du moment : le temps des étapes plus un quart d’heure, une heure au moins', () {
+    expect(miracleEndFor(const MiracleMorning([MiracleStep(id: 'a', name: 'A', minutes: 10)]), 300), 360);
+    expect(miracleEndFor(steps(), 180), 180 + 60); // 35 min d'étapes
+    expect(miracleEndFor(const MiracleMorning([MiracleStep(id: 'a', name: 'A', minutes: 80)]), 300), 300 + 120);
+    // Le matin commence quand le Miracle Morning finit ; jamais au-delà du matin.
+    final w = withMiracleWindow({kMomentMorning: (330, 660)}, dayStartMin: 300, endMin: 390);
+    expect(w, {kMomentMiracle: (300, 390), kMomentMorning: (390, 660)});
+    expect(withMiracleWindow(const {}, dayStartMin: 300, endMin: 900)[kMomentMiracle], (300, 630));
+  });
+
+  testWidgets('la carte puis la feuille : « Faire le passage » allume le moment et range les routines', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: acts(), sessions: [], habitProgress: []);
     final logic = AppLogic(st, () {})
-      ..dayStartMin = 0
-      ..miracleMorning = const MiracleMorning([
-        MiracleStep(id: '1', name: 'Prière', routineId: 'p', minutes: 5),
-        MiracleStep(id: '2', name: 'Visualisation', minutes: 3),
-      ]);
-    await t.pumpWidget(MaterialApp(home: MiracleMorningScreen(logic: logic)));
-    await t.pump();
-    expect(find.text('MIRACLE MORNING · 1 / 2'), findsOneWidget);
-    expect(find.text('Prière'), findsOneWidget);
-    expect(find.textContaining('Visualisation'), findsOneWidget); // ENSUITE
-    await t.tap(find.byKey(const ValueKey('miracle-done')));
-    await t.pump();
-    expect(st.habitHits.where((h) => h.habitId == 'p').length, 1);
-    expect(find.text('MIRACLE MORNING · 2 / 2'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('miracle-skip')));
-    await t.pump();
-    expect(find.text('MIRACLE MORNING · FAIT'), findsOneWidget);
-    expect(find.textContaining('1 sur 2'), findsOneWidget);
-    expect(find.text('passée'), findsOneWidget);
-    expect(logic.miracleToday, isNotNull);
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
-  });
-
-  testWidgets('reprise : l’app fermée en route, on revient à l’étape où on en était', (t) async {
-    SharedPreferences.setMockInitialValues({});
-    t.view.physicalSize = const Size(1400, 2400);
-    t.view.devicePixelRatio = 2;
-    addTearDown(t.view.reset);
-    CoupAlarm.enabled = false;
-    addTearDown(() => CoupAlarm.enabled = true);
-    await RunSessionStore.clear();
-    final p = routine('p', 'Prier', ctx: 'morning');
-    final st = AppState(domains: [Domain(id: 'd', name: 'Foi')], activities: [p], sessions: [], habitProgress: []);
-    final logic = AppLogic(st, () {})
-      ..dayStartMin = 0
-      ..miracleMorning = const MiracleMorning([
-        MiracleStep(id: '1', name: 'Prière', routineId: 'p', minutes: 5),
-        MiracleStep(id: '2', name: 'Visualisation', minutes: 3),
-      ]);
-    await t.pumpWidget(MaterialApp(home: MiracleMorningScreen(logic: logic)));
-    await t.pump();
-    await t.tap(find.byKey(const ValueKey('miracle-done')));
-    await t.pump();
-    await t.pumpWidget(const SizedBox());
-    final pending = pendingMiracle(logic);
-    expect(pending, isNotNull);
-    expect(pending!.done, 1);
-    expect(pending.extra['cur'], '2');
-    await t.pumpWidget(MaterialApp(home: MiracleMorningScreen(logic: logic, resume: pending)));
-    await t.pump();
-    expect(find.text('MIRACLE MORNING · 2 / 2'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('miracle-done')));
-    await t.pump();
-    expect(find.textContaining('2 sur 2'), findsOneWidget);
-    expect(st.habitHits.where((h) => h.habitId == 'p').length, 1);
-    expect(RunSessionStore.current, isNull);
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 1));
+      ..dayStartMin = 180
+      ..metaLoaded = true
+      ..miracleMorning = steps();
+    expect(logic.miraclePassageDue, isTrue);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MiraclePassageCard(logic: logic))));
+    expect(find.text('Ton Miracle Morning devient un moment de la journée'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('miracle-passage-open')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Silence', findRichText: true), findsOneWidget);
+    expect(find.textContaining('3 h → 4 h'), findsOneWidget);
+    // « Visualisation » n'est pas gardée.
+    await tester.ensureVisible(find.byKey(const Key('miracle-passage-keep-s5')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('miracle-passage-keep-s5')));
+    await tester.pump();
+    expect(find.text('ne sera pas gardée'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('miracle-passage-run')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('miracle-passage-run')));
+    await tester.pumpAndSettle();
+    expect(logic.miracleMigrated, isTrue);
+    expect(logic.miraclePassageDue, isFalse);
+    expect(logic.moments.first.key, kMomentMiracle);
+    expect((logic.moments.first.startMin, logic.moments.first.endMin), (180, 240));
+    expect(st.activities.map((a) => a.name), containsAll(['Silence', 'Partie']));
+    expect(st.activities.any((a) => a.name == 'Visualisation'), isFalse);
+    expect(st.activities.firstWhere((a) => a.id == 'lou').timeContext, kMomentMiracle);
+    // La carte a disparu.
+    expect(find.byKey(const Key('miracle-passage-card')), findsNothing);
+    await tester.pump(const Duration(seconds: 7));
   });
 }

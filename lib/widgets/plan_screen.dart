@@ -955,7 +955,7 @@ class _PlanScreenState extends State<PlanScreen> {
           if (_timeMode) ...[
             _section('AJOUTER'),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in const ['deep', 'small', 'morning', 'leisure'])
+              for (final k in const ['deep', 'small', 'leisure'])
                 ActionChip(
                   label: Text('+ ${kTimeBlockLabels[k]}', style: TextStyle(fontWeight: FontWeight.w700, color: kTimeBlockColors[k])),
                   backgroundColor: Colors.transparent,
@@ -966,7 +966,6 @@ class _PlanScreenState extends State<PlanScreen> {
                       minutes: timeBlockDefaultMin(k),
                       reason: switch (k) {
                         'deep' => 'Offensive · ${_deepPreview()}',
-                        'morning' => 'Tes étapes du matin, dans ton ordre',
                         'leisure' => 'Du temps pour souffler · ne pèse sur rien',
                         _ => 'Guérilla · routines et petites actions',
                       })),

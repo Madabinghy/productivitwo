@@ -2059,19 +2059,45 @@ class AppLogic implements HuntStore {
     await sync?.setMetaFields({'modules': {...modules.toJson(), if (clear) 'pending': null, if (clear) 'pendingBy': null}});
   }
 
-  /// Miracle Morning (2026-11-16, `utils/miracle_morning.dart`) : null = jamais réglé (on part des routines du matin).
+  /// Les étapes de l'ANCIEN Miracle Morning (`utils/miracle_morning.dart`), null = jamais réglé. Depuis le
+  /// 2026-11-21 le Miracle Morning est un moment de la journée déroulé par le Sniper : ces étapes ne servent
+  /// plus qu'au passage ([runMiraclePassage]), fait une fois ([miracleMigrated], `data/meta.miracleMigrated`).
   MiracleMorning? miracleMorning;
+  bool miracleMigrated = false;
 
-  /// Les étapes à jouer : le réglage, sinon les routines du matin.
-  MiracleMorning get miracleNow => miracleMorning ?? defaultMiracle(state.activeActivities);
+  /// Le passage reste à faire : des étapes réglées, jamais passées en routines du moment.
+  bool get miraclePassageDue => metaLoaded && !miracleMigrated && (miracleMorning?.steps.isNotEmpty ?? false);
 
-  /// La matinée de ce jour vécu, si elle a été faite.
-  ChainRun? get miracleToday => miracleDoneOn(state.chainRuns, livedTodayYmd);
+  /// Le passage tel qu'il se ferait, étape par étape.
+  List<PassageLine> get miraclePassageLines => miraclePassage(miracleMorning ?? const MiracleMorning([]), state.activeActivities);
 
-  Future<void> saveMiracleMorning(MiracleMorning m) async {
-    miracleMorning = m;
+  /// La fin du moment Miracle Morning après le passage : celle déjà réglée, sinon le temps des étapes.
+  int get miraclePassageEnd =>
+      moments.where((m) => m.key == kMomentMiracle).firstOrNull?.endMin ??
+      withMiracleWindow(momentWindows, dayStartMin: dayStartMin, endMin: miracleEndFor(miracleMorning ?? const MiracleMorning([]), dayStartMin))[kMomentMiracle]?.$2 ??
+      dayStartMin + 60;
+
+  /// Fait le passage : le moment s'allume, les routines des étapes y passent dans leur ordre, les étapes libres
+  /// gardées deviennent des routines. [dropped] = étapes libres à ne pas garder. Rien n'est effacé.
+  Future<void> runMiraclePassage({Set<String> dropped = const {}}) async {
+    final lines = miraclePassageLines;
+    final used = <String, int>{};
+    for (final l in lines) {
+      if (l.routine case final a?) used[a.domainId] = (used[a.domainId] ?? 0) + 1;
+    }
+    final domain = used.isEmpty
+        ? state.activeDomains.firstOrNull?.id
+        : (used.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).first.key;
+    final r = applyMiraclePassage(lines, dropped: dropped, domainId: domain ?? '');
+    if (domain != null) state.activities.addAll(r.created);
+    final lit = moments.any((m) => m.key == kMomentMiracle);
+    if (!lit) {
+      momentWindows = withMiracleWindow(momentWindows, dayStartMin: dayStartMin, endMin: miracleEndFor(miracleMorning ?? const MiracleMorning([]), dayStartMin));
+    }
+    miracleMigrated = true;
     onChange();
-    await sync?.setMetaFields({'miracleMorning': m.toJson()});
+    if (!lit) await sync?.saveMomentWindows(momentWindows);
+    await sync?.setMetaFields({'miracleMigrated': true});
   }
 
   /// Le parcours (lot 3) : la proposition en attente, les refus, le début (`data/meta.modules`).

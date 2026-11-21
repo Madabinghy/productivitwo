@@ -133,17 +133,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(block.activityId, 'a1');
   });
-  testWidgets('poser le mode Miracle morning sur un bloc libre', (tester) async {
-    final block = ScheduleBlock(startTime: '05:30', durationMin: 60, title: '', category: 'personal');
-    await open(tester, block)();
-    await tester.ensureVisible(find.byKey(const ValueKey('block-mode-morning')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('block-mode-morning')));
-    await tester.pumpAndSettle();
+  testWidgets('Miracle morning n’est plus proposé comme mode', (tester) async {
+    final free = ScheduleBlock(startTime: '05:30', durationMin: 60, title: '', category: 'personal');
+    await open(tester, free)();
+    expect(find.byKey(const ValueKey('block-mode-deep')), findsOneWidget);
+    expect(find.byKey(const ValueKey('block-mode-morning')), findsNothing);
     await save(tester);
     await tester.pumpAndSettle();
-    expect(block.timeBlock, 'morning');
-    expect(block.title, 'Miracle morning');
+    expect(free.timeBlock, isNull);
+  });
+
+  testWidgets('un ancien bloc Miracle morning garde son mode', (tester) async {
+    final old = ScheduleBlock(startTime: '05:30', durationMin: 60, title: 'Miracle morning', category: 'routine', timeBlock: 'morning');
+    await open(tester, old)();
+    expect(find.byKey(const ValueKey('block-mode-morning')), findsOneWidget);
+    await save(tester);
+    await tester.pumpAndSettle();
+    expect(old.timeBlock, 'morning');
   });
 
   testWidgets('poser le mode Détente sur un bloc libre', (tester) async {

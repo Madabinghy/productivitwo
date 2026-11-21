@@ -63,8 +63,6 @@ NowPick pickNow({
   StakeBoard? board,
   bool modeAvailable = true,
   bool chainAvailable = false,
-  /// Miracle Morning à faire aujourd'hui (2026-11-16) : le matin, il passe devant « Enchaîner le matin ».
-  bool miracleAvailable = false,
   Set<String> skip = const {},
 }) {
   final focus = focusBlock(blocks, nowMin);
@@ -92,10 +90,6 @@ NowPick pickNow({
   final routines = board == null
       ? const <String>[]
       : [for (final s in [...board.top, ...board.rest]) if (s.gesture.kind == StakeGestureKind.routine) s.gesture.title];
-  if (miracleAvailable && nowMin < 12 * 60 && !blocks.any((b) => b.status == 'done') && (room == null || room >= kNowStakeRoomMin)) {
-    return NowPick(NowPickKind.morning,
-        block: next, why: next == null ? 'premier geste de la journée' : 'premier geste de la journée · ensuite ${next.title} à ${_hm(blockStartMin(next))}');
-  }
   if (chainAvailable && routines.isNotEmpty) {
     final started = blocks.any((b) => b.status == 'done');
     if (!started && next != null && nowMin < 12 * 60 && room != null && room >= kNowStakeRoomMin) {

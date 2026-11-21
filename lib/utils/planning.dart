@@ -167,7 +167,8 @@ int capHeldCount(List<DailySchedule> schedules, String todayYmd) =>
 
 // ── Blocs de temps (2026-10-31, « Planifier du temps, pas des tâches ») ───────
 
-/// `morning` (2026-11-16) = Miracle morning : au ▶, l'écran « Mon Miracle
+/// `morning` = l'ANCIEN bloc Miracle morning : plus proposé depuis le 2026-11-21 (le Miracle Morning est un moment
+/// de la journée) ; un bloc déjà posé garde son nom, et son ▶ ouvre le Sniper. Avant : au ▶, l'écran « Mon Miracle
 /// Morning ». `leisure` (2026-11-18) = Détente : au ▶, on choisit de quoi se
 /// détendre ; le bloc ne compte ni pour la Journée parfaite ni pour Cap tenu.
 const kTimeBlockLabels = {
