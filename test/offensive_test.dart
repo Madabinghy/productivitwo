@@ -112,4 +112,25 @@ void main() {
     expect(done.durationMin, 55);
     expect(done.doneBy, 'deepwork');
   });
+
+  test('Deep work sur une activité : la même liste que le Sniper, puis le reste des projets qui la servent', () {
+    final kin = Activity(id: 'kin', domainId: 'd', name: 'Kingdom', goalMin: 30, ownActions: [TaskAction(title: 'action propre')]);
+    final site = _p('site', [
+      _t('t1', [_a('accueil'), _a('contact')]),
+    ], linked: 'kin');
+    final devis = _p('devis', [
+      _t('t', [_a('relancer', due: DateTime(2026, 10, 20)), _a('hors kingdom')]),
+    ]);
+    devis.tasks.first.actions.first.linkedActivityId = 'kin';
+    final autre = _p('autre', [_t('t', [_a('rien à voir')])]);
+    final q = buildActivityQueue([site, devis, autre], kin, now);
+    // D'abord une action par projet lié (en retard en tête), puis le reste de ce qui sert Kingdom.
+    expect(q.map((x) => x.action.title), ['relancer', 'accueil', 'contact']);
+    expect(activityOfFront(activityFront('kin')), 'kin');
+    expect(activityOfFront('p1'), isNull);
+    final b = liveDeepBlock(now: now, dayStartMin: 300, projectTitle: 'Kingdom', activityId: 'kin');
+    expect(b.title, 'Deep work · Kingdom');
+    expect(b.activityId, 'kin');
+    expect(b.projectId, isNull);
+  });
 }

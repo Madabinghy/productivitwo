@@ -30,6 +30,9 @@ import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart' show ClosingSnackBar;
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
+import 'package:productivitwo_v1/utils/offensive.dart' show buildActivityQueue, kOffensiveKind;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 
 export 'package:productivitwo_v1/widgets/sniper_scope.dart' show kSniperAccent, kSniperInk;
 
@@ -1029,6 +1032,42 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     logic.sync?.saveChainRun(run);
   }
 
+  /// L'activité d'un tir de temps qui peut continuer en Deep work : le minuteur est fini et l'activité a des
+  /// actions de projet à travailler (la même liste que son contenant). Sinon null.
+  Activity? _deepWorkFor(SniperTarget t) {
+    final a = t.stake.gesture.activity;
+    if (t.kind != SniperKind.timed || a == null || a.isHabit || _overSec <= 0) return null;
+    return buildActivityQueue(logic.currentProjects, a, DateTime.now()).isEmpty ? null : a;
+  }
+
+  /// « Continuer en Deep work » (2026-11-21) : le temps de l'activité est couvert et tu es lancé. La cible
+  /// tombe, le Sniper s'arrête là (son bilan est enregistré) et le Deep work prend l'activité, sur l'action
+  /// en cours, sans couper le chrono.
+  void _toDeepWork(SniperTarget t, Activity a) {
+    final step = _curStep(t);
+    final first = step?.gesture.project != null ? step!.gesture.action?.id : null;
+    _timer?.cancel();
+    _impact.stop();
+    CoupAlarm.cancel();
+    _fired[t.key] = _firedNowMin;
+    _hit.add(t.key);
+    _lastHit = t.key;
+    _ownChrono = false; // le Deep work le prend en main
+    final hits = _hit.length, total = _totalAimed;
+    _save();
+    RunSessionStore.clear();
+    widget.badges?.load(refresh: true).ignore();
+    _phase = _Phase.end;
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    nav.pop();
+    messenger?.showClosingSnackBar(SnackBar(
+      content: Text('Sniper enregistré · $hits / $total touchée${hits > 1 ? 's' : ''} · Deep work sur ${a.name}'),
+      duration: const Duration(seconds: 4),
+    ));
+    showOffensiveScreen(nav.context, logic, activityId: a.id, firstActionId: first, deepWork: true, keepChrono: true, autoStart: true);
+  }
+
   void _finish() {
     if (_hit.isNotEmpty) _save();
     _saved = true;
@@ -1821,6 +1860,14 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         ],
         Expanded(child: _outline(action ? 'Pas finie · suivante' : 'Passer', _skip)),
       ]),
+      if (_deepWorkFor(t) case final a?)
+        TextButton.icon(
+          key: const Key('sniper-deep'),
+          onPressed: () => _toDeepWork(t, a),
+          icon: const ModeGlyph(kind: kOffensiveKind, size: 18, color: kOffensiveAccent),
+          label: Text('Continuer en Deep work sur ${a.name} · le chrono continue',
+              style: const TextStyle(color: kOffensiveAccent, fontSize: 13.5, fontWeight: FontWeight.w700)),
+        ),
       TextButton.icon(
         onPressed: _goAway,
         icon: const Icon(Icons.south_rounded, size: 16, color: _text2),
