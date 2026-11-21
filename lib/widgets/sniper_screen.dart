@@ -177,10 +177,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _impact = AnimationController(vsync: this, duration: kSniperImpact, animationBehavior: AnimationBehavior.preserve)
-      ..addStatusListener((st) {
-        if (st == AnimationStatus.completed) _afterImpact();
-      });
+    // L'impact se joue puis attend : le tir suivant se lance à la main (retour user 2026-11-21).
+    _impact = AnimationController(vsync: this, duration: kSniperImpact, animationBehavior: AnimationBehavior.preserve);
     WakelockPlus.enable().catchError((_) {});
     _load();
   }
@@ -443,11 +441,20 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final n = _nextIndex(-1);
     if (n == null) {
       _phase = _Phase.end;
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _enter(n);
-      });
+      return;
     }
+    // Rouvert entre deux tirs : le dernier touché reste affiché, le tir suivant attend ton signal.
+    final last = r.strings('hit').reversed.map((k) => _aimed.indexWhere((t) => t.key == k)).where((i) => i >= 0).firstOrNull;
+    if (last != null) {
+      _index = last;
+      _lastHit = _aimed[last].key;
+      _phase = _Phase.hit;
+      _impact.value = 1;
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _enter(n);
+    });
   }
 
   int _totalAimed = 0;
@@ -749,8 +756,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _advance();
   }
 
-  /// Après l'impact (ou tout de suite au toucher) : une seule fois, même si le
-  /// toucher et la fin de l'animation tombent ensemble.
+  /// « Tirer » sur l'écran d'impact : le tir suivant, sinon le bilan. Une seule fois.
   void _afterImpact() {
     if (!mounted || _phase != _Phase.hit) return;
     _impact.stop();
@@ -1415,13 +1421,20 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     return GestureDetector(
       key: const Key('sniper-impact'),
       behavior: HitTestBehavior.opaque,
-      onTap: _afterImpact,
+      // Toucher l'écran finit l'animation, sans lancer le tir suivant.
+      onTap: () {
+        if (_impact.isAnimating) _impact.value = 1;
+      },
       child: AnimatedBuilder(
         animation: _impact,
         builder: (context, _) {
           final v = still ? 1.0 : _impact.value;
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _header(label: 'TIR $_shotNumber / ${_aimed.length}', color: _green, info: false),
+            _header(
+                label: 'TIR $_shotNumber / ${_aimed.length}',
+                color: _green,
+                info: false,
+                trailing: TextButton(onPressed: _stop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
             _track(),
             Expanded(
               child: ListView(controller: widget.sheetScroll, children: [
@@ -1458,27 +1471,23 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                       ),
                     ),
                 ])),
-                _label(next == null ? 'ENSUITE' : 'TIR ${n! + 1} · TOUT DE SUITE'),
-                _box(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text.rich(TextSpan(style: const TextStyle(fontSize: 13.5, color: _text2), children: [
-                    if (next == null)
-                      const TextSpan(text: 'Le bilan de la session')
-                    else ...[
-                      TextSpan(text: '${next.title} · '),
-                      TextSpan(text: next.durLabel, style: const TextStyle(fontWeight: FontWeight.w800, color: kSniperAccent)),
-                    ],
-                  ])),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(value: v, minHeight: 4, backgroundColor: _card2, color: kSniperAccent),
-                  ),
-                ])),
+                _label(next == null ? 'ENSUITE' : 'TIR ${n! + 1} · QUAND TU VEUX'),
+                _box(Text.rich(TextSpan(style: const TextStyle(fontSize: 13.5, color: _text2), children: [
+                  if (next == null)
+                    const TextSpan(text: 'Le bilan de la session')
+                  else ...[
+                    TextSpan(text: '${next.title} · '),
+                    TextSpan(text: next.durLabel, style: const TextStyle(fontWeight: FontWeight.w800, color: kSniperAccent)),
+                  ],
+                ]))),
               ]),
             ),
             const SizedBox(height: 10),
-            Text(next == null ? 'Toucher l’écran = voir le bilan' : 'Toucher l’écran = tirer tout de suite',
-                textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, color: _text2)),
+            KeyedSubtree(
+              key: const Key('sniper-next'),
+              child: _primary(next == null ? 'Voir le bilan' : 'Tirer · ${next.title}', _afterImpact, height: 56),
+            ),
+            const SizedBox(height: 10),
           ]);
         },
       ),
