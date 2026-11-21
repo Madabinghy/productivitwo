@@ -56,7 +56,7 @@ import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAcc
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/sniper_screen.dart' show kSniperAccent, showSniperScreen;
 import 'package:productivitwo_v1/widgets/card_reveal.dart' show CardRevealPrompt;
-import 'package:productivitwo_v1/utils/sniper.dart' show SniperPlan, kSniperKind;
+import 'package:productivitwo_v1/utils/sniper.dart' show SniperPlan, SniperScope, kSniperKind;
 import 'package:productivitwo_v1/sniper_now.dart';
 import 'package:productivitwo_v1/utils/run_session.dart' show PendingRun;
 import 'package:productivitwo_v1/widgets/sniper_scope.dart' show MagRound, SniperModeTile, sniperRounds;
@@ -1134,7 +1134,7 @@ class TodayViewState extends State<TodayView> {
   // Le viseur de la tuile n'est recalculé qu'une fois par minute, ou quand la journée bouge
   // (chrono, coche, bloc, deck de badges).
   String? _sniperKey;
-  ({SniperPlan plan, SniperBudget budget})? _sniperAim;
+  ({SniperPlan plan, SniperBudget budget, SniperScope? scope})? _sniperAim;
 
   /// La tuile du Sniper = la miniature de son viseur (2026-11-20, demande user) : ce qu'il
   /// viserait là, maintenant, dans le temps libre, à la place de l'icône.
@@ -1167,8 +1167,11 @@ class TodayViewState extends State<TodayView> {
     } else if (n == 0) {
       label = 'Sniper · rien à viser pour l’instant';
     } else {
-      label = 'Sniper · $n cible${n > 1 ? 's' : ''} · ${fmtMin(aim.plan.totalMin)} visées sur ${fmtMin(aim.budget.minutes)} libres jusqu’à $until';
+      final moment = aim.scope == null ? '' : ' · ${aim.scope!.moment.thisOne}';
+      label = 'Sniper$moment · $n cible${n > 1 ? 's' : ''} · ${fmtMin(aim.plan.totalMin)} visées sur ${fmtMin(aim.budget.minutes)} libres jusqu’à $until';
     }
+    // La borne est fixe quand c'est un bloc, la fin de la journée active ou la fin du moment.
+    final fixed = aim.budget.until != null || aim.budget.untilMin == _dayEndMin || aim.budget.untilMin == aim.scope?.moment.endMin;
     return SniperModeTile(
       plan: aim.plan,
       freeMin: aim.budget.minutes,
@@ -1177,7 +1180,7 @@ class TodayViewState extends State<TodayView> {
       session: rounds,
       ready: ready,
       // Sans bloc à venir en fin de journée, la borne glisse avec l'heure : rien à recharger.
-      until: aim.budget.until == null && aim.budget.untilMin != _dayEndMin ? null : aim.budget.untilMin,
+      until: fixed ? aim.budget.untilMin : null,
       onTap: () => openRun(kSniperKind),
     );
   }

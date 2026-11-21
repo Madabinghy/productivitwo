@@ -245,7 +245,10 @@ class MomentShare {
   final String moment;
   final int done;
   final int target;
-  const MomentShare(this.moment, this.done, this.target);
+
+  /// Ce qui vient des moments d'avant, pas fait là-bas (compris dans [target]).
+  final int carried;
+  const MomentShare(this.moment, this.done, this.target, {this.carried = 0});
   int get left => (target - done).clamp(0, target);
 
   /// « 7 / 10 ce matin » ; rien fait encore = « 10 ce soir ».
@@ -293,7 +296,7 @@ MomentShare? momentShareOf(Activity a, {required int dayDone, required int? dayT
     i++;
   }
   final start = i == 0 ? 0 : (dayDone < cums[i - 1] ? dayDone : cums[i - 1]);
-  return MomentShare(parts[i].$1, (dayDone - start).clamp(0, cums[i] - start), cums[i] - start);
+  return MomentShare(parts[i].$1, (dayDone - start).clamp(0, cums[i] - start), cums[i] - start, carried: i == 0 ? 0 : cums[i - 1] - start);
 }
 
 /// Moment d'une routine non répartie (ou atteinte) : son réglage ; une

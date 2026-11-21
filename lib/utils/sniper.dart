@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 
@@ -21,6 +22,131 @@ const kSniperTiers = [1, 5, 15];
 
 enum SniperKind { routine, timed, action, reading }
 
+/// Sniper par moment (maquette validée 2026-11-21) : le viseur range ses cibles en trois parties — ce qui reste des
+/// moments d'avant, les routines du moment, puis le reste de ce qui est en jeu.
+const kSniperSecLeft = 0;
+const kSniperSecMoment = 1;
+const kSniperSecOther = 2;
+
+/// À moins de [kSniperMomentLeadMin] de la fin d'un moment, le Sniper prend déjà le suivant.
+const kSniperMomentLeadMin = 15;
+
+/// Le moment vu par le Sniper : où va chaque routine (clé de geste `routine:<id>`), ce qui attend un moment plus
+/// tard, et la part à viser d'une routine répartie.
+class SniperScope {
+  final Moment moment;
+
+  /// `routine:<id>` → [kSniperSecLeft] ou [kSniperSecMoment] ; absente = [kSniperSecOther].
+  final Map<String, int> section;
+
+  /// `routine:<id>` → « cet après-midi » : routine d'un moment plus tard, mise de côté.
+  final Map<String, String> later;
+
+  /// `routine:<id>` → coches de la part du moment (routine répartie), et sa phrase (« 1 d'avant + 2 ce matin »).
+  final Map<String, int> shareLeft;
+  final Map<String, String> shareLabel;
+
+  /// « RESTE DU MATIN », « RESTE D'AVANT ».
+  final String leftLabel;
+
+  /// Les moments plus tard qui ont des routines, dans l'ordre de la journée (« cet après-midi », « ce soir »).
+  final List<String> laterOrder;
+
+  /// « avant midi » : ce qui borne la lunette quand aucun bloc ne vient avant la fin du moment (null = dernier moment).
+  final String? before;
+  const SniperScope({
+    required this.moment,
+    this.section = const {},
+    this.later = const {},
+    this.shareLeft = const {},
+    this.shareLabel = const {},
+    this.leftLabel = 'RESTE D’AVANT',
+    this.laterOrder = const [],
+    this.before,
+  });
+
+  /// « 5 cet après-midi · 4 ce soir » pour les routines mises de côté [keys].
+  String laterLine(Iterable<String> keys) {
+    final n = <String, int>{};
+    for (final k in keys) {
+      final w = later[k];
+      if (w != null) n[w] = (n[w] ?? 0) + 1;
+    }
+    return [
+      for (final w in laterOrder)
+        if (n[w] case final c?) '$c $w',
+    ].join(' · ');
+  }
+
+  /// « CE MATIN ».
+  String get momentLabel => moment.thisOne.toUpperCase();
+
+  String sectionLabel(int section) => switch (section) {
+        kSniperSecLeft => leftLabel,
+        kSniperSecMoment => momentLabel,
+        _ => 'AUSSI EN JEU',
+      };
+}
+
+/// Le moment vu par le Sniper, d'après la journée en routines ([buildRoutineDay]).
+SniperScope sniperScopeOf(RoutineDay day) {
+  final cur = day.current;
+  final section = <String, int>{}, later = <String, String>{}, shareLeft = <String, int>{}, shareLabel = <String, String>{};
+  final from = <String>{};
+  for (final s in day.slots) {
+    if (s.reached || day.dismissed.contains(s.id)) continue;
+    final m = day.timed.where((x) => x.key == s.moment).firstOrNull;
+    // Toute la journée et Libre : pas de moment, elles restent avec le reste de ce qui est en jeu.
+    if (m == null) continue;
+    final key = 'routine:${s.id}';
+    if (m.key == cur.key) {
+      section[key] = kSniperSecMoment;
+    } else if (m.endMin <= cur.startMin) {
+      section[key] = kSniperSecLeft;
+      from.add(m.key);
+    } else {
+      later[key] = m.thisOne;
+      continue;
+    }
+    final sh = s.share;
+    final dayLeft = (s.todo.dayTarget ?? 0) - s.todo.dayDone;
+    if (sh != null && sh.left > 0 && sh.left < dayLeft) {
+      shareLeft[key] = sh.left;
+      final own = sh.target - sh.carried;
+      shareLabel[key] = sh.carried > 0 && sh.done == 0 ? '${sh.carried} d’avant + $own ${m.thisOne}' : 'part ${m.of} · ${sh.left} sur $dayLeft à faire';
+    }
+  }
+  final left = from.length == 1 ? 'RESTE ${day.timed.firstWhere((m) => m.key == from.first).of.toUpperCase()}' : 'RESTE D’AVANT';
+  final next = nextMomentAfter(cur, day.timed);
+  final before = switch (next?.key) {
+    null => null,
+    kMomentMorning => 'avant le matin',
+    kMomentMidday => 'avant midi',
+    kMomentAfternoon => 'avant l’après-midi',
+    kMomentEvening => 'avant le soir',
+    _ => 'avant ${next!.label.toLowerCase()}',
+  };
+  return SniperScope(
+    moment: cur,
+    section: section,
+    later: later,
+    shareLeft: shareLeft,
+    shareLabel: shareLabel,
+    leftLabel: left,
+    laterOrder: [for (final m in day.timed) if (later.containsValue(m.thisOne)) m.thisOne],
+    before: before,
+  );
+}
+
+/// L'instant à regarder pour choisir le moment : à moins d'un quart d'heure de la fin du moment en cours, c'est
+/// déjà le suivant (sauf le dernier de la journée). [nowMin] = minute de la journée vécue.
+int sniperMomentShift(int nowMin, List<Moment> timed) {
+  final cur = currentMoment(nowMin, timed);
+  final left = cur.endMin - nowMin;
+  if (nowMin < cur.startMin || left <= 0 || left >= kSniperMomentLeadMin) return 0;
+  return nextMomentAfter(cur, timed) == null ? 0 : left;
+}
+
 class SniperTarget {
   final Stake stake;
   final SniperKind kind;
@@ -31,7 +157,10 @@ class SniperTarget {
   /// Routine : nombre de +1 pour l'atteindre.
   final int delta;
   final int? _need;
-  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need}) : _need = need;
+
+  /// Partie du viseur ([kSniperSecLeft], [kSniperSecMoment], [kSniperSecOther]).
+  final int section;
+  const SniperTarget(this.stake, this.kind, {required this.minutes, this.delta = 1, int? need, this.section = kSniperSecOther}) : _need = need;
 
   /// Routine à minuteur (Louanges 15 min) : on règle la durée, la coche
   /// tombe au bout quel que soit le temps choisi.
@@ -55,7 +184,9 @@ class SniperTarget {
   /// Ce qui restera à faire après ce tir.
   int get leftAfter => need > amount ? need - amount : 0;
 
-  SniperTarget withAmount(int a) => _countsReps ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need) : SniperTarget(stake, kind, minutes: a, delta: delta, need: need);
+  SniperTarget withAmount(int a) => _countsReps
+      ? SniperTarget(stake, kind, minutes: minutes, delta: a, need: need, section: section)
+      : SniperTarget(stake, kind, minutes: a, delta: delta, need: need, section: section);
 
   String get key => stake.gesture.key;
   String get title => stake.gesture.title;
@@ -84,9 +215,12 @@ class SniperMiss {
 class SniperPlan {
   final List<SniperTarget> aimed;
   final List<SniperMiss> outOfReach;
+
+  /// Routines d'un moment plus tard dans la journée : pas proposées, mais on peut en avancer une.
+  final List<SniperMiss> later;
   final int budgetMin;
   final int pauseMin;
-  const SniperPlan({this.aimed = const [], this.outOfReach = const [], required this.budgetMin, this.pauseMin = kSniperPauseMin});
+  const SniperPlan({this.aimed = const [], this.outOfReach = const [], this.later = const [], required this.budgetMin, this.pauseMin = kSniperPauseMin});
 
   /// Temps des tirs + pauses entre eux.
   int get totalMin => totalOf(aimed, pauseMin);
@@ -97,30 +231,40 @@ int _round5(num m) => ((m / 5).ceil() * 5).toInt();
 
 /// La cible d'un enjeu, ou null quand le Sniper ne s'en charge pas (bloc à
 /// heure fixe, enjeu sans badge ni objectif). [routineLeft] = coches restantes
-/// des routines du jour ; [factor] = réel / estimé des actions.
-SniperTarget? sniperTargetOf(Stake s, {Map<String, int> routineLeft = const {}, double factor = 1}) {
-  if (s.gains.every((g) => g.kind == StakeGainKind.routine)) return null;
+/// des routines du jour ; [factor] = réel / estimé des actions. Avec un
+/// [scope] (Sniper par moment), toute routine du jour est une cible, et une
+/// routine répartie ne vise que la part du moment.
+SniperTarget? sniperTargetOf(Stake s, {Map<String, int> routineLeft = const {}, double factor = 1, SniperScope? scope}) {
   final g = s.gesture;
+  if (s.gains.every((x) => x.kind == StakeGainKind.routine) && !(scope != null && g.kind == StakeGestureKind.routine)) return null;
+  final section = scope?.section[g.key] ?? kSniperSecOther;
   switch (g.kind) {
     case StakeGestureKind.block:
       return null;
     case StakeGestureKind.routine:
-      final left = routineLeft[g.activity?.id] ?? 1;
+      final share = scope?.shareLeft[g.key];
+      final left = share ?? routineLeft[g.activity?.id] ?? 1;
       final timer = g.activity?.timerMin ?? 0;
-      return SniperTarget(s, SniperKind.routine, minutes: timer > 0 ? timer : 0, delta: left < 1 ? 1 : left);
+      // Une part ne fait pas tomber la série : elle ne montre que ce qu'elle est.
+      final stake = share == null
+          ? s
+          : Stake(g, [StakeGain(kind: StakeGainKind.routine, label: scope!.shareLabel[g.key] ?? 'part du moment', weight: s.gains.fold(0, (w, x) => w + x.weight))]);
+      return SniperTarget(stake, SniperKind.routine, minutes: timer > 0 ? timer : 0, delta: left < 1 ? 1 : left, section: section);
     case StakeGestureKind.activity:
-      return SniperTarget(s, SniperKind.timed, minutes: g.costMin < 1 ? 1 : g.costMin);
+      return SniperTarget(s, SniperKind.timed, minutes: g.costMin < 1 ? 1 : g.costMin, section: section);
     case StakeGestureKind.action:
       final est = g.action?.estimatedMin ?? 45;
       final m = _round5(est * (factor <= 0 ? 1 : factor));
-      return SniperTarget(s, SniperKind.action, minutes: m < 5 ? 5 : m);
+      return SniperTarget(s, SniperKind.action, minutes: m < 5 ? 5 : m, section: section);
     case StakeGestureKind.reading:
-      return SniperTarget(s, SniperKind.reading, minutes: 0);
+      return SniperTarget(s, SniperKind.reading, minutes: 0, section: section);
   }
 }
 
-/// Ordre des tirs : se perd ce soir → palier ce soir → gain par minute.
+/// Ordre des tirs : la partie du viseur (reste d'avant, moment, le reste), puis
+/// se perd ce soir → palier ce soir → gain par minute.
 int compareSniper(SniperTarget a, SniperTarget b) {
+  if (a.section != b.section) return a.section.compareTo(b.section);
   if (a.losesTonight != b.losesTonight) return a.losesTonight ? -1 : 1;
   if (a.tierTonight != b.tierTonight) return a.tierTonight ? -1 : 1;
   final ra = a.weight / (a.cost + 3), rb = b.weight / (b.cost + 3);
@@ -147,12 +291,21 @@ SniperPlan planSniper({
   int maxTargets = kSniperMaxTargets,
   int maxMin = kSniperMaxMin,
   Set<String> excluded = const {},
+  SniperScope? scope,
 }) {
-  final targets = [
-    for (final s in stakes)
-      if (!excluded.contains(s.gesture.key)) sniperTargetOf(s, routineLeft: routineLeft, factor: factor),
-  ].whereType<SniperTarget>().toList()
-    ..sort(compareSniper);
+  final targets = <SniperTarget>[];
+  final later = <SniperMiss>[];
+  for (final s in stakes) {
+    if (excluded.contains(s.gesture.key)) continue;
+    final t = sniperTargetOf(s, routineLeft: routineLeft, factor: factor, scope: scope);
+    if (t == null) continue;
+    if (scope?.later[t.key] case final at?) {
+      later.add(SniperMiss(t, 'plus tard · $at'));
+    } else {
+      targets.add(t);
+    }
+  }
+  targets.sort(compareSniper);
   final aimed = <SniperTarget>[];
   final out = <SniperMiss>[];
   var used = 0;
@@ -173,7 +326,7 @@ SniperPlan planSniper({
     used += add;
     aimed.add(t);
   }
-  return SniperPlan(aimed: aimed, outOfReach: out, budgetMin: budgetMin, pauseMin: pauseMin);
+  return SniperPlan(aimed: aimed, outOfReach: out, later: later, budgetMin: budgetMin, pauseMin: pauseMin);
 }
 
 /// Le temps libre à partir de [nowMin] (minute de la journée vécue) : jusqu'au
@@ -233,7 +386,7 @@ SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<Str
   final sorted = [
     for (final t in base.aimed)
       if (!excluded.contains(t.key)) t,
-    for (final m in base.outOfReach)
+    for (final m in [...base.outOfReach, ...base.later])
       if (added.contains(m.target.key) && !excluded.contains(m.target.key)) m.target,
   ]..sort(compareSniper);
   if (order != null) {
@@ -249,7 +402,11 @@ SniperPlan adjustPlan(SniperPlan base, {Set<String> excluded = const {}, Set<Str
     for (final m in base.outOfReach)
       if (!added.contains(m.target.key)) m
   ];
-  return SniperPlan(aimed: aimed, outOfReach: out, budgetMin: base.budgetMin, pauseMin: base.pauseMin);
+  final later = [
+    for (final m in base.later)
+      if (!added.contains(m.target.key)) m
+  ];
+  return SniperPlan(aimed: aimed, outOfReach: out, later: later, budgetMin: base.budgetMin, pauseMin: base.pauseMin);
 }
 
 /// La cible tient-elle encore dans le temps libre, en plus de [aimed] ?
