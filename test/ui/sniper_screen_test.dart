@@ -89,7 +89,13 @@ void main() {
       laterOrder: const ['demain matin'],
       leftLabel: 'RESTE DE L’APRÈS-MIDI',
     );
-    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [...stakes(), plain(dents), plain(marche)], scope: scope)));
+    // Une Lecture courte : le soir, il ne reste parfois qu'un quart d'heure avant la fin de la journée active (22 h),
+    // les quatre cibles doivent y tenir quelle que soit l'heure du test.
+    final shortLecture = Stake(
+      StakeGesture(key: 'activity:lec', kind: StakeGestureKind.activity, title: 'Lecture', costMin: 5, activity: lecture),
+      [const StakeGain(kind: StakeGainKind.halfDay, label: 'Montre suisse · 3 / 4', weight: 10)],
+    );
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: [shortLecture, stakes()[1], plain(dents), plain(marche)], scope: scope)));
     await tester.pump();
     await tester.pump();
     expect(find.text('SNIPER · CE SOIR'), findsOneWidget);
@@ -391,5 +397,54 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await RunSessionStore.clear();
     logic.stopActive(notify: false);
+  });
+
+  testWidgets('Sniper dans le bloc en cours : la lunette couvre le bloc, ses actions dans son ordre ; « Après le bloc » attend sa fin', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final now = DateTime.now();
+    var start = now.hour * 60 + now.minute - 10;
+    if (start < 0) start = 0;
+    String hm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+    final d0 = DateTime(now.year, now.month, now.day);
+    final p = Project(id: 'p', title: 'Maths 6e', startDate: d0, createdBy: 'u', tasks: [
+      ProjectTask(id: 't', title: 'Préparer la séance', startDate: d0, actions: [
+        TaskAction(id: 'a1', title: 'Relire le chapitre', estimatedMin: 10),
+        TaskAction(id: 'a2', title: 'Faire les fiches', estimatedMin: 15),
+      ]),
+    ]);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [lecture], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.currentProjects = [p];
+    logic.todayBlocks = [ScheduleBlock(id: 'b', startTime: hm(start), durationMin: 60, title: 'Préparer la séance', category: 'project', projectId: 'p', taskId: 't', actionId: 'a2')];
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic)));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('SNIPER · BLOC EN COURS'), findsOneWidget);
+    expect(find.byKey(const Key('sniper-block-card')), findsOneWidget);
+    expect(find.text('DANS LE BLOC · DANS SON ORDRE'), findsOneWidget);
+    // L'action visée par le bloc passe devant.
+    final y1 = tester.getTopLeft(find.text('Faire les fiches')).dy;
+    final y2 = tester.getTopLeft(find.text('Relire le chapitre')).dy;
+    expect(y1 < y2, isTrue);
+    expect(find.text('Tirer · 2 cibles · 27 min'), findsOneWidget);
+
+    // Après le bloc : rien d'autre en jeu, et les tirs attendraient sa fin.
+    await tester.tap(find.byKey(const Key('sniper-after-block')));
+    await tester.pump();
+    expect(find.byKey(const Key('sniper-after-line')), findsOneWidget);
+    expect(find.byKey(const Key('sniper-block-card')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('sniper-in-block')));
+    await tester.pump();
+    await tester.tap(find.text('Tirer · 2 cibles · 27 min'));
+    await tester.pump();
+    expect(find.text('TIR 1 / 2'), findsOneWidget);
+    expect(find.text('Faire les fiches'), findsWidgets);
+    // La session retient le bloc : rouverte, elle le retrouve.
+    expect(RunSessionStore.current?.extra['block'], 'b');
+    await close(tester);
+    await RunSessionStore.clear();
   });
 }
