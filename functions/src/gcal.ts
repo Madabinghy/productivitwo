@@ -1,4 +1,4 @@
-import { dropPlainDuplicates, sameSlot } from "./schedule_dedupe";
+import { dropPlainDuplicates, relinkMirrors, sameSlot } from "./schedule_dedupe";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue } from "firebase-admin/firestore";
@@ -264,6 +264,13 @@ export async function importGcalDay(
     events.set(String(ev.id), slot);
   }
   let imported = 0, updated = 0, removed = 0;
+
+  // Un miroir qui a perdu son lien (réécrit par l'app) le retrouve, et ses
+  // doubles au même id partent : sinon il était recréé à chaque import.
+  const relink = relinkMirrors(blocks as Record<string, unknown>[], events.keys());
+  blocks.splice(0, blocks.length, ...(relink.blocks as Json[]));
+  updated += relink.relinked;
+  removed += relink.removed;
 
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];

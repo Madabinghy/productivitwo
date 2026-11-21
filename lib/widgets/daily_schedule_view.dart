@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
+import 'package:productivitwo_v1/utils/block_edit.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart' show carryMessage;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -577,6 +578,25 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {
+    await _writeBlock(updated);
+    await _pushMirror(updated);
+  }
+
+  /// Un rendez-vous d'agenda retouché ici (heure, durée, titre) suit dans Google
+  /// Agenda, comme dans la frise : sinon la prochaine synchro le remettait à
+  /// l'heure de l'agenda.
+  Future<void> _pushMirror(ScheduleBlock b) async {
+    final eventId = b.gcalEventId;
+    if (eventId == null) return;
+    final ok = await gcalUpdateEvent(_sync,
+        eventId: eventId, date: _docOf(b), startTime: b.startTime, durationMin: b.durationMin, title: b.title);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showClosingSnackBar(const SnackBar(
+          content: Text('Modifié ici — Google Agenda n\'a pas suivi (la prochaine synchro remettra son heure).')));
+    }
+  }
+
+  Future<void> _writeBlock(ScheduleBlock updated) async {
     // Bloc de la nuit (doc du lendemain) : écriture ciblée sur SON doc.
     if (updated.docDate != null) {
       await _sync.upsertScheduleBlock(updated.docDate!, updated);
@@ -2163,8 +2183,8 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
     setState(() => _saving = true);
-    await widget.onSave(ScheduleBlock(
-      id: widget.block.id,
+    await widget.onSave(editedBlock(
+      widget.block,
       startTime: _startTime,
       durationMin: _durationMin,
       title: title,
@@ -2173,8 +2193,6 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       taskId: _taskId,
       activityId: _activityId,
       actionId: _actionId,
-      status: widget.block.status,
-      doneAt: widget.block.doneAt,
       timeBlock: _timeBlock == 'deep' || (_timeBlock != null && _activityId == null && _projectId == null) ? _timeBlock : null,
     ));
     if (mounted) Navigator.pop(context);

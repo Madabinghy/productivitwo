@@ -222,6 +222,12 @@ async function importGcalDay(uid, date) {
         events.set(String(ev.id), slot);
     }
     let imported = 0, updated = 0, removed = 0;
+    // Un miroir qui a perdu son lien (réécrit par l'app) le retrouve, et ses
+    // doubles au même id partent : sinon il était recréé à chaque import.
+    const relink = (0, schedule_dedupe_1.relinkMirrors)(blocks, events.keys());
+    blocks.splice(0, blocks.length, ...relink.blocks);
+    updated += relink.relinked;
+    removed += relink.removed;
     for (let i = blocks.length - 1; i >= 0; i--) {
         const b = blocks[i];
         if (!b.gcalEventId)
