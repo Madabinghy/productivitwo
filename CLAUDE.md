@@ -1655,6 +1655,18 @@ temps libre), « Action faite · ensuite … » (`sniper-step-done` : l'action s
 `extra.stepSkip`). **Bloc d'activité en cours** : une seule cible, l'activité jusqu'à la fin du bloc (60 min au plus), qui contient
 la file du bloc (`planBlockSniper(fill:)`). Pas encore : le Deep work qui reprend la même liste, le lien « Continuer en Deep work ».
 
+**Sniper et Deep work, deux ponts** (2026-11-21, suite de « l'activité comme contenant ») : (1) **la même liste** — un Deep work visé
+sur une activité (`showOffensiveScreen(activityId:)`, bloc Deep work qui porte une activité) propose en tête des fronts « Tout Kingdom »,
+choisi d'office (`offensive-front-activity`, front `~activity:<id>`, `activityFront` / `activityOfFront`) : `buildActivityQueue`
+(`utils/offensive.dart`) = d'abord une action par projet lié dans l'ordre du contenant du Sniper (`blockQueue` : visées aujourd'hui, en
+retard, datées, prochaine), puis les autres actions prêtes de ces projets qui servent l'activité ; les actions PROPRES de l'activité n'y
+sont pas (l'offensive ne travaille que des actions de projet) ; chrono sur l'activité ; le bloc posé s'appelle « Deep work · Kingdom » et
+porte `activityId` (`liveDeepBlock(activityId:)`). (2) **le passage** — dans un tir de temps du Sniper, une fois le minuteur fini, lien
+« Continuer en Deep work sur Kingdom · le chrono continue » (`sniper-deep`, `_deepWorkFor` : activité-temps avec une file de projet non
+vide) : la cible tombe, le Sniper s'arrête là et enregistre son bilan (les autres cibles restent non tirées), puis le Deep work démarre
+sans écran de réglage sur l'action en cours (`showOffensiveScreen(keepChrono: true, autoStart: true, firstActionId:)`) et prend le chrono
+qui tourne au lieu de le couper.
+
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni

@@ -1,4 +1,4 @@
-import 'package:productivitwo_v1/utils/block_queue.dart' show projectServesActivity;
+import 'package:productivitwo_v1/utils/block_queue.dart' show blockQueue, projectServesActivity;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask, workDate;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
@@ -33,7 +33,7 @@ int coupMinutes(int duration) => duration == kOffensiveUnlimited ? kUnlimitedCou
 const kDeepSessionMin = 30;
 const kLiveDeepPlanMin = 90;
 
-ScheduleBlock liveDeepBlock({required DateTime now, required int dayStartMin, String? projectId, String? projectTitle}) {
+ScheduleBlock liveDeepBlock({required DateTime now, required int dayStartMin, String? projectId, String? projectTitle, String? activityId}) {
   final min = (livedNowMin(now, dayStartMin) ~/ 5) * 5;
   final hh = ((min ~/ 60) % 24).toString().padLeft(2, '0');
   final mm = (min % 60).toString().padLeft(2, '0');
@@ -43,6 +43,7 @@ ScheduleBlock liveDeepBlock({required DateTime now, required int dayStartMin, St
     title: projectTitle == null || projectTitle.isEmpty ? 'Deep work' : 'Deep work · $projectTitle',
     category: projectId != null ? 'project' : 'personal',
     projectId: projectId,
+    activityId: projectId == null ? activityId : null,
     timeBlock: 'deep',
   );
 }
@@ -168,6 +169,45 @@ List<OffensiveTarget> buildOffensiveQueue(List<Project> projects, DateTime now, 
     return 0;
   });
   return [for (final e in out) e.$1];
+}
+
+/// Front « toute l'activité » (2026-11-21, pont entre le Sniper et le Deep work) : `~activity:<id>`.
+const kActivityFrontPrefix = '~activity:';
+
+String activityFront(String activityId) => '$kActivityFrontPrefix$activityId';
+
+/// L'id d'activité d'un front « toute l'activité », sinon null.
+String? activityOfFront(String? front) =>
+    front != null && front.startsWith(kActivityFrontPrefix) ? front.substring(kActivityFrontPrefix.length) : null;
+
+/// La file d'un Deep work sur une activité : la MÊME liste que le contenant du Sniper (une action par
+/// projet lié — visées aujourd'hui, en retard, datées, puis la prochaine —), puis, pour aller au fond, les
+/// autres actions prêtes de ces projets (celles qui servent l'activité). Les actions propres de l'activité
+/// n'y sont pas : l'offensive ne travaille que des actions de projet.
+List<OffensiveTarget> buildActivityQueue(List<Project> projects, Activity activity, DateTime now) {
+  final out = <OffensiveTarget>[];
+  final seen = <String>{};
+  void add(OffensiveTarget t) {
+    if (seen.add(t.action.id)) out.add(t);
+  }
+
+  final served = <Project>[];
+  for (final q in blockQueue(activity: activity, projects: projects, today: now)) {
+    final p = q.project, t = q.task;
+    if (p == null || t == null) continue;
+    add(OffensiveTarget(p, t, q.action));
+    if (!served.contains(p)) served.add(p);
+  }
+  for (final p in projects) {
+    if (_alive(p, projects) && !served.contains(p) && projectServesActivity(p, activity.id)) served.add(p);
+  }
+  for (final p in served) {
+    final whole = p.linkedActivityId == activity.id;
+    for (final t in openTargets(p, now)) {
+      if (whole || t.action.linkedActivityId == activity.id) add(t);
+    }
+  }
+  return out;
 }
 
 /// Front « ce bloc » : l'offensive ne prend que ce que le bloc lancé porte.

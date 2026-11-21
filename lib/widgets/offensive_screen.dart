@@ -44,6 +44,8 @@ const _amber = Color(0xFFF2C14E);
 /// [projectId] = front déjà choisi (fiche projet, page focus) ; [firstActionId] = l'action par laquelle commencer.
 /// [activityId] = Deep work visé sur une activité : seuls les projets qui la servent sont proposés (tous si aucun).
 /// [deepWork] = Deep work présélectionné (aucun minuteur, bloc posé dans le programme).
+/// [keepChrono] = le chrono qui tourne déjà sur l'activité continue (venu du Sniper) ;
+/// [autoStart] = l'offensive démarre tout de suite, sans l'écran de réglage.
 Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     {PendingRun? resume,
     String? projectId,
@@ -51,7 +53,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     String? activityId,
     String? chronoActivityId,
     List<BlockTarget>? blockTargets,
-    bool deepWork = false}) {
+    bool deepWork = false,
+    bool keepChrono = false,
+    bool autoStart = false}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => OffensiveScreen(
@@ -62,7 +66,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
           activityId: activityId,
           chronoActivityId: chronoActivityId,
           blockTargets: blockTargets,
-          deepWork: deepWork)));
+          deepWork: deepWork,
+          keepChrono: keepChrono,
+          autoStart: autoStart)));
 }
 
 enum _Phase { setup, coup, pause, back, end }
@@ -82,6 +88,8 @@ class OffensiveScreen extends StatefulWidget {
   /// l'offensive ne prend que leurs actions, dans l'ordre du bloc.
   final List<BlockTarget>? blockTargets;
   final bool deepWork;
+  final bool keepChrono;
+  final bool autoStart;
   const OffensiveScreen(
       {super.key,
       required this.logic,
@@ -91,7 +99,9 @@ class OffensiveScreen extends StatefulWidget {
       this.activityId,
       this.chronoActivityId,
       this.blockTargets,
-      this.deepWork = false});
+      this.deepWork = false,
+      this.keepChrono = false,
+      this.autoStart = false});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -105,7 +115,20 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   List<BlockTarget> _blockTargets = const [];
 
   /// Plusieurs projets dans la file : chaque action dit le sien.
-  bool get _mixed => _front == null || _front == kBlockFront;
+  bool get _mixed => _front == null || _front == kBlockFront || _activityFront != null;
+
+  /// Front « toute l'activité » : la même liste que le contenant du Sniper.
+  Activity? get _activityFront {
+    final id = activityOfFront(_front);
+    return id == null ? null : logic.state.activities.where((a) => a.id == id && !a.deleted).firstOrNull;
+  }
+
+  /// L'activité visée, quand sa file d'actions de projet n'est pas vide : le choix « Tout … » en tête des fronts.
+  Activity? get _servedActivity {
+    final a = logic.state.activities.where((x) => x.id == widget.activityId && !x.deleted && !x.isHabit).firstOrNull;
+    if (a == null || buildActivityQueue(logic.currentProjects, a, DateTime.now()).isEmpty) return null;
+    return a;
+  }
   List<OffensiveTarget> _queue = const [];
   int _index = 0;
   int _won = 0;
@@ -164,12 +187,19 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final pre = fronts.indexWhere((f) => f.project.id == widget.projectId);
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
+    if (_servedActivity case final a? when widget.projectId == null) _front = activityFront(a.id);
     _blockTargets = widget.blockTargets ?? const [];
     if (_blockTargets.length > 1) _front = kBlockFront;
     if (widget.deepWork) _duration = kOffensiveUnlimited;
     _blockChrono = widget.chronoActivityId;
     final r = widget.resume;
-    if (r != null) _restore(r);
+    if (r != null) {
+      _restore(r);
+    } else if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _phase == _Phase.setup) _launch();
+      });
+    }
   }
 
   void _restore(PendingRun r) {
@@ -255,7 +285,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   String? _blockChrono;
 
   /// L'activité du chrono d'un coup : celle du bloc lancé d'abord.
-  String? _chronoOf(OffensiveTarget t) => _blockChrono ?? t.chronoActivityId;
+  String? _chronoOf(OffensiveTarget t) => _blockChrono ?? activityOfFront(_front) ?? t.chronoActivityId;
 
   Project? _unlinkedFront() {
     if (_front == null) return null;
@@ -331,9 +361,15 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   // ── Mécanique ────────────────────────────────────────────────────────────
 
-  List<OffensiveTarget> _previewQueue() => _front == kBlockFront
-      ? buildBlockQueue(logic.currentProjects, DateTime.now(), _blockTargets)
-      : buildOffensiveQueue(logic.currentProjects, DateTime.now(), projectId: _front);
+  List<OffensiveTarget> _previewQueue() {
+    final now = DateTime.now();
+    if (_front == kBlockFront) return buildBlockQueue(logic.currentProjects, now, _blockTargets);
+    if (activityOfFront(_front) != null) {
+      final a = _activityFront;
+      return a == null ? const [] : buildActivityQueue(logic.currentProjects, a, now);
+    }
+    return buildOffensiveQueue(logic.currentProjects, now, projectId: _front);
+  }
 
   void _launch() {
     final now = DateTime.now();
@@ -344,7 +380,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       if (i > 0) _queue = [_queue[i], ..._queue.sublist(0, i), ..._queue.sublist(i + 1)];
     }
     if (_queue.isEmpty) return;
-    if (_runningBefore != null) logic.stopActive(notify: false);
+    final running = _runningBefore;
+    if (running != null && widget.keepChrono && running.activityId == _chronoOf(_queue.first)) {
+      // Venu du Sniper : le chrono continue sans coupure, l'offensive le prend en main.
+      _ownChrono = true;
+      _chronoFrom = now;
+    } else if (running != null) {
+      logic.stopActive(notify: false);
+    }
     _startedAt = now;
     if (_unlimited) _openLiveDeep(now);
     for (final t in _queue) {
@@ -359,7 +402,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _openLiveDeep(DateTime now) {
     if (currentDeepBlock(logic.todayBlocks, now, logic.dayStartMin) != null) return;
     final front = _front == null ? null : logic.currentProjects.where((p) => p.id == _front).firstOrNull;
-    final b = liveDeepBlock(now: now, dayStartMin: logic.dayStartMin, projectId: front?.id, projectTitle: front?.title);
+    final act = _activityFront;
+    final b = liveDeepBlock(now: now, dayStartMin: logic.dayStartMin, projectId: front?.id, projectTitle: front?.title ?? act?.name, activityId: act?.id);
     final doc = docForNewBlock(logic.livedTodayYmd, now, logic.dayStartMin);
     _liveDeepId = b.id;
     _liveDeepDoc = doc;
@@ -911,6 +955,20 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             ],
           ]),
           _label('LE FRONT'),
+          if (_servedActivity case final a? when _blockTargets.length <= 1) ...[
+            _choice(
+              key: const ValueKey('offensive-front-activity'),
+              selected: _front == activityFront(a.id),
+              onTap: () => setState(() => _front = activityFront(a.id)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Tout ${a.name}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                const Text('le même ordre que le Sniper : visées aujourd’hui, en retard, puis la prochaine de chaque projet',
+                    style: TextStyle(fontSize: 12, color: _text2)),
+              ]),
+            ),
+            const SizedBox(height: 6),
+          ],
           if (_blockTargets.length > 1) ...[
             _choice(
               key: const ValueKey('offensive-front-block'),
@@ -1019,7 +1077,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final hh = shown ~/ 3600;
     final mm = hh > 0 ? '$hh:${((shown % 3600) ~/ 60).toString().padLeft(2, '0')}' : (shown ~/ 60).toString();
     final ss = (shown % 60).toString().padLeft(2, '0');
-    final front = _mixed ? 'OFFENSIVE' : 'OFFENSIVE · ${t.project.title.toUpperCase()}';
+    final front = _activityFront != null
+        ? 'OFFENSIVE · ${_activityFront!.name.toUpperCase()}'
+        : _mixed
+            ? 'OFFENSIVE'
+            : 'OFFENSIVE · ${t.project.title.toUpperCase()}';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       const SizedBox(height: 4),
