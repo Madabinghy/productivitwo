@@ -716,7 +716,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         }
         const routineList = acts.filter((a) => a.type === "habit")
             .map((a) => {
-            var _a, _b;
+            var _a, _b, _c;
             // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
             const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
             return `  · "${a.name}" (activityId: ${a.id})` +
@@ -729,7 +729,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     : "") +
                 (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
                 (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
-                    ? ` · répartie : ${(0, routine_split_1.splitLabel)(Number((_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1), a.splitMoments)}`
+                    ? ` · répartie : ${(0, routine_split_1.splitLabel)(Number((_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1), a.splitMoments, ((_c = a.momentShares) !== null && _c !== void 0 ? _c : {}))}`
                     : "") +
                 (coverByHabit.has(String(a.id)) ? ` · ${(0, routine_cover_1.coverNote)(coverByHabit.get(String(a.id)))}` : "") +
                 (a.catchUp === true && a.rolling !== true ? " · rattrapable (pas d'avance)" : "") +

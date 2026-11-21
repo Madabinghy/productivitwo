@@ -638,7 +638,7 @@ async function executeGetUserContext(uid) {
             var _a;
             return (Object.assign(Object.assign(Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, (typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {})), (typeof a.focusDate === "string" && a.focusDate ? { focusDate: a.focusDate } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
         });
-        return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {})), (v.rolling === true ? { rolling: true } : {})), (v.catchUp === true && v.rolling !== true ? { catchUp: true } : {})), (v.type === "habit" && v.autoTarget === true ? { autoTarget: true } : {})), (typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {})), (v.type === "habit" && v.chronoOff === true ? { chronoOff: true } : {})), (v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && !(typeof v.minPerHit === "number" && v.minPerHit > 0) ? { onceMin: v.timerMin } : {})), (v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && typeof v.minPerHit === "number" && v.minPerHit > 0 && v.timerMin !== v.minPerHit ? { timerMinBefore: v.timerMin } : {})), (v.type === "habit" && typeof v.linkedActivityId === "string" && v.linkedActivityId ? { linkedActivityId: v.linkedActivityId } : {})), (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
+        return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {})), (v.momentShares && typeof v.momentShares === "object" && Object.keys(v.momentShares).length ? { momentShares: v.momentShares } : {})), (v.rolling === true ? { rolling: true } : {})), (v.catchUp === true && v.rolling !== true ? { catchUp: true } : {})), (v.type === "habit" && v.autoTarget === true ? { autoTarget: true } : {})), (typeof v.minPerHit === "number" && v.minPerHit > 0 ? { minPerHit: v.minPerHit } : {})), (v.type === "habit" && v.chronoOff === true ? { chronoOff: true } : {})), (v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && !(typeof v.minPerHit === "number" && v.minPerHit > 0) ? { onceMin: v.timerMin } : {})), (v.type === "habit" && typeof v.timerMin === "number" && v.timerMin > 0 && typeof v.minPerHit === "number" && v.minPerHit > 0 && v.timerMin !== v.minPerHit ? { timerMinBefore: v.timerMin } : {})), (v.type === "habit" && typeof v.linkedActivityId === "string" && v.linkedActivityId ? { linkedActivityId: v.linkedActivityId } : {})), (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
@@ -900,10 +900,11 @@ async function executeCreateRoutine(uid, args) {
     const linked = String((_a = args.activityId) !== null && _a !== void 0 ? _a : "").trim();
     const rhythm = (0, routine_cover_1.rhythmPatch)({ rolling: args.rolling, minPerHit: args.minPerHit, catchUp: args.catchUp, autoTarget: args.autoTarget }, { type: "habit", habitFreq: (_b = args.habitFreq) !== null && _b !== void 0 ? _b : 0, linkedActivityId: linked });
     const split = args.splitMoments !== undefined && ((_c = args.habitFreq) !== null && _c !== void 0 ? _c : 0) === 0 ? (0, routine_split_1.normalizeSplitMoments)(args.splitMoments).moments : [];
-    await db_1.db.collection(`users/${uid}/activities`).doc(id).set(Object.assign(Object.assign({ id, name: args.name, domainId: args.domainId, activityId: (_d = args.activityId) !== null && _d !== void 0 ? _d : null, 
+    const shares = (0, routine_split_1.normalizeMomentShares)(args.momentShares, split);
+    await db_1.db.collection(`users/${uid}/activities`).doc(id).set(Object.assign(Object.assign(Object.assign({ id, name: args.name, domainId: args.domainId, activityId: (_d = args.activityId) !== null && _d !== void 0 ? _d : null, 
         // L'app lit `linkedActivityId` (chrono de la routine, « le chrono coche »).
-        linkedActivityId: linked || null, type: "habit", role: "generic", goalMin: 1, unit: (_e = args.unit) !== null && _e !== void 0 ? _e : null, habitFreq: (_f = args.habitFreq) !== null && _f !== void 0 ? _f : 0, habitTarget: (_g = args.habitTarget) !== null && _g !== void 0 ? _g : 1, manualTarget: false, autoTune: true, createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false, splitMoments: split }, (split.length ? { timeContext: split[0] } : {})), rhythm.patch));
-    const splitMsg = (split.length ? ` Répartie : ${(0, routine_split_1.splitLabel)((_h = args.habitTarget) !== null && _h !== void 0 ? _h : 1, split)}.` : "") +
+        linkedActivityId: linked || null, type: "habit", role: "generic", goalMin: 1, unit: (_e = args.unit) !== null && _e !== void 0 ? _e : null, habitFreq: (_f = args.habitFreq) !== null && _f !== void 0 ? _f : 0, habitTarget: (_g = args.habitTarget) !== null && _g !== void 0 ? _g : 1, manualTarget: false, autoTune: true, createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false, splitMoments: split }, (Object.keys(shares).length ? { momentShares: shares } : {})), (split.length ? { timeContext: split[0] } : {})), rhythm.patch));
+    const splitMsg = (split.length ? ` Répartie : ${(0, routine_split_1.splitLabel)((_h = args.habitTarget) !== null && _h !== void 0 ? _h : 1, split, shares)}.` : "") +
         (rhythm.notes.length ? " " + rhythm.notes.join(" ") : "");
     return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
@@ -1865,7 +1866,7 @@ async function executeDeleteTask(uid, projectId, taskId, force = false) {
             : "");
 }
 async function executeUpdateActivity(uid, activityId, updates) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u;
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1906,18 +1907,35 @@ async function executeUpdateActivity(uid, activityId, updates) {
         const data = (_c = snap.data()) !== null && _c !== void 0 ? _c : {};
         const target = Number((_e = (_d = updates.habitTarget) !== null && _d !== void 0 ? _d : data.habitTarget) !== null && _e !== void 0 ? _e : 1);
         const freq = Number((_g = (_f = updates.habitFreq) !== null && _f !== void 0 ? _f : data.habitFreq) !== null && _g !== void 0 ? _g : 0);
+        // Les parts réglées ne valent que pour les moments choisis : sans nouvelles parts, retour aux parts égales.
+        const shares = (0, routine_split_1.normalizeMomentShares)(updates.momentShares, moments);
+        patch.momentShares = Object.keys(shares).length ? shares : db_1.FieldValue.delete();
         splitNote = moments.length
-            ? ` Répartie : ${(0, routine_split_1.splitLabel)(target, moments)}.`
+            ? ` Répartie : ${(0, routine_split_1.splitLabel)(target, moments, shares)}.`
             : " Plus répartie : un seul moment (son contexte horaire).";
         if (moments.length && freq !== 0)
             splitNote += " ⚠️ La répartition ne s'applique qu'aux routines quotidiennes.";
         if (unknown.length)
-            splitNote += ` Moments ignorés : ${unknown.join(", ")} (matin · midi · après-midi · soir).`;
+            splitNote += ` Moments ignorés : ${unknown.join(", ")} (miracle · matin · midi · après-midi · soir).`;
+    }
+    else if (updates.momentShares !== undefined) {
+        // Parts seules : sur les moments déjà choisis.
+        const data = (_h = snap.data()) !== null && _h !== void 0 ? _h : {};
+        const moments = Array.isArray(data.splitMoments) ? data.splitMoments : [];
+        if (moments.length < 2) {
+            splitNote = " ⚠️ Parts ignorées : la routine n'est pas répartie (donne aussi splitMoments).";
+        }
+        else {
+            const shares = (0, routine_split_1.normalizeMomentShares)(updates.momentShares, moments);
+            patch.momentShares = Object.keys(shares).length ? shares : db_1.FieldValue.delete();
+            const target = Number((_l = (_j = updates.habitTarget) !== null && _j !== void 0 ? _j : data.habitTarget) !== null && _l !== void 0 ? _l : 1);
+            splitNote = ` Répartie : ${(0, routine_split_1.splitLabel)(target, moments, shares)}.`;
+        }
     }
     // Activité-temps liée à une routine (chrono, « le chrono coche ») : "" = délier.
     let rhythmNote = "";
     if (updates.linkedActivityId !== undefined) {
-        const linkId = String((_h = updates.linkedActivityId) !== null && _h !== void 0 ? _h : "").trim();
+        const linkId = String((_m = updates.linkedActivityId) !== null && _m !== void 0 ? _m : "").trim();
         if (linkId === "") {
             patch.linkedActivityId = null;
             rhythmNote += " Plus d'activité liée.";
@@ -1929,15 +1947,15 @@ async function executeUpdateActivity(uid, activityId, updates) {
                 return `Activité liée introuvable ou pas une activité de temps : ${linkId}. Rien n'a été modifié.`;
             }
             patch.linkedActivityId = linkId;
-            rhythmNote += ` Activité liée : "${(_j = link === null || link === void 0 ? void 0 : link.name) !== null && _j !== void 0 ? _j : linkId}".`;
+            rhythmNote += ` Activité liée : "${(_o = link === null || link === void 0 ? void 0 : link.name) !== null && _o !== void 0 ? _o : linkId}".`;
         }
     }
     {
-        const data = (_l = snap.data()) !== null && _l !== void 0 ? _l : {};
+        const data = (_p = snap.data()) !== null && _p !== void 0 ? _p : {};
         const r = (0, routine_cover_1.rhythmPatch)({ rolling: updates.rolling, minPerHit: updates.minPerHit, catchUp: updates.catchUp, autoTarget: updates.autoTarget }, {
             type: data.type,
-            habitFreq: (_m = updates.habitFreq) !== null && _m !== void 0 ? _m : data.habitFreq,
-            finalTarget: (_o = updates.finalTarget) !== null && _o !== void 0 ? _o : data.finalTarget,
+            habitFreq: (_q = updates.habitFreq) !== null && _q !== void 0 ? _q : data.habitFreq,
+            finalTarget: (_r = updates.finalTarget) !== null && _r !== void 0 ? _r : data.finalTarget,
             linkedActivityId: patch.linkedActivityId !== undefined ? patch.linkedActivityId : data.linkedActivityId,
         });
         Object.assign(patch, r.patch);
@@ -1950,7 +1968,7 @@ async function executeUpdateActivity(uid, activityId, updates) {
     }
     await ref.update(patch);
     if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
-        return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${(_r = (_p = updates.habitTarget) !== null && _p !== void 0 ? _p : (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.habitTarget) !== null && _r !== void 0 ? _r : 1}/j (évalué chaque lundi sur les hits réels).`;
+        return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${(_u = (_s = updates.habitTarget) !== null && _s !== void 0 ? _s : (_t = snap.data()) === null || _t === void 0 ? void 0 : _t.habitTarget) !== null && _u !== void 0 ? _u : 1}/j (évalué chaque lundi sur les hits réels).`;
     }
     return `✅ Activité "${currentName}" mise à jour.${splitNote}${rhythmNote}`;
 }

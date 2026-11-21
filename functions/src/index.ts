@@ -766,7 +766,7 @@ export const proposeDayPlan = onRequest(
               : "") +
             (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
             (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
-              ? ` · répartie : ${splitLabel(Number(a.habitTarget ?? 1), a.splitMoments as string[])}`
+              ? ` · répartie : ${splitLabel(Number(a.habitTarget ?? 1), a.splitMoments as string[], (a.momentShares ?? {}) as Record<string, number>)}`
               : "") +
             (coverByHabit.has(String(a.id)) ? ` · ${coverNote(coverByHabit.get(String(a.id))!)}` : "") +
             (a.catchUp === true && a.rolling !== true ? " · rattrapable (pas d'avance)" : "") +

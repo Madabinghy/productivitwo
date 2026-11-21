@@ -5,7 +5,7 @@ import { mealOptionsText, parseMoment, planMeals, type MealsDoc, type PlanMealIn
 import type { AisleState } from "./pantry";
 import { existingItem, findItems, groceriesText, groceryKey, mondayOfYmd, newGroceryItem, planReceipt, resolveDomain, type GroceryItemDoc, type GroceryMemoryDoc, type ReceiptLineInput } from "./groceries";
 import { pushAllowed, pushTitleFor, shouldPushNow, todayParis } from "./push_rules";
-import { normalizeSplitMoments, splitLabel } from "./routine_split";
+import { normalizeMomentShares, normalizeSplitMoments, splitLabel } from "./routine_split";
 import { rhythmPatch } from "./routine_cover";
 import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
@@ -665,6 +665,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
       ...(Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {}),
+      ...(v.momentShares && typeof v.momentShares === "object" && Object.keys(v.momentShares).length ? { momentShares: v.momentShares } : {}),
       ...(v.rolling === true ? { rolling: true } : {}),
       ...(v.catchUp === true && v.rolling !== true ? { catchUp: true } : {}),
       ...(v.type === "habit" && v.autoTarget === true ? { autoTarget: true } : {}),
@@ -983,7 +984,7 @@ async function executeSetActivityTargets(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; rolling?: unknown; minPerHit?: unknown; catchUp?: unknown; autoTarget?: unknown }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown; momentShares?: unknown; rolling?: unknown; minPerHit?: unknown; catchUp?: unknown; autoTarget?: unknown }
 ): Promise<string> {
   const id = uuidv4();
   const linked = String(args.activityId ?? "").trim();
@@ -992,6 +993,7 @@ async function executeCreateRoutine(
     { type: "habit", habitFreq: args.habitFreq ?? 0, linkedActivityId: linked },
   );
   const split = args.splitMoments !== undefined && (args.habitFreq ?? 0) === 0 ? normalizeSplitMoments(args.splitMoments).moments : [];
+  const shares = normalizeMomentShares(args.momentShares, split);
   await db.collection(`users/${uid}/activities`).doc(id).set({
     id,
     name: args.name,
@@ -1013,10 +1015,11 @@ async function executeCreateRoutine(
     iconCode: null,
     deleted: false,
     splitMoments: split,
+    ...(Object.keys(shares).length ? { momentShares: shares } : {}),
     ...(split.length ? { timeContext: split[0] } : {}),
     ...rhythm.patch,
   });
-  const splitMsg = (split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split)}.` : "") +
+  const splitMsg = (split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split, shares)}.` : "") +
     (rhythm.notes.length ? " " + rhythm.notes.join(" ") : "");
   return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
@@ -2068,6 +2071,7 @@ async function executeUpdateActivity(
     finalTarget?: number;
     timeContext?: string;
     splitMoments?: unknown;
+    momentShares?: unknown;
     pinGoal?: boolean;
     rolling?: unknown;
     minPerHit?: unknown;
@@ -2110,11 +2114,26 @@ async function executeUpdateActivity(
     const data = snap.data() ?? {};
     const target = Number(updates.habitTarget ?? data.habitTarget ?? 1);
     const freq = Number(updates.habitFreq ?? data.habitFreq ?? 0);
+    // Les parts réglées ne valent que pour les moments choisis : sans nouvelles parts, retour aux parts égales.
+    const shares = normalizeMomentShares(updates.momentShares, moments);
+    patch.momentShares = Object.keys(shares).length ? shares : FieldValue.delete();
     splitNote = moments.length
-      ? ` Répartie : ${splitLabel(target, moments)}.`
+      ? ` Répartie : ${splitLabel(target, moments, shares)}.`
       : " Plus répartie : un seul moment (son contexte horaire).";
     if (moments.length && freq !== 0) splitNote += " ⚠️ La répartition ne s'applique qu'aux routines quotidiennes.";
-    if (unknown.length) splitNote += ` Moments ignorés : ${unknown.join(", ")} (matin · midi · après-midi · soir).`;
+    if (unknown.length) splitNote += ` Moments ignorés : ${unknown.join(", ")} (miracle · matin · midi · après-midi · soir).`;
+  } else if (updates.momentShares !== undefined) {
+    // Parts seules : sur les moments déjà choisis.
+    const data = snap.data() ?? {};
+    const moments = Array.isArray(data.splitMoments) ? (data.splitMoments as string[]) : [];
+    if (moments.length < 2) {
+      splitNote = " ⚠️ Parts ignorées : la routine n'est pas répartie (donne aussi splitMoments).";
+    } else {
+      const shares = normalizeMomentShares(updates.momentShares, moments);
+      patch.momentShares = Object.keys(shares).length ? shares : FieldValue.delete();
+      const target = Number(updates.habitTarget ?? data.habitTarget ?? 1);
+      splitNote = ` Répartie : ${splitLabel(target, moments, shares)}.`;
+    }
   }
 
   // Activité-temps liée à une routine (chrono, « le chrono coche ») : "" = délier.

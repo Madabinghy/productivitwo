@@ -33,6 +33,9 @@ String momentWindowLabel(int s, int e) => '${_hLabel(s)} → ${_hLabel(e % (24 *
 String _hLabel(int min) =>
     min % 60 == 0 ? '${min ~/ 60} h' : '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
 
+/// Miracle Morning (maquette validée 2026-11-21) : un cinquième moment, AVANT le matin, qui n'existe que s'il est
+/// réglé (`data/meta.momentWindows.miracle`). Il commence là où la journée commence.
+const kMomentMiracle = 'miracle';
 const kMomentMorning = 'morning';
 const kMomentMidday = 'midday';
 const kMomentAfternoon = 'afternoon';
@@ -49,9 +52,23 @@ const kMoments = <Moment>[
   Moment(kMomentAny, 'Libre', 'libres', 'aujourd\'hui', 'sans moment', -1, -1),
 ];
 
-Moment momentOf(String key) => kMoments.firstWhere((m) => m.key == key, orElse: () => kMoments.last);
+/// Le moment Miracle Morning, avec ses bornes par défaut (5 h → 6 h) : il n'est dans la journée que s'il est réglé.
+const kMiracleMoment = Moment(kMomentMiracle, 'Miracle Morning', 'du Miracle Morning', 'au Miracle Morning', '5 h → 6 h', 5 * 60, 6 * 60);
+
+/// Durée proposée quand on allume le moment Miracle Morning.
+const kMiracleDefaultMin = 60;
+
+Moment momentOf(String key) => key == kMomentMiracle ? kMiracleMoment : kMoments.firstWhere((m) => m.key == key, orElse: () => kMoments.last);
 
 List<Moment> get kTimedMoments => kMoments.where((m) => m.timed).toList();
+
+/// Les clés des moments horaires dans l'ordre de la journée, Miracle Morning compris.
+const kTimedMomentKeys = [kMomentMiracle, kMomentMorning, kMomentMidday, kMomentAfternoon, kMomentEvening];
+
+/// Le moment où va vraiment une routine réglée sur [key] : sans moment Miracle Morning dans la journée, ses
+/// routines sont celles du matin.
+String liveMomentKey(String key, List<Moment> timed) =>
+    key == kMomentMiracle && !timed.any((m) => m.key == kMomentMiracle) ? kMomentMorning : key;
 
 /// Fin maximale d'un moment : midi le lendemain (le Soir d'un travailleur de
 /// nuit peut finir à 10 h).
@@ -61,15 +78,24 @@ const int kMomentEndMax = 36 * 60;
 /// (clé → (début, fin), minutes ; fin > 24 h = le lendemain) sur les défauts.
 /// Sans réglage, le Soir court jusqu'au début de la journée vécue
 /// (`dayStartMin`, 5 h par défaut) : la nuit appartient au soir.
-List<Moment> timedMomentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) => [
-      for (final m in kTimedMoments)
-        if (windows[m.key] case final w?)
-          m.withWindow(w.$1, w.$2)
-        else if (m.key == kMomentEvening)
-          m.withWindow(m.startMin, 24 * 60 + dayStartMin)
-        else
-          m,
-    ];
+List<Moment> timedMomentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) {
+  final mir = windows[kMomentMiracle];
+  // Le Miracle Morning commence quand la journée commence ; seule sa fin se règle.
+  final miracle = mir != null && mir.$2 > dayStartMin ? kMiracleMoment.withWindow(dayStartMin, mir.$2) : null;
+  return [
+    if (miracle != null) miracle,
+    for (final m in kTimedMoments)
+      if (windows[m.key] case final w?)
+        m.withWindow(w.$1, w.$2)
+      else if (m.key == kMomentEvening)
+        m.withWindow(m.startMin, 24 * 60 + dayStartMin)
+      else if (m.key == kMomentMorning && miracle != null && m.startMin < miracle.endMin && miracle.endMin < m.endMin)
+        // Sans réglage du matin, il commence quand le Miracle Morning finit.
+        m.withWindow(miracle.endMin, m.endMin)
+      else
+        m,
+  ];
+}
 
 /// Les six moments (horaires réglés + toute la journée + libre), pour les vues.
 List<Moment> momentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) => [
@@ -82,7 +108,7 @@ List<Moment> momentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDe
 Map<String, (int, int)> parseMomentWindows(dynamic raw) {
   if (raw is! Map) return const {};
   final out = <String, (int, int)>{};
-  for (final m in kTimedMoments) {
+  for (final m in [kMiracleMoment, ...kTimedMoments]) {
     final v = raw[m.key];
     if (v is! Map) continue;
     final s = (v['start'] as num?)?.toInt(), e = (v['end'] as num?)?.toInt();
@@ -115,6 +141,7 @@ String? validateMoments(List<Moment> timed) {
 String momentKeyOf(Activity a) {
   final ctx = effTimeContextOf(a)?.key;
   switch (ctx) {
+    case 'miracle':
     case 'morning':
     case 'midday':
     case 'afternoon':
@@ -259,13 +286,64 @@ class MomentShare {
 /// si elle n'est pas répartie (moins de deux moments).
 List<String> splitMomentsOf(Activity a) {
   final set = a.splitMoments.toSet();
-  final keys = [for (final m in kTimedMoments) if (set.contains(m.key)) m.key];
+  final keys = [for (final k in kTimedMomentKeys) if (set.contains(k)) k];
   return keys.length < 2 ? const [] : keys;
 }
 
-/// Où en est une routine répartie sur plusieurs moments. Parts = cible ÷
-/// moments, le surplus aux premiers (3 sur 2 → 2 puis 1) ; un moment sans part
-/// (cible < moments) est ignoré. La routine reste dans le premier moment dont
+/// Les parts de [n] (la cible du jour) entre les moments [keys] d'une routine répartie. Sans réglage
+/// ([Activity.momentShares] vide) : parts égales, le surplus aux premiers. Avec réglage (« 1 au Miracle Morning,
+/// 2 le matin ») : au prorata des parts réglées, au plus fort reste, pour que la somme fasse toujours [n] — la
+/// cible du jour bouge (cible automatique, routine sur 7 jours) sans que le réglage soit à refaire.
+List<int> momentParts(int n, List<String> keys, [Map<String, int> shares = const {}]) {
+  if (keys.isEmpty || n <= 0) return [for (final _ in keys) 0];
+  final w = [for (final k in keys) (shares[k] ?? 0) < 0 ? 0 : (shares[k] ?? 0)];
+  var total = w.fold<int>(0, (s, x) => s + x);
+  if (shares.isEmpty || total == 0) {
+    for (var i = 0; i < w.length; i++) {
+      w[i] = 1;
+    }
+    total = w.length;
+  }
+  final parts = [for (final x in w) n * x ~/ total];
+  var rest = n - parts.fold<int>(0, (s, x) => s + x);
+  // Au plus fort reste, le premier moment à égalité.
+  final order = [for (var i = 0; i < w.length; i++) i]..sort((a, b) {
+      final c = ((n * w[b]) % total).compareTo((n * w[a]) % total);
+      return c != 0 ? c : a.compareTo(b);
+    });
+  for (final i in order) {
+    if (rest <= 0) break;
+    if (w[i] == 0) continue;
+    parts[i]++;
+    rest--;
+  }
+  return parts;
+}
+
+/// Les moments d'une routine répartie et leurs parts de [n], dans la journée [timed] : sans moment Miracle
+/// Morning, sa part revient au matin. Les moments sans part sont retirés.
+List<(String, int)> liveMomentParts(Activity a, int n, List<Moment> timed) {
+  final keys = splitMomentsOf(a);
+  final parts = momentParts(n, keys, a.momentShares);
+  final out = <(String, int)>[];
+  for (var i = 0; i < keys.length; i++) {
+    if (parts[i] <= 0) continue;
+    final k = liveMomentKey(keys[i], timed);
+    final at = out.indexWhere((p) => p.$1 == k);
+    if (at >= 0) {
+      out[at] = (k, out[at].$2 + parts[i]);
+    } else {
+      out.add((k, parts[i]));
+    }
+  }
+  // Une part ramenée au matin se range à sa place dans la journée.
+  out.sort((x, y) => kTimedMomentKeys.indexOf(x.$1).compareTo(kTimedMomentKeys.indexOf(y.$1)));
+  return out;
+}
+
+/// Où en est une routine répartie sur plusieurs moments. Parts = [momentParts]
+/// (cible ÷ moments, le surplus aux premiers — 3 sur 2 → 2 puis 1 —, ou les
+/// parts réglées) ; un moment sans part (cible < moments) est ignoré. La routine reste dans le premier moment dont
 /// la part cumulée n'est pas atteinte et qui n'est pas fini ; un moment fini
 /// laisse son reste au suivant. Null = pas répartie, cible du jour atteinte,
 /// ou routine hebdo.
@@ -274,12 +352,8 @@ MomentShare? momentShareOf(Activity a, {required int dayDone, required int? dayT
   final n = dayTarget ?? 0;
   if (keys.isEmpty || n <= 0 || dayDone >= n) return null;
   final ms = moments ?? kTimedMoments;
-  final base = n ~/ keys.length, extra = n % keys.length;
-  final parts = <(String, int)>[];
-  for (var i = 0; i < keys.length; i++) {
-    final share = base + (i < extra ? 1 : 0);
-    if (share > 0) parts.add((keys[i], share));
-  }
+  final parts = liveMomentParts(a, n, ms);
+  if (parts.isEmpty) return null;
   var cum = 0;
   final cums = <int>[];
   for (final p in parts) {
@@ -301,9 +375,9 @@ MomentShare? momentShareOf(Activity a, {required int dayDone, required int? dayT
 
 /// Moment d'une routine non répartie (ou atteinte) : son réglage ; une
 /// routine répartie atteinte reste dans son dernier moment.
-String _homeOf(Activity a) {
+String _homeOf(Activity a, List<Moment> timed) {
   final keys = splitMomentsOf(a);
-  return keys.isNotEmpty ? keys.last : momentKeyOf(a);
+  return liveMomentKey(keys.isNotEmpty ? keys.last : momentKeyOf(a), timed);
 }
 
 int _cmpSlots(RoutineSlot a, RoutineSlot b) {
@@ -337,9 +411,9 @@ RoutineDay buildRoutineDay({
     for (final t in todos)
       // Une routine « sur 7 jours » couverte par son avance n'a plus de part à faire.
       if ((t.reached ? null : momentShareOf(t.activity, dayDone: t.dayDone, dayTarget: t.dayTarget, nowMin: nowMin, moments: ms)) case final share?)
-        RoutineSlot(t, share.moment, pushed[t.activity.id] ?? share.moment, share: share)
+        RoutineSlot(t, share.moment, liveMomentKey(pushed[t.activity.id] ?? share.moment, ms), share: share)
       else
-        RoutineSlot(t, _homeOf(t.activity), pushed[t.activity.id] ?? _homeOf(t.activity)),
+        RoutineSlot(t, _homeOf(t.activity, ms), liveMomentKey(pushed[t.activity.id] ?? _homeOf(t.activity, ms), ms)),
   ]..sort(_cmpSlots);
   return RoutineDay(current, slots, deferred, dismissed, moments: ms);
 }
@@ -349,7 +423,7 @@ RoutineDay buildRoutineDay({
 Set<String> pickedMomentsOf(Activity a) {
   if (a.splitMoments.length >= 2) return a.splitMoments.toSet();
   return switch (a.timeContext) {
-    kMomentMorning || kMomentMidday || kMomentAfternoon || kMomentEvening => {a.timeContext!},
+    kMomentMiracle || kMomentMorning || kMomentMidday || kMomentAfternoon || kMomentEvening => {a.timeContext!},
     'meal' => {kMomentMidday},
     _ => <String>{},
   };
@@ -362,7 +436,7 @@ Set<String> pickedMomentsOf(Activity a) {
 ({String? timeContext, List<String> split}) toggleMoment(Activity a, String key) {
   final set = a.habitFreq == HabitFreq.daily ? pickedMomentsOf(a) : <String>{};
   set.contains(key) ? set.remove(key) : set.add(key);
-  final ordered = [for (final m in kTimedMoments) if (set.contains(m.key)) m.key];
+  final ordered = [for (final k in kTimedMomentKeys) if (set.contains(k)) k];
   if (ordered.isEmpty) return (timeContext: null, split: const []);
   if (ordered.length == 1) return (timeContext: ordered.first, split: const []);
   return (timeContext: ordered.first, split: ordered);
