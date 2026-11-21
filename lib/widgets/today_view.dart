@@ -1144,7 +1144,8 @@ class TodayViewState extends State<TodayView> {
   Widget _sniperTile({PendingRun? pending}) {
     final logic = widget.logic, st = logic.state, now = DateTime.now();
     final open = [for (final s in st.sessions) if (s.endAt == null && !s.deleted) s.activityId].join(',');
-    final blocks = [for (final b in logic.todayBlocks) '${b.id}${b.status}'].join(',');
+    // L'heure et la durée aussi : un bloc déplacé change le temps libre (demande user 2026-11-21).
+    final blocks = [for (final b in logic.todayBlocks) '${b.id}${b.status}${b.dayOffset}${b.startTime}${b.durationMin}'].join(',');
     final key = '${now.day}-${now.hour}-${now.minute}|${st.sessions.length}|${st.habitHits.length}|$open|$blocks|${identityHashCode(widget.badges?.deck)}|$_dayEndMin';
     if (key != _sniperKey || _sniperAim == null) {
       _sniperKey = key;
@@ -1170,6 +1171,8 @@ class TodayViewState extends State<TodayView> {
       label: label,
       pending: pending != null,
       session: rounds,
+      // Sans bloc à venir en fin de journée, la borne glisse avec l'heure : rien à recharger.
+      until: aim.budget.until == null && aim.budget.untilMin != _dayEndMin ? null : aim.budget.untilMin,
       onTap: () => openRun(kSniperKind),
     );
   }

@@ -1553,6 +1553,14 @@ cours ». À la fermeture de la feuille, `SniperScreen.dispose` appelle `logic.o
 avec la session gardée, close ou effacée. **Aiguille de la jauge des 7 jours** : `kNeedleTravel` passe d'une à DEUX minutes. Lignes
 de la jauge (carte et feuille, demande user du même jour) : « Maintenant » puis « Il y a 7 jours » juste dessous (les deux se
 comparent), puis « Demain si rien » et « Demain à fond ».
+**Un bloc déplacé recharge la tuile Sniper** (2026-11-21, demande user : « quand je déplace un bloc pour avoir plus de temps, que le
+Sniper se mette à jour ») : la tuile ne recalculait pas, sa clé (`_sniperKey`, `today_view.dart`) ne regardait que l'identité et l'état
+des blocs — elle porte désormais leur heure, leur durée et `dayOffset`. `SniperModeTile(until:)` = la minute où le temps libre s'arrête
+(prochain bloc à faire, fin de la journée active ; null quand la borne glisse avec l'heure, en fin de journée sans bloc) : elle entre
+dans la signature de la tuile, donc le balayage de rechargement part quand la borne BOUGE (bloc déplacé, retiré, ajouté, ou le bloc
+suivant qui commence), jamais pour une minute qui passe. Un changement arrivé pendant qu'une feuille cache la tuile (le Programme où
+l'on déplace le bloc, le Sniper lui-même) attend le retour (`_waiting`, `ModalRoute.isCurrent`) : la tuile est déjà à jour dessous, et
+le balayage part quand on la revoit. Le viseur, lui, recalcule à chaque ouverture (`_compute`).
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
