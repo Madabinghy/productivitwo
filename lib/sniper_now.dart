@@ -4,8 +4,10 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/parole.dart' show kParoleMin, paroleIndex, paroleOfDay;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
+import 'package:productivitwo_v1/utils/sniper_block.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, spentByAction;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin;
 
 /// Ce que le Sniper viserait là, maintenant : partagé par le viseur de l'écran
 /// Sniper et par la miniature de la tuile du mode d'Aujourd'hui, pour qu'ils
@@ -67,16 +69,46 @@ SniperScope? sniperScopeNow(AppLogic logic) {
 /// active [endMin] (au moins une heure et demie quand elle est presque finie).
 /// Avec un [scope], la lunette s'arrête aussi à la fin du moment : ce qui ne
 /// tient pas passe au moment suivant.
-SniperBudget sniperBudgetNow(AppLogic logic, {int endMin = 22 * 60, SniperScope? scope}) {
-  final nowMin = logic.livedNowMinNow;
+///
+/// [fromMin] = l'heure d'où partent les tirs (la fin du bloc en cours pour « Après le bloc »).
+SniperBudget sniperBudgetNow(AppLogic logic, {int endMin = 22 * 60, SniperScope? scope, int? fromMin}) {
+  final now = logic.livedNowMinNow;
+  final nowMin = fromMin != null && fromMin > now ? fromMin : now;
   var end = nowMin >= endMin - 15 ? nowMin + 90 : endMin;
   final momentEnd = scope?.moment.endMin;
   if (momentEnd != null && momentEnd > nowMin && momentEnd < end) end = momentEnd;
+  if (end <= nowMin) end = nowMin + 90;
   return sniperBudget(blocks: logic.todayBlocks, nowMin: nowMin, endMin: end);
 }
 
-/// Le plan que le viseur proposerait à l'ouverture.
+/// Le bloc en cours que le Sniper peut viser (bloc de tâche ou d'activité commencé), sinon null.
+ScheduleBlock? sniperBlockNow(AppLogic logic) {
+  try {
+    return sniperBlockOf(blocks: logic.todayBlocks, nowMin: logic.livedNowMinNow, activities: logic.state.activities, projects: logic.currentProjects);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Le plan DANS le bloc en cours : ce qui reste du bloc, son contenu dans son ordre.
+({SniperPlan plan, SniperBudget budget}) sniperBlockPlanNow(AppLogic logic, ScheduleBlock block) {
+  final nowMin = logic.livedNowMinNow;
+  final end = blockEndMin(block);
+  final left = end - nowMin;
+  final budget = (minutes: left < 0 ? 0 : left, untilMin: end, until: null);
+  final stakes = blockSniperStakes(block: block, projects: logic.currentProjects, activities: logic.state.activities, today: DateTime.now(), factor: sniperFactorNow(logic));
+  final fill = block.projectId == null ? logic.state.activities.where((a) => a.id == block.activityId && !a.deleted).firstOrNull : null;
+  final plan = planBlockSniper(stakes: stakes, budgetMin: budget.minutes, untilMin: end, fill: fill, block: block);
+  return (plan: plan, budget: budget);
+}
+
+/// Le plan que le viseur proposerait à l'ouverture : dans le bloc en cours s'il y en a un, sinon
+/// le temps libre jusqu'au prochain bloc.
 ({SniperPlan plan, SniperBudget budget, SniperScope? scope}) sniperPlanNow(AppLogic logic, BadgeCenter? bc, {int endMin = 22 * 60}) {
+  if (sniperBlockNow(logic) case final block?) {
+    final b = sniperBlockPlanNow(logic, block);
+    if (b.plan.aimed.isNotEmpty) return (plan: b.plan, budget: b.budget, scope: null);
+  }
   final s = sniperStakesNow(logic, bc);
   final scope = sniperScopeNow(logic);
   final budget = sniperBudgetNow(logic, endMin: endMin, scope: scope);

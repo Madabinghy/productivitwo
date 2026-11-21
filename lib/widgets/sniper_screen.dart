@@ -17,7 +17,9 @@ import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleSniper;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
+import 'package:productivitwo_v1/utils/sniper_block.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin;
 import 'package:productivitwo_v1/widgets/sniper_scope.dart';
 import 'package:productivitwo_v1/utils/card_quests.dart';
 import 'package:productivitwo_v1/utils/badge_cards.dart' show rarityLabel;
@@ -109,7 +111,16 @@ class SniperScreen extends StatefulWidget {
 
 class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderStateMixin {
   List<Stake> _stakes = const [];
+
+  /// Les enjeux du jour (le Sniper « Après le bloc », ou sans bloc en cours).
+  List<Stake> _dayStakes = const [];
   CardQuest? _focus;
+
+  /// Le bloc en cours que le Sniper peut viser (maquette validée 2026-11-21) ; null sans bloc.
+  ScheduleBlock? _block;
+
+  /// Vrai = la lunette couvre ce qui reste du bloc et vise son contenu ; faux = après le bloc.
+  bool _inBlock = false;
 
   /// Sniper par moment : les routines du moment, ce qui reste d'avant, ce qui attend plus tard.
   /// Null pour un Sniper ciblé sur une carte.
@@ -203,14 +214,50 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   void _compute() {
     final now = sniperStakesNow(logic, widget.badges);
     _routineLeft = now.routineLeft;
-    _stakes = widget.stakes ?? now.stakes;
+    _dayStakes = widget.stakes ?? now.stakes;
     _focus = widget.focus ?? _resumedFocus();
-    if (_focus case final q?) _stakes = focusStakes(_stakes, q);
+    if (_focus case final q?) _dayStakes = focusStakes(_dayStakes, q);
+    _stakes = _dayStakes;
     _factor = sniperFactorNow(logic);
     _scope = _focus != null ? null : (widget.stakes != null ? widget.scope : sniperScopeNow(logic));
-    _budget = sniperBudgetNow(logic, endMin: _endMin, scope: _scope);
+    _findBlock();
     _replan();
     if (_focus case final q? when widget.resume == null) _aimAt(q);
+  }
+
+  /// Le bloc en cours. Une session lancée dans un bloc le retrouve par son id (même fini) ; une
+  /// session lancée hors bloc n'en prend jamais un ; un Sniper préparé « Après le bloc » rouvre
+  /// sur « Après ».
+  void _findBlock() {
+    final r = widget.resume;
+    final id = r?.extra['block'];
+    if (id is String) {
+      _block = logic.todayBlocks.where((b) => b.id == id).firstOrNull;
+      _inBlock = _block != null;
+      return;
+    }
+    _block = null;
+    _inBlock = false;
+    if (_focus != null || widget.stakes != null || (r != null && !r.prepared)) return;
+    final b = sniperBlockNow(logic);
+    if (b == null || sniperBlockPlanNow(logic, b).plan.aimed.isEmpty) return;
+    _block = b;
+    _inBlock = r == null;
+  }
+
+  /// Le bloc est encore en cours (les tirs « Après le bloc » attendent sa fin).
+  bool get _blockRunning => _block != null && logic.livedNowMinNow < blockEndMin(_block!);
+
+  void _setInBlock(bool v) {
+    if (v == _inBlock || _block == null) return;
+    setState(() {
+      _inBlock = v;
+      _excluded.clear();
+      _added.clear();
+      _amounts.clear();
+      _order = null;
+      _replan();
+    });
   }
 
   /// Session ciblée reprise : la quête est recalculée depuis le deck.
@@ -241,9 +288,19 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     _adjust();
   }
 
-  SniperTarget? _targetOf(Stake s) => sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor, scope: _scope);
+  SniperTarget? _targetOf(Stake s) => _inBlock ? blockTargetOf(s) : sniperTargetOf(s, routineLeft: _routineLeft, factor: _factor, scope: _scope);
 
   void _replan() {
+    if (_inBlock && _block != null) {
+      final bp = sniperBlockPlanNow(logic, _block!);
+      _budget = bp.budget;
+      _base = bp.plan;
+      _stakes = [for (final t in _base.aimed) t.stake, for (final m in _base.outOfReach) m.target.stake];
+      _adjust();
+      return;
+    }
+    _stakes = _dayStakes;
+    _budget = sniperBudgetNow(logic, endMin: _endMin, scope: _scope, fromMin: _block == null ? null : blockEndMin(_block!));
     _base = planSniper(
       stakes: _stakes,
       budgetMin: _budget.minutes,
@@ -260,7 +317,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
 
   /// Écarter retire vraiment la cible (le temps visé baisse) ; rien de hors
   /// de portée ne rentre sans qu'on le choisisse.
-  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts, order: _order);
+  /// Dans un bloc, l'ordre conseillé est celui du bloc.
+  void _adjust() => _plan = adjustPlan(_base, excluded: _excluded, added: _added, amounts: _amounts, order: _order ?? (_inBlock ? [for (final t in _base.aimed) t.key] : null));
 
   void _reorder(int from, int to) {
     final keys = [for (final t in _plan.aimed) t.key];
@@ -385,6 +443,8 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'aimedMin': _plan.totalMin,
         'total': _plan.aimed.length,
         if (_focus case final q?) 'focus': q.badge.def.id,
+        if (_inBlock && _block != null) 'block': _block!.id,
+        if (!_inBlock && _block != null) 'after': true,
       },
     ));
     return true;
@@ -497,6 +557,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         'fired': _fired,
         'aimedMin': _aimedMin,
         if (_focus case final q?) 'focus': q.badge.def.id,
+        if (_inBlock && _block != null) 'block': _block!.id,
         'full': _fullHits,
         'total': _totalAimed,
         if (away && cur != null) ...{
@@ -623,7 +684,9 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       case SniperKind.timed:
         return g.activity?.id;
       case SniperKind.action:
-        return g.action?.linkedActivityId ?? g.project?.linkedActivityId ?? g.owner?.id;
+        // Dans un bloc, le temps compte pour l'activité du bloc (« chrono sur Kingdom »).
+        final ba = logic.state.activities.where((a) => a.id == g.block?.activityId && !a.deleted && !a.isHabit).firstOrNull;
+        return ba?.id ?? g.action?.linkedActivityId ?? g.project?.linkedActivityId ?? g.owner?.id;
       case SniperKind.routine:
         return g.activity?.linkedActivityId;
       case SniperKind.reading:
@@ -1065,23 +1128,33 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
       return '${sc.sectionLabel(t.section)} · ${_plan.aimed.where((x) => x.section == t.section).length}$own';
     }
 
-    final byMoment = sc?.before != null && until == null && b.untilMin == sc!.moment.endMin;
+    final byMoment = !_inBlock && sc?.before != null && until == null && b.untilMin == sc!.moment.endMin;
+    final blk = _block;
+    final waitBlock = blk != null && !_inBlock && _blockRunning;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(
-        label: _prepared ? 'SNIPER PRÊT' : (sc == null ? 'SNIPER' : 'SNIPER · ${sc.momentLabel}'),
+        label: _prepared ? 'SNIPER PRÊT' : (_inBlock ? 'SNIPER · BLOC EN COURS' : (sc == null ? 'SNIPER' : 'SNIPER · ${sc.momentLabel}')),
         trailing: _prepared || _touched
             ? TextButton(key: const Key('sniper-drop'), onPressed: _drop, child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))
             : null,
       ),
       Expanded(
         child: ListView(controller: widget.sheetScroll, children: [
+          if (blk != null) ...[
+            _blockSwitch(blk),
+            const SizedBox(height: 10),
+            if (_inBlock) _blockCard(blk) else if (waitBlock)
+              Text('« ${_blockTitle(blk)} » continue jusqu’à ${_hm(blockEndMin(blk))} · les tirs commencent après',
+                  key: const Key('sniper-after-line'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, height: 1.35, color: _text3)),
+            const SizedBox(height: 10),
+          ],
           SniperAimScope(
             key: const Key('sniper-aim-scope'),
             scope: scope,
             colors: [for (final t in _plan.aimed) sniperTargetColor(t)],
             label: 'Lunette : ${fmtMin(total)} visées sur ${fmtMin(b.minutes)} libres, $n cible${n > 1 ? 's' : ''}',
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text('LIBRE JUSQU’À ${_hm(b.untilMin)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+              Text(_inBlock ? 'JUSQU’À ${_hm(b.untilMin)}' : (waitBlock ? 'DE ${_hm(blockEndMin(blk))} À ${_hm(b.untilMin)}' : 'LIBRE JUSQU’À ${_hm(b.untilMin)}'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
               const SizedBox(height: 2),
               if (total < 60)
                 Text.rich(TextSpan(children: [
@@ -1098,7 +1171,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
           Text.rich(
             TextSpan(style: const TextStyle(fontSize: 13, height: 1.35, color: _text2), children: [
               TextSpan(text: n == 0 ? 'Aucune cible' : '$n cible${n > 1 ? 's' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
-              if (until != null) TextSpan(text: ' avant « ${until.title} »') else if (byMoment) TextSpan(text: ' ${sc.before}'),
+              if (_inBlock) const TextSpan(text: ' avant la fin du bloc') else if (until != null) TextSpan(text: ' avant « ${until.title} »') else if (byMoment) TextSpan(text: ' ${sc.before}'),
               TextSpan(text: air > 0 ? ' · il reste ${fmtMin(air)} d’air' : ' · tout ton temps libre est visé'),
             ]),
             key: const Key('sniper-aim-line'),
@@ -1120,7 +1193,10 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
           ],
           if (parts) const SizedBox(height: 10),
           if (!parts) Row(children: [
-            Expanded(child: _label(_order == null || !kSniperTuningEnabled ? 'CE QUI TOMBE · CE QUI SE PERD CE SOIR D’ABORD' : 'CIBLES · DANS TON ORDRE')),
+            Expanded(
+                child: _label(_order != null && kSniperTuningEnabled
+                    ? 'CIBLES · DANS TON ORDRE'
+                    : (_inBlock ? 'DANS LE BLOC · DANS SON ORDRE' : 'CE QUI TOMBE · CE QUI SE PERD CE SOIR D’ABORD'))),
             if (_order != null && kSniperTuningEnabled)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
@@ -1232,8 +1308,24 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
         ]),
       ),
       const SizedBox(height: 12),
-      _primary(_plan.aimed.isEmpty ? 'Rien à viser' : 'Tirer · $n cible${n > 1 ? 's' : ''} · ${fmtMin(total)}', _plan.aimed.isEmpty ? null : _start),
-      if (_plan.aimed.isNotEmpty)
+      if (waitBlock && _plan.aimed.isNotEmpty) ...[
+        KeyedSubtree(
+          key: const Key('sniper-prepare-after'),
+          child: _primary('Préparer · je tire à ${_hm(blockEndMin(blk))}', () {
+            _prepared = true;
+            Navigator.of(context).maybePop();
+          }),
+        ),
+        Center(
+          child: TextButton(
+            key: const Key('sniper-fire-now'),
+            onPressed: _start,
+            child: const Text('Tirer maintenant', style: TextStyle(color: _text2, fontSize: 14)),
+          ),
+        ),
+      ] else
+        _primary(_plan.aimed.isEmpty ? 'Rien à viser' : 'Tirer · $n cible${n > 1 ? 's' : ''} · ${fmtMin(total)}', _plan.aimed.isEmpty ? null : _start),
+      if (_plan.aimed.isNotEmpty && !waitBlock)
         Center(
           child: TextButton(
             key: const Key('sniper-keep'),
@@ -1245,6 +1337,65 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
           ),
         ),
     ]);
+  }
+
+  String _blockTitle(ScheduleBlock b) => b.title.isEmpty ? 'Bloc ${b.startTime}' : b.title;
+
+  /// « Ce bloc · reste 38 min » | « Après le bloc · 15:00 → 16:30 ».
+  Widget _blockSwitch(ScheduleBlock b) {
+    final end = blockEndMin(b);
+    final left = end - logic.livedNowMinNow;
+    final after = sniperBudgetNow(logic, endMin: _endMin, scope: _scope, fromMin: end);
+    Widget chip(String key, String title, String sub, bool on, VoidCallback tap) => Expanded(
+          child: Material(
+            color: on ? kSniperAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            child: InkWell(
+              key: Key(key),
+              borderRadius: BorderRadius.circular(11),
+              onTap: tap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: on ? kSniperInk : _text2)),
+                  Text(sub, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: on ? kSniperInk : _text3)),
+                ]),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        chip('sniper-in-block', 'Ce bloc', left > 0 ? 'reste ${fmtMin(left)}' : 'fini', _inBlock, () => _setInBlock(true)),
+        const SizedBox(width: 6),
+        chip('sniper-after-block', 'Après le bloc', '${_hm(end)} → ${_hm(after.untilMin)}', !_inBlock, () => _setInBlock(false)),
+      ]),
+    );
+  }
+
+  /// Le bloc visé : son créneau, sa nature, son titre, ce qu'il contient.
+  Widget _blockCard(ScheduleBlock b) {
+    final task = b.projectId != null;
+    final p = task ? logic.currentProjects.where((x) => x.id == b.projectId).firstOrNull : null;
+    final open = _stakes.length;
+    final sub = task
+        ? '${p?.title ?? 'Projet'} · $open action${open > 1 ? 's' : ''} ouverte${open > 1 ? 's' : ''}'
+        : 'une action par projet lié, puis le temps qui reste';
+    return Container(
+      key: const Key('sniper-block-card'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${b.startTime} → ${_hm(blockEndMin(b))} · ${task ? 'BLOC DE TÂCHE' : 'BLOC D’ACTIVITÉ'}',
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+        const SizedBox(height: 4),
+        Text(_blockTitle(b), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 2),
+        Text(sub, style: const TextStyle(fontSize: 12.5, color: _text2)),
+      ]),
+    );
   }
 
   /// Le chargeur : un tir par cartouche.

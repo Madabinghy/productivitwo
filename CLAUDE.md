@@ -1619,6 +1619,23 @@ Sniper (cochée ailleurs pendant une sortie, puis comptée touchée à la repris
 du carton mais comptait 0 min tirée dans la précision. Au bilan (`_end`), seules les cibles tirées dans le Sniper (`_fired`) vont sur le
 carton et dans tirées · visées · précision ; les autres restent touchées (compteur, badge) et l'écran le dit : « Pompes faite ailleurs ·
 hors carton » sous le carton (`sniper-elsewhere`), « sur 6 tirs » sous la précision au lieu de « précision », « faite ailleurs » dans TOMBÉ.
+**Sniper dans le bloc en cours** (2026-11-21, maquette validée « Sniper dans le bloc en cours ») : avant, le Sniper ignorait le
+bloc commencé (il comptait son temps comme libre jusqu'au bloc suivant). Quand un bloc de tâche ou d'activité est en cours, le viseur
+porte deux choix en tête (`sniper-in-block` · `sniper-after-block`, « Ce bloc · reste 38 min » | « Après le bloc · 15:00 → 16:30 »),
+« Ce bloc » par défaut. **Ce bloc** : en-tête « SNIPER · BLOC EN COURS », carte du bloc (`sniper-block-card` : créneau, BLOC DE TÂCHE /
+D'ACTIVITÉ, titre), la lunette = ce qui reste du bloc (« JUSQU'À 15:00 »), les cibles dans l'ORDRE DU BLOC (« DANS LE BLOC · DANS SON
+ORDRE ») — bloc de tâche : l'action visée puis les autres actions ouvertes de chaque tâche visée (un projet entier : sa prochaine
+action) ; bloc d'activité : sa file (`blockQueue` : une action par projet lié, puis ses actions propres) puis « <activité>, le temps qui
+reste » (cible de temps jusqu'à la fin du bloc). Durées = estimé × facteur réel / estimé, au multiple de 5 ; une première action plus
+longue que le bloc prend tout ce qui reste ; le reste « ne tient plus avant HH:MM ». Le chrono d'une action tourne sur l'activité du bloc
+quand il en porte une. **Après le bloc** : le Sniper habituel, son temps libre part de la fin du bloc (`sniperBudgetNow(fromMin:)`) ; tant
+que le bloc tourne, le bouton dit « Préparer · je tire à 15:00 » (`sniper-prepare-after`, Sniper préparé) avec « Tirer maintenant »
+dessous. Jamais pour un rendez-vous d'agenda, un bloc de temps (Deep work, Petites choses, Détente : ils ont leur mode), un besoin de base,
+une pause, un bloc de séance 🎯 ou à déroulé, ni dans les 5 dernières minutes du bloc ; un bloc sans rien à viser = Sniper habituel.
+Logique pure `utils/sniper_block.dart` (`sniperBlockOf`, `blockSniperStakes`, `blockTargetOf`, `planBlockSniper`, `blockFillStake`) ;
+état de l'app `sniperBlockNow` / `sniperBlockPlanNow` (`sniper_now.dart`), aussi lus par la tuile du mode (`sniperPlanNow`). La session
+garde le bloc (`extra.block`, retrouvé par son id à la reprise même fini) ; un Sniper préparé « Après » garde `extra.after`.
+
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
