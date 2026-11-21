@@ -804,8 +804,6 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
   /// enjeux à la reprise) compte pleine.
   int get _fullHits => _hit.length - _aimed.where((t) => _hit.contains(t.key) && t.isMini).length;
 
-  int get _firedTotal => _fired.values.fold(0, (s, v) => s + v);
-
   /// Sniper ciblé : la carte est prise si chacun de ses tirs est touché à son montant.
   bool get _cardTaken {
     final q = _focus;
@@ -1505,11 +1503,17 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
     final hitN = _hit.length;
     final counted = logic.state.chainRuns.where((r) => r.id != _runId && sniperCounts(r)).length + (sniperSessionCounts(hit: hitN, aimed: _totalAimed, full: _fullHits) ? 1 : 0);
     final nextTier = kSniperTiers.firstWhere((t) => t > counted, orElse: () => kSniperTiers.last);
-    final aimedHitMin = hitTargets.fold<int>(0, (s, t) => s + t.cost);
-    final precision = sniperPrecision(aimedHitMin, _firedTotal);
-    // Le carton : un impact par cible touchée, au centre = pile le temps visé.
+    // Une cible tombée en dehors du Sniper (cochée ailleurs pendant une sortie) n'a pas de temps de tir : elle compte
+    // touchée, mais ni sur le carton ni dans la précision, et l'écran le dit (retour user 2026-11-21 : 79 % pour un
+    // carton presque parfait).
+    final shot = hitTargets.where((t) => _fired.containsKey(t.key)).toList();
+    final elsewhere = hitTargets.where((t) => !_fired.containsKey(t.key)).toList();
+    final aimedShotMin = shot.fold<int>(0, (s, t) => s + t.cost);
+    final firedShotMin = shot.fold<int>(0, (s, t) => s + _fired[t.key]!);
+    final precision = sniperPrecision(aimedShotMin, firedShotMin);
+    // Le carton : un impact par cible tirée dans le Sniper, au centre = pile le temps visé.
     final impacts = shotCard([
-      for (final t in _aimed) (hit: _hit.contains(t.key), gapMin: t.minutes > 0 ? (_fired[t.key] ?? t.cost) - t.cost : 0, mini: t.isMini),
+      for (final t in _aimed) (hit: _hit.contains(t.key) && _fired.containsKey(t.key), gapMin: t.minutes > 0 ? (_fired[t.key] ?? t.cost) - t.cost : 0, mini: t.isMini),
     ]);
     final rank = {for (final (i, t) in _aimed.indexed) t.key: i + 1};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1544,9 +1548,18 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
             const SizedBox(height: 4),
             const Text('au centre = pile le temps visé', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: _text3)),
           ],
+          if (elsewhere.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('${elsewhere.map((t) => t.title).join(', ')} ${elsewhere.length > 1 ? 'faites' : 'faite'} ailleurs · hors carton',
+                key: const Key('sniper-elsewhere'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, color: _text3)),
+          ],
           if (kSniperTuningEnabled) const SizedBox(height: 14),
           if (kSniperTuningEnabled) Row(children: [
-            for (final (v, l) in [(fmtMin(_firedTotal), 'tirées'), (fmtMin(aimedHitMin), 'visées'), ('$precision %', 'précision')]) ...[
+            for (final (i, (v, l)) in [
+              (fmtMin(firedShotMin), 'tirées'),
+              (fmtMin(aimedShotMin), 'visées'),
+              ('$precision %', elsewhere.isEmpty ? 'précision' : 'sur ${shot.length} tir${shot.length > 1 ? 's' : ''}'),
+            ].indexed) ...[
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1557,7 +1570,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                   ]),
                 ),
               ),
-              if (l != 'précision') const SizedBox(width: 8),
+              if (i < 2) const SizedBox(width: 8),
             ],
           ]),
           if (hitTargets.isNotEmpty) ...[
@@ -1580,7 +1593,13 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(t.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                        Text(t.isMini ? _miniLine(t) : t.gains.map((g) => g.label).join(' · '), style: const TextStyle(fontSize: 12.5, color: _text3)),
+                        Text(
+                            !_fired.containsKey(t.key)
+                                ? 'faite ailleurs'
+                                : t.isMini
+                                    ? _miniLine(t)
+                                    : t.gains.map((g) => g.label).join(' · '),
+                            style: const TextStyle(fontSize: 12.5, color: _text3)),
                       ]),
                     ),
                   ]),

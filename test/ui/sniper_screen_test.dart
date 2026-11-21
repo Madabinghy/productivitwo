@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/sniper.dart';
 import 'package:productivitwo_v1/utils/sniper_scope.dart';
@@ -237,6 +238,49 @@ void main() {
     await tester.tap(find.text('Tirer · Lecture'));
     await tester.pump();
     expect(find.text('TIR 2 / 2'), findsOneWidget);
+    await close(tester);
+    await RunSessionStore.clear();
+  });
+
+  testWidgets('bilan : une cible faite ailleurs ne compte ni sur le carton ni dans la précision, et l’écran le dit', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final st = AppState(domains: [Domain(id: 'd', name: 'Vie')], activities: [lecture, pompes], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final now = DateTime.now();
+    // Pompes est tombée hors du Sniper : touchée, sans temps de tir.
+    final p = PendingRun(
+      kind: kSniperKind,
+      runId: 'r1',
+      date: '2026-01-01',
+      startedAt: now.subtract(const Duration(minutes: 5)),
+      lastActiveAt: now,
+      done: 1,
+      extra: const {
+        'aimed': ['routine:pom', 'activity:lec'],
+        'hit': ['routine:pom'],
+        'skipped': <String>[],
+        'fired': <String, int>{},
+        'total': 2,
+      },
+    );
+    await tester.pumpWidget(MaterialApp(home: SniperScreen(logic: logic, stakes: stakes(), resume: p)));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Tirer · Lecture'));
+    await tester.pump();
+    await tester.tap(find.text('Fait plus tôt · suivant'));
+    await tester.pump();
+    await tester.tap(find.text('Voir le bilan'));
+    await tester.pump();
+    expect(find.text('2 / 2 cibles touchées'), findsOneWidget);
+    expect(find.text('Pompes faite ailleurs · hors carton'), findsOneWidget);
+    expect(find.text('sur 1 tir'), findsOneWidget);
+    expect(find.text('précision'), findsNothing);
+    expect(find.text('faite ailleurs'), findsOneWidget);
+    // Seule Lecture compte dans les minutes visées.
+    expect(find.text('12 min'), findsOneWidget);
     await close(tester);
     await RunSessionStore.clear();
   });

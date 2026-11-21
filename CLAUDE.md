@@ -1614,6 +1614,11 @@ tirs, puis la session réenregistrée l'oubliait pour de bon. La session garde m
 `sniperSnapshot` : titre, nature, montants, partie, gains) et la reprise reconstitue une cible touchée ou passée absente des enjeux à sa
 place (`sniperFromSnapshot`, `utils/sniper.dart`) : compteur, piste, bilan et TOMBÉ restent justes. Une session d'avant sans trace garde
 l'ancien comportement.
+**Précision sur les seuls tirs du Sniper** (2026-11-21, retour user : 79 % pour un carton presque parfait) : une cible tombée HORS du
+Sniper (cochée ailleurs pendant une sortie, puis comptée touchée à la reprise) n'a pas de temps de tir — elle était dessinée au centre
+du carton mais comptait 0 min tirée dans la précision. Au bilan (`_end`), seules les cibles tirées dans le Sniper (`_fired`) vont sur le
+carton et dans tirées · visées · précision ; les autres restent touchées (compteur, badge) et l'écran le dit : « Pompes faite ailleurs ·
+hors carton » sous le carton (`sniper-elsewhere`), « sur 6 tirs » sous la précision au lieu de « précision », « faite ailleurs » dans TOMBÉ.
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
 `mode-tile`) = le mode qui va avec l'élan (`_modeKind` : Flemme → Guérilla, Normal → Sniper, En forme → Offensive ; rien en recharge ni
