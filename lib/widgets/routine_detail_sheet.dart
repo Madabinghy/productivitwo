@@ -8,7 +8,6 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
@@ -299,22 +298,6 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               onRingBump: () => setState(() => _ringToken++),
             ),
 
-            // ── Série et paliers (badges, lot 3) ───────────────────────────
-            // Routine quotidienne : la ligne de paliers du système de badges
-            // (série en cours, record, chevrons 3 / 7 / 21 / 66 / 100, élan).
-            if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
-              const SizedBox(height: 10),
-              RoutineTiersLine(
-                activity: act,
-                hits: logic.state.habitHits,
-                marks: logic.state.moodMarks,
-                dayStartMin: logic.dayStartMin,
-                accent: accentColor,
-                bridged: logic.bridgedOf(act.id),
-                frozen: logic.frozenOf(act.id),
-              ),
-              const SizedBox(height: 4),
-            ],
             // Ce que la routine fait avancer : sa série et son compteur, avec leurs jauges.
             GainsSection(
               activityId: act.id,
@@ -326,23 +309,28 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: Theme.of(c).colorScheme.onSurface.withValues(alpha: .55))),
               ),
             ),
+            // Routine acquise : proposée d'elle-même au palier de 66 j (carte d'Aujourd'hui). La fiche ne la montre
+            // que si elle l'est déjà, pour pouvoir la remettre en routine active.
             if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
-              // Routine acquise (2026-10-30) : hors journée parfaite et enjeux, toujours dans le contrat.
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: logic.acquired.containsKey(act.id),
-                title: const Text('Routine acquise'),
-                subtitle: const Text('Hors journée parfaite et enjeux · reste cochable et compte dans ton objectif'),
-                onChanged: (v) async {
-                  if (v) {
-                    await logic.acquireRoutine(act.id);
-                  } else {
-                    await logic.releaseRoutine(act.id);
-                  }
-                  setState(() {});
-                },
-              ),
+              if (logic.acquired.containsKey(act.id))
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text('Routine acquise · hors journée parfaite',
+                          key: const Key('routine-acquired'),
+                          style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .6))),
+                    ),
+                    TextButton(
+                      key: const Key('routine-release'),
+                      onPressed: () async {
+                        await logic.releaseRoutine(act.id);
+                        if (mounted) setState(() {});
+                      },
+                      child: const Text('La remettre active'),
+                    ),
+                  ]),
+                ),
             ] else ...[
             if (currentStreak > 0 || bestStreak > 1) ...[
               const SizedBox(height: 10),

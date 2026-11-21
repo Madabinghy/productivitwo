@@ -1975,6 +1975,10 @@ saison »). **Les 2 lots sont livrés.**
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),
 du matin et des moments (`buildRoutineDay(exclude:)`), reste cochable (section ACQUISES), compte toujours dans le contrat ;
 décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4 sem.). `data/meta.acquired` + `acquireAsked`.
+**Fiche routine allégée** (2026-11-21, retour user : trop d'éléments) : plus de bloc « Série · n jours » (`RoutineTiersLine`,
+supprimé : la carte de série de CE QUE ÇA FAIT AVANCER le dit déjà) ni d'interrupteur « Routine acquise » (une mécanique qu'on ne
+comprend pas en la voyant) ; l'acquise reste proposée d'elle-même au palier de 66 j et à la décroche, et la fiche d'une routine déjà
+acquise dit seulement « Routine acquise · hors journée parfaite » + « La remettre active » (`routine-release`).
 
 ## Projets avec les actions (3 onglets, 2026-11-01, maquette validée « Projets et actions »)
 
