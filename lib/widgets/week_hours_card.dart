@@ -53,9 +53,20 @@ String _deltaLabel(int min) {
 /// arrêt). La bande vert clair après le vert, fermée par un trait, est ce plafond. Le triangle blanc se pose de la
 /// même façon sur ce qui tournait il y a 7 jours : alignés = tu fais pareil.
 ///
-/// Changer de cible prend deux minutes ([kNeedleTravel], demande user : une minute d'abord, deux depuis le
-/// 2026-11-20) : l'aiguille glisse vers sa nouvelle place.
-const kNeedleTravel = Duration(seconds: 120);
+/// Deux façons de changer de place (demande user 2026-11-21) :
+/// - un chrono ACTIF qui démarre ou s'arrête (sans chrono ↔ actif, les deux bouts du vert) : l'aiguille monte ou
+///   redescend en une minute ([kNeedleTravel]) ;
+/// - un changement de MODE vers ou depuis la détente, le sommeil ou un besoin de base : elle fait un tour entier,
+///   se pose sur le morceau en dépassant un peu puis revient ([kNeedleSpin]), pendant qu'un rond à la couleur du
+///   mode s'ouvre au centre.
+const kNeedleTravel = Duration(seconds: 60);
+const kNeedleSpin = Duration(milliseconds: 1800);
+
+/// Le mode change-t-il « de monde » ? Vrai dès que l'un des deux n'est ni « sans chrono » ni « actif ».
+bool needleSpins(HoursKind from, HoursKind to) {
+  bool green(HoursKind k) => k == HoursKind.free || k == HoursKind.active;
+  return from != to && !(green(from) && green(to));
+}
 
 class WeekHoursGauge extends StatefulWidget {
   final WeekHours h;
@@ -77,13 +88,22 @@ class HoursNeedle {
 
   static int _gauges = 0;
   static double _from = 0, _to = 0;
+  static HoursKind _kind = HoursKind.free;
 
   /// Début du trajet en cours, null = l'aiguille est en place.
   static Duration? _start;
+
+  /// Le trajet en cours est un tour entier (changement de mode), de [_sweep] radians.
+  static bool _spin = false;
+  static double _sweep = 0;
   static final _moves = _Bell();
 
-  /// En dessous, la cible a seulement dérivé (une minute de plus) : l'aiguille suit sans repartir pour deux minutes.
+  /// En dessous, la cible a seulement dérivé (une minute de plus) : l'aiguille suit sans repartir pour un trajet.
   static const _drift = 2 * math.pi / 180;
+
+  /// Le dépassement à l'arrivée d'un tour, et la part du temps que prend le tour avant de revenir se poser.
+  static const _over = 7 * math.pi / 180;
+  static const _land = .78;
 
   // L'heure de la dernière image (elle reste lisible entre deux images, au contraire de `currentFrameTimeStamp`).
   static Duration get _clock => SchedulerBinding.instance.currentSystemFrameTimeStamp;
@@ -91,25 +111,43 @@ class HoursNeedle {
   static double get _t {
     final s = _start;
     if (s == null) return 1;
-    return ((_clock - s).inMicroseconds / kNeedleTravel.inMicroseconds).clamp(0.0, 1.0);
+    final d = _spin ? kNeedleSpin : kNeedleTravel;
+    return ((_clock - s).inMicroseconds / d.inMicroseconds).clamp(0.0, 1.0);
   }
 
   static bool get moving => _start != null && _t < 1;
 
   /// Où est l'aiguille en ce moment.
-  static double get angle => _from + (_to - _from) * Curves.easeInOutCubic.transform(_t);
+  static double get angle {
+    final t = _t;
+    if (!_spin || t >= 1) return _from + (_to - _from) * Curves.easeInOutCubic.transform(t);
+    final start = _to - _sweep;
+    if (t < _land) return start + (_sweep + _over) * Curves.easeInOutCubic.transform(t / _land);
+    return _to + _over * (1 - Curves.easeOutCubic.transform((t - _land) / (1 - _land)));
+  }
+
+  /// Pendant un tour : où en est le rond qui s'ouvre au centre (0 → 1), null sinon.
+  static double? get ping => _spin && moving ? _t : null;
 
   /// Redessine les jauges quand l'aiguille bouge.
   static Listenable get moves => _moves;
 
-  static void _attach(double target, {required bool still}) {
+  // Un angle ramené sur le cadran (un tour en cours le dépasse).
+  static double _onDial(double a) {
+    const low = kGaugeStart - math.pi / 3;
+    return a - 2 * math.pi * ((a - low) / (2 * math.pi)).floorToDouble();
+  }
+
+  static void _attach(double target, HoursKind kind, {required bool still}) {
     _gauges++;
     if (_gauges == 1) {
       _from = _to = target;
+      _kind = kind;
       _start = null;
+      _spin = false;
       return;
     }
-    aim(target, still: still);
+    aim(target, kind: kind, still: still);
   }
 
   static void _detach() {
@@ -117,23 +155,48 @@ class HoursNeedle {
     if (_gauges > 0) return;
     _gauges = 0;
     _start = null;
+    _spin = false;
   }
 
-  /// Nouvelle cible. [still] = animations coupées : tout de suite en place.
-  static void aim(double target, {bool still = false}) {
-    if (target == _to) return;
-    if (still || (target - _to).abs() < _drift) {
-      if (moving && !still) {
+  /// Nouvelle cible, pour le mode [kind]. [still] = animations coupées : tout de suite en place.
+  static void aim(double target, {required HoursKind kind, bool still = false}) {
+    final turn = needleSpins(_kind, kind);
+    if (target == _to && !turn) {
+      _kind = kind;
+      return;
+    }
+    if (still) {
+      _from = _to = target;
+      _start = null;
+      _spin = false;
+    } else if (turn) {
+      // Toujours dans le sens des aiguilles d'une montre, un tour entier au moins.
+      final from = _onDial(angle);
+      var sweep = target - from;
+      while (sweep < 2 * math.pi) {
+        sweep += 2 * math.pi;
+      }
+      _from = from;
+      _to = target;
+      _sweep = sweep;
+      _spin = true;
+      _start = _clock;
+    } else if ((target - _to).abs() < _drift) {
+      if (moving) {
+        // La cible a seulement dérivé : le trajet (ou le tour) en cours continue vers elle.
         _to = target;
       } else {
         _from = _to = target;
         _start = null;
+        _spin = false;
       }
     } else {
-      _from = angle;
+      _from = _onDial(angle);
       _to = target;
+      _spin = false;
       _start = _clock;
     }
+    _kind = kind;
     _moves.ring();
   }
 }
@@ -170,7 +233,7 @@ class _WeekHoursGaugeState extends State<WeekHoursGauge> with SingleTickerProvid
     super.didChangeDependencies();
     if (_attached) return;
     _attached = true;
-    HoursNeedle._attach(_target, still: _still);
+    HoursNeedle._attach(_target, widget.h.nowKind, still: _still);
     _follow();
   }
 
@@ -178,7 +241,7 @@ class _WeekHoursGaugeState extends State<WeekHoursGauge> with SingleTickerProvid
   void didUpdateWidget(covariant WeekHoursGauge old) {
     super.didUpdateWidget(old);
     _layout = gaugeLayout(widget.h);
-    HoursNeedle.aim(_target, still: _still);
+    HoursNeedle.aim(_target, kind: widget.h.nowKind, still: _still);
   }
 
   @override
@@ -321,6 +384,19 @@ class _GaugePainter extends CustomPainter {
           ..lineTo(tb.dx - side.dx, tb.dy - side.dy)
           ..close(),
         Paint()..color = needle);
+
+    // Changement de mode : un rond à la couleur du mode s'ouvre au centre pendant que l'aiguille fait son tour.
+    final ping = HoursNeedle.ping;
+    if (ping != null) {
+      final e = Curves.easeOutCubic.transform(ping);
+      canvas.drawCircle(
+          c,
+          w * (.05 + .2 * e),
+          Paint()
+            ..color = hoursKindColor(h.nowKind).withValues(alpha: .55 * (1 - e))
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.5, w * .02 * (1 - e)));
+    }
 
     // L'aiguille, effilée. Sans chrono ou en actif, elle montre demain : elle traverse la bande.
     final na = needleAt;
@@ -614,7 +690,7 @@ class _WeekHoursSheet extends StatelessWidget {
         TextSpan(style: TextStyle(fontSize: 12.5, height: 1.45, color: mute), children: [
           TextSpan(text: 'L\'aiguille', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
           const TextSpan(
-              text: ' suit ce que tu fais, et met deux minutes à changer de place. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne '
+              text: ' suit ce que tu fais. Un chrono actif qui démarre ou s\'arrête : elle monte ou redescend en une minute. Détente, sommeil, besoins : elle fait un tour et se pose dessus. Sans chrono, elle recule dans le vert, là où il s\'arrêtera demain à la même heure si tu ne '
                   'fais rien : la partie hachurée est ce qui sort de ta fenêtre d\'ici là. Dès qu\'un chrono actif tourne, elle passe de l\'autre côté, au bout de '
                   'la bande claire : là où ton vert arrivera demain si tu y vas à fond, 24 h sans arrêt. C\'est un plafond. '),
           TextSpan(text: 'Le triangle blanc', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),

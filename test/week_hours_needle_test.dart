@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/utils/week_hours.dart';
 import 'package:productivitwo_v1/widgets/week_hours_card.dart';
 
-/// L'aiguille met [kNeedleTravel] (deux minutes) à changer de cible (demande user 2026-11-20).
+/// L'aiguille met [kNeedleTravel] (une minute) à monter ou redescendre dans le vert, et fait un tour entier
+/// ([kNeedleSpin]) quand on change de mode (demande user 2026-11-21).
 void main() {
   WeekHours hours({HoursKind now = HoursKind.free, int active = 480, int leaving = 180}) => WeekHours(
         activeMin: active,
@@ -136,6 +139,66 @@ void main() {
     expect(needleOf(t), closeTo(high, 1e-9));
     await t.pump();
     expect(t.binding.hasScheduledFrame, isFalse);
+  });
+
+  test('needleSpins : un tour dès qu\'on entre dans la détente, le sommeil ou un besoin, ou qu\'on en sort', () {
+    expect(needleSpins(HoursKind.free, HoursKind.active), isFalse);
+    expect(needleSpins(HoursKind.active, HoursKind.free), isFalse);
+    expect(needleSpins(HoursKind.active, HoursKind.active), isFalse);
+    expect(needleSpins(HoursKind.free, HoursKind.leisure), isTrue);
+    expect(needleSpins(HoursKind.active, HoursKind.sleep), isTrue);
+    expect(needleSpins(HoursKind.basic, HoursKind.free), isTrue);
+    expect(needleSpins(HoursKind.leisure, HoursKind.sleep), isTrue);
+    expect(needleSpins(HoursKind.sleep, HoursKind.sleep), isFalse);
+  });
+
+  testWidgets('un chrono de détente démarre : l\'aiguille fait un tour entier puis se pose dessus', (t) async {
+    final idle = hours();
+    await show(t, idle);
+    final low = gaugeLayout(idle).idleAt;
+    final chill = hours(now: HoursKind.leisure);
+    final on = gaugeLayout(chill).marks[HoursKind.leisure]!;
+    await show(t, chill);
+    await t.pump();
+    expect(HoursNeedle.ping, isNotNull);
+    // Elle part d'où elle était et tourne dans le sens des aiguilles d'une montre, au-delà du cadran.
+    var last = needleOf(t), far = last;
+    for (var i = 0; i < 18; i++) {
+      await t.pump(kNeedleSpin ~/ 20);
+      final a = needleOf(t);
+      far = math.max(far, a);
+      last = a;
+    }
+    // Un tour entier au moins, et un petit dépassement avant de revenir.
+    expect(far, greaterThan(on));
+    await t.pump(kNeedleSpin ~/ 10);
+    expect(needleOf(t), closeTo(on, 1e-9));
+    expect(HoursNeedle.ping, isNull);
+    await t.pump();
+    expect(t.binding.hasScheduledFrame, isFalse);
+
+    // Le chrono de détente s'arrête : un tour encore (bien plus court que la minute du vert), puis « si rien ».
+    await show(t, idle);
+    await t.pump();
+    await t.pump(kNeedleSpin);
+    expect(needleOf(t), closeTo(low, 1e-9));
+  });
+
+  testWidgets('le tour fait au moins 360° quelle que soit la place d\'arrivée', (t) async {
+    final chill = hours(now: HoursKind.leisure);
+    await show(t, chill);
+    final from = gaugeLayout(chill).marks[HoursKind.leisure]!;
+    final sleep = hours(now: HoursKind.sleep);
+    final to = gaugeLayout(sleep).marks[HoursKind.sleep]!;
+    await show(t, sleep);
+    await t.pump();
+    final start = needleOf(t);
+    // Le départ est la place d'avant, à un nombre entier de tours près ; l'arrivée est au moins un tour plus loin.
+    final turns = (from - start) / (2 * math.pi);
+    expect(turns, closeTo(turns.roundToDouble(), 1e-6));
+    expect(to - start, greaterThanOrEqualTo(2 * math.pi - 1e-9));
+    await t.pump(kNeedleSpin);
+    expect(needleOf(t), closeTo(to, 1e-9));
   });
 
   testWidgets('animations coupées : l\'aiguille est tout de suite en place', (t) async {
