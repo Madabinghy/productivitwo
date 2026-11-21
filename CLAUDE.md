@@ -2155,6 +2155,9 @@ seule, sans texte (le détail en infobulle et pour la lecture d'écran), tap = `
 `_hoursTile` (`today_view.dart`) ne recompte les 7 jours qu'une fois par minute ou quand un chrono démarre / s'arrête (`_hoursKey`).
 La bande de Programme mesure sa largeur (`LayoutBuilder`) : pas d'`IntrinsicHeight` sur cette rangée, la tuile est `Positioned` sur la
 hauteur de Programme (104 au moins).
+**Les heures actives dans la tuile** (2026-11-21, demande user) : sous l'aiguille, dans l'ouverture du cadran (l'arc s'arrête à 30° sous
+l'horizontale, l'aiguille n'y descend jamais), la tuile écrit les heures actives des 7 derniers jours en vert, comme le grand chiffre de
+la feuille (`hours-tile-active`, `spanLabel` : « 70 h », « 40 min », taille fixe sans agrandissement du texte).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 

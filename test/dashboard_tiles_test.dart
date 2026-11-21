@@ -141,7 +141,7 @@ void main() {
     expect(opened, 'perfect');
   });
 
-  testWidgets('tuile de la jauge : carrée, à droite de Programme, la jauge seule ; tap = la feuille des 7 jours', (t) async {
+  testWidgets('tuile de la jauge : carrée, à droite de Programme, la jauge et les heures actives ; tap = la feuille des 7 jours', (t) async {
     t.view.physicalSize = const Size(800, 3200);
     t.view.devicePixelRatio = 2;
     addTearDown(t.view.reset);
@@ -164,8 +164,9 @@ void main() {
     expect(t.getSize(tile).height, greaterThanOrEqualTo(104));
     expect(t.getTopLeft(tile).dx, greaterThan(t.getTopLeft(find.text('PROGRAMME')).dx));
     expect(t.getTopLeft(tile).dy, lessThan(t.getTopLeft(find.text('JOURNÉE PARFAITE')).dy));
-    // Juste la jauge : aucun texte dans la tuile, le détail est en infobulle.
-    expect(find.descendant(of: tile, matching: find.byType(Text)), findsNothing);
+    // La jauge et, sous l'aiguille, les heures actives des 7 jours ; le détail est en infobulle.
+    expect(find.descendant(of: tile, matching: find.byType(Text)), findsOneWidget);
+    expect(find.descendant(of: tile, matching: find.text('62 h')), findsOneWidget);
     expect(find.descendant(of: tile, matching: find.byType(WeekHoursGauge)), findsOneWidget);
     expect(find.byTooltip('Tes 7 derniers jours · 62 h actives · maintenant : Détente · Jeux vidéo · il y a 7 jours : Actif · Coder'), findsOneWidget);
     await t.tap(tile);
