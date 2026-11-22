@@ -60,7 +60,6 @@ ScheduleBlock? settledLiveDeep(ScheduleBlock b, DateTime startedAt, DateTime end
   b.doneBy = 'deepwork';
   return b;
 }
-
 const kOffensivePauseEvery = 3;
 const kOffensiveCountedMin = 3;
 const kOffensiveTiers = [1, 5, 15];
@@ -94,7 +93,8 @@ class OffensiveFront {
   const OffensiveFront({required this.project, required this.ready, required this.overdue, this.sessionDate});
 }
 
-bool _alive(Project p, List<Project> all) => !p.paused && p.status != 'done' && p.status != 'archived' && !isFolderProject(p, all);
+bool _alive(Project p, List<Project> all) =>
+    !p.paused && p.status != 'done' && p.status != 'archived' && !isFolderProject(p, all);
 
 /// Actions ouvertes d'un projet qu'on peut attaquer aujourd'hui (hors tâches à
 /// venir), par date de travail (visée, sinon échéance) puis ordre Gantt.
@@ -143,10 +143,7 @@ List<OffensiveFront> offensiveFronts(List<Project> projects, DateTime now) {
 /// (`projectServesActivity`), dans le même ordre ; aucun → tous.
 List<OffensiveFront> frontsForActivity(List<OffensiveFront> fronts, String? activityId) {
   if (activityId == null) return fronts;
-  final mine = [
-    for (final f in fronts)
-      if (projectServesActivity(f.project, activityId)) f
-  ];
+  final mine = [for (final f in fronts) if (projectServesActivity(f.project, activityId)) f];
   return mine.isEmpty ? fronts : mine;
 }
 
@@ -190,7 +187,8 @@ const kActivityFrontPrefix = '~activity:';
 String activityFront(String activityId) => '$kActivityFrontPrefix$activityId';
 
 /// L'id d'activité d'un front « toute l'activité », sinon null.
-String? activityOfFront(String? front) => front != null && front.startsWith(kActivityFrontPrefix) ? front.substring(kActivityFrontPrefix.length) : null;
+String? activityOfFront(String? front) =>
+    front != null && front.startsWith(kActivityFrontPrefix) ? front.substring(kActivityFrontPrefix.length) : null;
 
 /// La file d'un Deep work sur une activité : la MÊME liste que le contenant du Sniper (une action par
 /// projet lié — visées aujourd'hui, en retard, datées, puis la prochaine —, et les actions propres de
@@ -279,10 +277,7 @@ List<OffensiveTarget> buildBlockQueue(List<Project> projects, DateTime now, List
     }
     final t = p.tasks.where((x) => x.id == target.taskId).firstOrNull;
     if (t == null || t.status == 'done' || t.status == 'skipped') continue;
-    final open = [
-      for (final a in t.actions)
-        if (!a.done) a
-    ];
+    final open = [for (final a in t.actions) if (!a.done) a];
     final first = open.where((a) => a.id == target.actionId).firstOrNull;
     for (final a in [if (first != null) first, ...open.where((a) => a != first)]) {
       add(OffensiveTarget(p, t, a));
