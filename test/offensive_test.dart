@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/offensive.dart';
+import 'package:productivitwo_v1/utils/project_moment.dart';
+import 'package:productivitwo_v1/utils/projects_today.dart';
 
 TaskAction _a(String title, {bool done = false, DateTime? due, DateTime? focus, String? linked}) =>
     TaskAction(title: title, done: done, dueDate: due, focusDate: focus, linkedActivityId: linked);
@@ -124,13 +126,41 @@ void main() {
     devis.tasks.first.actions.first.linkedActivityId = 'kin';
     final autre = _p('autre', [_t('t', [_a('rien à voir')])]);
     final q = buildActivityQueue([site, devis, autre], kin, now);
-    // D'abord une action par projet lié (en retard en tête), puis le reste de ce qui sert Kingdom.
-    expect(q.map((x) => x.action.title), ['relancer', 'accueil', 'contact']);
+    // D'abord une action par projet lié (en retard en tête) et les actions propres, puis le reste de ce qui sert Kingdom.
+    expect(q.map((x) => x.action.title), ['relancer', 'accueil', 'action propre', 'contact']);
+    final own = q.firstWhere((x) => x.action.title == 'action propre');
+    expect(own.project, isNull);
+    expect(own.chronoActivityId, 'kin');
+    expect(own.groupKey, 'own:kin');
+    expect(own.groupTitle, 'Kingdom');
     expect(activityOfFront(activityFront('kin')), 'kin');
     expect(activityOfFront('p1'), isNull);
     final b = liveDeepBlock(now: now, dayStartMin: 300, projectTitle: 'Kingdom', activityId: 'kin');
     expect(b.title, 'Deep work · Kingdom');
     expect(b.activityId, 'kin');
     expect(b.projectId, isNull);
+  });
+
+  test('Projets décide : « Pour aujourd’hui » telle quelle, actions sans projet comprises', () {
+    final kin = Activity(id: 'kin', domainId: 'd', name: 'Kingdom', goalMin: 30);
+    final p = _p('cm', [_t('t1', [_a('corriger')])]);
+    final own = TaskAction(title: 'ranger le bureau');
+    final q = queueFromToday([
+      TodayAction(p.tasks.first.actions.first, TodayReason.late, project: p, task: p.tasks.first),
+      TodayAction(own, TodayReason.focus, owner: kin),
+    ]);
+    expect(q.map((x) => x.action.title), ['corriger', 'ranger le bureau']);
+    expect(q.last.owner, kin);
+    expect(q.last.task, isNull);
+  });
+
+  test('du plus pressant : la prochaine action de chaque projet, dans l’ordre de Projets', () {
+    final late = _p('late', [_t('t', [_a('rattraper', due: DateTime(2026, 10, 20))], end: DateTime(2026, 10, 20))]);
+    final calm = _p('calm', [_t('t', [_a('avancer')], start: DateTime(2026, 10, 1), end: DateTime(2026, 12, 20))]);
+    final ranked = rankProjectMoments([calm, late], const [], now);
+    final q = buildPressingQueue(ranked);
+    expect(q.map((x) => x.project!.id), [for (final m in ranked) if (!m.upcoming && m.next != null) m.project.id]);
+    expect(q.first.project!.id, 'late');
+    expect(momentReason(ranked.first), contains('retard'));
   });
 }

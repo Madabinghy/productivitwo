@@ -26,6 +26,11 @@ import 'package:productivitwo_v1/widgets/confirm_done.dart' show confirmDone;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:productivitwo_v1/widgets/capture_triage_sheet.dart' show showCaptureTriageSheet;
 import 'package:productivitwo_v1/widgets/actions_view.dart' show ActionsView;
+import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore;
+import 'package:productivitwo_v1/utils/modules.dart' show AppModule;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind, kPressingFront, kTodayFront;
+import 'package:productivitwo_v1/widgets/mode_glyph.dart' show ModeGlyph;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 
 /// Onglet Projets « une carte, une fiche » (2026-10, handoff
 /// `docs/specs/une-carte-une-fiche-2026-10/README.md`, lot 1) : en haut la
@@ -261,7 +266,7 @@ class _GoalsViewState extends State<GoalsView> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
                   ),
                 if (live.isNotEmpty) ...[
-                  ListSectionTitle('MES PROJETS · ${live.length}'),
+                  _deepHeader('MES PROJETS · ${live.length}', 'Du plus pressant', kPressingFront, 'projects-deep-pressing'),
                   for (final m in live) _item(m, liveRows[m.project.id]!, now, defaultId: null, moment: m == live.first),
                 ],
                 if (upcoming.isNotEmpty) ..._section('upcoming', 'À VENIR · ${upcoming.length}', [
@@ -702,6 +707,39 @@ class _GoalsViewState extends State<GoalsView> {
     );
   }
 
+  /// Projets décide, le Deep work exécute (maquette validée 2026-11-22) : un titre de section avec, à droite,
+  /// le Deep work qui enchaîne exactement cette liste.
+  Widget _deepHeader(String title, String label, String front, String key) {
+    final logic = widget.logic;
+    if (logic == null || !logic.moduleOn(AppModule.modes)) return ListSectionTitle(title);
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Expanded(child: ListSectionTitle(title)),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: TextButton.icon(
+          key: ValueKey(key),
+          onPressed: () => _deepWork(front),
+          icon: const ModeGlyph(kind: kOffensiveKind, size: 16, color: kOffensiveAccent),
+          label: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kOffensiveAccent)),
+        ),
+      ),
+    ]);
+  }
+
+  /// Lance le Deep work sur une liste de Projets, sans écran de réglage ; une offensive en route reprend.
+  Future<void> _deepWork(String front) async {
+    final logic = widget.logic;
+    if (logic == null) return;
+    final p = RunSessionStore.current;
+    final pending = p != null && p.kind == kOffensiveKind && p.isLive(DateTime.now(), logic.livedTodayYmd) ? p : null;
+    if (pending != null) {
+      await showOffensiveScreen(context, logic, resume: pending);
+    } else {
+      await showOffensiveScreen(context, logic, front: front, deepWork: true, autoStart: true);
+    }
+    if (mounted) setState(() {});
+  }
+
   /// Bandeau des captures, puis POUR AUJOURD'HUI (5 au plus).
   List<Widget> _actionsTop(ColorScheme cs, DateTime now) {
     final logic = widget.logic;
@@ -738,7 +776,7 @@ class _GoalsViewState extends State<GoalsView> {
           ),
         ),
       if (list.isNotEmpty) ...[
-        ListSectionTitle('POUR AUJOURD\'HUI · ${list.length}'),
+        _deepHeader('POUR AUJOURD\'HUI · ${list.length}', 'Deep work', kTodayFront, 'projects-deep-today'),
         for (final x in shown)
           _actionLine(
             cs,

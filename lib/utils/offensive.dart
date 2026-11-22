@@ -3,7 +3,8 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, isOverdueAction, isUpcomingTask, workDate;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/project_health.dart' show ganttOrder, nextAction;
-import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
+import 'package:productivitwo_v1/utils/project_moment.dart' show ProjectMoment, projectPlan;
+import 'package:productivitwo_v1/utils/projects_today.dart' show TodayAction;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
 
 /// Offensive (maquette validée 2026-10-30) : l'équivalent de la Guérilla quand
@@ -59,6 +60,7 @@ ScheduleBlock? settledLiveDeep(ScheduleBlock b, DateTime startedAt, DateTime end
   b.doneBy = 'deepwork';
   return b;
 }
+
 const kOffensivePauseEvery = 3;
 const kOffensiveCountedMin = 3;
 const kOffensiveTiers = [1, 5, 15];
@@ -66,13 +68,22 @@ const kOffensiveTiers = [1, 5, 15];
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
 class OffensiveTarget {
-  final Project project;
-  final ProjectTask task;
+  /// Action d'un projet : [project] et [task] ; action propre d'une activité (2026-11-22) : [owner].
+  final Project? project;
+  final ProjectTask? task;
   final TaskAction action;
-  const OffensiveTarget(this.project, this.task, this.action);
+  final Activity? owner;
+  const OffensiveTarget(Project this.project, ProjectTask this.task, this.action) : owner = null;
+  const OffensiveTarget.own(Activity this.owner, this.action)
+      : project = null,
+        task = null;
 
-  /// Activité du chrono : celle de l'action, sinon celle du projet.
-  String? get chronoActivityId => action.linkedActivityId ?? project.linkedActivityId;
+  /// Activité du chrono : celle de l'action, sinon celle du projet, sinon l'activité porteuse.
+  String? get chronoActivityId => action.linkedActivityId ?? project?.linkedActivityId ?? owner?.id;
+
+  /// Regroupement du bilan : le projet, ou l'activité d'une action propre.
+  String get groupKey => project?.id ?? 'own:${owner?.id}';
+  String get groupTitle => project?.title ?? owner?.name ?? '';
 }
 
 class OffensiveFront {
@@ -83,8 +94,7 @@ class OffensiveFront {
   const OffensiveFront({required this.project, required this.ready, required this.overdue, this.sessionDate});
 }
 
-bool _alive(Project p, List<Project> all) =>
-    !p.paused && p.status != 'done' && p.status != 'archived' && !isFolderProject(p, all);
+bool _alive(Project p, List<Project> all) => !p.paused && p.status != 'done' && p.status != 'archived' && !isFolderProject(p, all);
 
 /// Actions ouvertes d'un projet qu'on peut attaquer aujourd'hui (hors tâches à
 /// venir), par date de travail (visée, sinon échéance) puis ordre Gantt.
@@ -133,7 +143,10 @@ List<OffensiveFront> offensiveFronts(List<Project> projects, DateTime now) {
 /// (`projectServesActivity`), dans le même ordre ; aucun → tous.
 List<OffensiveFront> frontsForActivity(List<OffensiveFront> fronts, String? activityId) {
   if (activityId == null) return fronts;
-  final mine = [for (final f in fronts) if (projectServesActivity(f.project, activityId)) f];
+  final mine = [
+    for (final f in fronts)
+      if (projectServesActivity(f.project, activityId)) f
+  ];
   return mine.isEmpty ? fronts : mine;
 }
 
@@ -177,13 +190,12 @@ const kActivityFrontPrefix = '~activity:';
 String activityFront(String activityId) => '$kActivityFrontPrefix$activityId';
 
 /// L'id d'activité d'un front « toute l'activité », sinon null.
-String? activityOfFront(String? front) =>
-    front != null && front.startsWith(kActivityFrontPrefix) ? front.substring(kActivityFrontPrefix.length) : null;
+String? activityOfFront(String? front) => front != null && front.startsWith(kActivityFrontPrefix) ? front.substring(kActivityFrontPrefix.length) : null;
 
 /// La file d'un Deep work sur une activité : la MÊME liste que le contenant du Sniper (une action par
-/// projet lié — visées aujourd'hui, en retard, datées, puis la prochaine —), puis, pour aller au fond, les
-/// autres actions prêtes de ces projets (celles qui servent l'activité). Les actions propres de l'activité
-/// n'y sont pas : l'offensive ne travaille que des actions de projet.
+/// projet lié — visées aujourd'hui, en retard, datées, puis la prochaine —, et les actions propres de
+/// l'activité), puis, pour aller au fond, les autres actions prêtes de ces projets (celles qui servent
+/// l'activité).
 List<OffensiveTarget> buildActivityQueue(List<Project> projects, Activity activity, DateTime now) {
   final out = <OffensiveTarget>[];
   final seen = <String>{};
@@ -194,7 +206,10 @@ List<OffensiveTarget> buildActivityQueue(List<Project> projects, Activity activi
   final served = <Project>[];
   for (final q in blockQueue(activity: activity, projects: projects, today: now)) {
     final p = q.project, t = q.task;
-    if (p == null || t == null) continue;
+    if (p == null || t == null) {
+      add(OffensiveTarget.own(activity, q.action));
+      continue;
+    }
     add(OffensiveTarget(p, t, q.action));
     if (!served.contains(p)) served.add(p);
   }
@@ -208,6 +223,38 @@ List<OffensiveTarget> buildActivityQueue(List<Project> projects, Activity activi
     }
   }
   return out;
+}
+
+/// Projets décide, le Deep work exécute (maquette validée 2026-11-22) : les fronts calculés comme
+/// l'onglet Projets. « Pour aujourd'hui » = sa liste POUR AUJOURD'HUI ; « du plus pressant » = la prochaine
+/// action de chaque projet, dans l'ordre de MES PROJETS (`rankProjectMoments`).
+const kTodayFront = '~today';
+const kPressingFront = '~pressing';
+
+/// La file de « Pour aujourd'hui » : la liste de Projets telle quelle, actions sans projet comprises.
+List<OffensiveTarget> queueFromToday(List<TodayAction> list) => [
+      for (final x in list)
+        if (x.project != null && x.task != null)
+          OffensiveTarget(x.project!, x.task!, x.action)
+        else if (x.owner != null)
+          OffensiveTarget.own(x.owner!, x.action),
+    ];
+
+/// La file « du plus pressant » : la prochaine action de chaque projet vivant, dans l'ordre de Projets.
+List<OffensiveTarget> buildPressingQueue(List<ProjectMoment> ranked) => [
+      for (final m in ranked)
+        if (!m.upcoming && m.next != null) OffensiveTarget(m.project, m.next!.task, m.next!.action),
+    ];
+
+/// « séance dans 2 jours · 14 tâches de retard sur le plan » : pourquoi ce projet est le projet du moment.
+String momentReason(ProjectMoment m) {
+  final d = m.daysToSession;
+  final behind = -m.plan.delta;
+  return [
+    if (m.sessionSoon) d == 0 ? 'séance aujourd’hui' : (d == 1 ? 'séance demain' : 'séance dans $d jours'),
+    if (behind > 0) '$behind tâche${behind > 1 ? 's' : ''} de retard sur le plan',
+    if (!m.sessionSoon && behind <= 0 && m.next != null) 'prochaine action : ${m.next!.action.title}',
+  ].join(' · ');
 }
 
 /// Front « ce bloc » : l'offensive ne prend que ce que le bloc lancé porte.
@@ -232,7 +279,10 @@ List<OffensiveTarget> buildBlockQueue(List<Project> projects, DateTime now, List
     }
     final t = p.tasks.where((x) => x.id == target.taskId).firstOrNull;
     if (t == null || t.status == 'done' || t.status == 'skipped') continue;
-    final open = [for (final a in t.actions) if (!a.done) a];
+    final open = [
+      for (final a in t.actions)
+        if (!a.done) a
+    ];
     final first = open.where((a) => a.id == target.actionId).firstOrNull;
     for (final a in [if (first != null) first, ...open.where((a) => a != first)]) {
       add(OffensiveTarget(p, t, a));

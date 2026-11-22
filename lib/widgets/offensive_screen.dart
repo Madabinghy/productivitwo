@@ -16,6 +16,9 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowM
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusToday;
+import 'package:productivitwo_v1/utils/project_moment.dart' show ProjectMoment, rankProjectMoments;
+import 'package:productivitwo_v1/utils/projects_today.dart' show TodayAction, todayActions;
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
@@ -46,6 +49,8 @@ const _amber = Color(0xFFF2C14E);
 /// [deepWork] = Deep work présélectionné (aucun minuteur, bloc posé dans le programme).
 /// [keepChrono] = le chrono qui tourne déjà sur l'activité continue (venu du Sniper) ;
 /// [autoStart] = l'offensive démarre tout de suite, sans l'écran de réglage.
+/// [front] = un front déjà choisi ([kTodayFront], [kPressingFront], un id de projet) — boutons de Projets ;
+/// [onChooseProject] = « Choisir un autre projet dans Projets › » : l'écran se ferme puis l'app passe sur Projets.
 Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     {PendingRun? resume,
     String? projectId,
@@ -55,7 +60,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     List<BlockTarget>? blockTargets,
     bool deepWork = false,
     bool keepChrono = false,
-    bool autoStart = false}) {
+    bool autoStart = false,
+    String? front,
+    VoidCallback? onChooseProject}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => OffensiveScreen(
@@ -68,7 +75,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
           blockTargets: blockTargets,
           deepWork: deepWork,
           keepChrono: keepChrono,
-          autoStart: autoStart)));
+          autoStart: autoStart,
+          front: front,
+          onChooseProject: onChooseProject)));
 }
 
 enum _Phase { setup, coup, pause, back, end }
@@ -90,6 +99,8 @@ class OffensiveScreen extends StatefulWidget {
   final bool deepWork;
   final bool keepChrono;
   final bool autoStart;
+  final String? front;
+  final VoidCallback? onChooseProject;
   const OffensiveScreen(
       {super.key,
       required this.logic,
@@ -101,7 +112,9 @@ class OffensiveScreen extends StatefulWidget {
       this.blockTargets,
       this.deepWork = false,
       this.keepChrono = false,
-      this.autoStart = false});
+      this.autoStart = false,
+      this.front,
+      this.onChooseProject});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -115,7 +128,29 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   List<BlockTarget> _blockTargets = const [];
 
   /// Plusieurs projets dans la file : chaque action dit le sien.
-  bool get _mixed => _front == null || _front == kBlockFront || _activityFront != null;
+  bool get _mixed => _front == null || _front == kBlockFront || _front == kTodayFront || _front == kPressingFront || _activityFront != null;
+
+  /// La liste POUR AUJOURD'HUI de Projets, calculée de la même façon.
+  List<TodayAction> _todayList() {
+    final now = DateTime.now();
+    final parole = logic.paroles[logic.livedTodayYmd]?.ids.toSet() ?? const <String>{};
+    final program = {
+      for (final b in logic.todayBlocks)
+        if (b.status == 'pending') ...b.targetActionIds
+    };
+    return todayActions(
+        projects: logic.currentProjects, activities: logic.state.activities, today: focusToday(now), paroleIds: parole, programActionIds: program);
+  }
+
+  /// MES PROJETS de Projets, du plus pressant au moins pressant.
+  List<ProjectMoment> _ranked() => rankProjectMoments(logic.currentProjects, logic.state.sessions, DateTime.now());
+
+  /// Le projet du moment (le premier de Projets qui a une action prête).
+  ProjectMoment? _moment() => _ranked().where((m) => !m.upcoming && m.next != null).firstOrNull;
+
+  /// Front choisi ailleurs (fiche projet, bloc, activité) : l'écran garde son ancienne liste.
+  bool get _general => widget.activityId == null && (widget.blockTargets?.length ?? 0) <= 1;
+  bool _allFronts = false;
 
   /// Front « toute l'activité » : la même liste que le contenant du Sniper.
   Activity? get _activityFront {
@@ -129,6 +164,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (a == null || buildActivityQueue(logic.currentProjects, a, DateTime.now()).isEmpty) return null;
     return a;
   }
+
   List<OffensiveTarget> _queue = const [];
   int _index = 0;
   int _won = 0;
@@ -142,30 +178,38 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   bool _saved = false;
   bool get _unlimited => _duration == kOffensiveUnlimited;
   int get _coupMin => coupMinutes(_duration);
+
   /// Retour après être resté plongé dans le coup, app fermée : ce qui a été compté pendant l'absence.
   String? _awayNote;
+
   /// « Faire autre chose dans l'app » : l'écran se ferme, le coup et son chrono continuent.
   bool _away = false;
+
   /// Prochain rendez-vous daté (agenda, séance) : ligne « Ensuite » et alarme d'atterrissage.
   FixedAhead? _ahead;
   late final Set<String> _sessionTasks = sessionTaskIdsOf(logic.currentProjects);
   String? _armedFor;
   String? _landedFor;
+
   /// « Je finis ce coup, puis j'y vais » : l'offensive s'arrête au bout du coup.
   bool _leaveAfterCoup = false;
+
   /// Bloc Deep work dans lequel tourne l'offensive, et la fin déjà demandée (« On continue ? » une fois par fin).
   String? _deepId;
   String? _deepAsked;
+
   /// Bloc Deep work posé par l'offensive en mode Deep work (2026-11-05) : son doc et le début de la session.
   String? _liveDeepId;
   String? _liveDeepDoc;
   DateTime? _liveDeepFrom;
   bool _sheetOpen = false;
+
   /// Reprise après être resté dedans : ce qui est passé sans toi, à régler avant de replonger.
   List<ScheduleBlock> _missed = const [];
   List<SeriesAtRisk> _backRisk = const [];
   final _handled = <String, String>{};
   DateTime? _resumeEndsAt;
+
   /// Point d'étape : « Je souffle 3 min » a arrêté le chrono.
   bool _breathing = false;
   final _passed = <String>{};
@@ -173,7 +217,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   final _actionsDone = <String, List<String>>{}; // projet → titres
   final _stepsDone = <String, int>{}; // action → étapes cochées
   final _before = <String, ({int done, int total, int behind})>{};
-  late final String _runId = widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
+  late final String _runId =
+      widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
 
   AppLogic get logic => widget.logic;
   OffensiveTarget? get _cur => _index < _queue.length ? _queue[_index] : null;
@@ -188,6 +233,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
     if (_servedActivity case final a? when widget.projectId == null) _front = activityFront(a.id);
+    // Rond ↗ : par défaut « Pour aujourd'hui », comme dans Projets ; sinon le projet du moment, sinon tout.
+    if (_general && widget.projectId == null) {
+      _front = _todayList().isNotEmpty ? kTodayFront : (_moment()?.project.id ?? kPressingFront);
+    }
+    if (widget.front != null) _front = widget.front;
     _blockTargets = widget.blockTargets ?? const [];
     if (_blockTargets.length > 1) _front = kBlockFront;
     if (widget.deepWork) _duration = kOffensiveUnlimited;
@@ -254,7 +304,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       _won += extra;
       if (extra > 0) {
         final m = now.difference(open?.startAt ?? endsAt.subtract(Duration(minutes: _coupMin))).inMinutes;
-        _awayNote = 'Tu es resté dedans : +$extra coup${extra > 1 ? 's' : ''} compté${extra > 1 ? 's' : ''} · chrono ${m ~/ 60 > 0 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min'} sur cette action';
+        _awayNote =
+            'Tu es resté dedans : +$extra coup${extra > 1 ? 's' : ''} compté${extra > 1 ? 's' : ''} · chrono ${m ~/ 60 > 0 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min'} sur cette action';
       }
       // Resté dedans au-delà du coup : d'abord ce qui est passé sans toi (« Plongé, pas perdu », lot 4).
       _missed = extra > 0 ? missedWhileAway(logic.todayBlocks, endsAt, now, logic.dayStartMin) : const [];
@@ -324,9 +375,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         if (_blockChrono != null) 'blockChrono': _blockChrono,
         if (_liveDeepFrom case final f?) 'liveDeepFrom': f.millisecondsSinceEpoch,
         'passed': _passed.toList(),
-        'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
+        'actionsDone': [
+          for (final e in _actionsDone.entries)
+            for (final t in e.value) '${e.key}|$t'
+        ],
         'total': _actionsDone.values.fold(0, (s, l) => s + l.length),
-        'before': {for (final e in _before.entries) e.key: [e.value.done, e.value.total, e.value.behind]},
+        'before': {
+          for (final e in _before.entries) e.key: [e.value.done, e.value.total, e.value.behind]
+        },
       },
     ));
   }
@@ -368,6 +424,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       final a = _activityFront;
       return a == null ? const [] : buildActivityQueue(logic.currentProjects, a, now);
     }
+    if (_front == kTodayFront) return queueFromToday(_todayList());
+    if (_front == kPressingFront) return buildPressingQueue(_ranked());
     return buildOffensiveQueue(logic.currentProjects, now, projectId: _front);
   }
 
@@ -391,7 +449,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _startedAt = now;
     if (_unlimited) _openLiveDeep(now);
     for (final t in _queue) {
-      _before.putIfAbsent(t.project.id, () => planSnapshot(t.project, now));
+      if (t.project case final p?) _before.putIfAbsent(p.id, () => planSnapshot(p, now));
     }
     _index = 0;
     _startCoup();
@@ -418,8 +476,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (id == null || doc == null || from == null) return;
     _liveDeepId = null;
     final now = DateTime.now();
-    final b = logic.todayBlocks.where((x) => x.id == id).firstOrNull ??
-        liveDeepBlock(now: from, dayStartMin: logic.dayStartMin)
+    final b = logic.todayBlocks.where((x) => x.id == id).firstOrNull ?? liveDeepBlock(now: from, dayStartMin: logic.dayStartMin)
       ..id = id;
     if (b.status != 'pending') return;
     final settled = settledLiveDeep(b, from, now);
@@ -473,7 +530,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final key = _keyOf(a);
     if (_armedFor != key && a.landingAt.isAfter(now)) {
       _armedFor = key;
-      CoupAlarm.scheduleLanding(logic, at: a.landingAt, title: '🔔 ${a.block.title} dans $kLandingLeadMin min', body: 'À ${a.block.startTime} · finis ton coup, prépare-toi.');
+      CoupAlarm.scheduleLanding(logic,
+          at: a.landingAt, title: '🔔 ${a.block.title} dans $kLandingLeadMin min', body: 'À ${a.block.startTime} · finis ton coup, prépare-toi.');
     }
     if (_phase == _Phase.coup && !_sheetOpen && !now.isBefore(a.landingAt) && _landedFor != key) {
       _landedFor = key;
@@ -516,12 +574,12 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('TON BLOC DEEP WORK SE TERMINE · ${hmOf(blockEndMin(deep))}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+            Text('TON BLOC DEEP WORK SE TERMINE · ${hmOf(blockEndMin(deep))}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
             const SizedBox(height: 6),
             const Text('Tu es lancé. On continue ?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
             _label(fixed == null ? 'PLUS RIEN DE DATÉ AUJOURD’HUI' : 'RIEN DE DATÉ AVANT ${fixed.block.startTime}'),
-            for (final b in soft.take(3))
-              _li(b.startTime, b.title, room > 0 ? 'passerait à ${hmOf(blockStartMin(b) + room)}' : null, _pill('souple', _text3)),
+            for (final b in soft.take(3)) _li(b.startTime, b.title, room > 0 ? 'passerait à ${hmOf(blockStartMin(b) + room)}' : null, _pill('souple', _text3)),
             if (fixed != null) _li(fixed.block.startTime, fixed.block.title, 'ne bouge pas', _pill('daté', _sky)),
             const SizedBox(height: 12),
             if (room > 0) ...[
@@ -543,7 +601,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     }
     final moved = changed.length - 1;
     ScaffoldMessenger.maybeOf(context)?.showClosingSnackBar(SnackBar(
-        content: Text('Deep work jusqu’à ${hmOf(blockEndMin(deep))}${moved > 0 ? ' · $moved bloc${moved > 1 ? 's' : ''} décalé${moved > 1 ? 's' : ''}' : ''}')));
+        content:
+            Text('Deep work jusqu’à ${hmOf(blockEndMin(deep))}${moved > 0 ? ' · $moved bloc${moved > 1 ? 's' : ''} décalé${moved > 1 ? 's' : ''}' : ''}')));
   }
 
   Future<void> _showLanding(FixedAhead a) async {
@@ -631,7 +690,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (running != null && !_ownChrono) return; // un chrono à toi tourne : on n'y touche pas
     if (running != null && running.actionId == t.action.id) return;
     _stopOwnChrono();
-    logic.start(act, taskId: t.task.id, actionId: t.action.id);
+    logic.start(act, taskId: t.task?.id, actionId: t.action.id);
     _ownChrono = true;
     _chronoFrom = DateTime.now();
   }
@@ -639,7 +698,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   /// Action sans activité : « Où compter ce temps ? » (une fois par action),
   /// puis le chrono part sur l'activité choisie.
   Future<void> _askActivity(OffensiveTarget t) async {
-    final id = await askCoupActivity(context, logic, project: t.project, action: t.action);
+    final project = t.project;
+    if (project == null) return;
+    final id = await askCoupActivity(context, logic, project: project, action: t.action);
     if (!mounted || id == null || _cur != t || _phase != _Phase.coup) return;
     _startChrono();
     setState(() {});
@@ -668,7 +729,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _saveSession();
   }
 
-  void _persist(OffensiveTarget t) => logic.sync?.patchActionOf(t.project, t.action);
+  void _persist(OffensiveTarget t) {
+    if (t.project case final p?) {
+      logic.sync?.patchActionOf(p, t.action);
+    } else if (t.owner case final a?) {
+      logic.sync?.updateOwnActions(a.id, a.ownActions);
+    }
+    logic.onChange();
+  }
 
   void _stepDone() {
     final t = _cur;
@@ -680,7 +748,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _stepsDone[t.action.id] = (_stepsDone[t.action.id] ?? 0) + 1;
     _persist(t);
     if (t.action.done) {
-      _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
+      _actionsDone.putIfAbsent(t.groupKey, () => []).add(t.action.title);
       _advance();
       _offerUndo(t, snap, stepCounted: true);
     } else {
@@ -694,7 +762,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final snap = _snapshot(t);
     setActionDone(t.action, true);
     _persist(t);
-    _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
+    _actionsDone.putIfAbsent(t.groupKey, () => []).add(t.action.title);
     _advance();
     _offerUndo(t, snap);
   }
@@ -724,7 +792,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       t.action.checklist[i].doneAt = snap.steps[i].$2;
     }
     _persist(t);
-    _actionsDone[t.project.id]?.remove(t.action.title);
+    _actionsDone[t.groupKey]?.remove(t.action.title);
     if (stepCounted) {
       final n = (_stepsDone[t.action.id] ?? 1) - 1;
       _stepsDone[t.action.id] = n < 0 ? 0 : n;
@@ -822,7 +890,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           Expanded(
             child: Row(children: [
               Flexible(
-                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                child: Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: kOffensiveAccent)),
               ),
               const InfoDot(kRuleOffensive),
@@ -928,6 +998,94 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     );
   }
 
+  Widget _frontChoice(OffensiveFront f) => _choice(
+        selected: _front == f.project.id,
+        onTap: () => setState(() => _front = f.project.id),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(f.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(frontLine(f), style: const TextStyle(fontSize: 12, color: _text2)),
+        ]),
+      );
+
+  /// Rond ↗ (maquette validée 2026-11-22, « Projets décide, le Deep work exécute ») : trois choix au plus,
+  /// calculés comme l'onglet Projets, puis « Choisir un autre projet dans Projets › ».
+  List<Widget> _generalChoices() {
+    final today = _todayList();
+    final moment = _moment();
+    final pre = widget.projectId == null ? null : _fronts.where((f) => f.project.id == widget.projectId).firstOrNull;
+    const gap = SizedBox(height: 6);
+    final reason = moment == null ? '' : momentReason(moment);
+    final shown = {pre?.project.id, moment?.project.id};
+    return [
+      if (pre != null) ...[_frontChoice(pre), gap],
+      if (today.isNotEmpty) ...[
+        _choice(
+          key: const ValueKey('offensive-front-today'),
+          selected: _front == kTodayFront,
+          onTap: () => setState(() => _front = kTodayFront),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Pour aujourd’hui · ${today.length} action${today.length > 1 ? 's' : ''}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text('ta parole, le programme, tes visées, un retard par projet · comme dans Projets', style: TextStyle(fontSize: 12, color: _text2)),
+          ]),
+        ),
+        gap,
+      ],
+      if (moment != null && moment.project.id != pre?.project.id) ...[
+        _choice(
+          key: const ValueKey('offensive-front-moment'),
+          selected: _front == moment.project.id,
+          onTap: () => setState(() => _front = moment.project.id),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('LE PROJET DU MOMENT', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+            const SizedBox(height: 2),
+            Text(moment.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text('parce que : $reason', style: const TextStyle(fontSize: 12, color: _text2)),
+            ],
+          ]),
+        ),
+        gap,
+      ],
+      _choice(
+        key: const ValueKey('offensive-front-pressing'),
+        selected: _front == kPressingFront,
+        onTap: () => setState(() => _front = kPressingFront),
+        child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Tous mes projets, du plus pressant', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          SizedBox(height: 2),
+          Text('la prochaine action de chacun, dans l’ordre de Projets', style: TextStyle(fontSize: 12, color: _text2)),
+        ]),
+      ),
+      if (_allFronts)
+        for (final f in _fronts)
+          if (!shown.contains(f.project.id)) ...[gap, _frontChoice(f)],
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const ValueKey('offensive-choose-project'),
+          onPressed: _chooseProject,
+          child: Text(
+              widget.onChooseProject != null ? 'Choisir un autre projet dans Projets ›' : (_allFronts ? 'Moins de projets' : 'Choisir un autre projet ›'),
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kOffensiveAccent)),
+        ),
+      ),
+    ];
+  }
+
+  /// « Choisir un autre projet » : dans Projets quand l'app sait y aller, sinon la liste ici.
+  void _chooseProject() {
+    final go = widget.onChooseProject;
+    if (go == null) {
+      setState(() => _allFronts = !_allFronts);
+      return;
+    }
+    Navigator.of(context).pop();
+    go();
+  }
+
   Widget _setup() {
     final preview = _previewQueue();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -949,7 +1107,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
                 child: _choice(
                   selected: _duration == d,
                   onTap: () => setState(() => _duration = d),
-                  child: Center(child: Text('$d min', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _duration == d ? kOffensiveAccent : Colors.white))),
+                  child: Center(
+                      child:
+                          Text('$d min', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _duration == d ? kOffensiveAccent : Colors.white))),
                 ),
               ),
             ],
@@ -983,28 +1143,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             const SizedBox(height: 6),
           ] else if (_fronts.isEmpty)
             const Text('Aucune action de projet prête aujourd’hui.', style: TextStyle(fontSize: 13.5, color: _text2)),
-          for (final f in _fronts.take(4)) ...[
-            _choice(
-              selected: _front == f.project.id,
-              onTap: () => setState(() => _front = f.project.id),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(f.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(frontLine(f), style: const TextStyle(fontSize: 12, color: _text2)),
-              ]),
-            ),
-            const SizedBox(height: 6),
-          ],
-          if (_fronts.length > 1)
-            _choice(
-              selected: _front == null,
-              onTap: () => setState(() => _front = null),
-              child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Tout mélanger', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text('la prochaine action de chaque projet, la plus en retard d’abord', style: TextStyle(fontSize: 12, color: _text2)),
-              ]),
-            ),
+          if (_general)
+            ..._generalChoices()
+          else
+            for (final f in _fronts.take(4)) ...[
+              _frontChoice(f),
+              const SizedBox(height: 6),
+            ],
         ]),
       ),
       if (_unlinkedFront() case final p?) ...[
@@ -1032,11 +1177,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       ],
       if (_runningBefore case final r?) ...[
         const SizedBox(height: 10),
-        Text('Le chrono « ${logic.state.activities.where((a) => a.id == r.activityId).firstOrNull?.name ?? 'en cours'} » s’arrête au lancement : l’offensive prend la main.',
+        Text(
+            'Le chrono « ${logic.state.activities.where((a) => a.id == r.activityId).firstOrNull?.name ?? 'en cours'} » s’arrête au lancement : l’offensive prend la main.',
             style: const TextStyle(fontSize: 13, height: 1.4, color: kOffensiveAccent)),
       ],
       const SizedBox(height: 12),
-      _primary(preview.isEmpty ? 'Rien à attaquer' : 'Lancer l’offensive · ${preview.length} action${preview.length > 1 ? 's' : ''}', preview.isEmpty ? null : _launch),
+      _primary(preview.isEmpty ? 'Rien à attaquer' : 'Lancer l’offensive · ${preview.length} action${preview.length > 1 ? 's' : ''}',
+          preview.isEmpty ? null : _launch),
     ]);
   }
 
@@ -1061,7 +1208,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           ]),
         ),
         const SizedBox(width: 10),
-        Text('coup ${_won + 1} · ${fmtOffensiveMin(_elapsedMin())}', style: const TextStyle(fontSize: 13, color: _text2, fontFeatures: [FontFeature.tabularFigures()])),
+        Text('coup ${_won + 1} · ${fmtOffensiveMin(_elapsedMin())}',
+            style: const TextStyle(fontSize: 13, color: _text2, fontFeatures: [FontFeature.tabularFigures()])),
       ]);
 
   Widget _coup() {
@@ -1079,9 +1227,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final ss = (shown % 60).toString().padLeft(2, '0');
     final front = _activityFront != null
         ? 'OFFENSIVE · ${_activityFront!.name.toUpperCase()}'
-        : _mixed
-            ? 'OFFENSIVE'
-            : 'OFFENSIVE · ${t.project.title.toUpperCase()}';
+        : _front == kTodayFront
+            ? 'OFFENSIVE · POUR AUJOURD’HUI'
+            : _front == kPressingFront
+                ? 'OFFENSIVE · DU PLUS PRESSANT'
+                : _mixed
+                    ? 'OFFENSIVE'
+                    : 'OFFENSIVE · ${t.groupTitle.toUpperCase()}';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       const SizedBox(height: 4),
@@ -1100,7 +1252,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           ]),
         ),
       const SizedBox(height: 16),
-      Text('${_mixed ? '${t.project.title} › ' : ''}${t.task.title}', style: const TextStyle(fontSize: 12.5, color: _text3)),
+      Text(t.task == null ? t.groupTitle : '${_mixed ? '${t.groupTitle} › ' : ''}${t.task!.title}', style: const TextStyle(fontSize: 12.5, color: _text3)),
       const SizedBox(height: 4),
       Text(t.action.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 27, height: 1.2, fontWeight: FontWeight.w800)),
       const SizedBox(height: 16),
@@ -1127,7 +1279,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (step != null) ...[
-              Text('ÉTAPE ${stepIdx + 1} / ${steps.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .6, color: _text3)),
+              Text('ÉTAPE ${stepIdx + 1} / ${steps.length}',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .6, color: _text3)),
               const SizedBox(height: 4),
               Text(step.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, height: 1.25, fontWeight: FontWeight.w700)),
               if (after != null) ...[
@@ -1194,8 +1347,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         _unlimited
             ? 'Deep work : rien ne sonne. Le bloc s’écrit dans ton programme, fait dès $kDeepSessionMin min.'
             : _chronoOf(t) == null
-            ? 'Au bout de $_duration:00, le coup est gagné même sans finir.'
-            : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == _chronoOf(t)).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
+                ? 'Au bout de $_duration:00, le coup est gagné même sans finir.'
+                : 'Le chrono tourne sur ${logic.state.activities.where((a) => a.id == _chronoOf(t)).firstOrNull?.name ?? 'l’activité liée'}. Au bout de $_duration:00, le coup est gagné même sans finir.',
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 12, color: _text3),
       ),
@@ -1203,7 +1356,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         key: const Key('offensive-away'),
         onPressed: _goAway,
         icon: const Icon(Icons.south_rounded, size: 16, color: _text2),
-        label: Text(_ownChrono ? 'Faire autre chose dans l’app · le chrono continue' : 'Faire autre chose dans l’app · le coup continue', style: TextStyle(fontSize: 13, color: _text2)),
+        label: Text(_ownChrono ? 'Faire autre chose dans l’app · le chrono continue' : 'Faire autre chose dans l’app · le coup continue',
+            style: TextStyle(fontSize: 13, color: _text2)),
       ),
     ]);
   }
@@ -1261,7 +1415,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     return seriesAtRisk([
       for (final a in logic.state.activeActivities)
         if (a.isHabit && a.habitFreq == HabitFreq.daily && !logic.isAcquired(a.id) && !logic.frozenOf(a.id).contains(ymd))
-          SeriesAtRisk(a.name, routineTodayCount(logic, a), logic.routineCoverOf(a)?.dayTarget ?? logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday), id: a.id),
+          SeriesAtRisk(
+              a.name, routineTodayCount(logic, a), logic.routineCoverOf(a)?.dayTarget ?? logic.dayQuotaFor(a), logic.habitStreakEndingOn(a.id, yesterday),
+              id: a.id),
     ]);
   }
 
@@ -1310,7 +1466,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           else if (_breathing)
             const Text('Chrono en pause · reprends quand tu veux', style: TextStyle(fontSize: 13, color: _text3)),
           const SizedBox(height: 10),
-          Text(_breathing ? 'Lève-toi, bois,\nregarde au loin.' : 'Lève la tête\n20 secondes', style: const TextStyle(fontSize: 28, height: 1.15, fontWeight: FontWeight.w800)),
+          Text(_breathing ? 'Lève-toi, bois,\nregarde au loin.' : 'Lève la tête\n20 secondes',
+              style: const TextStyle(fontSize: 28, height: 1.15, fontWeight: FontWeight.w800)),
           _label('CE QUI ARRIVE'),
           if (upcoming.isEmpty)
             const Padding(padding: EdgeInsets.only(bottom: 6), child: Text('Plus rien de prévu aujourd’hui.', style: TextStyle(fontSize: 13.5, color: _text2)))
@@ -1320,7 +1477,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
                   u.fixed ? _pill('daté', _sky) : _pill('souple', _text3)),
           if (risk.isNotEmpty) ...[
             _label('SE PERD CE SOIR SI RIEN'),
-            for (final r in risk) _li('🔥', '${r.name} · série de ${r.streak} j', '${r.count} / ${r.target} aujourd’hui', _pill('ce soir', const Color(0xFFFF6B6B))),
+            for (final r in risk)
+              _li('🔥', '${r.name} · série de ${r.streak} j', '${r.count} / ${r.target} aujourd’hui', _pill('ce soir', const Color(0xFFFF6B6B))),
           ],
           _label('DÉJÀ GAGNÉ'),
           Text(_gainedLine(), style: const TextStyle(fontSize: 14, height: 1.5)),
@@ -1406,7 +1564,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final fixed = nextFixed(logic.todayBlocks, now, logic.dayStartMin, sessionTaskIds: _sessionTasks);
     final acts = {for (final a in logic.state.activities) a.id: a};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _header('OFFENSIVE · REPRISE', trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
+      _header('OFFENSIVE · REPRISE',
+          trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       Expanded(
         child: ListView(children: [
           const SizedBox(height: 6),
@@ -1463,8 +1622,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final actName = chronoName.length == 1 ? logic.state.activities.where((a) => a.id == chronoName.first).firstOrNull?.name : null;
     final touched = <Project>[
       for (final id in _before.keys)
-        if (_actionsDone.containsKey(id) || _queue.any((t) => t.project.id == id && (_stepsDone[t.action.id] ?? 0) > 0))
-          logic.currentProjects.where((p) => p.id == id).firstOrNull ?? _queue.firstWhere((t) => t.project.id == id).project,
+        if (_actionsDone.containsKey(id) || _queue.any((t) => t.project?.id == id && (_stepsDone[t.action.id] ?? 0) > 0))
+          logic.currentProjects.where((p) => p.id == id).firstOrNull ?? _queue.firstWhere((t) => t.project?.id == id).project!,
+    ];
+    // Actions sans projet faites pendant l'offensive, par activité.
+    final loose = [
+      for (final e in _actionsDone.entries)
+        if (e.key.startsWith('own:') && e.value.isNotEmpty) (_queue.where((t) => t.groupKey == e.key).firstOrNull?.groupTitle ?? '', e.value),
     ];
     final cur = _cur;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1473,20 +1637,37 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           const SizedBox(height: 12),
           const Text('OFFENSIVE TERMINÉE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: _text3)),
           const SizedBox(height: 6),
-          Text('$_won coup${_won > 1 ? 's' : ''} · ${fmtOffensiveMin(_elapsedMin())}', style: const TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w800)),
-          if (chronoMin > 0) Text('dont ${fmtOffensiveMin(chronoMin)} de chrono${actName == null ? '' : ' sur $actName'}', style: const TextStyle(fontSize: 13.5, color: _text2)),
+          Text('$_won coup${_won > 1 ? 's' : ''} · ${fmtOffensiveMin(_elapsedMin())}',
+              style: const TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w800)),
+          if (chronoMin > 0)
+            Text('dont ${fmtOffensiveMin(chronoMin)} de chrono${actName == null ? '' : ' sur $actName'}',
+                style: const TextStyle(fontSize: 13.5, color: _text2)),
           for (final p in touched) ...[
             const SizedBox(height: 14),
             _advanced(p, now),
           ],
-          if (touched.isEmpty) ...[
+          for (final (name, titles) in loose) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('SANS PROJET · ${name.toUpperCase()}',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+                const SizedBox(height: 8),
+                Text(titles.map((x) => '$x ✓').join(' · '), style: const TextStyle(fontSize: 14, height: 1.5)),
+              ]),
+            ),
+          ],
+          if (touched.isEmpty && loose.isEmpty) ...[
             const SizedBox(height: 14),
             Text(_gainedLine(), style: const TextStyle(fontSize: 14, height: 1.5, color: _text2)),
           ],
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOffensiveAccent.withValues(alpha: .45))),
+            decoration:
+                BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14), border: Border.all(color: kOffensiveAccent.withValues(alpha: .45))),
             child: Row(children: [
               const ModeGlyph(kind: kOffensiveKind, size: 34, color: kOffensiveAccent),
               const SizedBox(width: 12),
@@ -1498,10 +1679,12 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
                   const SizedBox(height: 6),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(value: (counted / nextTier).clamp(0, 1).toDouble(), minHeight: 6, backgroundColor: _track, color: kOffensiveAccent),
+                    child: LinearProgressIndicator(
+                        value: (counted / nextTier).clamp(0, 1).toDouble(), minHeight: 6, backgroundColor: _track, color: kOffensiveAccent),
                   ),
                   const SizedBox(height: 4),
-                  Text(_won >= kOffensiveCountedMin ? 'Celle-ci compte.' : 'Compte dès $kOffensiveCountedMin coups.', style: const TextStyle(fontSize: 11.5, color: _text3)),
+                  Text(_won >= kOffensiveCountedMin ? 'Celle-ci compte.' : 'Compte dès $kOffensiveCountedMin coups.',
+                      style: const TextStyle(fontSize: 11.5, color: _text3)),
                 ]),
               ),
             ]),
@@ -1523,7 +1706,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final done = _actionsDone[p.id] ?? const [];
     final partial = [
       for (final t in _queue)
-        if (t.project.id == p.id && !t.action.done && (_stepsDone[t.action.id] ?? 0) > 0)
+        if (t.project?.id == p.id && !t.action.done && (_stepsDone[t.action.id] ?? 0) > 0)
           '${t.action.title} : ${t.action.checklist.where((c) => c.done).length} étapes sur ${t.action.checklist.length}',
     ];
     return Container(
@@ -1534,13 +1717,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         const SizedBox(height: 10),
         ProgressBricks(row: projectBricks(p, now), height: 16),
         const SizedBox(height: 8),
-        if (before != null)
-          Text('${before.done} → ${after.done} tâches faites sur ${after.total}', style: const TextStyle(fontSize: 12, color: _text3)),
+        if (before != null) Text('${before.done} → ${after.done} tâches faites sur ${after.total}', style: const TextStyle(fontSize: 12, color: _text3)),
         const SizedBox(height: 6),
         Text([...done.map((x) => '$x ✓'), ...partial].join(' · '), style: const TextStyle(fontSize: 14, height: 1.5)),
         if (before != null && before.behind != after.behind) ...[
           const SizedBox(height: 6),
-          Text('Le retard sur le plan passe de ${before.behind} tâche${before.behind > 1 ? 's' : ''} à ${after.behind}.', style: const TextStyle(fontSize: 12.5, color: _text3)),
+          Text('Le retard sur le plan passe de ${before.behind} tâche${before.behind > 1 ? 's' : ''} à ${after.behind}.',
+              style: const TextStyle(fontSize: 12.5, color: _text3)),
         ],
       ]),
     );
