@@ -156,7 +156,7 @@ des tâches, qui reste dans la Vision d'un projet) : la vue est une grille d'age
 charge sur capacité, ou « k / n faits · m lâchés » d'un jour passé ; tap = panneau du jour) ; blocs à leur heure (`_gridBlock` :
 rendez-vous agenda et séances en or `_isDated`, fait, lâché, déplacé, en cours, pas fait ; côte à côte via `overlapColumns`), trait
 rouge « maintenant » sur toute la semaine (fin sur les autres jours, appuyé avec un point sur le jour même, heure en pastille dans la marge, rafraîchi toutes les 30 s par `_clockTick`) ; **glisser** un bloc à faire = autre heure ou autre jour (`_gridCommit`, pas de 15 min : d'un jour à l'autre =
-copie à destination + origine `skipped` / `reporte`, comme le report au lendemain ; jamais un miroir agenda ni un jour passé), **bord
+copie à destination + origine `skipped` / `reporte`, comme le report au lendemain ; jamais un jour passé ; un rendez-vous d'agenda, voir « Glisser un rendez-vous Google Agenda »), **bord
 bas** = durée, **clic sur un créneau vide** = nouveau bloc à ce quart d'heure (`_addBlockOn(at:)`), tap = « Modifier le bloc », clic
 droit = Déplacer à demain · Retirer. En-tête : « n blocs à faire » au lieu des tâches en retard / à caser. **À placer cette semaine** (lot 2, colonne de 300 px à
 gauche de la grille dès 1100 px, `_placeColumn` / `_toPlace` → `_PlaceItem`) : MONTRE SUISSE · RESTE (activités à minimum, hors
@@ -177,6 +177,12 @@ qui tombent vraiment ce jour-là (une copie posée ailleurs n'est plus ramenée 
 **Google Agenda sur toute la semaine** (2026-11-07, retour user : préparer la semaine prochaine) : le mobile ne synchronise qu'aujourd'hui
 et demain ; la vue relit chaque jour à venir de la semaine affichée (`_syncAgenda` → `gcalSyncDay`, même appel que le ⟳ d'Aujourd'hui) à
 l'ouverture et à chaque changement de semaine, état « agenda Google à jour · HH:MM » cliquable dans l'en-tête (`_agendaStatus`).
+**Glisser un rendez-vous Google Agenda** (2026-11-22, retour user : une intervention déplacée de lundi à mardi ne se glissait pas) :
+dans la grille de Cette semaine, un rendez-vous d'agenda À FAIRE d'un jour non passé se glisse et s'allonge comme un bloc (`_canGridDrag`),
+et l'événement Google suit (`_commitMirror`, `gcalUpdateEvent` → `patchEvent`, qui accepte une autre date). Même jour : heure / durée posées
+ici et marquées `gcalDirty` (la synchro suivante repousse si Google ne répond pas). Autre jour : l'événement passe d'abord dans Google —
+s'il ne suit pas, rien ne bouge (« Google Agenda n'a pas suivi ») — puis les deux jours sont relus (`gcalSyncDay` : le miroir quitte l'un,
+arrive dans l'autre), « Annuler » le remet. Pas de clic droit sur un rendez-vous (Déplacer à demain · Retirer restent aux blocs).
 **La nuit continue le lendemain** (2026-11-07, retour user : le Sommeil s'arrêtait à minuit) : un bloc qui passe minuit est dessiné
 jusqu'à minuit dans sa colonne puis repris en haut de la colonne du lendemain (copie d'affichage `…~tail`, « suite · jusqu'à 06:00 »,
 tap = le bloc de la veille, ni glisser ni clic droit) ; la veille du lundi est aussi lue (`_subscribe`) pour la fin de sa nuit. Un bloc
