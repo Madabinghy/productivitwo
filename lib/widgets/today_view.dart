@@ -1162,7 +1162,7 @@ class TodayViewState extends State<TodayView> {
     } else if (kind == kSniperKind) {
       await showSniperScreen(context, widget.logic, badges: widget.badges, resume: pending);
     } else {
-      await showOffensiveScreen(context, widget.logic, resume: pending);
+      await showOffensiveScreen(context, widget.logic, resume: pending, onChooseProject: widget.onOpenProjects);
     }
     if (mounted) setState(() {});
   }

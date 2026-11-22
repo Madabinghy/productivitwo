@@ -16,6 +16,9 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedNowM
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockEndMin, blockStartMin;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineTodayCount;
 import 'package:productivitwo_v1/utils/offensive.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show focusToday;
+import 'package:productivitwo_v1/utils/project_moment.dart' show ProjectMoment, rankProjectMoments;
+import 'package:productivitwo_v1/utils/projects_today.dart' show TodayAction, todayActions;
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
@@ -46,6 +49,8 @@ const _amber = Color(0xFFF2C14E);
 /// [deepWork] = Deep work présélectionné (aucun minuteur, bloc posé dans le programme).
 /// [keepChrono] = le chrono qui tourne déjà sur l'activité continue (venu du Sniper) ;
 /// [autoStart] = l'offensive démarre tout de suite, sans l'écran de réglage.
+/// [front] = un front déjà choisi ([kTodayFront], [kPressingFront], un id de projet) — boutons de Projets ;
+/// [onChooseProject] = « Choisir un autre projet dans Projets › » : l'écran se ferme puis l'app passe sur Projets.
 Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     {PendingRun? resume,
     String? projectId,
@@ -55,7 +60,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
     List<BlockTarget>? blockTargets,
     bool deepWork = false,
     bool keepChrono = false,
-    bool autoStart = false}) {
+    bool autoStart = false,
+    String? front,
+    VoidCallback? onChooseProject}) {
   return Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => OffensiveScreen(
@@ -68,7 +75,9 @@ Future<void> showOffensiveScreen(BuildContext context, AppLogic logic,
           blockTargets: blockTargets,
           deepWork: deepWork,
           keepChrono: keepChrono,
-          autoStart: autoStart)));
+          autoStart: autoStart,
+          front: front,
+          onChooseProject: onChooseProject)));
 }
 
 enum _Phase { setup, coup, pause, back, end }
@@ -90,6 +99,8 @@ class OffensiveScreen extends StatefulWidget {
   final bool deepWork;
   final bool keepChrono;
   final bool autoStart;
+  final String? front;
+  final VoidCallback? onChooseProject;
   const OffensiveScreen(
       {super.key,
       required this.logic,
@@ -101,7 +112,9 @@ class OffensiveScreen extends StatefulWidget {
       this.blockTargets,
       this.deepWork = false,
       this.keepChrono = false,
-      this.autoStart = false});
+      this.autoStart = false,
+      this.front,
+      this.onChooseProject});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -115,7 +128,26 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   List<BlockTarget> _blockTargets = const [];
 
   /// Plusieurs projets dans la file : chaque action dit le sien.
-  bool get _mixed => _front == null || _front == kBlockFront || _activityFront != null;
+  bool get _mixed => _front == null || _front == kBlockFront || _front == kTodayFront || _front == kPressingFront || _activityFront != null;
+
+  /// La liste POUR AUJOURD'HUI de Projets, calculée de la même façon.
+  List<TodayAction> _todayList() {
+    final now = DateTime.now();
+    final parole = logic.paroles[logic.livedTodayYmd]?.ids.toSet() ?? const <String>{};
+    final program = {for (final b in logic.todayBlocks) if (b.status == 'pending') ...b.targetActionIds};
+    return todayActions(
+        projects: logic.currentProjects, activities: logic.state.activities, today: focusToday(now), paroleIds: parole, programActionIds: program);
+  }
+
+  /// MES PROJETS de Projets, du plus pressant au moins pressant.
+  List<ProjectMoment> _ranked() => rankProjectMoments(logic.currentProjects, logic.state.sessions, DateTime.now());
+
+  /// Le projet du moment (le premier de Projets qui a une action prête).
+  ProjectMoment? _moment() => _ranked().where((m) => !m.upcoming && m.next != null).firstOrNull;
+
+  /// Front choisi ailleurs (bloc, activité) : l'écran garde son ancienne liste.
+  bool get _general => widget.activityId == null && (widget.blockTargets?.length ?? 0) <= 1;
+  bool _allFronts = false;
 
   /// Front « toute l'activité » : la même liste que le contenant du Sniper.
   Activity? get _activityFront {
@@ -188,6 +220,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _fronts = pre > 0 ? [fronts[pre], ...fronts.sublist(0, pre), ...fronts.sublist(pre + 1)] : fronts;
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
     if (_servedActivity case final a? when widget.projectId == null) _front = activityFront(a.id);
+    // Rond ↗ : par défaut « Pour aujourd'hui », comme dans Projets ; sinon le projet du moment, sinon tout.
+    if (_general && widget.projectId == null) {
+      _front = _todayList().isNotEmpty ? kTodayFront : (_moment()?.project.id ?? kPressingFront);
+    }
+    if (widget.front != null) _front = widget.front;
     _blockTargets = widget.blockTargets ?? const [];
     if (_blockTargets.length > 1) _front = kBlockFront;
     if (widget.deepWork) _duration = kOffensiveUnlimited;
@@ -368,6 +405,8 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       final a = _activityFront;
       return a == null ? const [] : buildActivityQueue(logic.currentProjects, a, now);
     }
+    if (_front == kTodayFront) return queueFromToday(_todayList());
+    if (_front == kPressingFront) return buildPressingQueue(_ranked());
     return buildOffensiveQueue(logic.currentProjects, now, projectId: _front);
   }
 
@@ -391,7 +430,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _startedAt = now;
     if (_unlimited) _openLiveDeep(now);
     for (final t in _queue) {
-      _before.putIfAbsent(t.project.id, () => planSnapshot(t.project, now));
+      if (t.project case final p?) _before.putIfAbsent(p.id, () => planSnapshot(p, now));
     }
     _index = 0;
     _startCoup();
@@ -631,7 +670,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     if (running != null && !_ownChrono) return; // un chrono à toi tourne : on n'y touche pas
     if (running != null && running.actionId == t.action.id) return;
     _stopOwnChrono();
-    logic.start(act, taskId: t.task.id, actionId: t.action.id);
+    logic.start(act, taskId: t.task?.id, actionId: t.action.id);
     _ownChrono = true;
     _chronoFrom = DateTime.now();
   }
@@ -639,7 +678,9 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   /// Action sans activité : « Où compter ce temps ? » (une fois par action),
   /// puis le chrono part sur l'activité choisie.
   Future<void> _askActivity(OffensiveTarget t) async {
-    final id = await askCoupActivity(context, logic, project: t.project, action: t.action);
+    final project = t.project;
+    if (project == null) return;
+    final id = await askCoupActivity(context, logic, project: project, action: t.action);
     if (!mounted || id == null || _cur != t || _phase != _Phase.coup) return;
     _startChrono();
     setState(() {});
@@ -668,7 +709,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _saveSession();
   }
 
-  void _persist(OffensiveTarget t) => logic.sync?.patchActionOf(t.project, t.action);
+  void _persist(OffensiveTarget t) {
+    if (t.project case final p?) {
+      logic.sync?.patchActionOf(p, t.action);
+    } else if (t.owner case final a?) {
+      logic.sync?.updateOwnActions(a.id, a.ownActions);
+    }
+    logic.onChange();
+  }
 
   void _stepDone() {
     final t = _cur;
@@ -680,7 +728,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _stepsDone[t.action.id] = (_stepsDone[t.action.id] ?? 0) + 1;
     _persist(t);
     if (t.action.done) {
-      _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
+      _actionsDone.putIfAbsent(t.groupKey, () => []).add(t.action.title);
       _advance();
       _offerUndo(t, snap, stepCounted: true);
     } else {
@@ -694,7 +742,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final snap = _snapshot(t);
     setActionDone(t.action, true);
     _persist(t);
-    _actionsDone.putIfAbsent(t.project.id, () => []).add(t.action.title);
+    _actionsDone.putIfAbsent(t.groupKey, () => []).add(t.action.title);
     _advance();
     _offerUndo(t, snap);
   }
@@ -724,7 +772,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
       t.action.checklist[i].doneAt = snap.steps[i].$2;
     }
     _persist(t);
-    _actionsDone[t.project.id]?.remove(t.action.title);
+    _actionsDone[t.groupKey]?.remove(t.action.title);
     if (stepCounted) {
       final n = (_stepsDone[t.action.id] ?? 1) - 1;
       _stepsDone[t.action.id] = n < 0 ? 0 : n;
@@ -928,6 +976,94 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     );
   }
 
+  Widget _frontChoice(OffensiveFront f) => _choice(
+        selected: _front == f.project.id,
+        onTap: () => setState(() => _front = f.project.id),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(f.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(frontLine(f), style: const TextStyle(fontSize: 12, color: _text2)),
+        ]),
+      );
+
+  /// Rond ↗ (maquette validée 2026-11-22, « Projets décide, le Deep work exécute ») : trois choix au plus,
+  /// calculés comme l'onglet Projets, puis « Choisir un autre projet dans Projets › ».
+  List<Widget> _generalChoices() {
+    final today = _todayList();
+    final moment = _moment();
+    final pre = widget.projectId == null ? null : _fronts.where((f) => f.project.id == widget.projectId).firstOrNull;
+    const gap = SizedBox(height: 6);
+    final reason = moment == null ? '' : momentReason(moment);
+    final shown = {pre?.project.id, moment?.project.id};
+    return [
+      if (pre != null) ...[_frontChoice(pre), gap],
+      if (today.isNotEmpty) ...[
+        _choice(
+          key: const ValueKey('offensive-front-today'),
+          selected: _front == kTodayFront,
+          onTap: () => setState(() => _front = kTodayFront),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Pour aujourd’hui · ${today.length} action${today.length > 1 ? 's' : ''}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text('ta parole, le programme, tes visées, un retard par projet · comme dans Projets', style: TextStyle(fontSize: 12, color: _text2)),
+          ]),
+        ),
+        gap,
+      ],
+      if (moment != null && moment.project.id != pre?.project.id) ...[
+        _choice(
+          key: const ValueKey('offensive-front-moment'),
+          selected: _front == moment.project.id,
+          onTap: () => setState(() => _front = moment.project.id),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('LE PROJET DU MOMENT', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+            const SizedBox(height: 2),
+            Text(moment.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text('parce que : $reason', style: const TextStyle(fontSize: 12, color: _text2)),
+            ],
+          ]),
+        ),
+        gap,
+      ],
+      _choice(
+        key: const ValueKey('offensive-front-pressing'),
+        selected: _front == kPressingFront,
+        onTap: () => setState(() => _front = kPressingFront),
+        child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Tous mes projets, du plus pressant', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          SizedBox(height: 2),
+          Text('la prochaine action de chacun, dans l’ordre de Projets', style: TextStyle(fontSize: 12, color: _text2)),
+        ]),
+      ),
+      if (_allFronts)
+        for (final f in _fronts)
+          if (!shown.contains(f.project.id)) ...[gap, _frontChoice(f)],
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          key: const ValueKey('offensive-choose-project'),
+          onPressed: _chooseProject,
+          child: Text(
+              widget.onChooseProject != null ? 'Choisir un autre projet dans Projets ›' : (_allFronts ? 'Moins de projets' : 'Choisir un autre projet ›'),
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kOffensiveAccent)),
+        ),
+      ),
+    ];
+  }
+
+  /// « Choisir un autre projet » : dans Projets quand l'app sait y aller, sinon la liste ici.
+  void _chooseProject() {
+    final go = widget.onChooseProject;
+    if (go == null) {
+      setState(() => _allFronts = !_allFronts);
+      return;
+    }
+    Navigator.of(context).pop();
+    go();
+  }
+
   Widget _setup() {
     final preview = _previewQueue();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -983,28 +1119,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             const SizedBox(height: 6),
           ] else if (_fronts.isEmpty)
             const Text('Aucune action de projet prête aujourd’hui.', style: TextStyle(fontSize: 13.5, color: _text2)),
-          for (final f in _fronts.take(4)) ...[
-            _choice(
-              selected: _front == f.project.id,
-              onTap: () => setState(() => _front = f.project.id),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(f.project.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(frontLine(f), style: const TextStyle(fontSize: 12, color: _text2)),
-              ]),
-            ),
-            const SizedBox(height: 6),
-          ],
-          if (_fronts.length > 1)
-            _choice(
-              selected: _front == null,
-              onTap: () => setState(() => _front = null),
-              child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Tout mélanger', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text('la prochaine action de chaque projet, la plus en retard d’abord', style: TextStyle(fontSize: 12, color: _text2)),
-              ]),
-            ),
+          if (_general)
+            ..._generalChoices()
+          else
+            for (final f in _fronts.take(4)) ...[
+              _frontChoice(f),
+              const SizedBox(height: 6),
+            ],
         ]),
       ),
       if (_unlinkedFront() case final p?) ...[
@@ -1079,9 +1200,13 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final ss = (shown % 60).toString().padLeft(2, '0');
     final front = _activityFront != null
         ? 'OFFENSIVE · ${_activityFront!.name.toUpperCase()}'
-        : _mixed
+        : _front == kTodayFront
+            ? 'OFFENSIVE · POUR AUJOURD’HUI'
+            : _front == kPressingFront
+                ? 'OFFENSIVE · DU PLUS PRESSANT'
+                : _mixed
             ? 'OFFENSIVE'
-            : 'OFFENSIVE · ${t.project.title.toUpperCase()}';
+            : 'OFFENSIVE · ${t.groupTitle.toUpperCase()}';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(front, trailing: TextButton(onPressed: () => _end(), child: const Text('Je m’arrête', style: TextStyle(color: _text2, fontSize: 14)))),
       const SizedBox(height: 4),
@@ -1100,7 +1225,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           ]),
         ),
       const SizedBox(height: 16),
-      Text('${_mixed ? '${t.project.title} › ' : ''}${t.task.title}', style: const TextStyle(fontSize: 12.5, color: _text3)),
+      Text(t.task == null ? t.groupTitle : '${_mixed ? '${t.groupTitle} › ' : ''}${t.task!.title}', style: const TextStyle(fontSize: 12.5, color: _text3)),
       const SizedBox(height: 4),
       Text(t.action.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 27, height: 1.2, fontWeight: FontWeight.w800)),
       const SizedBox(height: 16),
@@ -1463,8 +1588,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final actName = chronoName.length == 1 ? logic.state.activities.where((a) => a.id == chronoName.first).firstOrNull?.name : null;
     final touched = <Project>[
       for (final id in _before.keys)
-        if (_actionsDone.containsKey(id) || _queue.any((t) => t.project.id == id && (_stepsDone[t.action.id] ?? 0) > 0))
-          logic.currentProjects.where((p) => p.id == id).firstOrNull ?? _queue.firstWhere((t) => t.project.id == id).project,
+        if (_actionsDone.containsKey(id) || _queue.any((t) => t.project?.id == id && (_stepsDone[t.action.id] ?? 0) > 0))
+          logic.currentProjects.where((p) => p.id == id).firstOrNull ?? _queue.firstWhere((t) => t.project?.id == id).project!,
+    ];
+    // Actions sans projet faites pendant l'offensive, par activité.
+    final loose = [
+      for (final e in _actionsDone.entries)
+        if (e.key.startsWith('own:') && e.value.isNotEmpty)
+          (_queue.where((t) => t.groupKey == e.key).firstOrNull?.groupTitle ?? '', e.value),
     ];
     final cur = _cur;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1479,7 +1610,19 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             const SizedBox(height: 14),
             _advanced(p, now),
           ],
-          if (touched.isEmpty) ...[
+          for (final (name, titles) in loose) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(14)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('SANS PROJET · ${name.toUpperCase()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: _text3)),
+                const SizedBox(height: 8),
+                Text(titles.map((x) => '$x ✓').join(' · '), style: const TextStyle(fontSize: 14, height: 1.5)),
+              ]),
+            ),
+          ],
+          if (touched.isEmpty && loose.isEmpty) ...[
             const SizedBox(height: 14),
             Text(_gainedLine(), style: const TextStyle(fontSize: 14, height: 1.5, color: _text2)),
           ],
@@ -1523,7 +1666,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final done = _actionsDone[p.id] ?? const [];
     final partial = [
       for (final t in _queue)
-        if (t.project.id == p.id && !t.action.done && (_stepsDone[t.action.id] ?? 0) > 0)
+        if (t.project?.id == p.id && !t.action.done && (_stepsDone[t.action.id] ?? 0) > 0)
           '${t.action.title} : ${t.action.checklist.where((c) => c.done).length} étapes sur ${t.action.checklist.length}',
     ];
     return Container(

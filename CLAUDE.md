@@ -1659,13 +1659,28 @@ la file du bloc (`planBlockSniper(fill:)`). Pas encore : le Deep work qui repren
 sur une activité (`showOffensiveScreen(activityId:)`, bloc Deep work qui porte une activité) propose en tête des fronts « Tout Kingdom »,
 choisi d'office (`offensive-front-activity`, front `~activity:<id>`, `activityFront` / `activityOfFront`) : `buildActivityQueue`
 (`utils/offensive.dart`) = d'abord une action par projet lié dans l'ordre du contenant du Sniper (`blockQueue` : visées aujourd'hui, en
-retard, datées, prochaine), puis les autres actions prêtes de ces projets qui servent l'activité ; les actions PROPRES de l'activité n'y
-sont pas (l'offensive ne travaille que des actions de projet) ; chrono sur l'activité ; le bloc posé s'appelle « Deep work · Kingdom » et
+retard, datées, prochaine, et les actions propres de l'activité), puis les autres actions prêtes de ces projets qui servent l'activité ;
+chrono sur l'activité ; le bloc posé s'appelle « Deep work · Kingdom » et
 porte `activityId` (`liveDeepBlock(activityId:)`). (2) **le passage** — dans un tir de temps du Sniper, une fois le minuteur fini, lien
 « Continuer en Deep work sur Kingdom · le chrono continue » (`sniper-deep`, `_deepWorkFor` : activité-temps avec une file de projet non
 vide) : la cible tombe, le Sniper s'arrête là et enregistre son bilan (les autres cibles restent non tirées), puis le Deep work démarre
 sans écran de réglage sur l'action en cours (`showOffensiveScreen(keepChrono: true, autoStart: true, firstActionId:)`) et prend le chrono
 qui tourne au lieu de le couper.
+
+**Projets décide, le Deep work exécute** (2026-11-22, maquette validée « Sniper et Deep work, où ça se voit », rangée du bas ; retour
+user : l'Offensive avait son propre classement de projets, en doublon de l'onglet Projets) : (1) **onglet Projets** — à droite du titre
+POUR AUJOURD'HUI, « Deep work » (`projects-deep-today`) enchaîne exactement cette liste ; à droite de MES PROJETS, « Du plus pressant »
+(`projects-deep-pressing`) enchaîne la prochaine action de chaque projet dans l'ordre de la liste (`_deepHeader` / `_deepWork` de
+`goals_view.dart` : Deep work sans écran de réglage, une offensive en route reprend ; module Modes d'action seulement). (2) **rond ↗
+allégé** (`_generalChoices`, quand l'Offensive n'est visée ni sur une activité ni sur un bloc à plusieurs cibles) : plus de liste de projets
+à classement propre ni de « Tout mélanger » — « Pour aujourd'hui · n actions » (choisi d'office, `offensive-front-today`) · LE PROJET DU
+MOMENT avec « parce que : … » (`offensive-front-moment`, `momentReason`) · « Tous mes projets, du plus pressant » (`offensive-front-pressing`)
+· « Choisir un autre projet dans Projets › » (`offensive-choose-project` : ferme l'écran et passe sur Projets via `onChooseProject`, posé
+par `openRun` d'Aujourd'hui ; sans lui, la liste des projets se déplie sur place) ; ouvert depuis une fiche projet, ce projet est en tête
+et choisi. Fronts `kTodayFront` / `kPressingFront` (`utils/offensive.dart`) : `queueFromToday` (la liste `todayActions` de Projets, même
+calcul : parole, programme, visées, un retard par projet) et `buildPressingQueue` (`rankProjectMoments`). (3) **actions sans projet** :
+`OffensiveTarget` porte soit `project` + `task`, soit `owner` (`OffensiveTarget.own`, action propre d'une activité) ; chrono sur
+l'activité porteuse, écriture `updateOwnActions`, regroupement du bilan `groupKey` / `groupTitle` (carte « SANS PROJET · … »).
 
 **Le mode du moment en tuile** (maquette validée 2026-11-03 « Modes en tuile », remplace le gros bouton sous l'en-tête du
 2026-11-01) : une tuile CARRÉE à droite de Journée parfaite (`DashboardTiles.modeTile`, 104 px, `_modeTile` de `today_view.dart`,
