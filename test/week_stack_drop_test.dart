@@ -244,7 +244,8 @@ void main() {
     addTearDown(tester.view.reset);
 
     final monday = weekStart(DateTime.now());
-    final saturday = monday.add(const Duration(days: 5)), sunday = monday.add(const Duration(days: 6));
+    // Le bloc de prépa est posé le dimanche soir : jamais un jour passé, même quand le test tourne un dimanche.
+    final sunday = monday.add(const Duration(days: 6));
     // Deux séances le dimanche : l'une a déjà son bloc de préparation, l'autre non.
     ProjectTask task(String id, String title, String iv, String role, {List<TaskAction>? actions}) =>
         ProjectTask(id: id, title: title, groupLabel: iv == 'i1' ? 'Quadrillage' : 'Parallèles', startDate: sunday, actions: actions)
@@ -260,8 +261,8 @@ void main() {
       task('ts2', sessionTitle('Parallèles', sunday), 'i2', 'session'),
     ]);
     final block = ScheduleBlock(
-        id: 'b1', startTime: '20:00', durationMin: 60, title: 'Préparer — Quadrillage', category: 'project', projectId: 'p1', taskId: 'tp1');
-    final sync = _FakeSync({ymdOf(saturday): DailySchedule(date: ymdOf(saturday), generatedBy: 'user', blocks: [block])});
+        id: 'b1', startTime: '22:30', durationMin: 60, title: 'Préparer — Quadrillage', category: 'project', projectId: 'p1', taskId: 'tp1');
+    final sync = _FakeSync({ymdOf(sunday): DailySchedule(date: ymdOf(sunday), generatedBy: 'user', blocks: [block])});
 
     await tester.pumpWidget(MaterialApp(
       builder: (ctx, child) =>
