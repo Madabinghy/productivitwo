@@ -30,7 +30,7 @@ import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
-import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart' show gcalSyncDay;
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart' show gcalSyncDay, gcalUpdateEvent;
 
 // Vue « Cette semaine » (2026-11-07, maquette « Cette semaine, à placer ») :
 // la semaine comme un agenda — une colonne par jour, les blocs du programme à
@@ -535,8 +535,8 @@ class _WeekViewState extends State<WeekView> {
     return n.hour * 60 + n.minute;
   }
 
-  bool _canGridDrag(ScheduleBlock b, DateTime d) =>
-      b.gcalEventId == null && b.status == 'pending' && !d.isBefore(_today);
+  // Un rendez-vous Google Agenda se glisse aussi : l'événement Google suit (_commitMirror).
+  bool _canGridDrag(ScheduleBlock b, DateTime d) => b.status == 'pending' && !d.isBefore(_today);
 
   String _hhmm(int min) => '${(min ~/ 60).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
 
@@ -1197,6 +1197,18 @@ class _WeekViewState extends State<WeekView> {
     setState(() => _gDragId = null);
     final fromKey = ymdOf(from);
     final oldStart = b.startTime, oldDur = b.durationMin;
+    if (b.gcalEventId != null) {
+      final dur = resize ? (oldDur + delta).clamp(_kSnap, 24 * 60).toInt() : oldDur;
+      final start = resize ? blockStartMin(b) : (blockStartMin(b) + delta).clamp(0, 24 * 60 - _kSnap).toInt();
+      final target = _dates[i + shift];
+      if (shift == 0 && start == blockStartMin(b) && dur == oldDur) return;
+      if (target.isBefore(_today)) {
+        _snack('On ne pose pas un rendez-vous dans un jour passé.');
+        return;
+      }
+      await _commitMirror(b, fromKey, target, start, dur);
+      return;
+    }
     if (resize) {
       final dur = (oldDur + delta).clamp(_kSnap, 24 * 60).toInt();
       if (dur == oldDur) return;
@@ -1247,6 +1259,58 @@ class _WeekViewState extends State<WeekView> {
         actionLabel: 'Annuler', onAction: () async {
       await widget.sync.updateBlockStatus(toKey, copy.id, 'deleted');
       await widget.sync.updateBlockStatus(fromKey, b.id, 'pending');
+    });
+  }
+
+  /// Rendez-vous Google Agenda glissé ou allongé dans la grille (2026-11-22) :
+  /// l'app fait foi, l'événement Google suit. Même jour : heure et durée posées
+  /// ici, marquées `gcalDirty` (la synchro suivante repousse si Google ne répond
+  /// pas). Autre jour : l'événement passe d'abord dans Google — s'il ne suit pas,
+  /// rien ne bouge — puis les deux jours sont relus (le miroir quitte l'un et
+  /// arrive dans l'autre).
+  Future<void> _commitMirror(ScheduleBlock b, String fromKey, DateTime target, int start, int dur) async {
+    final eventId = b.gcalEventId!;
+    final toKey = ymdOf(target);
+    final oldStart = b.startTime, oldDur = b.durationMin;
+    final newStart = _hhmm(start);
+    final title = b.title;
+    if (toKey == fromKey) {
+      Future<bool> apply(String s, int d) async {
+        setState(() {
+          b.startTime = s;
+          b.durationMin = d;
+          b.gcalDirty = true;
+        });
+        await widget.sync.upsertScheduleBlock(fromKey, b);
+        return gcalUpdateEvent(widget.sync, eventId: eventId, date: fromKey, startTime: s, durationMin: d);
+      }
+
+      final ok = await apply(newStart, dur);
+      final what = dur != oldDur && newStart == oldStart
+          ? '${_fmtHm(dur)}, fin ${_hhmm(start + dur)}'
+          : 'déplacé à $newStart';
+      _snack(
+          ok ? '« $title » $what · Google Agenda suit' : '« $title » $what · Google Agenda suivra à la prochaine synchro',
+          actionLabel: 'Annuler',
+          onAction: () => apply(oldStart, oldDur));
+      return;
+    }
+    final day = '${_kDayLong[target.weekday - 1]} ${target.day}';
+    final ok = await gcalUpdateEvent(widget.sync, eventId: eventId, date: toKey, startTime: newStart, durationMin: dur);
+    if (!mounted) return;
+    if (!ok) {
+      _snack('Google Agenda n\'a pas suivi : « $title » reste où il était. Réessaie.');
+      return;
+    }
+    setState(() => _byDay[fromKey]?.remove(b));
+    await Future.wait([gcalSyncDay(widget.sync, fromKey), gcalSyncDay(widget.sync, toKey)]);
+    _snack('« $title » déplacé $day à $newStart · dans Google Agenda aussi', actionLabel: 'Annuler', onAction: () async {
+      final back = await gcalUpdateEvent(widget.sync, eventId: eventId, date: fromKey, startTime: oldStart, durationMin: oldDur);
+      if (!back) {
+        _snack('Google Agenda n\'a pas suivi : déplace-le à la main.');
+        return;
+      }
+      await Future.wait([gcalSyncDay(widget.sync, fromKey), gcalSyncDay(widget.sync, toKey)]);
     });
   }
 

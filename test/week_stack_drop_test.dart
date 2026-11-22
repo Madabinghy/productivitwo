@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -322,4 +323,53 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+  testWidgets('un rendez-vous Google Agenda se glisse : nouvelle heure, marqué pour Google', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1700, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final sunday = weekStart(DateTime.now()).add(const Duration(days: 6));
+    final key = ymdOf(sunday);
+    final mirror = ScheduleBlock(
+        id: 'gcal-ev1', startTime: '22:00', durationMin: 60, title: 'Développement perso', category: 'personal', gcalEventId: 'ev1');
+    final sync = _FakeSync({key: DailySchedule(date: key, generatedBy: 'gcal', blocks: [mirror])});
+
+    await tester.pumpWidget(MaterialApp(
+      builder: (ctx, child) =>
+          MediaQuery(data: MediaQuery.of(ctx).copyWith(textScaler: const TextScaler.linear(.7)), child: child!),
+      home: Scaffold(
+        body: WeekView(projects: const [], domains: const [], sync: sync, onOpenProject: (p, {taskId}) {}, dayStartMin: 0),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final block = find.byKey(const ValueKey('week-block-gcal-ev1'));
+    await tester.ensureVisible(block);
+    await tester.pump(const Duration(milliseconds: 50));
+    // À la souris, comme sur le web (au doigt, la grille défilerait).
+    final g = await tester.startGesture(tester.getCenter(block), kind: PointerDeviceKind.mouse);
+    await tester.pump(const Duration(milliseconds: 20));
+    for (var k = 0; k < 6; k++) {
+      await g.moveBy(const Offset(0, -15));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(sync.upserts, hasLength(1));
+    final saved = sync.upserts.single;
+    expect(saved.gcalEventId, 'ev1');
+    expect(saved.gcalDirty, isTrue);
+    expect(saved.startTime.compareTo('22:00'), lessThan(0));
+    // Google ne répond pas (hors ligne) : la synchro suivante repoussera.
+    expect(find.textContaining('Google Agenda suivra'), findsOneWidget);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 3));
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
 }
