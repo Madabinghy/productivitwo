@@ -638,6 +638,7 @@ class _SniperScreenState extends State<SniperScreen> with SingleTickerProviderSt
           if (_shotStart case final s?) 'shotStart': s.millisecondsSinceEpoch,
           if (_pausedLeft case final p?) 'paused': p,
           'own': _ownChrono,
+          if (_ownChrono) 'chronoStart': openChronoStart(logic.state.sessions),
         },
       },
     ));

@@ -355,6 +355,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _cur != null) 'cur': _cur!.action.id,
         if ((_phase == _Phase.coup || _phase == _Phase.pause) && _endsAt != null) 'endsAt': _endsAt!.millisecondsSinceEpoch,
         'own': _ownChrono,
+        if (_ownChrono) 'chronoStart': openChronoStart(logic.state.sessions),
         if (_away) 'away': true,
         if (_liveDeepId != null) 'liveDeep': _liveDeepId,
         if (_liveDeepDoc != null) 'liveDeepDoc': _liveDeepDoc,

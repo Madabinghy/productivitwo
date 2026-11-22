@@ -41,7 +41,8 @@ class _PendingRunCardState extends State<PendingRunCard> {
         return;
       }
       setState(() {});
-      if (p != null && !p.prepared && !_autoResumed) {
+      // Un Sniper attend toute la journée : il ne se rouvre de lui-même que si on vient de le quitter.
+      if (p != null && !p.prepared && !_autoResumed && (p.kind != kSniperKind || p.recent(DateTime.now()))) {
         _autoResumed = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _resume(p);

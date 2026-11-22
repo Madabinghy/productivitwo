@@ -1619,6 +1619,13 @@ Sniper (cochée ailleurs pendant une sortie, puis comptée touchée à la repris
 du carton mais comptait 0 min tirée dans la précision. Au bilan (`_end`), seules les cibles tirées dans le Sniper (`_fired`) vont sur le
 carton et dans tirées · visées · précision ; les autres restent touchées (compteur, badge) et l'écran le dit : « Pompes faite ailleurs ·
 hors carton » sous le carton (`sniper-elsewhere`), « sur 6 tirs » sous la précision au lieu de « précision », « faite ailleurs » dans TOMBÉ.
+**Un Sniper commencé attend toute la journée** (2026-11-22, retour user : quitté entre deux tirs pour cuisiner, il avait expiré au
+retour) : un Sniper en attente n'a plus la fenêtre de 45 minutes — comme un Sniper préparé, il reste reprenable toute la journée vécue
+(`PendingRun.wholeDay`, `isLive`) ; carte « Sniper en cours » d'Aujourd'hui et tuile du mode le montrent, « Je m'arrête » ou
+« Terminer ici » le closent. Il ne se rouvre de lui-même au lancement de l'app que si on vient de le quitter (`PendingRun.recent`,
+45 min, `PendingRunCard`). Guérilla et Offensive gardent la fenêtre de 45 min. **Clôture d'une session expirée** : elle n'arrête plus
+que SON chrono (`ownsChrono`, `utils/run_session.dart` : la session retient le début du chrono qu'elle a lancé, `extra.chronoStart`
+via `openChronoStart`, Sniper · Guérilla · Offensive) — avant, elle coupait aussi un chrono lancé à la main après coup (Cuisiner).
 **Sniper dans le bloc en cours** (2026-11-21, maquette validée « Sniper dans le bloc en cours ») : avant, le Sniper ignorait le
 bloc commencé (il comptait son temps comme libre jusqu'au bloc suivant). Quand un bloc de tâche ou d'activité est en cours, le viseur
 porte deux choix en tête (`sniper-in-block` · `sniper-after-block`, « Ce bloc · reste 38 min » | « Après le bloc · 15:00 → 16:30 »),

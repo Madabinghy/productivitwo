@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/sniper.dart' show kSniperKind;
 
 /// Guérilla / Offensive en attente (2026-10-30, retour user : quitter l'app
 /// annulait tout) : la session est écrite sur l'appareil après chaque coup et
@@ -30,7 +31,14 @@ class PendingRun {
   /// [livedYmd] accepté avec ou sans tirets (`2026-10-30` / `20261030`) : la
   /// comparaison des deux formats rendait toute session « expirée » (bug du 2026-10-30).
   bool isLive(DateTime now, String livedYmd) =>
-      date.replaceAll('-', '') == livedYmd.replaceAll('-', '') && (prepared || now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin);
+      date.replaceAll('-', '') == livedYmd.replaceAll('-', '') && (wholeDay || recent(now));
+
+  /// Dernier geste il y a moins de [kRunResumeWindowMin] minutes.
+  bool recent(DateTime now) => now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin;
+
+  /// Attend toute la journée vécue, sans fenêtre de reprise : un Sniper préparé, et un Sniper commencé
+  /// (2026-11-22, retour user : quitté pour cuisiner, il avait expiré au retour ; entre deux tirs rien ne tourne).
+  bool get wholeDay => prepared || kind == kSniperKind;
 
   /// Sniper PRÉPARÉ, pas encore lancé (demande user 2026-11-21) : la sélection du viseur est
   /// gardée, rien n'a commencé. Il attend toute la journée vécue, sans fenêtre de reprise.
@@ -102,6 +110,25 @@ bool chronoKeepsAlive(PendingRun p, Iterable<Session> sessions, String livedYmd)
   if (p.date.replaceAll('-', '') != livedYmd.replaceAll('-', '') || p.extra['own'] != true) return false;
   final cur = p.extra['cur']?.toString();
   return sessions.any((s) => !s.deleted && s.endAt == null && !s.startAt.isBefore(p.startedAt) && (cur == null || s.actionId == cur));
+}
+
+/// Le chrono [s] est-il celui de la session [p] ? Seul celui-là s'arrête quand on la clôt (2026-11-22 : la clôture
+/// d'une session expirée arrêtait aussi un chrono lancé à la main après coup, Cuisiner par exemple). La session
+/// retient le début de son chrono (`extra.chronoStart`) ; une session d'avant ne le retient pas : alors seulement
+/// si elle dit en avoir un (`extra.own`) et qu'il a démarré après elle.
+bool ownsChrono(PendingRun p, Session s) {
+  if (s.deleted || s.endAt != null) return false;
+  final at = p.intOf('chronoStart');
+  if (at != null) return (s.startAt.millisecondsSinceEpoch - at).abs() < 2000;
+  return p.extra['own'] == true && !s.startAt.isBefore(p.startedAt);
+}
+
+/// Le début du chrono ouvert, à retenir dans la session quand elle l'a lancé (`extra.chronoStart`).
+int? openChronoStart(Iterable<Session> sessions) {
+  for (final s in sessions) {
+    if (!s.deleted && s.endAt == null) return s.startAt.millisecondsSinceEpoch;
+  }
+  return null;
 }
 
 /// Coups gagnés pendant l'absence : le coup en cours finissait à [endsAt] ; au-delà, un coup par tranche de [duration] min

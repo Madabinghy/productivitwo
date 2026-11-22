@@ -61,7 +61,8 @@ class RunSessionStore {
       await clear();
       return;
     }
-    if (logic.state.sessions.any((s) => s.endAt == null && !s.startAt.isBefore(p.startedAt))) logic.stopActive(notify: false);
+    // Seulement le chrono de la session : un chrono lancé à la main après coup continue.
+    if (logic.state.sessions.any((s) => ownsChrono(p, s))) logic.stopActive(notify: false);
     final run = expiredRunOf(p);
     if (run != null) {
       logic.recordChainRun(run);

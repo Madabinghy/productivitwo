@@ -69,4 +69,25 @@ void main() {
     expect(overtimeCoups(end, end.add(const Duration(minutes: 1)), 10), 1);
     expect(overtimeCoups(end, end.add(const Duration(minutes: 25)), 10), 3);
   });
+
+  test('un Sniper commencé attend toute la journée vécue ; il ne se rouvre seul que si on vient de le quitter', () {
+    final p = run(kind: 'sniper');
+    expect(p.isLive(DateTime(2026, 10, 30, 22, 50), '2026-10-30'), isTrue);
+    expect(p.isLive(DateTime(2026, 10, 30, 16), '2026-10-31'), isFalse);
+    expect(p.recent(DateTime(2026, 10, 30, 16, 20)), isTrue);
+    expect(p.recent(DateTime(2026, 10, 30, 22, 50)), isFalse);
+    // La Guérilla garde sa fenêtre de 45 min.
+    expect(run().isLive(DateTime(2026, 10, 30, 22, 50), '2026-10-30'), isFalse);
+  });
+
+  test('à la clôture, seul le chrono de la session s’arrête : pas celui lancé à la main après', () {
+    final mine = Session(id: 'm', activityId: 'lec', startAt: DateTime(2026, 10, 30, 15, 35));
+    final cooking = Session(id: 'c', activityId: 'cuisiner', startAt: DateTime(2026, 10, 30, 16, 10));
+    final p = run(kind: 'sniper', extra: {'own': true, 'chronoStart': mine.startAt.millisecondsSinceEpoch});
+    expect(ownsChrono(p, mine), isTrue);
+    expect(ownsChrono(p, cooking), isFalse);
+    // Une session qui n'a pas de chrono à elle n'arrête rien.
+    expect(ownsChrono(run(kind: 'sniper', extra: {'own': false}), cooking), isFalse);
+    expect(openChronoStart([mine]), mine.startAt.millisecondsSinceEpoch);
+  });
 }
