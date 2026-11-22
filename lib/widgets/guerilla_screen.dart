@@ -127,6 +127,8 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
         'doneKeys': _doneKeys.toList(),
         'doneTitles': _done,
         if (_before != null) 'bodyBefore': _before,
+        'own': _ownChrono,
+        if (_ownChrono) 'chronoStart': openChronoStart(logic.state.sessions),
       },
     ));
   }
