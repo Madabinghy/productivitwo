@@ -269,11 +269,21 @@ void main() {
       builder: (ctx, child) =>
           MediaQuery(data: MediaQuery.of(ctx).copyWith(textScaler: const TextScaler.linear(.7)), child: child!),
       home: Scaffold(
-        body: WeekView(projects: [project], domains: const [], sync: sync, onOpenProject: (p, {taskId}) {}, dayStartMin: 0),
+        body: WeekView(
+            projects: [project],
+            domains: const [],
+            sync: sync,
+            onOpenProject: (p, {taskId}) {},
+            dayStartMin: 0,
+            activities: [Activity(id: 'act1', domainId: 'd1', name: 'Interventions')]),
       ),
     ));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
+
+    // AUTRES ACTIVITÉS passe au-dessus des séances à préparer (retour user 2026-11-23).
+    expect(tester.getTopLeft(find.byKey(const ValueKey('week-other-acts'))).dy,
+        lessThan(tester.getTopLeft(find.text('SÉANCES À PRÉPARER')).dy));
 
     // La prépa déjà posée n'est plus « à placer » ; l'autre se retouche d'un clic.
     expect(find.byKey(const ValueKey('week-place-prep:tp1')), findsNothing);
