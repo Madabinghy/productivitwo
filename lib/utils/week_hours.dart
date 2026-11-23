@@ -220,6 +220,14 @@ String hoursMomentLabel(HoursKind k, String? name, {bool now = false}) {
   return n.isEmpty || n.toLowerCase() == label.toLowerCase() ? label : '$label · $n';
 }
 
+/// Ce qui tournait il y a 7 jours, en court pour la tuile d'Aujourd'hui : le nom de l'activité, sinon la nature
+/// (« Sommeil »), sinon « rien ».
+String hoursPastShort(WeekHours h) {
+  if (h.pastKind == HoursKind.free) return 'rien';
+  final n = h.pastName?.trim() ?? '';
+  return n.isEmpty ? hoursKindLabel(h.pastKind) : n;
+}
+
 const _kindNames = {
   HoursKind.free: 'ton temps libre',
   HoursKind.active: 'le vert',
