@@ -717,6 +717,25 @@ class _WeekHoursSheet extends StatelessWidget {
           Text(spanLabel(h.activeMin), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kHoursActive, height: 1)),
           const SizedBox(height: 4),
           Text('actives sur 7 jours', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: mute)),
+          // Tout compris (demande user 2026-11-23) : le total tracé sur les 168 h, puis de quoi il est fait.
+          const SizedBox(height: 12),
+          Text.rich(
+            key: const ValueKey('week-hours-sheet-tracked'),
+            TextSpan(children: [
+              TextSpan(text: 'Tout compris : ', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: mute)),
+              TextSpan(text: hoursLabel(h.trackedMin), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: cs.onSurface)),
+              TextSpan(text: ' tracées sur 168 h', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: mute)),
+            ]),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 3),
+          Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 1, children: [
+            if (h.activeMin > 0) _sheetPart('${spanLabel(h.activeMin)} actives', kHoursActive),
+            if (h.basicMin > 0) _sheetPart('${spanLabel(h.basicMin)} de besoins', kHoursBasic),
+            if (h.sleepMin > 0) _sheetPart('${spanLabel(h.sleepMin)} de sommeil', kHoursSleep),
+            if (h.leisureMin > 0) _sheetPart('${spanLabel(h.leisureMin)} de détente', kHoursLeisure),
+            if (h.untrackedMin > 0) _sheetPart('${spanLabel(h.untrackedMin)} libres', kHoursFree),
+          ]),
         ]),
       ),
       const SizedBox(height: 14),
@@ -827,3 +846,5 @@ class _WeekHoursSheet extends StatelessWidget {
     ]);
   }
 }
+
+Widget _sheetPart(String text, Color color) => Text(text, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: color));

@@ -2249,6 +2249,9 @@ chiffre des heures actives remonte alors de 6 px.
 **Il y a 7 jours en haut de la tuile** (2026-11-23, demande user : comparer sans ouvrir la feuille, et donner envie de refaire
 pareil) : « ▼ Productivitwo » (`hours-tile-past`, triangle blanc comme le repère du cadran, nom de l'activité à la couleur de sa
 nature, sinon la nature, sinon « rien » en gris — `hoursPastShort`) ; la jauge passe à 88 px et descend de 12 px pour lui faire la place.
+**Tout compris dans la feuille** (2026-11-23, demande user : voir le total sur les 168 h, pas seulement l'actif) : sous « actives sur 7
+jours », la feuille des 7 jours dit « Tout compris : 128 h tracées sur 168 h » (`week-hours-sheet-tracked`, `trackedMin`) puis, en petit et
+à leurs couleurs, actives · besoins · sommeil · détente · libres (`_sheetPart`).
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 

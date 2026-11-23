@@ -181,6 +181,10 @@ void main() {
     expect(find.byKey(const ValueKey('week-hours-sleep')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('week-hours-card')));
     await tester.pumpAndSettle();
+    // Tout compris : le total tracé sur les 168 h, sous les heures actives.
+    expect(find.text('Tout compris : 8 h tracées sur 168 h', findRichText: true), findsOneWidget);
+    // La feuille est plus longue (le total tout compris) : la légende est plus bas, on y descend.
+    await tester.scrollUntilVisible(find.text('Détente'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Détente'), findsOneWidget);
     // La feuille est plus longue (la ligne « Demain à fond ») : le titre est plus bas, on y descend.
     await tester.scrollUntilVisible(find.text('JOUR PAR JOUR · ACTIF ET DÉTENTE'), 200, scrollable: find.byType(Scrollable).last);
