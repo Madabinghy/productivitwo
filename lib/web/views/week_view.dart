@@ -1352,7 +1352,7 @@ class _WeekViewState extends State<WeekView> {
       if (left < 10) continue;
       watch.add(_PlaceItem(
         key: 'watch:${a.id}',
-        group: 'Montre suisse · reste',
+        group: _kWatchGroup,
         title: a.name,
         remainingMin: left,
         defaultMin: math.min(left, 45),
@@ -1487,6 +1487,8 @@ class _WeekViewState extends State<WeekView> {
     ];
   }
 
+  static const _kWatchGroup = 'Montre suisse · reste';
+
   static final _timeItems = [
     _PlaceItem(
       key: 'time:deep',
@@ -1530,6 +1532,34 @@ class _WeekViewState extends State<WeekView> {
     ),
   ];
 
+  List<Widget> _othersSection(List<_PlaceItem> others) => [
+        if (others.isNotEmpty) ...[
+          InkWell(
+            key: const ValueKey('week-other-acts'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => setState(() => _otherActsOpen = !_otherActsOpen),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Row(children: [
+                Expanded(
+                  child: Text('AUTRES ACTIVITÉS · ${others.length}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+                ),
+                Icon(_otherActsOpen ? Icons.expand_less : Icons.expand_more, size: 16, color: kBText3),
+              ]),
+            ),
+          ),
+          if (_otherActsOpen) ...[
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text('À glisser sur un rendez-vous ou un bloc pour dire où compte son temps.',
+                  style: TextStyle(fontSize: 11.5, color: kBText3, height: 1.35)),
+            ),
+            for (final it in others) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
+          ],
+        ],
+      ];
+
   Widget _placeColumn(List<_PlaceItem> items) {
     final groups = <String, List<_PlaceItem>>{};
     for (final it in items) {
@@ -1565,6 +1595,9 @@ class _WeekViewState extends State<WeekView> {
         const SizedBox(height: 6),
         Expanded(
           child: ListView(children: [
+            // AUTRES ACTIVITÉS juste sous la Montre suisse, au-dessus des séances à préparer (retour user 2026-11-23 :
+            // tout en bas, on ne la trouvait pas) ; en tête quand la Montre suisse n'a plus rien à placer.
+            if (!groups.containsKey(_kWatchGroup)) ..._othersSection(others),
             for (final e in groups.entries) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -1572,31 +1605,7 @@ class _WeekViewState extends State<WeekView> {
                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
               ),
               for (final it in e.value) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
-            ],
-            if (others.isNotEmpty) ...[
-              InkWell(
-                key: const ValueKey('week-other-acts'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => setState(() => _otherActsOpen = !_otherActsOpen),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10, bottom: 4),
-                  child: Row(children: [
-                    Expanded(
-                      child: Text('AUTRES ACTIVITÉS · ${others.length}',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
-                    ),
-                    Icon(_otherActsOpen ? Icons.expand_less : Icons.expand_more, size: 16, color: kBText3),
-                  ]),
-                ),
-              ),
-              if (_otherActsOpen) ...[
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text('À glisser sur un rendez-vous ou un bloc pour dire où compte son temps.',
-                      style: TextStyle(fontSize: 11.5, color: kBText3, height: 1.35)),
-                ),
-                for (final it in others) Padding(padding: const EdgeInsets.only(bottom: 6), child: _placeRow(it)),
-              ],
+              if (e.key == _kWatchGroup) ..._othersSection(others),
             ],
           ]),
         ),

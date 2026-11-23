@@ -1957,6 +1957,9 @@ rendez-vous libres (`applyMirrorMemory`, comme le mobile) ; glisser une activit�
 (donc dans la mémoire, par `upsertScheduleBlock`) et la donne aussitôt aux autres rendez-vous DU MÊME NOM de la semaine (« … et à n
 autres rendez-vous du même nom ») — ils comptent dans le reste de la Montre suisse ; « Annuler » défait aussi la mémoire
 (`FirestoreSync.forgetMirrorActivity`). Au lancement, mobile comme web, un rendez-vous associé lance le chrono sur SON activité.
+**AUTRES ACTIVITÉS remontée** (2026-11-23, retour user : tout en bas, on ne la trouvait pas) : la section se place juste sous
+« Montre suisse · reste », au-dessus de SÉANCES À PRÉPARER (`_othersSection`, `_kWatchGroup`), en tête de la liste quand la Montre
+suisse n'a plus rien à placer.
 
 **Retoucher une séance depuis la semaine** (2026-11-16, retour user : « je veux travailler autre chose avec les enfants demain ») :
 `web/session_rework_dialog.dart` (`showSessionReworkDialog`) — « Ce que tu fais pendant cette séance » (le titre de la séance native ;
