@@ -175,6 +175,24 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('tuile des 168 h : sans chrono, demain si rien et demain à fond en petit', (t) async {
+    final logic = AppLogic(AppState(domains: [], activities: [], sessions: [], habitProgress: []), () {});
+    final h = WeekHours(
+        activeMin: 79 * 60, basicMin: 120, sleepMin: 52 * 60, prevActiveMin: 0, leavingMin: 9 * 60 + 6, dayActive: const [], days: const []);
+    await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: DashboardTiles(
+      program: const ProgramTile(value: 'Rien de prévu', sub: 'touche pour voir le programme', strip: []),
+      hoursTile: WeekHoursTile(logic: logic, hours: h),
+    )))));
+    await t.pump();
+    final tile = find.byKey(const Key('hours-tile'));
+    expect(find.descendant(of: tile, matching: find.text('79 h')), findsOneWidget);
+    expect(find.descendant(of: tile, matching: find.text('↘70  ·  ↗94', findRichText: true)), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('tuile du mode : carrée, à droite de Journée parfaite, icône seule', (t) async {
     var ran = false;
     await t.pumpWidget(MaterialApp(

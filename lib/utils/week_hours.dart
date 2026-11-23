@@ -75,6 +75,9 @@ class WeekHours {
 /// durée ne s'affiche jamais « 0 h » ni « 1 h ».
 String spanLabel(int min) => min <= 0 ? '0 h' : (min < 60 ? '$min min' : '${(min / 60).round()} h');
 
+/// Le nombre d'heures arrondi, sans unité : « 70 » (les petits chiffres de la tuile d'Aujourd'hui).
+String hoursRound(int min) => '${(min <= 0 ? 0 : min / 60).round()}';
+
 /// Une durée à la minute : « 45 min », « 12 h », « 12 h 27 ».
 String spanExact(int min) {
   if (min < 60) return '${min < 0 ? 0 : min} min';

@@ -517,6 +517,7 @@ class WeekHoursTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final h = hours;
+    final tomorrow = hoursShowsTomorrow(h);
     final label = 'Tes 7 derniers jours · ${spanLabel(h.activeMin)} actives · maintenant : ${hoursMomentLabel(h.nowKind, h.nowName, now: true)}'
         '${hoursShowsTomorrow(h) ? ' · demain si rien : ${hoursTomorrowLabel(h)} · demain à fond : ${hoursFullLabel(h)}' : ''}'
         ' · il y a 7 jours : ${hoursMomentLabel(h.pastKind, h.pastName)}';
@@ -534,17 +535,34 @@ class WeekHoursTile extends StatelessWidget {
             onTap: () => showWeekHoursSheet(context, logic),
             // Le chiffre des heures actives dans l'ouverture du cadran, sous l'aiguille, comme dans la feuille
             // (demande user 2026-11-21) : l'arc s'arrête à 30° sous l'horizontale, l'aiguille n'y descend jamais.
+            // Dessous, en petit, demain si rien et demain à fond (demande user 2026-11-23 : « en un coup d'œil, à peu
+            // près où j'en suis ») — seulement quand l'aiguille parle de demain, comme les lignes de la feuille.
             child: ExcludeSemantics(
               child: Stack(alignment: Alignment.center, children: [
                 WeekHoursGauge(h: h, size: 90),
                 Positioned(
-                  bottom: 11,
+                  bottom: tomorrow ? 17 : 11,
                   child: Text(spanLabel(h.activeMin),
                       key: const Key('hours-tile-active'),
                       maxLines: 1,
                       textScaler: TextScaler.noScaling,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: kHoursActive, height: 1)),
                 ),
+                if (tomorrow)
+                  Positioned(
+                    bottom: 4,
+                    child: Text.rich(
+                      key: const Key('hours-tile-tomorrow'),
+                      TextSpan(children: [
+                        TextSpan(text: '↘${hoursRound(h.tomorrowActiveMin)}', style: TextStyle(color: (h.leavingMin > 0 ? kHoursLoss : kHoursActive).withValues(alpha: .85))),
+                        TextSpan(text: '  ·  ', style: TextStyle(color: Colors.white.withValues(alpha: .3))),
+                        TextSpan(text: '↗${hoursRound(h.fullTomorrowActiveMin)}', style: TextStyle(color: kHoursActive.withValues(alpha: .85))),
+                      ]),
+                      maxLines: 1,
+                      textScaler: TextScaler.noScaling,
+                      style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, height: 1),
+                    ),
+                  ),
               ]),
             ),
           ),
