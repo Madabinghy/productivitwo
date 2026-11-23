@@ -539,7 +539,29 @@ class WeekHoursTile extends StatelessWidget {
             // près où j'en suis ») — seulement quand l'aiguille parle de demain, comme les lignes de la feuille.
             child: ExcludeSemantics(
               child: Stack(alignment: Alignment.center, children: [
-                WeekHoursGauge(h: h, size: 90),
+                // En haut, ▼ ce qui tournait il y a 7 jours (le triangle du cadran), pour comparer sans ouvrir la
+                // feuille (demande user 2026-11-23) ; la jauge descend un peu pour lui faire la place.
+                Padding(padding: const EdgeInsets.only(top: 12), child: WeekHoursGauge(h: h, size: 88)),
+                Positioned(
+                  top: 5,
+                  left: 6,
+                  right: 6,
+                  child: Row(key: const Key('hours-tile-past'), mainAxisAlignment: MainAxisAlignment.center, children: [
+                    CustomPaint(size: const Size(7, 6), painter: _TrianglePainter(Colors.white)),
+                    const SizedBox(width: 3),
+                    Flexible(
+                      child: Text(hoursPastShort(h),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textScaler: TextScaler.noScaling,
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                              color: h.pastKind == HoursKind.free ? Colors.white.withValues(alpha: .45) : hoursKindColor(h.pastKind))),
+                    ),
+                  ]),
+                ),
                 Positioned(
                   bottom: tomorrow ? 17 : 11,
                   child: Text(spanLabel(h.activeMin),

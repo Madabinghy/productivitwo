@@ -2243,6 +2243,9 @@ la feuille (`hours-tile-active`, `spanLabel` : « 70 h », « 40 min », taille 
 petit, « ↘70 · ↗94 » = demain si rien (ambre quand quelque chose sort) et demain à fond (`hours-tile-tomorrow`, `hoursRound` = heures
 arrondies sans unité), seulement quand la feuille montre aussi ces lignes (`hoursShowsTomorrow` : sans chrono ou chrono actif) ; le
 chiffre des heures actives remonte alors de 6 px.
+**Il y a 7 jours en haut de la tuile** (2026-11-23, demande user : comparer sans ouvrir la feuille, et donner envie de refaire
+pareil) : « ▼ Productivitwo » (`hours-tile-past`, triangle blanc comme le repère du cadran, nom de l'activité à la couleur de sa
+nature, sinon la nature, sinon « rien » en gris — `hoursPastShort`) ; la jauge passe à 88 px et descend de 12 px pour lui faire la place.
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 

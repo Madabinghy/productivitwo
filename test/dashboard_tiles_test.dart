@@ -164,9 +164,11 @@ void main() {
     expect(t.getSize(tile).height, greaterThanOrEqualTo(104));
     expect(t.getTopLeft(tile).dx, greaterThan(t.getTopLeft(find.text('PROGRAMME')).dx));
     expect(t.getTopLeft(tile).dy, lessThan(t.getTopLeft(find.text('JOURNÉE PARFAITE')).dy));
-    // La jauge et, sous l'aiguille, les heures actives des 7 jours ; le détail est en infobulle.
-    expect(find.descendant(of: tile, matching: find.byType(Text)), findsOneWidget);
+    // La jauge, en haut ce qui tournait il y a 7 jours et, sous l'aiguille, les heures actives des 7 jours ; le
+    // détail est en infobulle.
+    expect(find.descendant(of: tile, matching: find.byType(Text)), findsNWidgets(2));
     expect(find.descendant(of: tile, matching: find.text('62 h')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('hours-tile-past')), matching: find.text('Coder')), findsOneWidget);
     expect(find.descendant(of: tile, matching: find.byType(WeekHoursGauge)), findsOneWidget);
     expect(find.byTooltip('Tes 7 derniers jours · 62 h actives · maintenant : Détente · Jeux vidéo · il y a 7 jours : Actif · Coder'), findsOneWidget);
     await t.tap(tile);
@@ -190,6 +192,7 @@ void main() {
     final tile = find.byKey(const Key('hours-tile'));
     expect(find.descendant(of: tile, matching: find.text('79 h')), findsOneWidget);
     expect(find.descendant(of: tile, matching: find.text('↘70  ·  ↗94', findRichText: true)), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('hours-tile-past')), matching: find.text('rien')), findsOneWidget);
     expect(t.takeException(), isNull);
   });
 
