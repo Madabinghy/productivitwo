@@ -2239,6 +2239,10 @@ hauteur de Programme (104 au moins).
 **Les heures actives dans la tuile** (2026-11-21, demande user) : sous l'aiguille, dans l'ouverture du cadran (l'arc s'arrête à 30° sous
 l'horizontale, l'aiguille n'y descend jamais), la tuile écrit les heures actives des 7 derniers jours en vert, comme le grand chiffre de
 la feuille (`hours-tile-active`, `spanLabel` : « 70 h », « 40 min », taille fixe sans agrandissement du texte).
+**Demain en petit dans la tuile** (2026-11-23, demande user : « en un coup d'œil, à peu près où j'en suis ») : sous ce chiffre, en
+petit, « ↘70 · ↗94 » = demain si rien (ambre quand quelque chose sort) et demain à fond (`hours-tile-tomorrow`, `hoursRound` = heures
+arrondies sans unité), seulement quand la feuille montre aussi ces lignes (`hoursShowsTomorrow` : sans chrono ou chrono actif) ; le
+chiffre des heures actives remonte alors de 6 px.
 
 ## Modules (2026-11-16, inventaire validé « cœur, modules, à couper » + maquette « Modules et parcours », 6 lots)
 
